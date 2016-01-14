@@ -81,6 +81,7 @@ if not generator.computeRegressor(regressor, knownTerms):
 # get subspace basis (for projection to base regressor/parameters)
 subspaceBasis = iDynTree.MatrixDynSize()
 if not generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
+# if not generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
     print "Error while computing basis matrix"
 
 # convert to numpy
@@ -95,14 +96,16 @@ YBase = np.dot(YStd, B)
 print "YBase: {}".format(YBase.shape)
 
 # invert equation to get parameter vector from measurements and model + system state values
-# TODO: get jacobian and external forces vector
 YBaseInv = np.linalg.pinv(YBase)
 
-# TODO: how to match number of torques and number of base parameters? (base - flexible, torque - amount of sensors)
-xBase = YBaseInv*tau #- YBaseInv*jacobian*contacts
-print "The base parameter vector is \n{}".format(xBase)
-print xBase.shape
-print B.shape
+# TODO: get jacobian and contact force for each contact point
+# assuming zero external forces for fixed base on trunk
+#jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
+#generator.getFrameJacobian('arm', jacobian)
 
+xBase = YBaseInv*tau #- YBaseInv*jacobian*contactForces
+print "The base parameter vector is \n{}".format(xBase)
+
+# project back to standard parameters
 xStd = np.dot(B, xBase)
 print "The standard parameter vector is \n{}".format(xStd)

@@ -4,6 +4,14 @@ import yarp
 import numpy as np
 #import PyKDL as kdl
 
+import argparse
+parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
+parser.add_argument('--filename', default='measurements.npz', type=str,
+        help='the filename to save the measurements to')
+args = parser.parse_args()
+
+N_DOFS = 7
+
 #pulsating trajectory generator for one joint using fourier series from Sewers, Gansemann (1997)
 class OscillationGenerator(object):
     def __init__(self, w_f, a, b, q0, nf):
@@ -57,6 +65,7 @@ if __name__ == '__main__':
     yarp.Network.connect(portName+'o', portName+'i')
 
     #create oscillators for each joint (synchronized frequencies)
+    #parameters are a bit arbitrary so far...
     t_init = yarp.Time.now()
     t_elapsed = 0.0
     duration = 10
@@ -69,24 +78,57 @@ if __name__ == '__main__':
     trajectory5 = OscillationGenerator(w_f=w_f_global, a=np.array([-0.7]), b=np.array([1.3]), q0=0, nf=1)
     trajectory6 = OscillationGenerator(w_f=w_f_global, a=np.array([-1]), b=np.array([1]), q0=0, nf=1)
 
-    while t_elapsed < duration:
+    measured_positions = list()
+    measured_velocities = list()
+    measured_torques = list()
+    measured_time = list()
+    while t_elapsed < duration:   #TODO: make sure we loop over a full period of the oscillations
         angles = list()
-        for i in range(0, 7):
+        for i in range(0, N_DOFS):
             angles.append( eval("trajectory{}.getAngle(t_elapsed)".format(i)) )
         gen_position_msg(command_port, angles)
 
         t_elapsed = yarp.Time.now() - t_init
         command_port.write()
-        yarp.Time.delay(0.01)
+        yarp.Time.delay(0.01)  #not sure if this is necessary, example had it
 
-        gen_command(command_port, "get_left_arm_torques")
+        gen_command(command_port, "get_left_arm_measurements")
         command_port.write()
         yarp.Time.delay(0.01)
 
         data = data_port.read(shouldWait=True)
-        torques = list()
-        for i in range(0,7):
-             torques.append(data.get(i).asDouble())
+
+        positions = np.zeros(N_DOFS)
+        velocities = np.zeros(N_DOFS)
+        torques = np.zeros(N_DOFS)
+        for i in range(0, N_DOFS):
+             positions[i] = data.get(i).asDouble()
+             velocities[i] = data.get(i+7).asDouble()
+             torques[i] = data.get(i+7+7).asDouble()
+        print "received positions: {}".format(positions)
+        print "received velocities: {}".format(velocities)
         print "received torques: {}".format(torques)
 
+        measured_positions.append(positions)
+        measured_velocities.append(velocities)
+        measured_torques.append(torques)
+
+        measured_time.append(yarp.Time.now())
+
     command_port.close()
+    M1 = np.array(measured_positions)
+    del measured_positions
+    M2 = np.array(measured_velocities)
+    del measured_velocities
+    M3 = np.array(measured_torques)
+    del measured_torques
+    time = np.array(measured_time)
+    del measured_time
+
+    print "got {} samples.".format(M1.shape[0]),
+
+    #write sample arrays to numpy data file
+    np.savez_compressed(args.filename, positions=M1, velocities=M2, torques=M3, times=time)
+    print "saved to {}".format(args.filename)
+
+

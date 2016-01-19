@@ -14,14 +14,16 @@ excitation_thread::excitation_thread(   std::string module_prefix,
 {
     // position mode on left arm chain interface
     left_arm_chain_interface.setPositionMode();
+
+    //open data output port
+    outgoingPort.open("/" + module_prefix + "/dataOutput:o");
 }
 
 void excitation_thread::link_tutorial_params()
 {
     // get a shared pointer to param helper
     std::shared_ptr<paramHelp::ParamHelperServer> ph = get_param_helper();
-    // link the left_arm configuration (vector linking)
-    // link the max_vel parameter (single value linking
+    // link the max_vel parameter (single value linking)
     ph->linkParam( PARAM_ID_MAX_VEL, &max_vel );
 }
 
@@ -35,6 +37,10 @@ bool excitation_thread::custom_init()
 
 void excitation_thread::run()
 {
+    static yarp::sig::Vector pos;
+    static yarp::sig::Vector torques_left_arm;
+
+    static int seq_num;
     excitation_cmd.command = "";
     command_interface.getCommand(excitation_cmd, seq_num);
 
@@ -43,8 +49,8 @@ void excitation_thread::run()
         left_arm_chain_interface.setReferenceSpeed( max_vel );
 
         // position move to desired configuration
-        yarp::sig::Vector pos;
-        pos.resize(7); pos.zero();
+        if(pos.size()!=7) pos.resize(7);
+        pos.zero();
         pos[0] = excitation_cmd.angle0;
         pos[1] = excitation_cmd.angle1;
         pos[2] = excitation_cmd.angle2;
@@ -53,6 +59,12 @@ void excitation_thread::run()
         pos[5] = excitation_cmd.angle5;
         pos[6] = excitation_cmd.angle6;
         left_arm_chain_interface.move(pos);
+    }
+    else if( excitation_cmd.command == "get_left_arm_torques" ) {
+        left_arm_chain_interface.senseTorque(torques_left_arm);
+
+        if(outgoingPort.isOpen())
+            outgoingPort.write(torques_left_arm);
     }
     else if( excitation_cmd.command != "" ) {
       std::cout << excitation_cmd.command <<  " -> command not valid" << std::endl;

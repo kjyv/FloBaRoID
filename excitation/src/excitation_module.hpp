@@ -20,13 +20,13 @@ public:
      */
     excitation_module(int argc,
                       char* argv[],
-											std::string module_prefix,
-											int module_period,
-											yarp::os::ResourceFinder rf ) : generic_module<excitation_thread>( argc,
-																																													argv,
-																																													module_prefix,
-																																													module_period,
-																																													rf )
+                      std::string module_prefix,
+                      int module_period,
+                      yarp::os::ResourceFinder rf ) : generic_module<excitation_thread>( argc,
+                                                                                         argv,
+                                                                                         module_prefix,
+                                                                                         module_period,
+                                                                                         rf )
     {
     }
 

@@ -19,4 +19,6 @@ Then, using $ yarp write ... /excitation/command:i
 it is then possible to manually set arm positions, e.g. by writing
 (set_left_arm -50 40 40 -30 20 10 10) 0
 
-To generate excitation trajectories, run excite.py
+To generate excitation trajectories, run excite.py <filename>
+
+This will read the resulting joint torques measurements and write to a file measurements.npy

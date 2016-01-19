@@ -11,6 +11,8 @@
 
 #include "excitation_msg.h"
 
+#define N_DOFS 7
+
 /**
  * @brief excitation control thread
  *

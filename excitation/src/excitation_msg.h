@@ -76,7 +76,7 @@ public:
             return;
         }
 
-        //TODO: check that list has enough entries
+        //TODO: check that list has enough entries and otherwise give message
 
         command = list->get(0).asString();
         int index = 1;

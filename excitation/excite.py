@@ -30,8 +30,14 @@ class OscillationGenerator(object):
 def gen_position_msg(msg_port, angles):
     bottle = msg_port.prepare()
     bottle.clear()
-    print angles
+    print "send angles: {}".format(angles)
     bottle.fromString("(set_left_arm {}) 0".format(' '.join(map(str, angles)) ))
+    return bottle
+
+def gen_command(msg_port, command):
+    bottle = msg_port.prepare()
+    bottle.clear()
+    bottle.fromString("({}) 0".format(command))
     return bottle
 
 if __name__ == '__main__':
@@ -40,9 +46,14 @@ if __name__ == '__main__':
     while not yarp.Time.isValid():
         continue
 
-    command_port = yarp.BufferedPortBottle()
     portName = '/excitation/command:'
+    command_port = yarp.BufferedPortBottle()
     command_port.open(portName+'o')
+    yarp.Network.connect(portName+'o', portName+'i')
+
+    portName = '/excitation/dataOutput:'
+    data_port = yarp.BufferedPortBottle()
+    data_port.open(portName+"i")
     yarp.Network.connect(portName+'o', portName+'i')
 
     #create oscillators for each joint (synchronized frequencies)
@@ -67,5 +78,15 @@ if __name__ == '__main__':
         t_elapsed = yarp.Time.now() - t_init
         command_port.write()
         yarp.Time.delay(0.01)
+
+        gen_command(command_port, "get_left_arm_torques")
+        command_port.write()
+        yarp.Time.delay(0.01)
+
+        data = data_port.read(shouldWait=True)
+        torques = list()
+        for i in range(0,7):
+             torques.append(data.get(i).asDouble())
+        print "received torques: {}".format(torques)
 
     command_port.close()

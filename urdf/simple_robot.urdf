@@ -1,14 +1,19 @@
   <?xml version="1.0"?>
   <robot name="test_robot">
+    <link name="fake_base">
+    </link>
+
     <link name="base_link">
       <collision>
         <geometry>
           <cylinder length="0.6" radius="0.2"/>
+          <origin rpy="0 0 0" xyz="0 0 0"/>
         </geometry>
       </collision>
       <visual>
         <geometry>
           <cylinder length="0.6" radius="0.2"/>
+          <origin rpy="0 0 0" xyz="0 0 0"/>
         </geometry>
         <material name="blue">
           <color rgba="0 0 .8 1"/>
@@ -36,11 +41,18 @@
         <origin xyz="0 0 0.7" rpy="0 0 0"/>
         <mass value="1"/>
         <inertia
-          ixx=".001" ixy="0.0" ixz="0.0"
-          iyy=".001" iyz="0.0"
-          izz=".001"/>
+          ixx=".001" ixy="0.0"  ixz="0.0"
+                     iyy=".001" iyz="0.0"
+                                izz=".001"/>
       </inertial>
     </link>
+
+    <joint name="fake_base_joint" type="fixed">
+      <origin xyz="0 0 0"/>
+      <axis xyz="0 0 0"/>
+      <parent link="fake_base"/>
+      <child link="base_link"/>
+    </joint>
 
     <joint name="base_to_arm" type="revolute">
       <origin xyz="0 0 0.3"/>

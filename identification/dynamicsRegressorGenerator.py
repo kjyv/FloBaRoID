@@ -5,18 +5,25 @@ import iDynTree
 import numpy as np; np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
 import matplotlib.pyplot as plt
 
-URDF_FILE = '../urdf/robot2.urdf'
+URDF_FILE = '../urdf/simple_robot.urdf'
 #URDF_FILE = '../urdf/bigman.urdf'
 #TODO: load full model and programmatically cut off chain from certain joints/links, get back urdf?
 #URDF_FILE = '../urdf/bigman_left_arm.urdf'
 
 measurements = np.load("../data/LARM/SIM/measurements.npz")
 num_samples = measurements['positions'].shape[0]
+print 'loaded {} samples'.format(num_samples)
 
 #some iDynTree helpers
 def vecToNumPy(self):
     return np.fromstring(self.toString(), sep=' ')
+def pyToVec(self, vec):
+    out = iDynTree.VectorDynSize(len(vec))
+    for v in range(0,len(vec)):
+        out.setVal(v, vec[v])
+    return out
 iDynTree.VectorDynSize.toNumPy = vecToNumPy
+iDynTree.VectorDynSize.fromPy = pyToVec
 iDynTree.Wrench.toNumPy = vecToNumPy
 iDynTree.Twist.toNumPy = vecToNumPy
 
@@ -27,30 +34,42 @@ iDynTree.MatrixDynSize.toNumPy = matToNumPy
 #create generator instance and load model
 generator = iDynTree.DynamicsRegressorGenerator()
 generator.loadRobotAndSensorsModelFromFile(URDF_FILE)
+print 'loaded model {}'.format(URDF_FILE)
 
-# define what subchains to identify
+# define what regressor type to use
 #(TODO: in order to skip links (that are just a fixed part of the chain, no joints)
 #add something like <ignoredLink>r_wrist_1</ignoredLink>' for all the fixed joints)
 #ideally try automatically
-regrXml = \
-'''<regressor>
- <subtreeBaseDynamics>'
-   <FTSensorLink>arm</FTSensorLink>'
- </subtreeBaseDynamics>'
+
+#regrXml = '''
+#<regressor>
+# <subtreeBaseDynamics>'
+#   <FTSensorLink>arm</FTSensorLink>'
+# </subtreeBaseDynamics>'
+#</regressor>'''
+regrXml = '''
+<regressor>
+  <jointTorqueDynamics>
+    <joints>
+        <joint>base_to_arm</joint>
+    </joints>
+  </jointTorqueDynamics>
 </regressor>'''
+#or use <allJoints/>
 generator.loadRegressorStructureFromString(regrXml)
 
 N_DOFS = generator.getNrOfDegreesOfFreedom()
+print '# DOFs: {}'.format(N_DOFS)
 
 # Get the number of outputs of the regressor
-# Given that we are considering only the base dynamics
-# of a subtree, we will have just 6 outputs (3 force, 3 torques)
 N_OUT = generator.getNrOfOutputs()
+print '# outputs: {}'.format(N_OUT)
 
 # get initial inertia params (from urdf)
 N_PARAMS = generator.getNrOfParameters()
 cadParams = iDynTree.VectorDynSize(N_PARAMS)
 generator.getModelParameters(cadParams)
+print '# params: {}'.format(N_PARAMS)
 
 gravity_twist = iDynTree.Twist()
 gravity_twist.zero()
@@ -59,6 +78,7 @@ gravity_twist.setVal(2, -9.81)
 jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, N_DOFS)]
 
 M = measurements['torques']
+'''
 plt.plot(M[:, 0], label="tq_LShSag")
 plt.plot(M[:, 1], label="tq_LShLat")
 plt.plot(M[:, 2], label="tq_LShYaw")
@@ -68,6 +88,7 @@ plt.plot(M[:, 5], label="tq_LWrj1")
 plt.plot(M[:, 6], label="tq_LWrj2")
 plt.legend(loc='lower right')
 plt.show()
+'''
 
 regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
 torques_stack = np.empty(shape=(num_samples, N_DOFS))
@@ -91,17 +112,16 @@ if(False):
         for dof in range(N_DOFS):
             q.setVal(dof, pos[dof])
             dq.setVal(dof, vel[dof])
-            ddq.setVal(dof, 0.001) #TODO: acc[dof]
+            ddq.setVal(dof, 0.001) #TODO: get acc[dof] from simulator/differentiate
+            #generator.setTorqueSensorMeasurement(dof, torq[dof])
 
-            #set torque sensor values
-            sensorIndex = generator.getSensorsModel().getSensorIndex(iDynTree.ONE_AXIS_JOINT_FORCE, jointNames[dof])
-            generator.getSensorsMeasurements().setMeasurement(iDynTree.ONE_AXIS_JOINT_FORCE, sensorIndex, sensorMeasure)
+        generator.setTorqueSensorMeasurement(iDynTree.fromPy(torq))
 
         generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
 
         # get (standard) regressor
         regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS)
-        knownTerms = iDynTree.VectorDynSize(N_OUT) # TODO: what parameters are these?
+        knownTerms = iDynTree.VectorDynSize(N_OUT)
         if not generator.computeRegressor(regressor, knownTerms):
             print "Error while computing regressor"
 
@@ -123,34 +143,37 @@ dq = iDynTree.VectorDynSize(N_DOFS)
 ddq = iDynTree.VectorDynSize(N_DOFS)
 
 #dummy data
-for dof in range(N_DOFS):
-    q.setVal(dof, 1.0)
-    dq.setVal(dof, 0.01)
-    ddq.setVal(dof, 0.001)
+#for dof in range(N_DOFS):
+#    q.setVal(dof, 1.0)
+#    dq.setVal(dof, 0.01)
+#    ddq.setVal(dof, 0.001)
 
 generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
 
 # set torque measurements from experiment data
-sensorMeasure = iDynTree.Wrench()
+sensorMeasure = iDynTree.VectorDynSize(N_DOFS)
 sensorMeasure.setVal(0, 0.0)
-sensorMeasure.setVal(1, 2.0)
-sensorMeasure.setVal(2, 5.0)
-sensorMeasure.setVal(3, 0.3)
-sensorMeasure.setVal(4, 10.2)
-sensorMeasure.setVal(5, 1.5)
+#sensorMeasure = iDynTree.Wrench()
+#sensorMeasure.setVal(0, 0.0)
+#sensorMeasure.setVal(1, 2.0)
+#sensorMeasure.setVal(2, 5.0)
+#sensorMeasure.setVal(3, 0.3)
+#sensorMeasure.setVal(4, 10.2)
+#sensorMeasure.setVal(5, 1.5)
 
-sensorIndex = generator.getSensorsModel().getSensorIndex(iDynTree.SIX_AXIS_FORCE_TORQUE, 'base_to_arm')
-generator.getSensorsMeasurements().setMeasurement(iDynTree.SIX_AXIS_FORCE_TORQUE, sensorIndex, sensorMeasure)
+#sensorIndex = generator.getSensorsModel().getSensorIndex(iDynTree.SIX_AXIS_FORCE_TORQUE, 'base_to_arm')
+#generator.getSensorsMeasurements().setMeasurement(iDynTree.SIX_AXIS_FORCE_TORQUE, sensorIndex, sensorMeasure)
+generator.setTorqueSensorMeasurement(sensorMeasure)
 
 # get (standard) regressor
-regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS)
-knownTerms = iDynTree.VectorDynSize(N_OUT) # TODO: what parameters are these?
+regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS) #Y
+knownTerms = iDynTree.VectorDynSize(N_OUT) #corresponds to measured torques in this case
 if not generator.computeRegressor(regressor, knownTerms):
     print "Error while computing regressor"
 
+print 'regressor: {}'.format(regressor.toString())
 
-
-#TODO: from here, use stacked regressors when ready
+#TODO: from here, use stacked regressors when regressors are ready
 
 # get subspace basis (for projection to base regressor/parameters)
 subspaceBasis = iDynTree.MatrixDynSize()
@@ -171,8 +194,9 @@ print "YBase: {}".format(YBase.shape)
 
 # invert equation to get parameter vector from measurements and model + system state values
 YBaseInv = np.linalg.pinv(YBase)
+print "YBaseInv: {}".format(YBaseInv.shape)
 
-# TODO: get jacobian and contact force for each joint/contact point when iDynTree allows it
+# TODO: get jacobian and contact force for each contact frame (when iDynTree allows it)
 # assuming zero external forces for fixed base on trunk
 #jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
 #generator.getFrameJacobian('arm', jacobian)

@@ -10,6 +10,7 @@ parser.add_argument('--filename', default='measurements.npz', type=str,
         help='the filename to save the measurements to')
 args = parser.parse_args()
 
+#TODO: use model information for this, generate trajectory in a generic model dependent way
 N_DOFS = 7
 
 #pulsating trajectory generator for one joint using fourier series from Sewers, Gansemann (1997)

@@ -48,13 +48,7 @@ regrXml = '''
 <regressor>
   <jointTorqueDynamics>
     <joints>
-        <joint>LShSag</joint>
-        <joint>LShLat</joint>
-        <joint>LShYaw</joint>
-        <joint>LElbj</joint>
-        <joint>LForearmPlate</joint>
-        <joint>LWrj1</joint>
-        <joint>LWrj2</joint>
+        <joint>base_to_arm</joint>
     </joints>
   </jointTorqueDynamics>
 </regressor>'''

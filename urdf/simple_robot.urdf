@@ -41,9 +41,9 @@
         <origin xyz="0 0 0.7" rpy="0 0 0"/>
         <mass value="1"/>
         <inertia
-          ixx=".001" ixy="0.0"  ixz="0.0"
-                     iyy=".001" iyz="0.0"
-                                izz=".001"/>
+          ixx=".001" ixy="0.0" ixz="0.0"
+          iyy=".001" iyz="0.0"
+          izz=".001"/>
       </inertial>
     </link>
 

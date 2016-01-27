@@ -84,13 +84,21 @@ if(args.plot):
         plt.plot(M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Measured torques')
-    plt.show()
 
+    plt.figure()
     M = measurements['positions']
     for i in range(0, N_DOFS):
         plt.plot(M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Positions')
+
+    plt.figure()
+    M = measurements['velocities']
+    for i in range(0, N_DOFS):
+        plt.plot(M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
+    plt.title('Velocities')
+
     plt.show()
 
 regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
@@ -177,8 +185,14 @@ xStd[low_values_indices] = 0  # set all low values to 0
 xStdModel = iDynTree.VectorDynSize(N_PARAMS)
 generator.getModelParameters(xStdModel)
 
+
+## generate output
+
+# TODO: save to urdf with new parameters
+
+# some pretty printing of parameters
 if(args.explain):
-    print "\n Parameter description and vs. old values"
+    #collect values for parameters
     description = generator.getDescriptionOfParameters()
     idx_p = 0
     lines = list()
@@ -186,18 +200,21 @@ if(args.explain):
         new = xStd[idx_p]
         old = xStdModel.getVal(idx_p)
         diff = old - new
-        lines.append((new, old, diff, l))
+        lines.append((old, new, diff, l))
         idx_p+=1
         if idx_p == len(xStd):
             break
 
-    #some pretty printing
-    column_widths = [15, 15, 7, 80]
-    precisions = [8, 8, 3, 0]
+    column_widths = [15, 15, 7, 45]   #widths of the columns
+    precisions = [8, 8, 3, 0]         #numerical precision
+
+    #print column header
     template = ''
     for w in range(0, len(column_widths)):
         template += '|{{{}:{}}}'.format(w, column_widths[w])
-    print template.format("Approx", "Model", "Error", "Description") # header
+    print template.format("Model", "Approx", "Error", "Description")
+
+    #print values/description
     template = ''
     for w in range(0, len(column_widths)):
         if(type(lines[0][w]) == str):

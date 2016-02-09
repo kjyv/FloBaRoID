@@ -51,6 +51,7 @@ public:
      * @param ph param helper
      */
      excitation_thread( std::string module_prefix, yarp::os::ResourceFinder rf, std::shared_ptr<paramHelp::ParamHelperServer> ph );
+     ~excitation_thread();
 
     /**
      * @brief excitation control thread initialization

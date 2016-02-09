@@ -2,7 +2,16 @@
 
 #include "excitation_thread.h"
 #include "excitation_constants.h"
+#include "saveEigen.h"
 
+#include <Eigen/Eigen>
+
+#include <list>
+#include <vector> 
+
+using namespace std;
+using namespace Eigen;
+list < VectorXd > tmpLog; 
 excitation_thread::excitation_thread(   std::string module_prefix,
                                         yarp::os::ResourceFinder rf,
                                         std::shared_ptr< paramHelp::ParamHelperServer > ph) :
@@ -18,6 +27,11 @@ excitation_thread::excitation_thread(   std::string module_prefix,
 
     //open data output port
     outgoingPort.open("/" + module_prefix + "/dataOutput:o");
+}
+
+excitation_thread::~excitation_thread()
+{
+  save(&tmpLog, "log.csv");
 }
 
 void excitation_thread::link_tutorial_params()
@@ -94,6 +108,22 @@ void excitation_thread::run()
     else if( excitation_cmd.command != "" ) {
       std::cout << excitation_cmd.command <<  " -> command not valid" << std::endl;
     }
+    
+    left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm
+    left_arm_chain_interface.sensePosition(q_left_arm);     //get positions in deg
+    left_arm_chain_interface.senseVelocity(qdot_left_arm);  //get velocities in deg/s
+    //TODO: get acceleration as well
+
+    yarp::sig::Vector out;
+    out.resize(3*N_DOFS);
+    out.setSubvector(0, tau_left_arm);
+    out.setSubvector(N_DOFS, q_left_arm);
+    out.setSubvector(N_DOFS*2, qdot_left_arm);
+    
+    static VectorXd tmp(out.size());
+    for (int i=0; i<tmp.rows(); i++) 
+      tmp(i) = out(i);
+    tmpLog.push_back(tmp);
 }
 
 bool excitation_thread::custom_pause()

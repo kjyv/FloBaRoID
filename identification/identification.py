@@ -44,11 +44,18 @@ generator.loadRobotAndSensorsModelFromFile(URDF_FILE)
 print 'loaded model {}'.format(URDF_FILE)
 
 # define what regressor type to use
+
 regrXml = '''
 <regressor>
   <jointTorqueDynamics>
     <joints>
-        <joint>base_to_arm</joint>
+        <joint>LShSag</joint>
+        <joint>LShLat</joint>
+        <joint>LShYaw</joint>
+        <joint>LElbj</joint>
+        <joint>LForearmPlate</joint>
+        <joint>LWrj1</joint>
+        <joint>LWrj2</joint>
     </joints>
   </jointTorqueDynamics>
 </regressor>'''

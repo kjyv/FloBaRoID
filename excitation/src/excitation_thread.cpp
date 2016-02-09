@@ -13,7 +13,8 @@ excitation_thread::excitation_thread(   std::string module_prefix,
                                             generic_thread( module_prefix, rf, ph )
 {
     // position mode on left arm chain interface
-    left_arm_chain_interface.setPositionMode();
+    left_arm_chain_interface.setPositionDirectMode();
+//            setPositionMode();
 
     //open data output port
     outgoingPort.open("/" + module_prefix + "/dataOutput:o");
@@ -40,13 +41,28 @@ void excitation_thread::run()
     static yarp::sig::Vector pos;
     static yarp::sig::Vector q_left_arm, qdot_left_arm, tau_left_arm;
 
+    double l=1, w_f=1, a=0.5, b=0.8, q0=-25, nf=1;
+    double t = yarp::os::Time::now();
+    double angle = (a/(w_f*l)*sin(w_f*l*t) +  a/(w_f*l)*cos(w_f*l*t))/M_PI*180;
+
+    if(pos.size()!=N_DOFS) pos.resize(N_DOFS);
+    pos.zero();
+    /*pos[0] = excitation_cmd.angle0;
+    pos[1] = excitation_cmd.angle1;
+    pos[2] = excitation_cmd.angle2;*/
+    pos[3] = angle;
+    /*pos[4] = excitation_cmd.angle4;
+    pos[5] = excitation_cmd.angle5;
+    pos[6] = excitation_cmd.angle6;*/
+    left_arm_chain_interface.move(pos);
+
     static int seq_num;
     excitation_cmd.command = "";
     command_interface.getCommand(excitation_cmd, seq_num);
 
     if( excitation_cmd.command == "set_left_arm" ) {
         // set the ref speed for all the joints
-        left_arm_chain_interface.setReferenceSpeed( max_vel );
+        //left_arm_chain_interface.setReferenceSpeed( max_vel );
 
         // position move to desired configuration
         if(pos.size()!=N_DOFS) pos.resize(N_DOFS);
@@ -58,7 +74,7 @@ void excitation_thread::run()
         pos[4] = excitation_cmd.angle4;
         pos[5] = excitation_cmd.angle5;
         pos[6] = excitation_cmd.angle6;
-        left_arm_chain_interface.move(pos);
+        //left_arm_chain_interface.move(pos);
     }
     else if( excitation_cmd.command == "get_left_arm_measurements" ) {
         left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm

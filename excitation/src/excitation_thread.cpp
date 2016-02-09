@@ -55,7 +55,7 @@ void excitation_thread::run()
     static yarp::sig::Vector pos;
     static yarp::sig::Vector q_left_arm, qdot_left_arm, tau_left_arm;
 
-    double l=1, w_f=1, a=0.5, b=0.8, q0=-25, nf=1;
+    double l=1, w_f=1, a=0.5, b=0.8, q0=-30, nf=1;
     double t = yarp::os::Time::now();
     double angle = (a/(w_f*l)*sin(w_f*l*t) +  a/(w_f*l)*cos(w_f*l*t))/M_PI*180;
 
@@ -115,11 +115,12 @@ void excitation_thread::run()
     //TODO: get acceleration as well
 
     yarp::sig::Vector out;
-    out.resize(3*N_DOFS);
+    out.resize(N_DOFS*3+1);
     out.setSubvector(0, tau_left_arm);
     out.setSubvector(N_DOFS, q_left_arm);
     out.setSubvector(N_DOFS*2, qdot_left_arm);
-    
+    out[N_DOFS*3] = t;
+
     static VectorXd tmp(out.size());
     for (int i=0; i<tmp.rows(); i++) 
       tmp(i) = out(i);

@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
     // parameters
     yarp::os::ResourceFinder rf;
     rf.setVerbose(true);
-    rf.setDefault("name","identification");
+    rf.setDefault("name","identificaiton");
     rf.setDefault("config","config.ini");
     rf.configure(argc,argv);
 

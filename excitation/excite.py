@@ -76,7 +76,8 @@ class TrajectoryGenerator(object):
 def gen_position_msg(msg_port, angles):
     bottle = msg_port.prepare()
     bottle.clear()
-    print "send angles: {}".format(angles)
+    #print "send angles:",
+    #print ["{0:0.2f}".format(i) for i in angles]
     bottle.fromString("(set_left_arm {}) 0".format(' '.join(map(str, angles)) ))
     return bottle
 
@@ -89,6 +90,8 @@ def gen_command(msg_port, command):
 if __name__ == '__main__':
     #connect to yarp and open output port
     yarp.Network.init()
+    yarp.Time.useNetworkClock("/clock")
+    yarp.Time.now()
     while not yarp.Time.isValid():
         continue
 
@@ -102,8 +105,9 @@ if __name__ == '__main__':
     data_port.open(portName+"i")
     yarp.Network.connect(portName+'o', portName+'i')
 
-    #create oscillators for each joint (synchronized frequencies)
-    #parameters are a bit arbitrary so far...
+    #init trajectory generator for all the joints
+    trajectories = TrajectoryGenerator(N_DOFS)
+
     t_init = yarp.Time.now()
     t_elapsed = 0.0
     duration = 2*trajectories.getPeriodLength()   #init overall run duration to a periodic length
@@ -123,6 +127,7 @@ if __name__ == '__main__':
 
         #set target angles
         gen_position_msg(command_port, angles)
+        command_port.write()
 
         sent_positions.append(angles)
         sent_time.append(yarp.Time.now())
@@ -131,35 +136,48 @@ if __name__ == '__main__':
         #wait for 2*0.005s=100Hz
         yarp.Time.delay(0.005)
 
-        gen_command(command_port, "get_left_arm_measurements")
-        command_port.write()
-        yarp.Time.delay(0.005)
+        #gen_command(command_port, "get_left_arm_measurements")
+        #command_port.write()
+        #yarp.Time.delay(0.010)
 
-        data = data_port.read(shouldWait=False)
+        #data = data_port.read(shouldWait=False)
         #it can happen that no data is received (yet), so measurement will be skipped
+        data = None
         if data:
+            b_positions = data.get(0).asList()
+            b_velocities = data.get(1).asList()
+            b_torques = data.get(2).asList()
+            d_time = data.get(3).asDouble()
+
             positions = np.zeros(N_DOFS)
             velocities = np.zeros(N_DOFS)
             torques = np.zeros(N_DOFS)
-            for i in range(0, N_DOFS):
-                 positions[i] = data.get(i).asDouble()
-                 velocities[i] = data.get(i+7).asDouble()
-                 torques[i] = data.get(i+7+7).asDouble()
-            print "received positions: {}".format(positions)
-            print "received velocities: {}".format(velocities)
-            print "received torques: {}".format(torques)
+
+            if N_DOFS == b_positions.size():
+                for i in range(0, N_DOFS):
+                     positions[i] = b_positions.get(i).asDouble()
+                     velocities[i] = b_velocities.get(i).asDouble()
+                     torques[i] = b_torques.get(i).asDouble()
+            else:
+                print "warning, wrong amount of values received!"
+
+            #print "received positions: {}".format(positions)
+            #print "received velocities: {}".format(velocities)
+            #print "received torques: {}".format(torques)
 
             #collect measurement data
             measured_positions.append(positions)
             measured_velocities.append(velocities)
             measured_torques.append(torques)
-            measured_time.append(yarp.Time.now())
+            measured_time.append(d_time)
+            t_elapsed = d_time - t_init
         else:
-            print "oops, skipped reading one frame"
+            #print "oops, skipped reading one frame"
+            t_elapsed = yarp.Time.now() - t_init
 
-        t_elapsed = yarp.Time.now() - t_init
-        print "elapsed time: {}".format(t_elapsed)
+        #print "elapsed time: {}".format(t_elapsed)
 
+    #clean up
     command_port.close()
     M1 = np.array(measured_positions)
     del measured_positions

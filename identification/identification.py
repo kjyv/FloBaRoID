@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import iDynTree
-import numpy as np; np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
+import numpy as np; #np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
 import matplotlib.pyplot as plt
 
 #TODO: load full model and programmatically cut off chain from certain joints/links, get back urdf?
@@ -86,18 +86,67 @@ jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0,
 
 #plot measurements
 if(args.plot):
-    M = measurements['torques']
+    #c++/gym measurements
+    '''
+    C = np.genfromtxt("log.csv", dtype=float)
+    T = C[:, N_DOFS*3]
+    M = C[:, 0:N_DOFS*1]
     for i in range(0, N_DOFS):
-        plt.plot(M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Measured torques')
-    plt.show()
-
-    M = measurements['positions']
-    for i in range(0, N_DOFS):
-        plt.plot(M[:, i], label=jointNames[i])
+        plt.plot(T, M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Positions')
+
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
+    #histogram of yarp time distances
+    plt.figure()
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
+    #plt.show()
+    '''
+
+    #python measurements
+    T = measurements['times']
+    '''
+    M = measurements['torques']
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
+    plt.title('Measured torques')
+
+    plt.figure()
+    '''
+
+    plt.figure()
+    M = measurements['positions']
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
+    plt.title('Positions')
+
+    plt.figure()
+    M = measurements['velocities']
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
+    plt.title('Velocities')
+
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
+    #histogram of yarp time distances
+    plt.figure()
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
     plt.show()
 
 regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
@@ -184,8 +233,14 @@ xStd[low_values_indices] = 0  # set all low values to 0
 xStdModel = iDynTree.VectorDynSize(N_PARAMS)
 generator.getModelParameters(xStdModel)
 
+
+## generate output
+
+# TODO: save to urdf with new parameters
+
+# some pretty printing of parameters
 if(args.explain):
-    print "\n Parameter description and vs. old values"
+    #collect values for parameters
     description = generator.getDescriptionOfParameters()
     idx_p = 0
     lines = list()
@@ -193,18 +248,21 @@ if(args.explain):
         new = xStd[idx_p]
         old = xStdModel.getVal(idx_p)
         diff = old - new
-        lines.append((new, old, diff, l))
+        lines.append((old, new, diff, l))
         idx_p+=1
         if idx_p == len(xStd):
             break
 
-    #some pretty printing
-    column_widths = [15, 15, 7, 80]
-    precisions = [8, 8, 3, 0]
+    column_widths = [15, 15, 7, 45]   #widths of the columns
+    precisions = [8, 8, 3, 0]         #numerical precision
+
+    #print column header
     template = ''
     for w in range(0, len(column_widths)):
         template += '|{{{}:{}}}'.format(w, column_widths[w])
-    print template.format("Approx", "Model", "Error", "Description") # header
+    print template.format("Model", "Approx", "Error", "Description")
+
+    #print values/description
     template = ''
     for w in range(0, len(column_widths)):
         if(type(lines[0][w]) == str):

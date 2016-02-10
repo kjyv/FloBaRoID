@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import iDynTree
-import numpy as np; np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
+import numpy as np; #np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
 import matplotlib.pyplot as plt
 
 #TODO: load full model and programmatically cut off chain from certain joints/links, get back urdf?
@@ -44,11 +44,18 @@ generator.loadRobotAndSensorsModelFromFile(URDF_FILE)
 print 'loaded model {}'.format(URDF_FILE)
 
 # define what regressor type to use
+
 regrXml = '''
 <regressor>
   <jointTorqueDynamics>
     <joints>
-        <joint>base_to_arm</joint>
+        <joint>LShSag</joint>
+        <joint>LShLat</joint>
+        <joint>LShYaw</joint>
+        <joint>LElbj</joint>
+        <joint>LForearmPlate</joint>
+        <joint>LWrj1</joint>
+        <joint>LWrj2</joint>
     </joints>
   </jointTorqueDynamics>
 </regressor>'''
@@ -79,26 +86,63 @@ jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0,
 
 #plot measurements
 if(args.plot):
+    #c++/gym measurements
+    '''
+    C = np.genfromtxt("log.csv", dtype=float)
+    T = C[:, N_DOFS*3]
+    M = C[:, 0:N_DOFS*1]
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
+    plt.title('Positions')
+
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
+    #histogram of yarp time distances
+    plt.figure()
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
+    #plt.show()
+    '''
+
+    #python measurements
+    T = measurements['times']
     M = measurements['torques']
     for i in range(0, N_DOFS):
-        plt.plot(M[:, i], label=jointNames[i])
+        plt.plot(T, M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Measured torques')
 
     plt.figure()
     M = measurements['positions']
     for i in range(0, N_DOFS):
-        plt.plot(M[:, i], label=jointNames[i])
+        plt.plot(T, M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Positions')
 
     plt.figure()
     M = measurements['velocities']
     for i in range(0, N_DOFS):
-        plt.plot(M[:, i], label=jointNames[i])
+        plt.plot(T, M[:, i], label=jointNames[i])
     plt.legend(loc='lower right')
     plt.title('Velocities')
 
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
+    #histogram of yarp time distances
+    plt.figure()
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
     plt.show()
 
 regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))

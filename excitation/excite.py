@@ -3,11 +3,23 @@
 import yarp
 import numpy as np
 #import PyKDL as kdl
+import matplotlib.pyplot as plt
+
+import time
+from contextlib import contextmanager
+@contextmanager
+def timeit_context(name):
+    startTime = time.time()
+    yield
+    elapsedTime = time.time() - startTime
+    print('[{}] finished in {} ms'.format(name, int(elapsedTime * 1000)))
 
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
 parser.add_argument('--filename', default='measurements.npz', type=str,
         help='the filename to save the measurements to')
+parser.add_argument('--plot', help='whether to plot sent trajectories', action='store_true')
+parser.set_defaults(plot=False)
 args = parser.parse_args()
 
 #TODO: use model information for this, generate trajectory in a generic model dependent way
@@ -32,10 +44,10 @@ class OscillationGenerator(object):
         q = 0
         for l in range(1, self.nf+1):
             q = (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) \
-              + (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l)
+              - (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l*t)
         return np.degrees(q) + self.nf*self.q0
 
-    #TODO: add fourier series for velocity and acceleration (can we control it?)
+    #TODO: add fourier series for velocity, use velocity ctrl
 
 class TrajectoryGenerator(object):
     def __init__(self, dofs):
@@ -43,9 +55,9 @@ class TrajectoryGenerator(object):
         self.oscillators = list()
 
         self.w_f_global = 1.0
-        a = [[0.4], [0.5], [0.75], [0.6], [1], [-0.7], [-1]]
-        b = [[0.4], [0.3], [0.75], [1.0], [1], [1.3], [1]]
-        q = [-10, 10, -80, -20, 0, 0, 0]
+        a = [[0.4], [0.3], [0.75], [0.5], [1], [-0.7], [-0.8]]
+        b = [[0.4], [0.3], [0.75], [0.8], [1], [1.3], [0.8]]
+        q = [-10, 30, -80, -25, 0, 0, -15]
         nf = [1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
@@ -64,8 +76,8 @@ class TrajectoryGenerator(object):
 def gen_position_msg(msg_port, angles):
     bottle = msg_port.prepare()
     bottle.clear()
-    print "send angles:",
-    print ["{0:0.2f}".format(i) for i in angles]
+    #print "send angles:",
+    #print ["{0:0.2f}".format(i) for i in angles]
     bottle.fromString("(set_left_arm {}) 0".format(' '.join(map(str, angles)) ))
     return bottle
 
@@ -78,6 +90,8 @@ def gen_command(msg_port, command):
 if __name__ == '__main__':
     #connect to yarp and open output port
     yarp.Network.init()
+    yarp.Time.useNetworkClock("/clock")
+    yarp.Time.now()
     while not yarp.Time.isValid():
         continue
 
@@ -96,7 +110,7 @@ if __name__ == '__main__':
 
     t_init = yarp.Time.now()
     t_elapsed = 0.0
-    duration = 3*trajectories.getPeriodLength()   #init overall run duration to a periodic length
+    duration = 2*trajectories.getPeriodLength()   #init overall run duration to a periodic length
 
     measured_positions = list()
     measured_velocities = list()
@@ -104,6 +118,8 @@ if __name__ == '__main__':
     measured_time = list()
 
     first_pose = True
+    sent_positions = list()
+    sent_time = list()
 
     while t_elapsed < duration:
         trajectories.setTime(t_elapsed)
@@ -120,43 +136,52 @@ if __name__ == '__main__':
             first_pose=False
             yarp.Time.delay(3.0)  #3 sec
             duration+=3.0
+        sent_positions.append(angles)
+        sent_time.append(yarp.Time.now())
 
         #wait between commands but also together with other delays,
-        #wait for 0.02 ms=500Hz (walk-man ctrl loop freq)
-        yarp.Time.delay(0.01)
+        #wait for 2*0.005s=100Hz
+        yarp.Time.delay(0.010)
 
-        #ask for measurements and read them
-        #TODO: generalize this
         gen_command(command_port, "get_left_arm_measurements")
         command_port.write()
-        yarp.Time.delay(0.01)
+        yarp.Time.delay(0.010)
 
         data = data_port.read(shouldWait=False)
-        #it can still happen that no data is received (yet), even though we have delays
-        #so measurement will be skipped
-        if not data:
-            print "oops, skipped reading one frame"
-            continue
+        #it can happen that no data is received (yet), so measurement will be skipped
+        if data:
+            b_positions = data.get(0).asList()
+            b_velocities = data.get(1).asList()
+            b_torques = data.get(2).asList()
+            d_time = data.get(3).asDouble()
 
-        positions = np.zeros(N_DOFS)
-        velocities = np.zeros(N_DOFS)
-        torques = np.zeros(N_DOFS)
-        for i in range(0, N_DOFS):
-             positions[i] = data.get(i).asDouble()
-             velocities[i] = data.get(i+7).asDouble()
-             torques[i] = data.get(i+7+7).asDouble()
-        print "received positions: {}".format(positions)
-        print "received velocities: {}".format(velocities)
-        print "received torques: {}".format(torques)
+            positions = np.zeros(N_DOFS)
+            velocities = np.zeros(N_DOFS)
+            torques = np.zeros(N_DOFS)
 
-        #collect measurement data
-        measured_positions.append(positions)
-        measured_velocities.append(velocities)
-        measured_torques.append(torques)
+            if N_DOFS == b_positions.size():
+                for i in range(0, N_DOFS):
+                     positions[i] = b_positions.get(i).asDouble()
+                     velocities[i] = b_velocities.get(i).asDouble()
+                     torques[i] = b_torques.get(i).asDouble()
+            else:
+                print "warning, wrong amount of values received!"
 
-        measured_time.append(yarp.Time.now())
-        t_elapsed = yarp.Time.now() - t_init
-        print "elapsed time: {}".format(t_elapsed)
+            #print "received positions: {}".format(positions)
+            #print "received velocities: {}".format(velocities)
+            #print "received torques: {}".format(torques)
+
+            #collect measurement data
+            measured_positions.append(positions)
+            measured_velocities.append(velocities)
+            measured_torques.append(torques)
+            measured_time.append(d_time)
+            t_elapsed = d_time - t_init
+        else:
+            #print "oops, skipped reading one frame"
+            t_elapsed = yarp.Time.now() - t_init
+
+        #print "elapsed time: {}".format(t_elapsed)
 
     #clean up
     command_port.close()
@@ -166,13 +191,23 @@ if __name__ == '__main__':
     del measured_velocities
     M3 = np.array(measured_torques)
     del measured_torques
-    time = np.array(measured_time)
+    T = np.array(measured_time)
     del measured_time
 
     print "got {} samples.".format(M1.shape[0]),
 
     #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=M1, velocities=M2, torques=M3, times=time)
+    np.savez_compressed(args.filename, positions=M1, velocities=M2, torques=M3, times=T)
     print "saved to {}".format(args.filename)
 
+#from IPython import embed; embed()
 
+#plot values that were sent
+if(args.plot):
+    print "plotting {} values (about {} Hz)".format(len(sent_positions), len(sent_positions)/duration)
+    M = np.array(sent_positions)
+    t = np.array(sent_time)
+    for i in range(0, N_DOFS):
+        plt.plot(t, M[:, i], '+')
+    plt.title('Positions')
+    plt.show()

@@ -31,7 +31,7 @@ excitation_thread::excitation_thread(   std::string module_prefix,
 
 excitation_thread::~excitation_thread()
 {
-  save(&tmpLog, "log.csv");
+    save(&tmpLog, "log.csv");
 }
 
 void excitation_thread::link_tutorial_params()
@@ -53,34 +53,34 @@ bool excitation_thread::custom_init()
 void excitation_thread::run()
 {
     static yarp::sig::Vector pos;
+    if(pos.size()!=N_DOFS) pos.resize(N_DOFS);
+
     static yarp::sig::Vector q_left_arm, qdot_left_arm, tau_left_arm;
 
-    double l=1, w_f=1, a=0.5, b=0.8, q0=-30, nf=1;
     double t = yarp::os::Time::now();
+
+    /*
+    double l=1, w_f=1, a=0.5, b=0.8, q0=-35, nf=1;
     double angle = (a/(w_f*l)*sin(w_f*l*t) +  a/(w_f*l)*cos(w_f*l*t))/M_PI*180;
 
     if(pos.size()!=N_DOFS) pos.resize(N_DOFS);
     pos.zero();
     /*pos[0] = excitation_cmd.angle0;
     pos[1] = excitation_cmd.angle1;
-    pos[2] = excitation_cmd.angle2;*/
+    pos[2] = angle;
     pos[3] = angle;
-    /*pos[4] = excitation_cmd.angle4;
+    pos[4] = excitation_cmd.angle4;
     pos[5] = excitation_cmd.angle5;
-    pos[6] = excitation_cmd.angle6;*/
+    pos[6] = excitation_cmd.angle6;
     left_arm_chain_interface.move(pos);
+    */
 
     static int seq_num;
     excitation_cmd.command = "";
     command_interface.getCommand(excitation_cmd, seq_num);
 
     if( excitation_cmd.command == "set_left_arm" ) {
-        // set the ref speed for all the joints
-        //left_arm_chain_interface.setReferenceSpeed( max_vel );
-
         // position move to desired configuration
-        if(pos.size()!=N_DOFS) pos.resize(N_DOFS);
-        pos.zero();
         pos[0] = excitation_cmd.angle0;
         pos[1] = excitation_cmd.angle1;
         pos[2] = excitation_cmd.angle2;
@@ -88,43 +88,62 @@ void excitation_thread::run()
         pos[4] = excitation_cmd.angle4;
         pos[5] = excitation_cmd.angle5;
         pos[6] = excitation_cmd.angle6;
-        //left_arm_chain_interface.move(pos);
-    }
-    else if( excitation_cmd.command == "get_left_arm_measurements" ) {
-        left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm
+        left_arm_chain_interface.move(pos);
+
         left_arm_chain_interface.sensePosition(q_left_arm);     //get positions in deg
         left_arm_chain_interface.senseVelocity(qdot_left_arm);  //get velocities in deg/s
-        //TODO: get acceleration as well
+        left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm
+
+        yarp::os::Bottle out_bottle;
+        yarp::os::Bottle &out0 = out_bottle.addList();
+        yarp::os::Bottle &out1 = out_bottle.addList();
+        yarp::os::Bottle &out2 = out_bottle.addList();
+
+        for(int i=0; i<q_left_arm.size(); i++){
+            out0.addDouble(q_left_arm[i]);
+            out1.addDouble(qdot_left_arm[i]);
+            out2.addDouble(tau_left_arm[i]);
+        }
+        out_bottle.addDouble(t);
+
+        command_interface.command_port.write(out_bottle);
+    }
+    else if( excitation_cmd.command == "get_left_arm_measurements" ) {
+        left_arm_chain_interface.sensePosition(q_left_arm);     //get positions in deg
+        left_arm_chain_interface.senseVelocity(qdot_left_arm);  //get velocities in deg/s
+        left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm
+
+        yarp::os::Bottle out_bottle;
+        yarp::os::Bottle &out0 = out_bottle.addList();
+        yarp::os::Bottle &out1 = out_bottle.addList();
+        yarp::os::Bottle &out2 = out_bottle.addList();
+
+        for(int i=0; i<q_left_arm.size(); i++){
+            out0.addDouble(q_left_arm[i]);
+            out1.addDouble(qdot_left_arm[i]);
+            out2.addDouble(tau_left_arm[i]);
+        }
+        out_bottle.addDouble(t);
+
+        if(outgoingPort.isOpen()) {
+            outgoingPort.write(out_bottle);
+        }
 
         yarp::sig::Vector out;
-        out.resize(3*N_DOFS);
-        out.setSubvector(0, tau_left_arm);
-        out.setSubvector(N_DOFS, q_left_arm);
-        out.setSubvector(N_DOFS*2, qdot_left_arm);
-        if(outgoingPort.isOpen()) {
-            outgoingPort.write(out);
-        }
+        out.resize(N_DOFS*3+1);
+        out.setSubvector(0, q_left_arm);
+        out.setSubvector(N_DOFS, qdot_left_arm);
+        out.setSubvector(N_DOFS*2, tau_left_arm);
+        out[N_DOFS*3] = t;
+
+        static VectorXd tmp(out.size());
+        for (int i=0; i<tmp.rows(); i++)
+          tmp(i) = out(i);
+        tmpLog.push_back(tmp);        
     }
     else if( excitation_cmd.command != "" ) {
-      std::cout << excitation_cmd.command <<  " -> command not valid" << std::endl;
+        std::cout << excitation_cmd.command <<  " -> command not valid" << std::endl;
     }
-    
-    left_arm_chain_interface.senseTorque(tau_left_arm);     //get torques in Nm
-    left_arm_chain_interface.sensePosition(q_left_arm);     //get positions in deg
-    left_arm_chain_interface.senseVelocity(qdot_left_arm);  //get velocities in deg/s
-    //TODO: get acceleration as well
-
-    yarp::sig::Vector out;
-    out.resize(N_DOFS*3+1);
-    out.setSubvector(0, tau_left_arm);
-    out.setSubvector(N_DOFS, q_left_arm);
-    out.setSubvector(N_DOFS*2, qdot_left_arm);
-    out[N_DOFS*3] = t;
-
-    static VectorXd tmp(out.size());
-    for (int i=0; i<tmp.rows(); i++) 
-      tmp(i) = out(i);
-    tmpLog.push_back(tmp);
 }
 
 bool excitation_thread::custom_pause()

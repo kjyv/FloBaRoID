@@ -3,7 +3,7 @@
 #include "excitation_module.hpp"
 
 // default module period
-#define MODULE_PERIOD 1000 //[millisec]
+#define MODULE_PERIOD 5 //[millisec]
 
 int main(int argc, char* argv[])
 {

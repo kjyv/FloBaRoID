@@ -53,6 +53,11 @@ INCLUDE_DIRECTORIES(${EIGEN3_INCLUDE_DIR}
 		    ${GYM_INCLUDE_DIRS}
 		    )
 		    
+FILE(GLOB_RECURSE LibFiles "src/*.h")
+add_custom_target(headersH SOURCES ${LibFiles})
+FILE(GLOB_RECURSE LibFiles "src/*.hpp")
+add_custom_target(headersHPP SOURCES ${LibFiles})
+
 ADD_EXECUTABLE(${PROJECT_NAME} src/excitation_main.cpp 
 			       src/excitation_thread.cpp
 			       )

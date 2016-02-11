@@ -31,11 +31,18 @@ public:
       angle4 = 0.0;
       angle5 = 0.0;
       angle6 = 0.0;
+      velocity0 = 0.0;
+      velocity1 = 0.0;
+      velocity2 = 0.0;
+      velocity3 = 0.0;
+      velocity4 = 0.0;
+      velocity5 = 0.0;
+      velocity6 = 0.0;
     }
 
     std::string command;
-    double angle0, angle1, angle2;
-    double angle3, angle4, angle5, angle6;
+    double angle0, angle1, angle2, angle3, angle4, angle5, angle6;
+    double velocity0, velocity1, velocity2, velocity3, velocity4, velocity5, velocity6;
 
     yarp::os::Bottle toBottle() {
         yarp::os::Bottle temp;
@@ -52,6 +59,13 @@ public:
             list.addDouble(angle4);
             list.addDouble(angle5);
             list.addDouble(angle6);
+            list.addDouble(velocity0);
+            list.addDouble(velocity1);
+            list.addDouble(velocity2);
+            list.addDouble(velocity3);
+            list.addDouble(velocity4);
+            list.addDouble(velocity5);
+            list.addDouble(velocity6);
         }
 
         return temp;
@@ -77,6 +91,10 @@ public:
         }
 
         //TODO: check that list has enough entries and otherwise give message
+        if(list->size() < 7*2) {
+            std::cout << "warning: not enough parameters given in Bottle!" << std::endl;
+            return;
+        }
 
         command = list->get(0).asString();
         int index = 1;
@@ -89,6 +107,13 @@ public:
             angle4 = list->get(index++).asDouble();
             angle5 = list->get(index++).asDouble();
             angle6 = list->get(index++).asDouble();
+            velocity0 = list->get(index++).asDouble();
+            velocity1 = list->get(index++).asDouble();
+            velocity2 = list->get(index++).asDouble();
+            velocity3 = list->get(index++).asDouble();
+            velocity4 = list->get(index++).asDouble();
+            velocity5 = list->get(index++).asDouble();
+            velocity6 = list->get(index++).asDouble();
         }
 
         return;

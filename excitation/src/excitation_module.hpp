@@ -40,12 +40,13 @@ public:
         // custom param helper parameters vector
         std::vector<paramHelp::ParamProxyInterface *> custom_params;
         // insert max_vel param
-        custom_params.push_back( new paramHelp::ParamProxyBasic<double>( "max_vel",
+        /*custom_params.push_back( new paramHelp::ParamProxyBasic<double>( "max_vel",
                                                                          PARAM_ID_MAX_VEL,
                                                                          PARAM_SIZE_MAX_VEL,
                                                                          paramHelp::PARAM_IN_OUT,
                                                                          NULL,
                                                                          "maximum velocity in [degree/second]" ) );
+        */
         return custom_params;
     }
 };

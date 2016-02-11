@@ -43,11 +43,16 @@ class OscillationGenerator(object):
         #- t is the current time
         q = 0
         for l in range(1, self.nf+1):
-            q = (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) \
-              - (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l*t)
-        return np.degrees(q) + self.nf*self.q0
+            q = (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) - \
+                 (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l*t)
+        return np.rad2deg(q) + self.nf*self.q0
 
-    #TODO: add fourier series for velocity, use velocity ctrl
+    def getVelocity(self, t):
+        dq = 0
+        for l in range(1, self.nf+1):
+            dq += self.a[l-1]*np.cos(self.w_f*l*t) + \
+                  self.b[l-1]*np.sin(self.w_f*l*t)
+        return np.rad2deg(dq)
 
 class TrajectoryGenerator(object):
     def __init__(self, dofs):
@@ -57,7 +62,7 @@ class TrajectoryGenerator(object):
         self.w_f_global = 1.0
         a = [[0.4], [0.3], [0.75], [0.5], [1], [-0.7], [-0.8]]
         b = [[0.4], [0.3], [0.75], [0.8], [1], [1.3], [0.8]]
-        q = [-10, 30, -80, -25, 0, 0, -15]
+        q = [10, 50, -80, -25, 50, 0, -15]
         nf = [1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
@@ -66,19 +71,19 @@ class TrajectoryGenerator(object):
     def getAngle(self, dof):
         return self.oscillators[dof].getAngle(self.time)
 
-    def getPeriodLength(self):
-        #get periodicity in seconds
+    def getVelocity(self, dof):
+        return self.oscillators[dof].getVelocity(self.time)
+
+    def getPeriodLength(self):   #in seconds
         return 2*np.pi/self.w_f_global
 
     def setTime(self, time):
         self.time = time
 
-def gen_position_msg(msg_port, angles):
+def gen_position_msg(msg_port, angles, velocities):
     bottle = msg_port.prepare()
     bottle.clear()
-    #print "send angles:",
-    #print ["{0:0.2f}".format(i) for i in angles]
-    bottle.fromString("(set_left_arm {}) 0".format(' '.join(map(str, angles)) ))
+    bottle.fromString("(set_left_arm {} {}) 0".format(' '.join(map(str, angles)), ' '.join(map(str, velocities)) ))
     return bottle
 
 def gen_command(msg_port, command):
@@ -91,7 +96,7 @@ if __name__ == '__main__':
     #connect to yarp and open output port
     yarp.Network.init()
     yarp.Time.useNetworkClock("/clock")
-    yarp.Time.now()
+    yarp.Time.now()  #use clock once to sync (?)
     while not yarp.Time.isValid():
         continue
 
@@ -100,7 +105,7 @@ if __name__ == '__main__':
     command_port.open(portName+'o')
     yarp.Network.connect(portName+'o', portName+'i')
 
-    portName = '/excitation/dataOutput:'
+    portName = '/excitation/state:'
     data_port = yarp.BufferedPortBottle()
     data_port.open(portName+"i")
     yarp.Network.connect(portName+'o', portName+'i')
@@ -122,34 +127,34 @@ if __name__ == '__main__':
     sent_time = list()
 
     while t_elapsed < duration:
+        #TODO: make sure we're starting at zero velocity (wait for it or move functions)
         trajectories.setTime(t_elapsed)
         angles = [trajectories.getAngle(i) for i in range(0, N_DOFS)]
+        velocities = [trajectories.getVelocity(i) for i in range(0, N_DOFS)]
 
         #set target angles
-        gen_position_msg(command_port, angles)
+        gen_position_msg(command_port, angles, velocities)
         command_port.write()
 
         #set first angle vector and wait a bit to start at right position
         if first_pose:
-            print "waiting for initial position..."
+            print "waiting a bit for initial position...",
             #TODO: actually read pose and compare
-            first_pose=False
-            yarp.Time.delay(3.0)  #3 sec
+            yarp.Time.delay(3.0)
             duration+=3.0
+            t_init+=3.0
+            print "ok."
+
         sent_positions.append(angles)
         sent_time.append(yarp.Time.now())
 
         #wait between commands but also together with other delays,
         #wait for 2*0.005s=100Hz
-        yarp.Time.delay(0.010)
+        #yarp.Time.delay(0.010)
 
-        gen_command(command_port, "get_left_arm_measurements")
-        command_port.write()
-        yarp.Time.delay(0.010)
-
-        data = data_port.read(shouldWait=False)
-        #it can happen that no data is received (yet), so measurement will be skipped
-        if data:
+        #wait for next value, so sync to GYM loop
+        data = data_port.read(shouldWait=True)
+        if data:    #can only be not true if shouldWait=False, need delay in that case
             b_positions = data.get(0).asList()
             b_velocities = data.get(1).asList()
             b_torques = data.get(2).asList()
@@ -167,24 +172,26 @@ if __name__ == '__main__':
             else:
                 print "warning, wrong amount of values received!"
 
-            #print "received positions: {}".format(positions)
-            #print "received velocities: {}".format(velocities)
-            #print "received torques: {}".format(torques)
-
             #collect measurement data
-            measured_positions.append(positions)
-            measured_velocities.append(velocities)
-            measured_torques.append(torques)
-            measured_time.append(d_time)
+            if not first_pose:
+                measured_positions.append(positions)
+                measured_velocities.append(velocities)
+                measured_torques.append(torques)
+                measured_time.append(d_time)
+
             t_elapsed = d_time - t_init
         else:
-            #print "oops, skipped reading one frame"
+            print "oops, skipped reading one frame"
             t_elapsed = yarp.Time.now() - t_init
+
+        if first_pose:
+            first_pose=False
 
         #print "elapsed time: {}".format(t_elapsed)
 
     #clean up
     command_port.close()
+    data_port.close()
     M1 = np.array(measured_positions)
     del measured_positions
     M2 = np.array(measured_velocities)
@@ -194,7 +201,8 @@ if __name__ == '__main__':
     T = np.array(measured_time)
     del measured_time
 
-    print "got {} samples.".format(M1.shape[0]),
+    print "got {} samples in {}.".format(M1.shape[0], duration),
+    print "(about {} Hz)".format(len(sent_positions), len(sent_positions)/duration)
 
     #write sample arrays to data file
     np.savez_compressed(args.filename, positions=M1, velocities=M2, torques=M3, times=T)
@@ -204,10 +212,9 @@ if __name__ == '__main__':
 
 #plot values that were sent
 if(args.plot):
-    print "plotting {} values (about {} Hz)".format(len(sent_positions), len(sent_positions)/duration)
     M = np.array(sent_positions)
     t = np.array(sent_time)
     for i in range(0, N_DOFS):
-        plt.plot(t, M[:, i], '+')
+        plt.plot(t, M[:, i]) #, '+')
     plt.title('Positions')
     plt.show()

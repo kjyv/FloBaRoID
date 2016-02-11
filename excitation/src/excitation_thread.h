@@ -11,8 +11,6 @@
 
 #include "excitation_msg.h"
 
-#define N_DOFS 7
-
 /**
  * @brief excitation control thread
  *
@@ -26,8 +24,6 @@ private:
     yarp::sig::Vector left_arm_configuration;
     // joints number
     int num_joints;
-    // max velocity
-    double max_vel;
     // ref speed vector
     yarp::sig::Vector ref_speed_vector;
     // command interface
@@ -65,18 +61,6 @@ public:
      *
      */
     virtual void run();
-
-    /**
-     * @brief custom_pause we use this method when a "pause" is sent to the module
-     * @return true on success, false otherwise
-     */
-    virtual bool custom_pause();
-
-    /**
-     * @brief custom_resume we use this method when a "resume" is sent to the module
-     * @return true on success, false otherwise
-     */
-    virtual bool custom_resume();
 };
 
 #endif

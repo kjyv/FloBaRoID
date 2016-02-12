@@ -84,67 +84,6 @@ gravity_twist.setVal(2, -9.81)
 
 jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, N_DOFS)]
 
-#plot measurements
-if(args.plot):
-    #c++/gym measurements
-    '''
-    C = np.genfromtxt("log.csv", dtype=float)
-    T = C[:, N_DOFS*3]
-    M = C[:, 0:N_DOFS*1]
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Positions')
-
-    #yarp times over time indices
-    plt.figure()
-    plt.plot(range(0,len(T)), T)
-
-    #histogram of yarp time distances
-    plt.figure()
-    dT = np.diff(T)
-    H, B = np.histogram(dT)
-    plt.hist(H, B)
-    print "bins: {}".format(B)
-    print "sums: {}".format(H)
-    #plt.show()
-    '''
-
-    #python measurements
-    T = measurements['times']
-    M = measurements['torques']
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Measured torques')
-
-    plt.figure()
-    M = measurements['positions']
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Positions')
-
-    plt.figure()
-    M = measurements['velocities']
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Velocities')
-
-    #yarp times over time indices
-    plt.figure()
-    plt.plot(range(0,len(T)), T)
-
-    #histogram of yarp time distances
-    plt.figure()
-    dT = np.diff(T)
-    H, B = np.histogram(dT)
-    plt.hist(H, B)
-    print "bins: {}".format(B)
-    print "sums: {}".format(H)
-    plt.show()
-
 regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
 torques_stack = np.empty(shape=(N_DOFS*num_samples))
 
@@ -163,7 +102,7 @@ if(True):
         for dof in range(N_DOFS):
             q.setVal(dof, pos[dof])
             dq.setVal(dof, vel[dof])
-            ddq.setVal(dof, 0.001) #TODO: get acc[dof] from simulator/differentiate
+            ddq.setVal(dof, 0.001) #TODO: get acc[dof]
 
         generator.setTorqueSensorMeasurement(iDynVecfromPy(torq))
         generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0

@@ -4,6 +4,7 @@ import yarp
 import numpy as np
 #import PyKDL as kdl
 import matplotlib.pyplot as plt
+import sys
 
 import time
 from contextlib import contextmanager
@@ -16,10 +17,11 @@ def timeit_context(name):
 
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
-parser.add_argument('--filename', default='measurements.npz', type=str,
-        help='the filename to save the measurements to')
-parser.add_argument('--plot', help='whether to plot sent trajectories', action='store_true')
-parser.set_defaults(plot=False)
+parser.add_argument('--filename', type=str, help='the filename to save the measurements to')
+parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
+parser.add_argument('--plot', help='plot sent/received data', action='store_true')
+parser.add_argument('--dryrun', help="don't not send the trajectory", action='store_true')
+parser.set_defaults(plot=False, dryrun=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
 #TODO: use model information for this, generate trajectory in a generic model dependent way
@@ -77,7 +79,7 @@ class TrajectoryGenerator(object):
     def getPeriodLength(self):   #in seconds
         return 2*np.pi/self.w_f_global
 
-    def setTime(self, time):
+    def setTime(self, time):     #in seconds
         self.time = time
 
 def gen_position_msg(msg_port, angles, velocities):
@@ -92,7 +94,7 @@ def gen_command(msg_port, command):
     bottle.fromString("({}) 0".format(command))
     return bottle
 
-if __name__ == '__main__':
+def main():
     #connect to yarp and open output port
     yarp.Network.init()
     yarp.Time.useNetworkClock("/clock")
@@ -115,7 +117,7 @@ if __name__ == '__main__':
 
     t_init = yarp.Time.now()
     t_elapsed = 0.0
-    duration = 2*trajectories.getPeriodLength()   #init overall run duration to a periodic length
+    duration = args.periods*trajectories.getPeriodLength()   #init overall run duration to a periodic length
 
     measured_positions = list()
     measured_velocities = list()
@@ -125,12 +127,18 @@ if __name__ == '__main__':
     first_pose = True
     sent_positions = list()
     sent_time = list()
+    sent_velocities = list()
+
+    e = [0] * N_DOFS
+    velocity_correction = [0] * N_DOFS
 
     while t_elapsed < duration:
         #TODO: make sure we're starting at zero velocity (wait for it or move functions)
         trajectories.setTime(t_elapsed)
         angles = [trajectories.getAngle(i) for i in range(0, N_DOFS)]
         velocities = [trajectories.getVelocity(i) for i in range(0, N_DOFS)]
+        for i in range(0, N_DOFS):
+            velocities[i]+=velocity_correction[i]
 
         #set target angles
         gen_position_msg(command_port, angles, velocities)
@@ -139,14 +147,15 @@ if __name__ == '__main__':
         #set first angle vector and wait a bit to start at right position
         if first_pose:
             print "waiting a bit for initial position...",
+            sys.stdout.flush()
             #TODO: actually read pose and compare
-            yarp.Time.delay(3.0)
-            duration+=3.0
-            t_init+=3.0
+            yarp.Time.delay(2.0)
+            t_init+=2.0
             print "ok."
-
-        sent_positions.append(angles)
-        sent_time.append(yarp.Time.now())
+        else:
+            sent_positions.append(angles)
+            sent_velocities.append(velocities)
+            sent_time.append(yarp.Time.now())
 
         #wait between commands but also together with other delays,
         #wait for 2*0.005s=100Hz
@@ -172,6 +181,12 @@ if __name__ == '__main__':
             else:
                 print "warning, wrong amount of values received!"
 
+            #test manual correction for position error
+            p = 0
+            for i in range(0,N_DOFS):
+                e[i] = (angles[i] - positions[i])
+                velocity_correction[i] = e[i]*p
+
             #collect measurement data
             if not first_pose:
                 measured_positions.append(positions)
@@ -187,13 +202,12 @@ if __name__ == '__main__':
         if first_pose:
             first_pose=False
 
-        #print "elapsed time: {}".format(t_elapsed)
-
     #clean up
     command_port.close()
     data_port.close()
     M1 = np.array(measured_positions)
     del measured_positions
+    M1_t = np.array(sent_positions)
     M2 = np.array(measured_velocities)
     del measured_velocities
     M3 = np.array(measured_torques)
@@ -201,20 +215,118 @@ if __name__ == '__main__':
     T = np.array(measured_time)
     del measured_time
 
-    print "got {} samples in {}.".format(M1.shape[0], duration),
-    print "(about {} Hz)".format(len(sent_positions), len(sent_positions)/duration)
-
     #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=M1, velocities=M2, torques=M3, times=T)
+    np.savez_compressed(args.filename, positions=M1, target_positions=M1_t, velocities=M2, torques=M3, times=T)
     print "saved to {}".format(args.filename)
 
-#from IPython import embed; embed()
+    ## stats
+    print "got {} samples in {}s.".format(M1.shape[0], duration),
+    print "(about {} Hz)".format(len(sent_positions)/duration)
 
-#plot values that were sent
-if(args.plot):
-    M = np.array(sent_positions)
-    t = np.array(sent_time)
+def plot():
+    #TODO: load model
+    #jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, N_DOFS)]
+    jointNames = ['LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2']
+
+    from random import sample
+    from itertools import permutations
+
+    '''
+    #get a random color wheel
+    Nlines = 200
+    color_lvl = 8
+    rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
+    colors = sample(rgb,Nlines)
+    print colors[0:7]
+    '''
+
+    #set some nice colors
+    colors = [[ 0.97254902,  0.62745098,  0.40784314], [ 0.0627451 ,  0.53333333,  0.84705882], [ 0.15686275,  0.75294118,  0.37647059], [ 0.90980392,  0.37647059,  0.84705882], [ 0.94117647,  0.03137255,  0.59607843], [ 0.18823529,  0.31372549,  0.09411765], [ 0.50196078,  0.40784314,  0.15686275]]
+
+    #c++/gym measurements
+    '''
+    C = np.genfromtxt("log.csv", dtype=float)
+    T = C[:, N_DOFS*3]
+    M = C[:, 0:N_DOFS*1]
     for i in range(0, N_DOFS):
-        plt.plot(t, M[:, i]) #, '+')
+        plt.plot(T, M[:, i], label=jointNames[i])
+    plt.legend(loc='lower right')
     plt.title('Positions')
+
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
+    #histogram of yarp time distances
+    plt.figure()
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
+    #plt.show()
+    '''
+
+    #python measurements
+    #reload measurements from this or last run
+    measurements = np.load('measurements.npz')
+    M1 = measurements['positions']
+    M1_t = measurements['target_positions']
+    M2 = measurements['velocities']
+    M3 = measurements['torques']
+    T = measurements['times']
+    num_samples = measurements['positions'].shape[0]
+    print 'loaded {} measurement samples'.format(num_samples)
+
+    print "tracking error per joint:"
+    for i in range(0,N_DOFS):
+        sse = np.sum((M1[:, i] - M1_t[:, i]) ** 2)
+        print "joint {}: {}".format(i, sse)
+
+    print "histogram of yarp time diffs"
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    #plt.hist(H, B)
+    print "bins: {}".format(B)
+    print "sums: {}".format(H)
+    late_msgs = (1 - float(np.sum(H)-np.sum(H[1:])) / float(np.sum(H))) * 100
+    print "({}% messages too late)".format(late_msgs)
+    print "\n"
+
+    plt.title('Positions')
+    M = M1
+    M_t = M1_t
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], label=jointNames[i], color=colors[i])
+        plt.plot(T, M_t[:, i], color=colors[i], alpha=0.7)
+    plt.legend(loc='lower right')
+
+    plt.figure()
+    M = M2
+    plt.title('Velocities')
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], color=colors[i], label=jointNames[i])
+    plt.legend(loc='lower right')
+
+    plt.figure()
+    plt.title('Measured torques')
+    M = M3
+    for i in range(0, N_DOFS):
+        plt.plot(T, M[:, i], color=colors[i], label=jointNames[i])
+    plt.legend(loc='lower right')
+
+    #yarp times over time indices
+    plt.figure()
+    plt.plot(range(0,len(T)), T)
+
     plt.show()
+
+if __name__ == '__main__':
+    #from IPython import embed; embed()
+
+    if(not args.dryrun):
+        main()
+
+    if(args.plot):
+        plot()
+

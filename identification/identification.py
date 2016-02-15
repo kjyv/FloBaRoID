@@ -1,7 +1,8 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
-import iDynTree
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from identificationHelpers import IdentificationHelpers
 import numpy as np; #np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
 import matplotlib.pyplot as plt
 
@@ -21,22 +22,6 @@ URDF_FILE = args.model
 measurements = np.load(args.measurements)
 num_samples = measurements['positions'].shape[0]
 print 'loaded {} measurement samples'.format(num_samples)
-
-#some iDynTree helpers
-def vecToNumPy(self):
-    return np.fromstring(self.toString(), sep=' ')
-def iDynVecfromPy(vec):
-    out = iDynTree.VectorDynSize(len(vec))
-    for v in range(0,len(vec)):
-        out.setVal(v, vec[v])
-    return out
-iDynTree.VectorDynSize.toNumPy = vecToNumPy
-iDynTree.Wrench.toNumPy = vecToNumPy
-iDynTree.Twist.toNumPy = vecToNumPy
-
-def matToNumPy(self):
-    return np.fromstring(self.toString(), sep=' ').reshape(self.rows(), self.cols())
-iDynTree.MatrixDynSize.toNumPy = matToNumPy
 
 #create generator instance and load model
 generator = iDynTree.DynamicsRegressorGenerator()
@@ -71,8 +56,6 @@ print '# outputs: {}'.format(N_OUT)
 
 # get initial inertia params (from urdf)
 N_PARAMS = generator.getNrOfParameters()
-cadParams = iDynTree.VectorDynSize(N_PARAMS)
-generator.getModelParameters(cadParams)
 print '# params: {}'.format(N_PARAMS)
 
 N_LINKS = generator.getNrOfLinks()
@@ -104,7 +87,7 @@ if(True):
             dq.setVal(dof, vel[dof])
             ddq.setVal(dof, 0.001) #TODO: get acc[dof]
 
-        generator.setTorqueSensorMeasurement(iDynVecfromPy(torq))
+        generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
         generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
 
         # get (standard) regressor
@@ -165,11 +148,15 @@ zero_threshold = 0.0001
 low_values_indices = np.absolute(xStd) < zero_threshold
 xStd[low_values_indices] = 0  # set all low values to 0
 
+#get model parameters
 xStdModel = iDynTree.VectorDynSize(N_PARAMS)
 generator.getModelParameters(xStdModel)
 
-
 ## generate output
+
+helpers = IdentificationHelpers(N_PARAMS)
+helpers.paramsFromiDyn2URDF(xStdModel)
+helpers.paramsFromiDyn2URDF(xStd)
 
 # TODO: save to urdf with new parameters
 
@@ -179,7 +166,7 @@ if(args.explain):
     description = generator.getDescriptionOfParameters()
     idx_p = 0
     lines = list()
-    for l in description.replace(r'Parameter ', '#').split('\n'):
+    for l in description.replace(r'Parameter ', '#').replace(r'first moment', 'center').split('\n'):
         new = xStd[idx_p]
         old = xStdModel.getVal(idx_p)
         diff = old - new

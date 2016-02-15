@@ -26,6 +26,12 @@ excitation_thread::excitation_thread(   std::string module_prefix,
     //left_arm_chain_interface.setPositionMode();   //generate trajectories, allows setting velocities
     //left_arm_chain_interface.setVelocityMode();
 
+    //init velocity control with zero velocity
+    /*yarp::sig::Vector vels;
+    if(vels.size()!=num_joints) vels.resize(num_joints);
+    vels.zero();
+    left_arm_chain_interface.move(vels);*/
+
     //open data output port
     outgoingPort.open("/" + module_prefix + "/state:o");
 }
@@ -59,7 +65,6 @@ void excitation_thread::run()
     if(vels.size()!=num_joints) vels.resize(num_joints);
 
     static yarp::sig::Vector q_left_arm, qdot_left_arm, tau_left_arm;
-
     double t = yarp::os::Time::now();
 
     /*
@@ -100,7 +105,7 @@ void excitation_thread::run()
         vels[5] = excitation_cmd.velocity5;
         vels[6] = excitation_cmd.velocity6;
 
-        left_arm_chain_interface.setReferenceSpeeds(vels);
+        //left_arm_chain_interface.setReferenceSpeeds(vels);
         left_arm_chain_interface.move(pos);
 
         //left_arm_chain_interface.move(vels);

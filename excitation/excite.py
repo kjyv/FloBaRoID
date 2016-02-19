@@ -2,7 +2,6 @@
 
 import yarp
 import numpy as np
-#import PyKDL as kdl
 import matplotlib.pyplot as plt
 import sys
 
@@ -17,11 +16,13 @@ def timeit_context(name):
 
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
+parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
 parser.add_argument('--filename', type=str, help='the filename to save the measurements to')
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot sent/received data', action='store_true')
 parser.add_argument('--dryrun', help="don't not send the trajectory", action='store_true')
-parser.set_defaults(plot=False, dryrun=False, filename='measurements.npz', periods=1)
+parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
+parser.set_defaults(plot=False, dryrun=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
 #TODO: use model information for this, generate trajectory in a generic model dependent way
@@ -121,6 +122,7 @@ def main():
 
     measured_positions = list()
     measured_velocities = list()
+    measured_accelerations = list()
     measured_torques = list()
     measured_time = list()
 
@@ -129,6 +131,7 @@ def main():
     sent_time = list()
     sent_velocities = list()
 
+    #try high level p correction when using velocity ctrl
     e = [0] * N_DOFS
     velocity_correction = [0] * N_DOFS
 
@@ -157,8 +160,7 @@ def main():
             sent_velocities.append(velocities)
             sent_time.append(yarp.Time.now())
 
-        #wait between commands but also together with other delays,
-        #wait for 2*0.005s=100Hz
+        #loop delay: wait for 2*0.005s=100Hz (not used when synced to GYM timing)
         #yarp.Time.delay(0.010)
 
         #wait for next value, so sync to GYM loop
@@ -171,15 +173,24 @@ def main():
 
             positions = np.zeros(N_DOFS)
             velocities = np.zeros(N_DOFS)
+            accelerations = np.zeros(N_DOFS)
             torques = np.zeros(N_DOFS)
 
             if N_DOFS == b_positions.size():
                 for i in range(0, N_DOFS):
-                     positions[i] = b_positions.get(i).asDouble()
-                     velocities[i] = b_velocities.get(i).asDouble()
-                     torques[i] = b_torques.get(i).asDouble()
+                    positions[i] = b_positions.get(i).asDouble()
+                    velocities[i] = b_velocities.get(i).asDouble()
+                    torques[i] = b_torques.get(i).asDouble()
+
+                    #derive accelerations in stupid fashion for now (they are not measured)
+                    if(i>0):
+                        if len(measured_time):
+                            dT = d_time - measured_time[-1]
+                        else:
+                            dT = d_time - t_init
+                        accelerations[i] = (velocities[i-1] - velocities[i])/dT
             else:
-                print "warning, wrong amount of values received!"
+                print "warning, wrong amount of values received! ({} DOFS vs. {})".format(N_DOFS, b_positions.size())
 
             #test manual correction for position error
             p = 0
@@ -191,6 +202,7 @@ def main():
             if not first_pose:
                 measured_positions.append(positions)
                 measured_velocities.append(velocities)
+                measured_accelerations.append(accelerations)
                 measured_torques.append(torques)
                 measured_time.append(d_time)
 
@@ -205,43 +217,40 @@ def main():
     #clean up
     command_port.close()
     data_port.close()
-    M1 = np.array(measured_positions)
-    del measured_positions
-    M1_t = np.array(sent_positions)
-    M2 = np.array(measured_velocities)
-    del measured_velocities
-    M3 = np.array(measured_torques)
-    del measured_torques
-    T = np.array(measured_time)
-    del measured_time
+    M1 = np.array(measured_positions); del measured_positions
+    M1_t = np.array(sent_positions); M2 = np.array(measured_velocities); del measured_velocities
+    M2_dot = np.array(measured_accelerations); del measured_accelerations
+    M3 = np.array(measured_torques); del measured_torques
+    T = np.array(measured_time); del measured_time
 
     #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=M1, target_positions=M1_t, velocities=M2, torques=M3, times=T)
-    print "saved to {}".format(args.filename)
+    np.savez_compressed(args.filename, positions=M1, target_positions=M1_t,
+            velocities=M2, accelerations=M2_dot, torques=M3, times=T)
+    print "saved measurements to {}".format(args.filename)
 
-    ## stats
+    ## some stats
     print "got {} samples in {}s.".format(M1.shape[0], duration),
     print "(about {} Hz)".format(len(sent_positions)/duration)
 
 def plot():
-    #TODO: load model
-    #jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, N_DOFS)]
-    jointNames = ['LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2']
+    import iDynTree
+    jointNames = iDynTree.StringVector([])
+    iDynTree.dofsListFromURDF(args.model, jointNames)
+    #jointNames = ['LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2']
 
-    from random import sample
-    from itertools import permutations
+    if args.random_colors:
+        from random import sample
+        from itertools import permutations
 
-    '''
-    #get a random color wheel
-    Nlines = 200
-    color_lvl = 8
-    rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
-    colors = sample(rgb,Nlines)
-    print colors[0:7]
-    '''
-
-    #set some nice colors
-    colors = [[ 0.97254902,  0.62745098,  0.40784314], [ 0.0627451 ,  0.53333333,  0.84705882], [ 0.15686275,  0.75294118,  0.37647059], [ 0.90980392,  0.37647059,  0.84705882], [ 0.94117647,  0.03137255,  0.59607843], [ 0.18823529,  0.31372549,  0.09411765], [ 0.50196078,  0.40784314,  0.15686275]]
+        #get a random color wheel
+        Nlines = 200
+        color_lvl = 8
+        rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
+        colors = sample(rgb,Nlines)
+        #print colors[0:7]
+    else:
+        #set some nice fixed colors
+        colors = [[ 0.97254902,  0.62745098,  0.40784314], [ 0.0627451 ,  0.53333333,  0.84705882], [ 0.15686275,  0.75294118,  0.37647059], [ 0.90980392,  0.37647059,  0.84705882], [ 0.94117647,  0.03137255,  0.59607843], [ 0.18823529,  0.31372549,  0.09411765], [ 0.50196078,  0.40784314,  0.15686275]]
 
     #c++/gym measurements
     '''
@@ -268,11 +277,12 @@ def plot():
     '''
 
     #python measurements
-    #reload measurements from this or last run
+    #reload measurements from this or last run (if run dry)
     measurements = np.load('measurements.npz')
     M1 = measurements['positions']
     M1_t = measurements['target_positions']
     M2 = measurements['velocities']
+    M2_dot = measurements['accelerations']
     M3 = measurements['torques']
     T = measurements['times']
     num_samples = measurements['positions'].shape[0]
@@ -293,27 +303,22 @@ def plot():
     print "({}% messages too late)".format(late_msgs)
     print "\n"
 
-    plt.title('Positions')
-    M = M1
-    M_t = M1_t
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i], color=colors[i])
-        plt.plot(T, M_t[:, i], color=colors[i], alpha=0.7)
-    plt.legend(loc='lower right')
+    #what to plot (each tuple has a title and one or multiple data arrays)
+    datasets = [
+            ([M1, M1_t], 'Positions'),
+            ([M2,],'Velocities'),
+            ([M2_dot,], 'Accelerations'),
+            ([M3,],'Measured Torques')
+            ]
 
-    plt.figure()
-    M = M2
-    plt.title('Velocities')
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], color=colors[i], label=jointNames[i])
-    plt.legend(loc='lower right')
-
-    plt.figure()
-    plt.title('Measured torques')
-    M = M3
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], color=colors[i], label=jointNames[i])
-    plt.legend(loc='lower right')
+    for (data, title) in datasets:
+        plt.figure()
+        plt.title(title)
+        for i in range(0, N_DOFS):
+            for d_i in range(0, len(data)):
+                l = jointNames[i] if d_i == 0 else ''
+                plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+        plt.legend(loc='lower right')
 
     #yarp times over time indices
     plt.figure()

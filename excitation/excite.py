@@ -69,7 +69,8 @@ class TrajectoryGenerator(object):
         nf = [1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
-            self.oscillators.append( OscillationGenerator(w_f=self.w_f_global, a=np.array(a[i]), b=np.array(b[i]), q0=q[i], nf= nf[i]) )
+            self.oscillators.append( OscillationGenerator(w_f=self.w_f_global,
+                a=np.array(a[i]), b=np.array(b[i]), q0=q[i], nf= nf[i]) )
 
     def getAngle(self, dof):
         return self.oscillators[dof].getAngle(self.time)
@@ -236,7 +237,6 @@ def plot():
     import iDynTree
     jointNames = iDynTree.StringVector([])
     iDynTree.dofsListFromURDF(args.model, jointNames)
-    #jointNames = ['LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2']
 
     if args.random_colors:
         from random import sample
@@ -250,7 +250,14 @@ def plot():
         #print colors[0:7]
     else:
         #set some nice fixed colors
-        colors = [[ 0.97254902,  0.62745098,  0.40784314], [ 0.0627451 ,  0.53333333,  0.84705882], [ 0.15686275,  0.75294118,  0.37647059], [ 0.90980392,  0.37647059,  0.84705882], [ 0.94117647,  0.03137255,  0.59607843], [ 0.18823529,  0.31372549,  0.09411765], [ 0.50196078,  0.40784314,  0.15686275]]
+        colors = [[ 0.97254902,  0.62745098,  0.40784314],
+                  [ 0.0627451 ,  0.53333333,  0.84705882],
+                  [ 0.15686275,  0.75294118,  0.37647059],
+                  [ 0.90980392,  0.37647059,  0.84705882],
+                  [ 0.94117647,  0.03137255,  0.59607843],
+                  [ 0.18823529,  0.31372549,  0.09411765],
+                  [ 0.50196078,  0.40784314,  0.15686275]
+                 ]
 
     #c++/gym measurements
     '''
@@ -316,7 +323,7 @@ def plot():
         plt.title(title)
         for i in range(0, N_DOFS):
             for d_i in range(0, len(data)):
-                l = jointNames[i] if d_i == 0 else ''
+                l = jointNames[i] if d_i == 0 else ''  #only put joint names in the legend once
                 plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
         plt.legend(loc='lower right')
 

@@ -75,6 +75,7 @@ if(True):
     for row in range(0, num_samples):
         pos = measurements['positions'][row]
         vel = measurements['velocities'][row]
+        acc = measurements['accelerations'][row]
         torq = measurements['torques'][row]
 
         # set system state
@@ -85,7 +86,7 @@ if(True):
         for dof in range(N_DOFS):
             q.setVal(dof, pos[dof])
             dq.setVal(dof, vel[dof])
-            ddq.setVal(dof, 0.001) #TODO: get acc[dof]
+            ddq.setVal(dof, acc[dof])
 
         generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
         generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
@@ -144,9 +145,10 @@ xStd = np.dot(B, xBase)
 print "The standard parameter vector {} is \n{}".format(xStd.shape, xStd)
 
 # thresholding
-zero_threshold = 0.0001
-low_values_indices = np.absolute(xStd) < zero_threshold
-xStd[low_values_indices] = 0  # set all low values to 0
+#zero_threshold = 0.0001
+#low_values_indices = np.absolute(xStd) < zero_threshold
+#xStd[low_values_indices] = 0  # set all low values to 0
+#TODO: replace zeros with cad values
 
 #get model parameters
 xStdModel = iDynTree.VectorDynSize(N_PARAMS)
@@ -154,9 +156,10 @@ generator.getModelParameters(xStdModel)
 
 ## generate output
 
-helpers = IdentificationHelpers(N_PARAMS)
-helpers.paramsFromiDyn2URDF(xStdModel)
-helpers.paramsFromiDyn2URDF(xStd)
+#show COM-relative instead of frame origin-relative (linearized parameters)
+#helpers = IdentificationHelpers(N_PARAMS)
+#helpers.paramsFromiDyn2URDF(xStdModel.toNumPy())
+#helpers.paramsFromiDyn2URDF(xStd)
 
 # TODO: save to urdf with new parameters
 

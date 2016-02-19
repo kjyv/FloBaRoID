@@ -72,6 +72,7 @@ torques_stack = np.empty(shape=(N_DOFS*num_samples))
 
 #loop over measurements records
 if(True):
+if True:
     for row in range(0, num_samples):
         pos = measurements['positions'][row]
         vel = measurements['velocities'][row]
@@ -104,9 +105,6 @@ if(True):
         np.copyto(regressor_stack[start:start+N_DOFS], YStd)
         np.copyto(torques_stack[start:start+N_DOFS], torq)
 
-## end measurements loop
-measurements.close()
-
 ## inverse stacked regressors and identify parameter vector
 
 # get subspace basis (for projection to base regressor/parameters)
@@ -138,11 +136,11 @@ print "YBaseInv: {}".format(YBaseInv.shape)
 #generator.getFrameJacobian('arm', jacobian)
 
 xBase = np.dot(YBaseInv, tau.T) #- np.sum( YBaseInv*jacobian*contactForces )
-print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
+#print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
 
 # project back to standard parameters
 xStd = np.dot(B, xBase)
-print "The standard parameter vector {} is \n{}".format(xStd.shape, xStd)
+#print "The standard parameter vector {} is \n{}".format(xStd.shape, xStd)
 
 # thresholding
 #zero_threshold = 0.0001
@@ -156,12 +154,11 @@ generator.getModelParameters(xStdModel)
 
 ## generate output
 
-#show COM-relative instead of frame origin-relative (linearized parameters)
-#helpers = IdentificationHelpers(N_PARAMS)
+helpers = IdentificationHelpers(N_PARAMS)
+
+#optional: show COM-relative instead of frame origin-relative (linearized parameters)
 #helpers.paramsFromiDyn2URDF(xStdModel.toNumPy())
 #helpers.paramsFromiDyn2URDF(xStd)
-
-# TODO: save to urdf with new parameters
 
 # some pretty printing of parameters
 if(args.explain):
@@ -196,3 +193,5 @@ if(args.explain):
             template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
     for l in lines:
         print template.format(*l)
+measurements.close()
+

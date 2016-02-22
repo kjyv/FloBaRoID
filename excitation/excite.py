@@ -1,18 +1,11 @@
 #!/usr/bin/env python2.7
 
+import sys
 import yarp
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
-
-import time
-from contextlib import contextmanager
-@contextmanager
-def timeit_context(name):
-    startTime = time.time()
-    yield
-    elapsedTime = time.time() - startTime
-    print('[{}] finished in {} ms'.format(name, int(elapsedTime * 1000)))
+import scipy as sp
+from scipy import signal
 
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
@@ -25,8 +18,10 @@ parser.add_argument('--random-colors', dest='random_colors', help="use random co
 parser.set_defaults(plot=False, dryrun=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
-#TODO: use model information for this, generate trajectory in a generic model dependent way
-N_DOFS = 7
+import iDynTree
+jointNames = iDynTree.StringVector([])
+iDynTree.dofsListFromURDF(args.model, jointNames)
+N_DOFS = len(jointNames)
 
 #pulsating trajectory generator for one joint using fourier series from Sewers, Gansemann (1997)
 class OscillationGenerator(object):
@@ -182,14 +177,6 @@ def main():
                     positions[i] = b_positions.get(i).asDouble()
                     velocities[i] = b_velocities.get(i).asDouble()
                     torques[i] = b_torques.get(i).asDouble()
-
-                    #derive accelerations in stupid fashion for now (they are not measured)
-                    if(i>0):
-                        if len(measured_time):
-                            dT = d_time - measured_time[-1]
-                        else:
-                            dT = d_time - t_init
-                        accelerations[i] = (velocities[i-1] - velocities[i])/dT
             else:
                 print "warning, wrong amount of values received! ({} DOFS vs. {})".format(N_DOFS, b_positions.size())
 
@@ -203,7 +190,6 @@ def main():
             if not first_pose:
                 measured_positions.append(positions)
                 measured_velocities.append(velocities)
-                measured_accelerations.append(accelerations)
                 measured_torques.append(torques)
                 measured_time.append(d_time)
 
@@ -218,26 +204,76 @@ def main():
     #clean up
     command_port.close()
     data_port.close()
-    M1 = np.array(measured_positions); del measured_positions
-    M1_t = np.array(sent_positions); M2 = np.array(measured_velocities); del measured_velocities
-    M2_dot = np.array(measured_accelerations); del measured_accelerations
-    M3 = np.array(measured_torques); del measured_torques
+    Q = np.array(measured_positions); del measured_positions
+    Qsent = np.array(sent_positions);
+    V = np.array(measured_velocities); del measured_velocities
+    Vdot = np.zeros_like(V)   #will be calculated in preprocess()
+    global Vraw
+    Vraw = np.zeros_like(V)   #will be calculated in preprocess()
+    Tau = np.array(measured_torques); del measured_torques
+    global TauRaw
+    TauRaw = np.zeros_like(Tau)   #will be calculated in preprocess()
     T = np.array(measured_time); del measured_time
 
+    #filter, differentiate, etc.
+    preprocess(Q, V, Vraw, Vdot, Tau, TauRaw, T)
+
     #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=M1, target_positions=M1_t,
-            velocities=M2, accelerations=M2_dot, torques=M3, times=T)
+    np.savez_compressed(args.filename, positions=Q, target_positions=Qsent,
+            velocities=V, accelerations=Vdot, torques=Tau, times=T)
     print "saved measurements to {}".format(args.filename)
 
     ## some stats
-    print "got {} samples in {}s.".format(M1.shape[0], duration),
+    print "got {} samples in {}s.".format(Q.shape[0], duration),
     print "(about {} Hz)".format(len(sent_positions)/duration)
 
-def plot():
-    import iDynTree
-    jointNames = iDynTree.StringVector([])
-    iDynTree.dofsListFromURDF(args.model, jointNames)
+def preprocess(posis, vels, vels_unfiltered, accls, torques, torques_unfiltered, times):
+    #filter velocity
+    vels_orig = vels.copy()
+    fc = 1.0 # Cut-off frequency (Hz)
+    fs = 200.0 # Sampling rate (Hz)
+    order = 6 # Filter order
+    b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
+    for j in range(0, N_DOFS):
+        vels[:, j] = sp.signal.filtfilt(b, a, vels_orig[:, j])
+    np.copyto(vels_unfiltered, vels_orig)
 
+
+    """
+    # Plot the frequency response.
+    w, h = sp.signal.freqz(b, a, worN=8000)
+    plt.subplot(2, 1, 1)
+    plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
+    plt.plot(fc, 0.5*np.sqrt(2), 'ko')
+    plt.axvline(fc, color='k')
+    plt.xlim(0, 0.5*fs)
+    plt.title("Lowpass Filter Frequency Response")
+    plt.xlabel('Frequency [Hz]')
+    plt.grid()
+    """
+
+    #calc accelerations
+    for i in range(1, vels.shape[0]):
+        dT = times[i] - times[i-1]
+        accls[i] = (vels[i] - vels[i-1])/dT
+
+    #median filter of accelerations
+    accls_orig = accls.copy()
+    for j in range(0, N_DOFS):
+        accls[:, j] = sp.signal.medfilt(accls_orig[:, j], 11)
+
+    #median filter of torques
+    torques_orig = torques.copy()
+    for j in range(0, N_DOFS):
+        torques[:, j] = sp.signal.medfilt(torques_orig[:, j], 11)
+
+    #low-pass of torques
+    torques_orig = torques.copy()
+    for j in range(0, N_DOFS):
+        torques[:, j] = sp.signal.filtfilt(b, a, torques_orig[:, j])
+    np.copyto(torques_unfiltered, torques_orig)
+
+def plot():
     if args.random_colors:
         from random import sample
         from itertools import permutations
@@ -258,30 +294,6 @@ def plot():
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
-
-    #c++/gym measurements
-    '''
-    C = np.genfromtxt("log.csv", dtype=float)
-    T = C[:, N_DOFS*3]
-    M = C[:, 0:N_DOFS*1]
-    for i in range(0, N_DOFS):
-        plt.plot(T, M[:, i], label=jointNames[i])
-    plt.legend(loc='lower right')
-    plt.title('Positions')
-
-    #yarp times over time indices
-    plt.figure()
-    plt.plot(range(0,len(T)), T)
-
-    #histogram of yarp time distances
-    plt.figure()
-    dT = np.diff(T)
-    H, B = np.histogram(dT)
-    plt.hist(H, B)
-    print "bins: {}".format(B)
-    print "sums: {}".format(H)
-    #plt.show()
-    '''
 
     #python measurements
     #reload measurements from this or last run (if run dry)
@@ -313,9 +325,9 @@ def plot():
     #what to plot (each tuple has a title and one or multiple data arrays)
     datasets = [
             ([M1, M1_t], 'Positions'),
-            ([M2,],'Velocities'),
+            ([M2, Vraw],'Velocities'),
             ([M2_dot,], 'Accelerations'),
-            ([M3,],'Measured Torques')
+            ([M3, TauRaw],'Measured Torques')
             ]
 
     for (data, title) in datasets:
@@ -336,9 +348,17 @@ def plot():
 if __name__ == '__main__':
     #from IPython import embed; embed()
 
-    if(not args.dryrun):
-        main()
+    try:
+        if(not args.dryrun):
+            main()
 
-    if(args.plot):
-        plot()
+        if(args.plot):
+            plot()
+    except Exception as e:
+        if type(e) is not KeyboardInterrupt:
+            #open ipdb when an exception happens
+            import sys, ipdb, traceback
+            type, value, tb = sys.exc_info()
+            traceback.print_exc()
+            ipdb.post_mortem(tb)
 

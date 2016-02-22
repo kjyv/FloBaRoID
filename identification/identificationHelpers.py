@@ -1,6 +1,15 @@
 import iDynTree
 
-class IdentificationHelpers():
+import time
+from contextlib import contextmanager
+@contextmanager
+def timeit_context(name):
+    startTime = time.time()
+    yield
+    elapsedTime = time.time() - startTime
+    print('[{}] finished in {} ms'.format(name, int(elapsedTime * 1000)))
+
+class IdentificationHelpers(object):
     def __init__(self, n_params):
         self.n_params = n_params
 

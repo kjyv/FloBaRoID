@@ -39,7 +39,6 @@ def main():
     print 'loaded model {}'.format(URDF_FILE)
 
     # define what regressor type to use
-
     regrXml = '''
     <regressor>
       <jointTorqueDynamics>
@@ -85,9 +84,20 @@ def main():
     regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
     torques_stack = np.empty(shape=(N_DOFS*num_samples))
 
+    #test standard model dynamics with DynamicsComputations class
+    dynTest = False
+    if dynTest:
+        dynComp = iDynTree.DynamicsComputations();
+        dynComp.loadRobotModelFromFile(URDF_FILE);
+        gravity = iDynTree.SpatialAcc();
+        gravity.setVal(2, -9.81);
+
+        global torquesEst
+        torquesEst = list()
+
     #loop over measurements records (skip some values from the start)
     #and get regressors for each system state
-    for row in range(0+start_offset, num_samples):
+    for row in range(0+start_offset, num_samples+start_offset):
         pos = measurements['positions'][row]
         vel = measurements['velocities'][row]
         acc = measurements['accelerations'][row]
@@ -101,12 +111,28 @@ def main():
         dq = iDynTree.VectorDynSize.fromPyList(vel)
         ddq = iDynTree.VectorDynSize.fromPyList(acc)
 
+        if dynTest:
+            dynComp.setRobotState(q, dq, ddq, gravity)
+            """
+            regressor = iDynTree.MatrixDynSize(N_DOFS, N_PARAMS)
+            ok = dynComp.getDynamicsRegressor(regressor)
+            if( not ok ):
+                print "Error in computing the dynamics regressor"
+            """
+
+            torques = iDynTree.VectorDynSize(N_DOFS)
+            baseReactionForce = iDynTree.Wrench()
+
+            # compute id with inverse dynamics
+            dynComp.inverseDynamics(torques, baseReactionForce)
+            torquesEst.append(torques.toNumPy())
+
+        generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base
         generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
-        generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
 
         # get (standard) regressor
         regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS)
-        knownTerms = iDynTree.VectorDynSize(N_OUT)
+        knownTerms = iDynTree.VectorDynSize(N_OUT)    #what are known terms useable for?
         if not generator.computeRegressor(regressor, knownTerms):
             print "Error while computing regressor"
 
@@ -116,6 +142,7 @@ def main():
         start = N_DOFS*row
         np.copyto(regressor_stack[start:start+N_DOFS], YStd)
         np.copyto(torques_stack[start:start+N_DOFS], torq)
+
 
     ## inverse stacked regressors and identify parameter vector
 
@@ -163,39 +190,42 @@ def main():
     #get model parameters
     xStdModel = iDynTree.VectorDynSize(N_PARAMS)
     generator.getModelParameters(xStdModel)
+    xStdModel = xStdModel.toNumPy()
 
     ## generate output
 
     # estimate torques again with regressor and parameters
     print "xStd: {}".format(xStd.shape)
-    print "xStdModel: {}".format(xStdModel.toNumPy().shape)
-#    tauEst = np.dot(YStd, xStdModel.toNumPy())
-    tauEst = np.dot(YStd, xStd)
+    print "xStdModel: {}".format(xStdModel.shape)
+    tauEst = np.dot(YStd, xStdModel)
+#    tauEst = np.dot(YStd, xStd)
 #    tauEst = np.dot(YBase, xBase)
 
     #put in list of np vectors for plotting
-    global torquesEst
-    torquesEst = list()
-    for i in range(0, tauEst.shape[0]):
-        if i % N_DOFS == 0:
-            tmp = np.zeros(N_DOFS)
-            for j in range(0, N_DOFS):
-                tmp[j] = tauEst[i+j]
-            torquesEst.append(tmp)
-
-    #optional: show COM-relative instead of frame origin-relative (linearized parameters)
-    #helpers.paramsFromiDyn2URDF(xStdModel.toNumPy())
-    #helpers.paramsFromiDyn2URDF(xStd)
+    if not dynTest:
+        global torquesEst
+        torquesEst = list()
+        for i in range(0, tauEst.shape[0]):
+            if i % N_DOFS == 0:
+                tmp = np.zeros(N_DOFS)
+                for j in range(0, N_DOFS):
+                    tmp[j] = tauEst[i+j]
+                torquesEst.append(tmp)
 
     # some pretty printing of parameters
     if(args.explain):
+        #optional: print COM-relative instead of frame origin-relative (linearized parameters)
+        helpers = IdentificationHelpers(N_PARAMS)
+        helpers.paramsFromiDyn2URDF(xStd)
+        helpers.paramsFromiDyn2URDF(xStdModel)
+
         #collect values for parameters
         description = generator.getDescriptionOfParameters()
         idx_p = 0
         lines = list()
         for l in description.replace(r'Parameter ', '#').replace(r'first moment', 'center').split('\n'):
             new = xStd[idx_p]
-            old = xStdModel.getVal(idx_p)
+            old = xStdModel[idx_p]
             diff = old - new
             lines.append((old, new, diff, l))
             idx_p+=1
@@ -243,7 +273,7 @@ def plot():
             for d_i in range(0, len(data)):
                 l = jointNames[i] if d_i == 0 else ''  #only put joint names in the legend once
                 plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
-        plt.legend(loc='lower right')
+        plt.legend(loc='upper left')
     plt.show()
     measurements.close()
 

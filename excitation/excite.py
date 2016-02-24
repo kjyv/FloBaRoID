@@ -25,7 +25,7 @@ N_DOFS = len(jointNames)
 
 #pulsating trajectory generator for one joint using fourier series from Sewers, Gansemann (1997)
 class OscillationGenerator(object):
-    def __init__(self, w_f, a, b, q0, nf):
+    def __init__(self, w_f, a, b, q0, nf, use_deg):
         #- w_f is the global pulsation (frequency is w_f / 2pi)
         #- a and b are (arrays of) amplitudes of the sine/cosine
         #  functions for each joint
@@ -36,6 +36,7 @@ class OscillationGenerator(object):
         self.b = b
         self.q0 = float(q0)
         self.nf = nf
+        self.use_deg = use_deg
 
     def getAngle(self, t):
         #- t is the current time
@@ -43,29 +44,34 @@ class OscillationGenerator(object):
         for l in range(1, self.nf+1):
             q = (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) - \
                  (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l*t)
-        return np.rad2deg(q) + self.nf*self.q0
+        if self.use_deg:
+            q = np.rad2deg(q)
+        q += self.nf*self.q0
+        return q
 
     def getVelocity(self, t):
         dq = 0
         for l in range(1, self.nf+1):
             dq += self.a[l-1]*np.cos(self.w_f*l*t) + \
                   self.b[l-1]*np.sin(self.w_f*l*t)
-        return np.rad2deg(dq)
+        if self.use_deg:
+            dq = np.rad2deg(dq)
+        return dq
 
 class TrajectoryGenerator(object):
     def __init__(self, dofs):
         self.dofs = dofs
         self.oscillators = list()
 
-        self.w_f_global = 1.0
-        a = [[0.4], [0.3], [0.75], [0.5], [1], [-0.7], [-0.8]]
-        b = [[0.4], [0.3], [0.75], [0.8], [1], [1.3], [0.8]]
+        self.w_f_global = 2.0
+        a = [[0.4], [0.5], [0.75], [0.5], [1], [-0.7], [-0.8]]
+        b = [[0.4], [0.9], [0.75], [0.8], [1], [1.3], [0.8]]
         q = [10, 50, -80, -25, 50, 0, -15]
         nf = [1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
             self.oscillators.append( OscillationGenerator(w_f=self.w_f_global,
-                a=np.array(a[i]), b=np.array(b[i]), q0=q[i], nf= nf[i]) )
+                a=np.array(a[i]), b=np.array(b[i]), q0=q[i], nf=nf[i], use_deg=True) )
 
     def getAngle(self, dof):
         return self.oscillators[dof].getAngle(self.time)
@@ -122,39 +128,54 @@ def main():
     measured_torques = list()
     measured_time = list()
 
-    first_pose = True
     sent_positions = list()
     sent_time = list()
     sent_velocities = list()
 
     #try high level p correction when using velocity ctrl
-    e = [0] * N_DOFS
-    velocity_correction = [0] * N_DOFS
+    #e = [0] * N_DOFS
+    #velocity_correction = [0] * N_DOFS
 
-    while t_elapsed < duration:
-        #TODO: make sure we're starting at zero velocity (wait for it or move functions)
+    def wait_for_zero_vel(t_elapsed, trajectories):
         trajectories.setTime(t_elapsed)
-        angles = [trajectories.getAngle(i) for i in range(0, N_DOFS)]
-        velocities = [trajectories.getVelocity(i) for i in range(0, N_DOFS)]
-        for i in range(0, N_DOFS):
-            velocities[i]+=velocity_correction[i]
+        if abs(round(trajectories.getVelocity(0))) < 5:
+            return True
+
+    waited_for_start = 0
+    started = False
+    while t_elapsed < duration:
+        trajectories.setTime(t_elapsed)
+        target_angles = [trajectories.getAngle(i) for i in range(0, N_DOFS)]
+        target_velocities = [trajectories.getVelocity(i) for i in range(0, N_DOFS)]
+        #for i in range(0, N_DOFS):
+        #    target_velocities[i]+=velocity_correction[i]
+
+        #make sure we start moving at a position with zero velocity
+        if not started:
+            started = wait_for_zero_vel(t_elapsed, trajectories)
+            t_elapsed = yarp.Time.now() - t_init
+            waited_for_start = t_elapsed
+
+            if started:
+                #set angles and wait one period to have settled at zero velocity position
+                gen_position_msg(command_port, target_angles, target_velocities)
+                command_port.write()
+
+                print "waiting to arrive at an initial position...",
+                sys.stdout.flush()
+                yarp.Time.delay(trajectories.getPeriodLength())
+                t_init+=trajectories.getPeriodLength()
+                duration+=waited_for_start
+                print "ok."
+            continue
 
         #set target angles
-        gen_position_msg(command_port, angles, velocities)
+        gen_position_msg(command_port, target_angles, target_velocities)
         command_port.write()
 
-        #set first angle vector and wait a bit to start at right position
-        if first_pose:
-            print "waiting a bit for initial position...",
-            sys.stdout.flush()
-            #TODO: actually read pose and compare
-            yarp.Time.delay(2.0)
-            t_init+=2.0
-            print "ok."
-        else:
-            sent_positions.append(angles)
-            sent_velocities.append(velocities)
-            sent_time.append(yarp.Time.now())
+        sent_positions.append(target_angles)
+        sent_velocities.append(target_velocities)
+        sent_time.append(yarp.Time.now())
 
         #loop delay: wait for 2*0.005s=100Hz (not used when synced to GYM timing)
         #yarp.Time.delay(0.010)
@@ -181,66 +202,93 @@ def main():
                 print "warning, wrong amount of values received! ({} DOFS vs. {})".format(N_DOFS, b_positions.size())
 
             #test manual correction for position error
-            p = 0
-            for i in range(0,N_DOFS):
-                e[i] = (angles[i] - positions[i])
-                velocity_correction[i] = e[i]*p
+            #p = 0
+            #for i in range(0,N_DOFS):
+            #    e[i] = (angles[i] - positions[i])
+            #    velocity_correction[i] = e[i]*p
 
             #collect measurement data
-            if not first_pose:
-                measured_positions.append(positions)
-                measured_velocities.append(velocities)
-                measured_torques.append(torques)
-                measured_time.append(d_time)
+            measured_positions.append(positions)
+            measured_velocities.append(velocities)
+            measured_torques.append(torques)
+            measured_time.append(d_time)
 
             t_elapsed = d_time - t_init
         else:
             print "oops, skipped reading one frame"
             t_elapsed = yarp.Time.now() - t_init
 
-        if first_pose:
-            first_pose=False
-
     #clean up
     command_port.close()
     data_port.close()
     Q = np.array(measured_positions); del measured_positions
     Qsent = np.array(sent_positions);
+    global Qraw
+    Qraw = np.zeros_like(Q)   #will be calculated in preprocess()
     V = np.array(measured_velocities); del measured_velocities
     Vdot = np.zeros_like(V)   #will be calculated in preprocess()
     global Vraw
     Vraw = np.zeros_like(V)   #will be calculated in preprocess()
+    global Vself
+    Vself = np.zeros_like(V)   #will be calculated in preprocess()
     Tau = np.array(measured_torques); del measured_torques
     global TauRaw
     TauRaw = np.zeros_like(Tau)   #will be calculated in preprocess()
     T = np.array(measured_time); del measured_time
 
-    #filter, differentiate, etc.
-    preprocess(Q, V, Vraw, Vdot, Tau, TauRaw, T)
+    global measured_frequency
+    measured_frequency = len(sent_positions)/duration
+
+    #filter, differentiate, convert, etc.
+    preprocess(Q, Qraw, Qsent, V, Vraw, Vself, Vdot, Tau, TauRaw, T)
 
     #write sample arrays to data file
     np.savez_compressed(args.filename, positions=Q, target_positions=Qsent,
-            velocities=V, accelerations=Vdot, torques=Tau, times=T)
+            velocities=Vself, accelerations=Vdot, torques=Tau, times=T)
     print "saved measurements to {}".format(args.filename)
 
     ## some stats
     print "got {} samples in {}s.".format(Q.shape[0], duration),
-    print "(about {} Hz)".format(len(sent_positions)/duration)
+    print "(about {} Hz)".format(measured_frequency)
 
-def preprocess(posis, vels, vels_unfiltered, accls, torques, torques_unfiltered, times):
-    #filter velocity
+def preprocess(posis, posis_unfiltered, posis_sent, vels, vels_unfiltered, vels_self,
+               accls, torques, torques_unfiltered, times):
+    #convert degs to rads
+    #assuming angles don't wrap, otherwise use np.unwrap before
+    posis_rad = np.deg2rad(posis)
+    posis_sent_rad = np.deg2rad(posis_sent)
+    vels_rad = np.deg2rad(vels)
+    np.copyto(posis, posis_rad)
+    np.copyto(posis_sent, posis_sent_rad)
+    np.copyto(vels, vels_rad)
+
+    #low-pass filter positions
+    posis_orig = posis.copy()
+    fc = 3.0 # Cut-off frequency (Hz)
+    fs = measured_frequency # Sampling rate (Hz)
+    order = 6 # Filter order
+    b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
+    for j in range(0, N_DOFS):
+        posis[:, j] = sp.signal.filtfilt(b, a, posis_orig[:, j])
+    np.copyto(posis_unfiltered, posis_orig)
+
+    #median filter of gazebo velocities
     vels_orig = vels.copy()
-    fc = 1.0 # Cut-off frequency (Hz)
-    fs = 200.0 # Sampling rate (Hz)
+    for j in range(0, N_DOFS):
+        vels[:, j] = sp.signal.medfilt(vels_orig[:, j], 21)
+    np.copyto(vels_unfiltered, vels_orig)
+
+    #low-pass filter velocities
+    vels_orig = vels.copy()
+    fc = 2.0 # Cut-off frequency (Hz)
+    fs = measured_frequency # Sampling rate (Hz)
     order = 6 # Filter order
     b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
     for j in range(0, N_DOFS):
         vels[:, j] = sp.signal.filtfilt(b, a, vels_orig[:, j])
-    np.copyto(vels_unfiltered, vels_orig)
 
-
+    # Plot the frequency and phase response
     """
-    # Plot the frequency response.
     w, h = sp.signal.freqz(b, a, worN=8000)
     plt.subplot(2, 1, 1)
     plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
@@ -249,13 +297,36 @@ def preprocess(posis, vels, vels_unfiltered, accls, torques, torques_unfiltered,
     plt.xlim(0, 0.5*fs)
     plt.title("Lowpass Filter Frequency Response")
     plt.xlabel('Frequency [Hz]')
+
+    plt.subplot(2,1,2)
+    h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
+    plt.plot(w, h_Phase)
+    plt.ylabel('Phase (radians)')
+    plt.xlabel(r'Frequency (Hz)')
+    plt.title(r'Phase response')
+    plt.subplots_adjust(hspace=0.5)
     plt.grid()
     """
 
-    #calc accelerations
-    for i in range(1, vels.shape[0]):
+    #calc velocity self (from filtered positions)
+    for i in range(1, posis.shape[0]):
         dT = times[i] - times[i-1]
-        accls[i] = (vels[i] - vels[i-1])/dT
+        vels_self[i] = (posis[i] - posis[i-1])/dT
+
+    #median filter of velocities self
+    vels_self_orig = vels_self.copy()
+    for j in range(0, N_DOFS):
+        vels_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], 9)
+
+    #low-pass filter velocities self
+    vels_self_orig = vels_self.copy()
+    for j in range(0, N_DOFS):
+        vels_self[:, j] = sp.signal.filtfilt(b, a, vels_self_orig[:, j])
+
+    #calc accelerations
+    for i in range(1, vels_self.shape[0]):
+        dT = times[i] - times[i-1]
+        accls[i] = (vels_self[i] - vels_self[i-1])/dT
 
     #median filter of accelerations
     accls_orig = accls.copy()
@@ -323,8 +394,13 @@ def plot():
     print "\n"
 
     #what to plot (each tuple has a title and one or multiple data arrays)
+    if args.dryrun:
+        Qraw = np.zeros_like(M1)
+        Vraw = np.zeros_like(M2)
+        TauRaw = np.zeros_like(M3)
+
     datasets = [
-            ([M1, M1_t], 'Positions'),
+            ([M1, Qraw], 'Positions'),
             ([M2, Vraw],'Velocities'),
             ([M2_dot,], 'Accelerations'),
             ([M3, TauRaw],'Measured Torques')
@@ -333,15 +409,15 @@ def plot():
     for (data, title) in datasets:
         plt.figure()
         plt.title(title)
-        for i in range(0, N_DOFS):
-            for d_i in range(0, len(data)):
+        for d_i in range(0, len(data)):
+            for i in range(0, N_DOFS):
                 l = jointNames[i] if d_i == 0 else ''  #only put joint names in the legend once
                 plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
         plt.legend(loc='lower right')
 
     #yarp times over time indices
-    plt.figure()
-    plt.plot(range(0,len(T)), T)
+    #plt.figure()
+    #plt.plot(range(0,len(T)), T)
 
     plt.show()
 

@@ -24,8 +24,14 @@ def main():
     global measurements
     measurements = np.load(args.measurements)
 
+    global num_samples
     num_samples = measurements['positions'].shape[0]
-    print 'loaded {} measurement samples'.format(num_samples)
+    global start_offset
+    start_offset = 200
+    print 'loaded {} measurement samples (using {})'.format(num_samples, num_samples-start_offset)
+    num_samples-=start_offset
+
+    #TODO: get sample frequency from file and use to determine start_offset
 
     #create generator instance and load model
     generator = iDynTree.DynamicsRegressorGenerator()
@@ -79,22 +85,21 @@ def main():
     regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
     torques_stack = np.empty(shape=(N_DOFS*num_samples))
 
-    #loop over measurements records
-    for row in range(0, num_samples):
+    #loop over measurements records (skip some values from the start)
+    #and get regressors for each system state
+    for row in range(0+start_offset, num_samples):
         pos = measurements['positions'][row]
         vel = measurements['velocities'][row]
         acc = measurements['accelerations'][row]
         torq = measurements['torques'][row]
 
-        # set system state
-        q = iDynTree.VectorDynSize(N_DOFS)
-        dq = iDynTree.VectorDynSize(N_DOFS)
-        ddq = iDynTree.VectorDynSize(N_DOFS)
+        #use zero based again for matrices etc.
+        row-=start_offset
 
-        for dof in range(N_DOFS):
-            q.setVal(dof, pos[dof])
-            dq.setVal(dof, vel[dof])
-            ddq.setVal(dof, acc[dof])
+        # set system state
+        q = iDynTree.VectorDynSize.fromPyList(pos)
+        dq = iDynTree.VectorDynSize.fromPyList(vel)
+        ddq = iDynTree.VectorDynSize.fromPyList(acc)
 
         generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
         generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base, base acceleration etc. =0
@@ -128,7 +133,7 @@ def main():
     print "YStd: {}".format(YStd.shape)
     print "tau: {}".format(tau.shape)
 
-    # project regressor to base regressor, Y_base = Y_std B
+    # project regressor to base regressor, Y_base = Y_std*B
     YBase = np.dot(YStd, B)
     print "YBase: {}".format(YBase.shape)
 
@@ -161,12 +166,12 @@ def main():
 
     ## generate output
 
-    # try getting estimated torques with simple inversion
+    # estimate torques again with regressor and parameters
     print "xStd: {}".format(xStd.shape)
     print "xStdModel: {}".format(xStdModel.toNumPy().shape)
-#    tauEst = np.dot(YStd, xStd) #xStdModel.toNumPy())
-    tauEst = np.dot(YBase, xBase)
-    print "tau estimated: {}".format(tauEst.shape)
+#    tauEst = np.dot(YStd, xStdModel.toNumPy())
+    tauEst = np.dot(YStd, xStd)
+#    tauEst = np.dot(YBase, xBase)
 
     #put in list of np vectors for plotting
     global torquesEst
@@ -227,10 +232,10 @@ def plot():
              ]
 
     datasets = [
-                ([measurements['torques']], 'Measured Torques'),
+                ([measurements['torques'][start_offset:, :]], 'Measured Torques'),
                 ([np.array(torquesEst)], 'Estimated Torques'),
                ]
-    T = measurements['times']
+    T = measurements['times'][start_offset:]
     for (data, title) in datasets:
         plt.figure()
         plt.title(title)

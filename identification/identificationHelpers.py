@@ -42,8 +42,8 @@ class IdentificationHelpers(object):
         return inertia
 
     def paramsFromiDyn2URDF(self, params):
-        ## convert params from iDynTree values to values directly usable in URDF (mass, com, inertia)
-        ## (params is changed in place)
+        ## convert params from iDynTree values to values usable in URDF (mass, com, inertia)
+        ## (params are changed in place)
 
         #mass is mass
         #com in idyntree is represented as first moment of mass, so com * mass. URDF uses com
@@ -62,7 +62,7 @@ class IdentificationHelpers(object):
                 p_com = iDynTree.PositionRaw(params[i+1], params[i+2], params[i+3])
 
                 #inertias
-                rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+9])
+                rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+10])
                 s_inertia = iDynTree.SpatialInertiaRaw(link_mass, p_com, rot_inertia_origin)
                 #s_inertia.fromRotationalInertiaWrtCenterOfMass(link_mass, p_com, rot_inertia)
                 rot_inertia_com = s_inertia.getRotationalInertiaWrtCenterOfMass()

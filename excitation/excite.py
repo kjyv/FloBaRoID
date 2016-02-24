@@ -64,8 +64,8 @@ class TrajectoryGenerator(object):
         self.oscillators = list()
 
         self.w_f_global = 2.0
-        a = [[0.4], [0.5], [0.75], [0.5], [1], [-0.7], [-0.8]]
-        b = [[0.4], [0.9], [0.75], [0.8], [1], [1.3], [0.8]]
+        a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8]]
+        b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8]]
         q = [10, 50, -80, -25, 50, 0, -15]
         nf = [1,1,1,1,1,1,1]
 
@@ -333,6 +333,12 @@ def preprocess(posis, posis_unfiltered, posis_sent, vels, vels_unfiltered, vels_
     for j in range(0, N_DOFS):
         accls[:, j] = sp.signal.medfilt(accls_orig[:, j], 11)
 
+    #low-pass filter of accelerations
+    accls_orig = accls.copy()
+    for j in range(0, N_DOFS):
+        accls[:, j] = sp.signal.filtfilt(b, a, accls_orig[:, j])
+
+
     #median filter of torques
     torques_orig = torques.copy()
     for j in range(0, N_DOFS):
@@ -395,8 +401,11 @@ def plot():
 
     #what to plot (each tuple has a title and one or multiple data arrays)
     if args.dryrun:
+        global Qraw
         Qraw = np.zeros_like(M1)
+        global Vraw
         Vraw = np.zeros_like(M2)
+        global TauRaw
         TauRaw = np.zeros_like(M3)
 
     datasets = [

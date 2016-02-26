@@ -1,13 +1,14 @@
 import iDynTree
 
 import time
-from contextlib import contextmanager
-@contextmanager
-def timeit_context(name):
-    startTime = time.time()
-    yield
-    elapsedTime = time.time() - startTime
-    print('[{}] finished in {} ms'.format(name, int(elapsedTime * 1000)))
+class Timer(object):
+    def __enter__(self):
+        self.start = time.clock()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.clock()
+        self.interval = self.end - self.start
 
 class IdentificationHelpers(object):
     def __init__(self, n_params):
@@ -56,9 +57,10 @@ class IdentificationHelpers(object):
                 com_x = params[i+1]
                 com_y = params[i+2]
                 com_z = params[i+3]
-                params[i+1] = com_x / link_mass  #x of first moment -> x of com
-                params[i+2] = com_y / link_mass  #y of first moment -> y of com
-                params[i+3] = com_z / link_mass  #z of first moment -> z of com
+                if link_mass != 0:
+                    params[i+1] = com_x / link_mass  #x of first moment -> x of com
+                    params[i+2] = com_y / link_mass  #y of first moment -> y of com
+                    params[i+3] = com_z / link_mass  #z of first moment -> z of com
                 p_com = iDynTree.PositionRaw(params[i+1], params[i+2], params[i+3])
 
                 #inertias

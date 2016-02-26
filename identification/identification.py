@@ -1,10 +1,15 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from identificationHelpers import IdentificationHelpers
 import numpy as np; #np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
 import matplotlib.pyplot as plt
+
+#numeric regression
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+import identificationHelpers
+
+#symbolic regression
+from robotran import idinvbar
 
 #TODO: load full model and programmatically cut off chain from certain joints/links, get back urdf?
 
@@ -82,18 +87,25 @@ def main():
     jointNames = [generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, N_DOFS)]
 
     regressor_stack = np.empty(shape=(N_DOFS*num_samples, N_PARAMS))
+    regressor_stack_sym = np.empty(shape=(N_DOFS*num_samples, 45))
     torques_stack = np.empty(shape=(N_DOFS*num_samples))
 
     #test standard model dynamics with DynamicsComputations class
     dynTest = False
+
+    #test robotran symbolic regressor code
+    symbolic_test = False
+    sym_time = 0
+    num_time = 0
+
     if dynTest:
         dynComp = iDynTree.DynamicsComputations();
         dynComp.loadRobotModelFromFile(URDF_FILE);
         gravity = iDynTree.SpatialAcc();
         gravity.setVal(2, -9.81);
 
-        global torquesEst
-        torquesEst = list()
+    global torquesEst
+    torquesEst = list()
 
     #loop over measurements records (skip some values from the start)
     #and get regressors for each system state
@@ -127,22 +139,36 @@ def main():
             dynComp.inverseDynamics(torques, baseReactionForce)
             torquesEst.append(torques.toNumPy())
 
-        generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base
-        generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+        with identificationHelpers.Timer() as t:
+            generator.setRobotState(q,dq,ddq, gravity_twist)  # fixed base
+            generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
-        # get (standard) regressor
-        regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS)
-        knownTerms = iDynTree.VectorDynSize(N_OUT)    #what are known terms useable for?
-        if not generator.computeRegressor(regressor, knownTerms):
-            print "Error while computing regressor"
+            # get (standard) regressor
+            regressor = iDynTree.MatrixDynSize(N_OUT, N_PARAMS)
+            knownTerms = iDynTree.VectorDynSize(N_OUT)    #what are known terms useable for?
+            if not generator.computeRegressor(regressor, knownTerms):
+                print "Error while computing regressor"
 
-        YStd = regressor.toNumPy()
+            start = N_DOFS*row
+            YStd = regressor.toNumPy()
+            #stack on previous regressors
+            np.copyto(regressor_stack[start:start+N_DOFS], YStd)
+            np.copyto(torques_stack[start:start+N_DOFS], torq)
+        num_time += t.interval
 
-        #stack on previous regressors
-        start = N_DOFS*row
-        np.copyto(regressor_stack[start:start+N_DOFS], YStd)
-        np.copyto(torques_stack[start:start+N_DOFS], torq)
+        if symbolic_test:
+            with identificationHelpers.Timer() as t:
+                YSym = np.empty((7,48))
+                pad = [0,0]  #symbolic code expects values for two more (static joints)
+                idinvbar.idinvbar(YSym, np.concatenate([[0], pos, pad]),
+                    np.concatenate([[0], vel, pad]), np.concatenate([[0], acc, pad]))
+                tmp = np.delete(YSym, (6,4,1), 1)
+                np.copyto(regressor_stack_sym[start:start+N_DOFS], tmp)
+            sym_time += t.interval
 
+    print('Numeric regressors took %.03f sec.' % num_time)
+    if symbolic_test:
+        print('Symbolic regressors took %.03f sec.' % sym_time)
 
     ## inverse stacked regressors and identify parameter vector
 
@@ -154,10 +180,12 @@ def main():
 
     # convert to numpy arrays
     YStd = regressor_stack
+    YBaseSym = regressor_stack_sym
     tau = torques_stack
     B = subspaceBasis.toNumPy()
 
     print "YStd: {}".format(YStd.shape)
+    print "YBaseSym: {}".format(YBaseSym.shape)
     print "tau: {}".format(tau.shape)
 
     # project regressor to base regressor, Y_base = Y_std*B
@@ -165,6 +193,9 @@ def main():
     print "YBase: {}".format(YBase.shape)
 
     # invert equation to get parameter vector from measurements and model + system state values
+    if symbolic_test:
+        YBaseSymInv = np.linalg.pinv(YBaseSym)
+
     YBaseInv = np.linalg.pinv(YBase)
     print "YBaseInv: {}".format(YBaseInv.shape)
 
@@ -176,6 +207,8 @@ def main():
 
     xBase = np.dot(YBaseInv, tau.T) #- np.sum( YBaseInv*jacobian*contactForces )
     #print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
+    if symbolic_test:
+        xBaseSym = np.dot(YBaseSymInv, tau.T)
 
     # project back to standard parameters
     xStd = np.dot(B, xBase)
@@ -197,14 +230,15 @@ def main():
     # estimate torques again with regressor and parameters
     print "xStd: {}".format(xStd.shape)
     print "xStdModel: {}".format(xStdModel.shape)
-    tauEst = np.dot(YStd, xStdModel)
+#    tauEst = np.dot(YStd, xStdModel)
 #    tauEst = np.dot(YStd, xStd)
-#    tauEst = np.dot(YBase, xBase)
+    tauEst = np.dot(YBase, xBase)
+
+    if symbolic_test:
+        tauEst = np.dot(YBaseSym, xBaseSym)
 
     #put in list of np vectors for plotting
     if not dynTest:
-        global torquesEst
-        torquesEst = list()
         for i in range(0, tauEst.shape[0]):
             if i % N_DOFS == 0:
                 tmp = np.zeros(N_DOFS)
@@ -215,7 +249,7 @@ def main():
     # some pretty printing of parameters
     if(args.explain):
         #optional: print COM-relative instead of frame origin-relative (linearized parameters)
-        helpers = IdentificationHelpers(N_PARAMS)
+        helpers = identificationHelpers.IdentificationHelpers(N_PARAMS)
         helpers.paramsFromiDyn2URDF(xStd)
         helpers.paramsFromiDyn2URDF(xStdModel)
 

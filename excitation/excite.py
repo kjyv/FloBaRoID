@@ -177,46 +177,39 @@ def main():
         sent_velocities.append(target_velocities)
         sent_time.append(yarp.Time.now())
 
-        #loop delay: wait for 2*0.005s=100Hz (not used when synced to GYM timing)
-        #yarp.Time.delay(0.010)
-
-        #wait for next value, so sync to GYM loop
+        #get and wait for next value, so sync to GYM loop
         data = data_port.read(shouldWait=True)
-        if data:    #can only be not true if shouldWait=False, need delay in that case
-            b_positions = data.get(0).asList()
-            b_velocities = data.get(1).asList()
-            b_torques = data.get(2).asList()
-            d_time = data.get(3).asDouble()
 
-            positions = np.zeros(N_DOFS)
-            velocities = np.zeros(N_DOFS)
-            accelerations = np.zeros(N_DOFS)
-            torques = np.zeros(N_DOFS)
+        b_positions = data.get(0).asList()
+        b_velocities = data.get(1).asList()
+        b_torques = data.get(2).asList()
+        d_time = data.get(3).asDouble()
 
-            if N_DOFS == b_positions.size():
-                for i in range(0, N_DOFS):
-                    positions[i] = b_positions.get(i).asDouble()
-                    velocities[i] = b_velocities.get(i).asDouble()
-                    torques[i] = b_torques.get(i).asDouble()
-            else:
-                print "warning, wrong amount of values received! ({} DOFS vs. {})".format(N_DOFS, b_positions.size())
+        positions = np.zeros(N_DOFS)
+        velocities = np.zeros(N_DOFS)
+        accelerations = np.zeros(N_DOFS)
+        torques = np.zeros(N_DOFS)
 
-            #test manual correction for position error
-            #p = 0
-            #for i in range(0,N_DOFS):
-            #    e[i] = (angles[i] - positions[i])
-            #    velocity_correction[i] = e[i]*p
-
-            #collect measurement data
-            measured_positions.append(positions)
-            measured_velocities.append(velocities)
-            measured_torques.append(torques)
-            measured_time.append(d_time)
-
-            t_elapsed = d_time - t_init
+        if N_DOFS == b_positions.size():
+            for i in range(0, N_DOFS):
+                positions[i] = b_positions.get(i).asDouble()
+                velocities[i] = b_velocities.get(i).asDouble()
+                torques[i] = b_torques.get(i).asDouble()
         else:
-            print "oops, skipped reading one frame"
-            t_elapsed = yarp.Time.now() - t_init
+            print "warning, wrong amount of values received! ({} DOFS vs. {})".format(N_DOFS, b_positions.size())
+
+        #test manual correction for position error
+        #p = 0
+        #for i in range(0,N_DOFS):
+        #    e[i] = (angles[i] - positions[i])
+        #    velocity_correction[i] = e[i]*p
+
+        #collect measurement data
+        measured_positions.append(positions)
+        measured_velocities.append(velocities)
+        measured_torques.append(torques)
+        measured_time.append(d_time)
+        t_elapsed = d_time - t_init
 
     #clean up
     command_port.close()
@@ -410,7 +403,7 @@ def plot():
 
     datasets = [
             ([M1, Qraw], 'Positions'),
-            ([M2, Vraw],'Velocities'),
+            ([M2, np.empty(0), Vraw],'Velocities'),
             ([M2_dot,], 'Accelerations'),
             ([M3, TauRaw],'Measured Torques')
             ]
@@ -419,9 +412,12 @@ def plot():
         plt.figure()
         plt.title(title)
         for d_i in range(0, len(data)):
+            if not data[d_i].size:
+                continue
             for i in range(0, N_DOFS):
                 l = jointNames[i] if d_i == 0 else ''  #only put joint names in the legend once
-                plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                plt.plot(T, data[d_i][:, i], label=l, color=colors[i],
+                        alpha=1-(d_i/3.0))
         plt.legend(loc='lower right')
 
     #yarp times over time indices

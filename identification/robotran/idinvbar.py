@@ -11,10 +11,10 @@ def idinvbar(PHI_t, q, qd, qdd):
     #(whats this?)
     d = np.array(
         [
-        [  0.,	 0.,	0., 	0.,    	0.,		0.,     0.,			0.,		0.,		0.],
-        [  0.,	 0.,    0., 	0.,     0.,     0.,  0.036,		-0.075,		0.,		0.],
-        [  0.,	 0.,	0., 	0.,-0.10914,	0., 	0.,			0.,		0.,		0.],
-        [  0.,	 0.,	0., 	0., -0.053,	-0.222,  -0.15,	   -0.1955,	    0.,	-0.092]
+        [  0.,	 0.,	0., 	0.,    	0.,	0.,     0.,	0.,		0.,	0.],
+        [  0.,	 0.,    0., 	0.,     0.,     0.,  0.036,	-0.075,		0.,	0.],
+        [  0.,	 0.,	0., 	0.,-0.10914,	0., 	0.,	0.,		0.,	0.],
+        [  0.,	 0.,	0., 	0., -0.053,	-0.222,  -0.15,	   -0.1955,    0.,	-0.092]
         ]
     )
 
@@ -1061,8 +1061,7 @@ def idinvbar(PHI_t, q, qd, qdd):
     PHI[9][47] = pd57CF19
     PHI[9][48] = pd58CF19
 
-    #	Number of continuation lines = 0
-    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints. So they should be discard.
+    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints. So they should be discard
     for i in range(1+2, 10):
         for j in range(1, 49):
             PHI_t[i-3, j-1] = PHI[i][j]

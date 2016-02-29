@@ -58,6 +58,15 @@ class OscillationGenerator(object):
             dq = np.rad2deg(dq)
         return dq
 
+    def getAcceleration(self, t):
+        ddq = 0
+        for l in range(1, self.nf+1):
+            ddq += -self.a[l-1]*self.w_f*l*np.sin(self.w_f*l*t) + \
+                  self.b[l-1]*self.w_f*l*np.cos(self.w_f*l*t)
+        if self.use_deg:
+            ddq = np.rad2deg(ddq)
+        return ddq
+
 class TrajectoryGenerator(object):
     def __init__(self, dofs):
         self.dofs = dofs
@@ -78,6 +87,9 @@ class TrajectoryGenerator(object):
 
     def getVelocity(self, dof):
         return self.oscillators[dof].getVelocity(self.time)
+
+    def getAcceleration(self, dof):
+        return self.oscillators[dof].getAcceleration(self.time)
 
     def getPeriodLength(self):   #in seconds
         return 2*np.pi/self.w_f_global
@@ -131,6 +143,7 @@ def main():
     sent_positions = list()
     sent_time = list()
     sent_velocities = list()
+    sent_accelerations = list()
 
     #try high level p correction when using velocity ctrl
     #e = [0] * N_DOFS
@@ -147,6 +160,7 @@ def main():
         trajectories.setTime(t_elapsed)
         target_angles = [trajectories.getAngle(i) for i in range(0, N_DOFS)]
         target_velocities = [trajectories.getVelocity(i) for i in range(0, N_DOFS)]
+        target_accelerations = [trajectories.getAcceleration(i) for i in range(0, N_DOFS)]
         #for i in range(0, N_DOFS):
         #    target_velocities[i]+=velocity_correction[i]
 
@@ -175,6 +189,7 @@ def main():
 
         sent_positions.append(target_angles)
         sent_velocities.append(target_velocities)
+        sent_accelerations.append(target_accelerations)
         sent_time.append(yarp.Time.now())
 
         #get and wait for next value, so sync to GYM loop
@@ -216,6 +231,8 @@ def main():
     data_port.close()
     Q = np.array(measured_positions); del measured_positions
     Qsent = np.array(sent_positions);
+    QdotSent = np.array(sent_velocities);
+    QddotSent = np.array(sent_accelerations);
     global Qraw
     Qraw = np.zeros_like(Q)   #will be calculated in preprocess()
     V = np.array(measured_velocities); del measured_velocities
@@ -232,27 +249,27 @@ def main():
     global measured_frequency
     measured_frequency = len(sent_positions)/duration
 
-    #filter, differentiate, convert, etc.
-    preprocess(Q, Qraw, Qsent, V, Vraw, Vself, Vdot, Tau, TauRaw, T)
-
-    #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=Q, target_positions=Qsent,
-            velocities=Vself, accelerations=Vdot, torques=Tau, times=T)
-    print "saved measurements to {}".format(args.filename)
-
     ## some stats
     print "got {} samples in {}s.".format(Q.shape[0], duration),
     print "(about {} Hz)".format(measured_frequency)
 
-def preprocess(posis, posis_unfiltered, posis_sent, vels, vels_unfiltered, vels_self,
+    #filter, differentiate, convert, etc.
+    preprocess(Q, Qraw, V, Vraw, Vself, Vdot, Tau, TauRaw, T)
+
+    #write sample arrays to data file
+    np.savez_compressed(args.filename, positions=Q, velocities=Vself,
+            accelerations=Vdot, torques=Tau,
+            target_positions=np.deg2rad(Qsent), target_velocities=np.deg2rad(QdotSent),
+            target_accelerations=np.deg2rad(QddotSent), times=T)
+    print "saved measurements to {}".format(args.filename)
+
+def preprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
                accls, torques, torques_unfiltered, times):
     #convert degs to rads
     #assuming angles don't wrap, otherwise use np.unwrap before
     posis_rad = np.deg2rad(posis)
-    posis_sent_rad = np.deg2rad(posis_sent)
     vels_rad = np.deg2rad(vels)
     np.copyto(posis, posis_rad)
-    np.copyto(posis_sent, posis_sent_rad)
     np.copyto(vels, vels_rad)
 
     #low-pass filter positions

@@ -9,7 +9,7 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import identificationHelpers
 
 #symbolic regression
-from robotran import idinvbar
+from robotran import idinvbar, invdynabar
 
 #TODO: load full model and programmatically cut off chain from certain joints/links, change values
 #in urdf?
@@ -83,86 +83,102 @@ class Identification(object):
         self.torques_stack = np.empty(shape=(self.N_DOFS*self.num_samples))
 
     def computeRegressors(self):
-        #test standard model dynamics with DynamicsComputations class
-        self.dynTest = False
+        self.robotranRegressor = True  #use robotran symbolic regressor to estimate torques (else iDyntreee)
+        if self.robotranRegressor:
+            print("using robotran regressor")
+        self.iDynSimulate = False #simulate torque using idyntree (instead of reading measurements)
+        if self.iDynSimulate:
+            print("using iDynTree to simulate robot dynamics")
+        self.robotranSimulate = True  #simulate torque using robotran (instead of reading measurements)
+        if self.robotranSimulate and not self.iDynSimulate:
+            print("using robotran to simulate robot dynamics")
+        self.simulate = self.iDynSimulate or self.robotranSimulate
 
-        #test robotran symbolic regressor code
-        self.symbolic_test = False
         sym_time = 0
         num_time = 0
 
-        if self.dynTest:
+        if self.simulate:
             dynComp = iDynTree.DynamicsComputations();
             dynComp.loadRobotModelFromFile(self.URDF_FILE);
             gravity = iDynTree.SpatialAcc();
+            gravity.zero()
             gravity.setVal(2, -9.81);
 
         self.torquesEst = list()
+        self.tauMeasured = list()
 
         #loop over measurements records (skip some values from the start)
         #and get regressors for each system state
         for row in range(0+self.start_offset, self.num_samples+self.start_offset):
-            pos = self.measurements['positions'][row]
-            vel = self.measurements['velocities'][row]
-            acc = self.measurements['accelerations'][row]
-            torq = self.measurements['torques'][row]
+            if self.simulate:
+                pos = self.measurements['target_positions'][row]
+                vel = self.measurements['target_velocities'][row]
+                acc = self.measurements['target_accelerations'][row]
+            else:
+                #read measurements
+                pos = self.measurements['positions'][row]
+                vel = self.measurements['velocities'][row]
+                acc = self.measurements['accelerations'][row]
+                torq = self.measurements['torques'][row]
 
             #use zero based again for matrices etc.
             row-=self.start_offset
 
-            # set system state
+            # system state
             q = iDynTree.VectorDynSize.fromPyList(pos)
             dq = iDynTree.VectorDynSize.fromPyList(vel)
             ddq = iDynTree.VectorDynSize.fromPyList(acc)
 
-            if self.dynTest:
+            if self.iDynSimulate:
+                #calc torques with iDynTree dynamicsComputation class
                 dynComp.setRobotState(q, dq, ddq, gravity)
-                """
-                regressor = iDynTree.MatrixDynSize(N_DOFS, N_PARAMS)
-                ok = dynComp.getDynamicsRegressor(regressor)
-                if( not ok ):
-                    print "Error in computing the dynamics regressor"
-                """
 
                 torques = iDynTree.VectorDynSize(self.N_DOFS)
-                baseReactionForce = iDynTree.Wrench()
+                baseReactionForce = iDynTree.Wrench()   #assume zero
 
-                # compute id with inverse dynamics
+                # compute inverse dynamics with idyntree (simulate)
                 dynComp.inverseDynamics(torques, baseReactionForce)
-                self.torquesEst.append(torques.toNumPy())
+                torq = torques.toNumPy()
+            elif self.robotranSimulate:
+                #TODO: use invdynabar.invdynabar()
+                torq = np.zeros(self.N_DOFS)
 
-            with identificationHelpers.Timer() as t:
-                self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
-                self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
-
-                # get (standard) regressor
-                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
-                knownTerms = iDynTree.VectorDynSize(self.N_OUT)    #what are known terms useable for?
-                if not self.generator.computeRegressor(regressor, knownTerms):
-                    print "Error while computing regressor"
-
-                start = self.N_DOFS*row
-                YStd = regressor.toNumPy()
-                #stack on previous regressors
-                np.copyto(self.regressor_stack[start:start+self.N_DOFS], YStd)
-                np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
-            num_time += t.interval
-
-            if self.symbolic_test:
+            start = self.N_DOFS*row
+            #use symobolic regressor to get numeric regressor matrix
+            if self.robotranRegressor:
                 with identificationHelpers.Timer() as t:
                     YSym = np.empty((7,48))
                     pad = [0,0]  #symbolic code expects values for two more (static joints)
                     idinvbar.idinvbar(YSym, np.concatenate([[0], pos, pad]),
                         np.concatenate([[0], vel, pad]), np.concatenate([[0], acc, pad]))
-                    tmp = np.delete(YSym, (6,4,1), 1)
+                    tmp = np.delete(YSym, (6,4,1), 1)   #remove unnecessary columns (numbers from generated code)
                     np.copyto(self.regressor_stack_sym[start:start+self.N_DOFS], tmp)
                 sym_time += t.interval
+            else:
+                #get numerical regressor
+                with identificationHelpers.Timer() as t:
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
+                    self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
-        print('Numeric regressors took %.03f sec.' % num_time)
-        if self.symbolic_test:
+                    # get (standard) regressor
+                    regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+                    knownTerms = iDynTree.VectorDynSize(self.N_OUT)    #what are known terms useable for?
+                    if not self.generator.computeRegressor(regressor, knownTerms):
+                        print "Error during numeric computation of regressor"
+
+                    YStd = regressor.toNumPy()
+                    #stack on previous regressors
+                    np.copyto(self.regressor_stack[start:start+self.N_DOFS], YStd)
+                num_time += t.interval
+
+            np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
+
+        if self.robotranRegressor:
             print('Symbolic regressors took %.03f sec.' % sym_time)
+        else:
+            print('Numeric regressors took %.03f sec.' % num_time)
 
-    def invert(self):
+    def identify(self):
         ## inverse stacked regressors and identify parameter vector
 
         # get subspace basis (for projection to base regressor/parameters)
@@ -186,7 +202,7 @@ class Identification(object):
         print "YBase: {}".format(YBase.shape)
 
         # invert equation to get parameter vector from measurements and model + system state values
-        if self.symbolic_test:
+        if self.robotranRegressor:
             YBaseSymInv = np.linalg.pinv(YBaseSym)
 
         YBaseInv = np.linalg.pinv(YBase)
@@ -198,13 +214,17 @@ class Identification(object):
         #jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
         #generator.getFrameJacobian('arm', jacobian)
 
-        xBase = np.dot(YBaseInv, tau.T) #- np.sum( YBaseInv*jacobian*contactForces )
         #print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
-        if self.symbolic_test:
-            self.xBaseSym = np.dot(YBaseSymInv, tau.T)
+        if self.robotranRegressor:
+            xBaseSym = np.dot(YBaseSymInv, tau.T)
+        else:
+            xBase = np.dot(YBaseInv, tau.T) #- np.sum( YBaseInv*jacobian*contactForces )
 
         # project back to standard parameters
-        self.xStd = np.dot(B, xBase)
+        if self.robotranRegressor:
+            self.xStd = np.dot(B, xBaseSym)
+        else:
+            self.xStd = np.dot(B, xBase)
         #print "The standard parameter vector {} is \n{}".format(xStd.shape, xStd)
 
         # thresholding
@@ -220,33 +240,44 @@ class Identification(object):
 
         ## generate output
 
-        # estimate torques again with regressor and parameters
-        print "xStd: {}".format(self.xStd.shape)
-        print "xStdModel: {}".format(self.xStdModel.shape)
-    #    tauEst = np.dot(YStd, xStdModel) #idyntree standard regressor and parameters from URDF model
-    #    tauEst = np.dot(YStd, xStd)    #idyntree standard regressor and estimated standard parameters
-        tauEst = np.dot(YBase, xBase)   #idyntree base regressor and identified base parameters
+        if self.robotranRegressor:
+            tauEst = np.dot(YBaseSym, xBaseSym)
+        else:
+            # estimate torques again with regressor and parameters
+            print "xStd: {}".format(self.xStd.shape)
+            print "xStdModel: {}".format(self.xStdModel.shape)
+        #    tauEst = np.dot(YStd, xStdModel) #idyntree standard regressor and parameters from URDF model
+        #    tauEst = np.dot(YStd, xStd)    #idyntree standard regressor and estimated standard parameters
+            tauEst = np.dot(YBase, xBase)   #idyntree base regressor and identified base parameters
 
-        if self.symbolic_test:
-            tauEst = np.dot(YBaseSym, self.xBaseSym)
-            self.xStdSym = np.dot(B, self.xBaseSym)
+        #put estimated torques in list of np vectors for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
+        for i in range(0, tauEst.shape[0]):
+            if i % self.N_DOFS == 0:
+                tmp = np.zeros(self.N_DOFS)
+                for j in range(0, self.N_DOFS):
+                    tmp[j] = tauEst[i+j]
+                self.torquesEst.append(tmp)
+        self.torquesEst = np.array(self.torquesEst)
 
-        #put in list of np vectors for plotting
-        if not self.dynTest:
-            for i in range(0, tauEst.shape[0]):
+        if self.simulate:
+            for i in range(0, tau.shape[0]):
                 if i % self.N_DOFS == 0:
                     tmp = np.zeros(self.N_DOFS)
                     for j in range(0, self.N_DOFS):
-                        tmp[j] = tauEst[i+j]
-                    self.torquesEst.append(tmp)
+                        tmp[j] = tau[i+j]
+                    self.tauMeasured.append(tmp)
+            self.tauMeasured = np.array(self.tauMeasured)
+        else:
+            self.tauMeasured = self.measurements['torques']
 
     def explain(self):
         # some pretty printing of parameters
         if(args.explain):
             #optional: convert to COM-relative instead of frame origin-relative (linearized parameters)
             helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
-            helpers.paramsFromiDyn2URDF(self.xStd)
-            helpers.paramsFromiDyn2URDF(self.xStdModel)
+            if not self.robotranRegressor:
+                helpers.paramsLink2Bary(self.xStd)
+            helpers.paramsLink2Bary(self.xStdModel)
 
             #collect values for parameters
             description = self.generator.getDescriptionOfParameters()
@@ -291,9 +322,11 @@ class Identification(object):
                  ]
 
         datasets = [
-                    ([self.measurements['torques'][self.start_offset:, :]], 'Measured Torques'),
-                    ([np.array(self.torquesEst)], 'Estimated Torques'),
+                    ([self.tauMeasured], 'Measured Torques'),
+                    ([self.torquesEst], 'Estimated Torques'),
                    ]
+        print "torque diff: {}".format(self.tauMeasured - self.torquesEst)
+
         T = self.measurements['times'][self.start_offset:]
         for (data, title) in datasets:
             plt.figure()
@@ -312,7 +345,7 @@ if __name__ == '__main__':
     try:
         identification = Identification()
         identification.computeRegressors()
-        identification.invert()
+        identification.identify()
         if(args.explain):
             identification.explain()
         if(args.plot):

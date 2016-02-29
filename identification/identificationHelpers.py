@@ -42,8 +42,8 @@ class IdentificationHelpers(object):
         inertia.setVal(2, 2, value)
         return inertia
 
-    def paramsFromiDyn2URDF(self, params):
-        ## convert params from iDynTree values to values usable in URDF (mass, com, inertia)
+    def paramsLink2Bary(self, params):
+        ## convert params from iDynTree values (relative to link frame) to values usable in URDF (barycentric)
         ## (params are changed in place)
 
         #mass is mass
@@ -75,5 +75,5 @@ class IdentificationHelpers(object):
                 params[i+8] = rot_inertia_com.getVal(1, 2)    #xy w.r.t. com
                 params[i+9] = rot_inertia_com.getVal(2, 2)    #xz w.r.t. com
 
-    def paramsFromURDF2iDyn(self, params):
+    def paramsBary2Link(self, params):
         return

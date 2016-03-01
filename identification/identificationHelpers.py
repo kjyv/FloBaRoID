@@ -71,9 +71,9 @@ class IdentificationHelpers(object):
                 params[i+4] = rot_inertia_com.getVal(0, 0)    #xx w.r.t. com
                 params[i+5] = rot_inertia_com.getVal(0, 1)    #xy w.r.t. com
                 params[i+6] = rot_inertia_com.getVal(0, 2)    #xz w.r.t. com
-                params[i+7] = rot_inertia_com.getVal(1, 1)    #xx w.r.t. com
-                params[i+8] = rot_inertia_com.getVal(1, 2)    #xy w.r.t. com
-                params[i+9] = rot_inertia_com.getVal(2, 2)    #xz w.r.t. com
+                params[i+7] = rot_inertia_com.getVal(1, 1)    #yy w.r.t. com
+                params[i+8] = rot_inertia_com.getVal(1, 2)    #yz w.r.t. com
+                params[i+9] = rot_inertia_com.getVal(2, 2)    #zz w.r.t. com
 
     def paramsBary2Link(self, params):
         return

@@ -7,8 +7,8 @@ from math import sin, cos
 def idinvbar(PHI_t, q, qd, qdd):
     #double PHI_t[7][48], double q[10],double qd[10], double qdd[10]
 
-    # points of the kinematic chain
-    #(whats this?)
+    """
+    # points of the kinematic chain (relative distances for one joint from the previous)
     d = np.array(
         [
         [  0.,	 0.,	0., 	0.,    	0.,	0.,     0.,	0.,		0.,	0.],
@@ -17,9 +17,20 @@ def idinvbar(PHI_t, q, qd, qdd):
         [  0.,	 0.,	0., 	0., -0.053,	-0.222,  -0.15,	   -0.1955,    0.,	-0.092]
         ]
     )
+    """
+
+    #idyntree generated
+    d = np.array(
+        [
+        [0.,  0.,  0.,    0.,        0.,        0.,        0.,        0.,        0.,        0.   ],
+        [0.,  0.,  0.,    0.045646,  0.,        0.,        0.036,    -0.075,     0.,        0.   ],
+        [0.,  0.,  0.,    0.219164,  0.116568,  0.,        0.,        0.,        0.,        0.   ],
+        [0.,  0.,  0.,    0.001531,  0.03364,  -0.222,    -0.15,     -0.1955,    0.,       -0.092 ],
+        ]
+    )
 
     # gravity
-    g = [0.0, 0.0, -9.81, 0.0]
+    g = [0.0, 0.0, 0.0, -9.81]
     PHI = np.zeros((10, 49))
 
     # Trigonometric Variables
@@ -1061,7 +1072,8 @@ def idinvbar(PHI_t, q, qd, qdd):
     PHI[9][47] = pd57CF19
     PHI[9][48] = pd58CF19
 
-    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints. So they should be discard
+    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints.
+    # So they should be discarded
     for i in range(1+2, 10):
         for j in range(1, 49):
-            PHI_t[i-3, j-1] = PHI[i][j]
+            PHI_t[i-3, j-1] = PHI[i, j]

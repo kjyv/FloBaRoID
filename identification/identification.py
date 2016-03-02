@@ -365,7 +365,7 @@ class Identification(object):
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
                   [ 0.90980392,  0.37647059,  0.84705882],
-                  [ 0.94117647,  0.03137255,  0.59607843],
+                  [ 0.84705882,  0.        ,  0.1254902 ],
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
@@ -384,7 +384,8 @@ class Identification(object):
                 for d_i in range(0, len(data)):
                     l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
                     plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
-            plt.legend(loc='upper left')
+            leg = plt.legend(loc='best', fancybox=True, fontsize=10)
+            leg.draggable()
         plt.show()
         self.measurements.close()
 

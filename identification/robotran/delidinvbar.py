@@ -6,13 +6,14 @@
 import numpy as np
 from math import sin, cos
 
-def delidinvbar(delta_out, m, l, In):
+def delidinvbar(delta_out, m, l, In, d):
     # delta_out is a vector of 48 values which the basis inertial parameters will be written to.
     # l contains the positions (3x1) of the center of mass of each body relative to its (parent) joint. (()()
     # LShp ...) so overall (4x10) with matlab indexing
     # m are the masses for each of the links (child after the joint)
     # In contains the body inertia matrix represented as a 9x1 vector (although only 6 elements are
     # used due to the symmetry) for each body. It is represented relative to the center of mass.
+    # d contains the position of the joints relative to their parent joints (kinematic parameters) (3 x N_DOF)
 
     # Note, the "0" elements of vectors (vec[0]) are always set to zero. We use a matlab-like convention
     # with array elements starting at index 1 (vec[1]).
@@ -20,6 +21,7 @@ def delidinvbar(delta_out, m, l, In):
 
     #relative joint positions, parent to child (as in urdf)
     #() () () LShSag LShLat LShYaw LElbj LForearmPlate LWrj1 LWrj2
+    """
     d = np.array(
         [
             [0.,  0.,  0.,    0.,        0.,        0.,        0.,        0.,        0.,        0.   ],
@@ -28,6 +30,7 @@ def delidinvbar(delta_out, m, l, In):
             [0.,  0.,  0.,    0.001531,  0.03364,  -0.222,    -0.15,     -0.1955,    0.,       -0.092 ],
         ]
     )
+    """
 
     # Barycentric Masses
 

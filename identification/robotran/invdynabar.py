@@ -6,7 +6,7 @@
 import numpy as np
 from math import sin, cos
 
-def invdynabar(Qq_out, q, qd, qdd, delta):
+def invdynabar(Qq_out, q, qd, qdd, delta, d):
     #Qq_out is a vector of 9 values which the calculated torques will be written to.
     #q,qd,qdd are the joint positions and their derivates
     #d contains the position of the joints relative to their parent joints (kinematic parameters) (3 x N_DOF)
@@ -16,6 +16,7 @@ def invdynabar(Qq_out, q, qd, qdd, delta):
     #with array elements starting at index 1 (vec[1]).
 
     # points of the kinematic chain (relative distances for one joint from the previous)
+    """
     d = np.array(
         [
         [0.,  0.,  0.,    0.,        0.,        0.,        0.,        0.,        0.,        0.   ],
@@ -24,6 +25,7 @@ def invdynabar(Qq_out, q, qd, qdd, delta):
         [0.,  0.,  0.,    0.001531,  0.03364,  -0.222,    -0.15,     -0.1955,    0.,       -0.092 ],
         ]
     )
+    """
 
     # gravity
     g = [0.0, 0.0, 0.0, -9.81]
@@ -283,16 +285,13 @@ def invdynabar(Qq_out, q, qd, qdd, delta):
 
     # Symbolic Outputs
 
-    Qq = np.empty((9))
-    Qq[0] = CF11
-    Qq[1] = CF32
-    Qq[2] = CF23
-    Qq[3] = CF14
-    Qq[4] = CF35
-    Qq[5] = CF26
-    Qq[6] = CF37
-    Qq[7] = CF28
-    Qq[8] = CF19
+    #Qq[0] = CF11
+    #Qq[1] = CF32
+    Qq_out[0] = CF23
+    Qq_out[1] = CF14
+    Qq_out[2] = CF35
+    Qq_out[3] = CF26
+    Qq_out[4] = CF37
+    Qq_out[5] = CF28
+    Qq_out[6] = CF19
 
-    for i in range(2, Qq.size-1):
-        Qq_out[i-2] = Qq[i]

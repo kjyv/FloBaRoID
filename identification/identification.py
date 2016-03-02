@@ -27,8 +27,7 @@ args = parser.parse_args()
 class Identification(object):
     def __init__(self):
         ## options
-        self.robotranRegressor = True # use robotran symbolic regressor to estimate torques (else iDyntreee)
-
+        self.robotranRegressor = False # use robotran symbolic regressor to estimate torques (else iDyntreee)
         #don't use both
         self.iDynSimulate = False # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = True # simulate torque using robotran (instead of reading measurements)
@@ -118,6 +117,42 @@ class Identification(object):
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
 
+        if self.robotranSimulate:
+            #get urdf model parameters as base parameters (for robotran inverse kinematics)
+            xStdModelBary = self.xStdModel.copy()
+            self.helpers.paramsLink2Bary(xStdModelBary)
+            m = np.zeros(self.N_DOFS+3)   #masses
+            l = np.zeros((4, self.N_DOFS+3))  #com positions
+            inert = np.zeros((10, 10))   #inertias
+            for i in range(0, self.N_DOFS+2):
+                m[i+1] = xStdModelBary[i*10]
+                l[1, i+1] = xStdModelBary[i*10+1]
+                l[2, i+1] = xStdModelBary[i*10+2]
+                l[3, i+1] = xStdModelBary[i*10+3]
+                inert[1, i+1] = xStdModelBary[i*10+4]     #xx w.r.t. com
+                inert[2, i+1] = xStdModelBary[i*10+5]     #xy w.r.t. com
+                inert[3, i+1] = xStdModelBary[i*10+6]     #xz w.r.t. com
+                inert[4, i+1] = xStdModelBary[i*10+5]     #yx
+                inert[5, i+1] = xStdModelBary[i*10+7]     #yy w.r.t. com
+                inert[6, i+1] = xStdModelBary[i*10+8]     #yz w.r.t. com
+                inert[7, i+1] = xStdModelBary[i*10+6]     #zx
+                inert[8, i+1] = xStdModelBary[i*10+8]     #zy
+                inert[9, i+1] = xStdModelBary[i*10+9]     #zz w.r.t. com
+
+            model = iDynTree.Model()
+            iDynTree.modelFromURDF(args.model, model)
+
+            # get relative link positions
+            d = np.zeros((4,10))  # should be 3 x 7, but invdynabar is funny and uses matlab indexing
+            for i in range(1, self.N_DOFS+1):
+                j = model.getJoint(i-1)
+                #get position relative to parent joint
+                l1 = j.getFirstAttachedLink()
+                l2 = j.getSecondAttachedLink()
+                t = j.getRestTransform(l1, l2)
+                p = t.getPosition().toNumPy()
+                d[1:4, i+2] = p
+
         self.torquesEst = list()
         self.tauMeasured = list()
 
@@ -154,52 +189,15 @@ class Identification(object):
                 dynComp.inverseDynamics(torques, baseReactionForce)
                 torq = torques.toNumPy()
             elif self.robotranSimulate:
-                model = iDynTree.Model()
-                iDynTree.modelFromURDF(args.model, model)
                 torq = np.zeros(self.N_DOFS)
-                """
-                # get relative link positions
-                d = np.zeros((4,10))  # should be 3 x 7, but invdynabar is funny and uses matlab indexing (pff)
-                for i in range(1, self.N_DOFS+1):
-                    j = model.getJoint(i-1)
-                    #get position relative to parent joint
-                    l1 = j.getFirstAttachedLink()
-                    l2 = j.getSecondAttachedLink()
-                    t = j.getTransform(q, l1, l2)
-                    p = t.getPosition().toNumPy()
-                    d[1:4, i] = p
-                """
-
-                #get urdf model parameters as base parameters
-                #TODO: can move this out of the loop
-                xStdModelBary = self.xStdModel.copy()
-                self.helpers.paramsLink2Bary(xStdModelBary)
-                m = np.zeros(self.N_DOFS+3)
-                l = np.zeros((4, self.N_DOFS+3))
-                inert = np.zeros((10, 10))
-                for i in range(0, self.N_DOFS+2):
-                    m[i+1] = xStdModelBary[i*10]
-                    l[1, i+1] = xStdModelBary[i*10+1]
-                    l[2, i+1] = xStdModelBary[i*10+2]
-                    l[3, i+1] = xStdModelBary[i*10+3]
-                    inert[1, i+1] = xStdModelBary[i*10+4]     #xx w.r.t. com
-                    inert[2, i+1] = xStdModelBary[i*10+5]     #xy w.r.t. com
-                    inert[3, i+1] = xStdModelBary[i*10+6]     #xz w.r.t. com
-                    inert[4, i+1] = xStdModelBary[i*10+5]     #yx
-                    inert[5, i+1] = xStdModelBary[i*10+7]     #yy w.r.t. com
-                    inert[6, i+1] = xStdModelBary[i*10+8]     #yz w.r.t. com
-                    inert[7, i+1] = xStdModelBary[i*10+6]     #zx
-                    inert[8, i+1] = xStdModelBary[i*10+8]     #zy
-                    inert[9, i+1] = xStdModelBary[i*10+9]     #zz w.r.t. com
 
                 self.xStdModelAsBase = np.zeros(48)
-                delidinvbar.delidinvbar(self.xStdModelAsBase, m, l, inert)
+                delidinvbar.delidinvbar(self.xStdModelAsBase, m, l, inert, d)
 
                 #get dynamics from robotran equations
                 pad = [0,0]
-                invdynabar.invdynabar(torq, np.concatenate(([0], pos, pad)), np.concatenate(([0], vel, pad)),
-                    np.concatenate(([0], acc, pad)), np.concatenate(([0], self.xStdModelAsBase))
-                )
+                invdynabar.invdynabar(torq, np.concatenate(([0], pad, pos)), np.concatenate(([0], pad, vel)),
+                    np.concatenate(([0], pad, acc)), np.concatenate(([0], self.xStdModelAsBase)), d)
 
             start = self.N_DOFS*row
             # use symobolic regressor to get numeric regressor matrix
@@ -207,8 +205,8 @@ class Identification(object):
                 with identificationHelpers.Timer() as t:
                     YSym = np.empty((7,48))
                     pad = [0,0]  # symbolic code expects values for two more (static joints)
-                    idinvbar.idinvbar(YSym, np.concatenate([[0], pos, pad]),
-                        np.concatenate([[0], vel, pad]), np.concatenate([[0], acc, pad]))
+                    idinvbar.idinvbar(YSym, np.concatenate([[0], pad, pos]),
+                        np.concatenate([[0], pad, vel]), np.concatenate([[0], pad, acc]), d)
                     tmp = np.delete(YSym, (5,3,0), 1)   # remove unnecessary columns (numbers from generated code)
                     np.copyto(self.regressor_stack_sym[start:start+self.N_DOFS], tmp)
                 sym_time += t.interval
@@ -296,9 +294,9 @@ class Identification(object):
             # estimate torques again with regressor and parameters
             print "xStd: {}".format(self.xStd.shape)
             print "xStdModel: {}".format(self.xStdModel.shape)
-            tauEst = np.dot(YStd, self.xStdModel) # idyntree standard regressor and parameters from URDF model
+        #    tauEst = np.dot(YStd, self.xStdModel) # idyntree standard regressor and parameters from URDF model
         #    tauEst = np.dot(YStd, self.xStd)    # idyntree standard regressor and estimated standard parameters
-        #    tauEst = np.dot(YBase, xBase)   # idyntree base regressor and identified base parameters
+            tauEst = np.dot(YBase, xBase)   # idyntree base regressor and identified base parameters
 
         # put estimated torques in list of np vectors for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
         for i in range(0, tauEst.shape[0]):

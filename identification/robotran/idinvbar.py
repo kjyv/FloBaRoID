@@ -4,11 +4,12 @@ from math import sin, cos
 #robotran generated model for one arm of walk-man
 #writes (numeric) dynamics regressor for one system state into PHI_t
 
-def idinvbar(PHI_t, q, qd, qdd):
+def idinvbar(PHI_t, q, qd, qdd, d):
     #double PHI_t[7][48], double q[10],double qd[10], double qdd[10]
 
     """
     # points of the kinematic chain (relative distances for one joint from the previous)
+    # (as in robotran mex file, seems different)
     d = np.array(
         [
         [  0.,	 0.,	0., 	0.,    	0.,	0.,     0.,	0.,		0.,	0.],
@@ -18,16 +19,6 @@ def idinvbar(PHI_t, q, qd, qdd):
         ]
     )
     """
-
-    #idyntree generated
-    d = np.array(
-        [
-        [0.,  0.,  0.,    0.,        0.,        0.,        0.,        0.,        0.,        0.   ],
-        [0.,  0.,  0.,    0.045646,  0.,        0.,        0.036,    -0.075,     0.,        0.   ],
-        [0.,  0.,  0.,    0.219164,  0.116568,  0.,        0.,        0.,        0.,        0.   ],
-        [0.,  0.,  0.,    0.001531,  0.03364,  -0.222,    -0.15,     -0.1955,    0.,       -0.092 ],
-        ]
-    )
 
     # gravity
     g = [0.0, 0.0, 0.0, -9.81]

@@ -4,11 +4,12 @@ from math import sin, cos
 #robotran generated model for one arm of walk-man
 #writes (numeric) dynamics regressor for one system state into PHI_t
 
-def idinvbar(PHI_t, q, qd, qdd):
+def idinvbar(PHI_t, q, qd, qdd, d):
     #double PHI_t[7][48], double q[10],double qd[10], double qdd[10]
 
-    # points of the kinematic chain
-    #(whats this?)
+    """
+    # points of the kinematic chain (relative distances for one joint from the previous)
+    # (as in robotran mex file, seems different)
     d = np.array(
         [
         [  0.,	 0.,	0., 	0.,    	0.,	0.,     0.,	0.,		0.,	0.],
@@ -17,9 +18,10 @@ def idinvbar(PHI_t, q, qd, qdd):
         [  0.,	 0.,	0., 	0., -0.053,	-0.222,  -0.15,	   -0.1955,    0.,	-0.092]
         ]
     )
+    """
 
     # gravity
-    g = [0.0, 0.0, -9.81, 0.0]
+    g = [0.0, 0.0, 0.0, -9.81]
     PHI = np.zeros((10, 49))
 
     # Trigonometric Variables
@@ -1061,7 +1063,8 @@ def idinvbar(PHI_t, q, qd, qdd):
     PHI[9][47] = pd57CF19
     PHI[9][48] = pd58CF19
 
-    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints. So they should be discard
+    # /!\ start at 3 because PHI[1][*] and PHI[2][*] are regressor of blocked joints.
+    # So they should be discarded
     for i in range(1+2, 10):
         for j in range(1, 49):
-            PHI_t[i-3, j-1] = PHI[i][j]
+            PHI_t[i-3, j-1] = PHI[i, j]

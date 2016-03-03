@@ -12,9 +12,10 @@ parser = argparse.ArgumentParser(description='Generate an excitation and record 
 parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
 parser.add_argument('--filename', type=str, help='the filename to save the measurements to')
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
-parser.add_argument('--plot', help='plot sent/received data', action='store_true')
+parser.add_argument('--plot', help='plot measured data', action='store_true')
 parser.add_argument('--dryrun', help="don't not send the trajectory", action='store_true')
 parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
+parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
 parser.set_defaults(plot=False, dryrun=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
@@ -370,14 +371,14 @@ def plot():
         color_lvl = 8
         rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
         colors = sample(rgb,Nlines)
-        #print colors[0:7]
+        print colors[0:7]
     else:
         #set some nice fixed colors
         colors = [[ 0.97254902,  0.62745098,  0.40784314],
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
                   [ 0.90980392,  0.37647059,  0.84705882],
-                  [ 0.94117647,  0.03137255,  0.59607843],
+                  [ 0.84705882,  0.        ,  0.1254902 ],
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
@@ -388,8 +389,10 @@ def plot():
     M1 = measurements['positions']
     M1_t = measurements['target_positions']
     M2 = measurements['velocities']
-    M2_dot = measurements['accelerations']
-    M3 = measurements['torques']
+    M2_t = measurements['target_velocities']
+    M3 = measurements['accelerations']
+    M3_t = measurements['target_accelerations']
+    M4 = measurements['torques']
     T = measurements['times']
     num_samples = measurements['positions'].shape[0]
     print 'loaded {} measurement samples'.format(num_samples)
@@ -410,32 +413,44 @@ def plot():
     print "\n"
 
     #what to plot (each tuple has a title and one or multiple data arrays)
-    if args.dryrun:
-        global Qraw
-        Qraw = np.zeros_like(M1)
-        global Vraw
-        Vraw = np.zeros_like(M2)
-        global TauRaw
-        TauRaw = np.zeros_like(M3)
-
-    datasets = [
+    if args.dryrun and not args.plot_targets:    #plot only measurements (from file)
+        datasets = [
+            ([M1,], 'Positions'),
+            ([M2,], 'Velocities'),
+            ([M3,], 'Accelerations'),
+            ([M4,], 'Measured Torques')
+            ]
+    elif args.plot_targets:    #plot target values
+        datasets = [
+            ([M1_t,], 'Target Positions'),
+            ([M2_t,], 'Target Velocities'),
+            ([M3_t,], 'Target Accelerations')
+            ]
+    else:  #plot filtered measurements and raw
+        datasets = [
             ([M1, Qraw], 'Positions'),
-            ([M2, np.empty(0), Vraw],'Velocities'),
-            ([M2_dot,], 'Accelerations'),
-            ([M3, TauRaw],'Measured Torques')
+            ([M2, Vraw],'Velocities'),
+            ([M3,], 'Accelerations'),
+            ([M4, TauRaw],'Measured Torques')
             ]
 
+    d = 0
+    cols = 2.0
+    rows = round(len(datasets)/cols)
     for (data, title) in datasets:
-        plt.figure()
+        plt.subplot(rows, cols, d+1)
         plt.title(title)
+        lines = list()
+        labels = list()
         for d_i in range(0, len(data)):
-            if not data[d_i].size:
-                continue
             for i in range(0, N_DOFS):
                 l = jointNames[i] if d_i == 0 else ''  #only put joint names in the legend once
-                plt.plot(T, data[d_i][:, i], label=l, color=colors[i],
-                        alpha=1-(d_i/3.0))
-        plt.legend(loc='lower right')
+                labels.append(l)
+                line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/3.0))
+                lines.append(line[0])
+        d+=1
+    leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
+    leg.draggable()
 
     #yarp times over time indices
     #plt.figure()

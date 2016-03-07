@@ -393,12 +393,15 @@ class Identification(object):
             return
 
         r_sigma = 15    #target ratio of parameters' relative std deviation
-        xBase_old = self.xBase.copy()
+        cnt = 0
+        not_essential_idx = list()
 
         while 1:
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # TODO: use these for weighting of linear least squares identification of base parameters
             sigma_rho = np.square(np.linalg.norm(self.tauMeasured-self.tauEstimated))/(self.num_samples-self.num_base_params)
+            if cnt is 0:
+                self.sigma_rho_base = sigma_rho.copy()
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             C_xx = np.dot(sigma_rho, (np.linalg.inv(np.dot(self.YBase.T, self.YBase))))
@@ -409,8 +412,6 @@ class Identification(object):
             for i in range(0, p_sigma_x.size):
                 if np.linalg.norm(self.xBase[i]) != 0:
                     p_sigma_x[i] /= np.linalg.norm(self.xBase[i])
-                else:
-                    p_sigma_x[i] = 0
 
             ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
             print "min-max ratio of relative stddevs: {}".format(ratio)
@@ -421,16 +422,19 @@ class Identification(object):
 
             #cancel parameter with largest deviation
             param_idx = np.argmax(p_sigma_x)
-            self.xBase = np.delete(self.xBase, param_idx)
-            self.num_base_params = self.xBase.size
-            self.YBase = np.delete(self.YBase, param_idx, 1)
+            not_essential_idx.append(param_idx)
+            self.xBase[param_idx] = 0
+            self.num_base_params -= 1
+            #self.xBase = np.delete(self.xBase, param_idx)
+            #self.num_base_params = self.xBase.size
+            #self.YBase = np.delete(self.YBase, param_idx, 1)
 
             # get new estimations with updated parameters
             self.estimateTorques()
+            cnt+=1
 
-        self.xEssential = self.xBase
-        self.xBase = xBase_old
-        print("xEssential: {}".format(self.xEssential.shape))
+        self.essentialIdx = [x for x in range(0,self.N_PARAMS) if x not in not_essential_idx]
+        print "Got {} essential parameters".format(len(self.essentialIdx))
 
     def output(self):
         """Do some pretty printing of parameters."""

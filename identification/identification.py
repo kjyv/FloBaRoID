@@ -19,7 +19,7 @@ class Identification(object):
     def __init__(self, urdf_file, measurements_file):
         ## options
         self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
-        self.skip_samples = 2    #how many values to skip before using the next sample
+        self.skip_samples = 4    #how many values to skip before using the next sample
 
         self.robotranRegressor = False # use robotran symbolic regressor to estimate torques (else iDynTree)
 
@@ -29,12 +29,12 @@ class Identification(object):
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'model']
-        self.estimateWith = 'base'
+        self.estimateWith = 'std'
 
-        #use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
-        self.useAPriori = False
+        # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
+        self.useAPriori = True
 
-        self.essentialParams = True #whether to get and use essential parameters
+        self.essentialParams = False   # whether to identify and use direct standard with essential parameters
         ## end options
 
         self.URDF_FILE = urdf_file
@@ -87,7 +87,8 @@ class Identification(object):
         self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
         self.regressor_stack = np.empty(shape=(self.N_DOFS*self.num_samples, self.N_PARAMS))
-        self.regressor_stack_sym = np.empty(shape=(self.N_DOFS*self.num_samples, 48))
+        if self.robotranRegressor:
+            self.regressor_stack_sym = np.empty(shape=(self.N_DOFS*self.num_samples, 48))
         self.torques_stack = np.empty(shape=(self.N_DOFS*self.num_samples))
         self.torquesAP_stack = np.empty(shape=(self.N_DOFS*self.num_samples))
 
@@ -342,11 +343,6 @@ class Identification(object):
         # print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
         # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
-        # thresholding
-        # zero_threshold = 0.0001
-        # low_values_indices = np.absolute(self.xStd) < zero_threshold
-        # self.xStd[low_values_indices] = self.xStdModel[low_values_indices] # replace close to zeros with cad values
-
         self.num_base_params = self.xBase.size
 
     def estimateTorques(self):
@@ -378,10 +374,10 @@ class Identification(object):
 
         if self.simulate:
             if self.useAPriori:
-                # use original measurements, not delta
-                tau = self.torques_stack
-
-            self.tauMeasured = np.reshape(self.tau, (self.num_samples, self.N_DOFS))
+                tau = self.torques_stack    # use original measurements, not delta
+            else:
+                tau = self.tau
+            self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
         else:
             self.tauMeasured = self.measurements['torques'][self.start_offset:-2:self.skip_samples+1, :]
 
@@ -439,6 +435,35 @@ class Identification(object):
 
         self.essentialIdx = [x for x in range(0,self.N_PARAMS) if x not in not_essential_idx]
         print "Got {} essential parameters".format(len(self.essentialIdx))
+
+        # xBase now has only the essential parameters x_e and the rest zeros
+
+    def getStdEssentialParameters(self):
+        """Get standard essential parameters using svd on standard regressor."""
+        U, s, Vinv = np.linalg.svd(self.YStd, full_matrices=False)
+        V = np.linalg.inv(Vinv)
+        nb = self.num_base_params
+
+        """
+        # (get YStd_hat, W_st in Gautier)
+        sum = np.zeros_like(U)
+        for k in range(nb+1,U.shape[1]):
+            sum = np.sum([sum, s[k]* np.dot(U[:,k][:,np.newaxis], V[:,k][:,np.newaxis].T)], axis=0)
+        YStdHat = self.YStd - sum
+        YStdHatInv = np.linalg.pinv(YStdHat)
+        """
+
+        #identify standard parameters directly
+        #self.xStd = np.dot(YStdHatInv, self.tau.T)
+        V_1 = V[:, 0:nb]
+        U_1 = U[:, 0:nb]
+        s_1 = np.diag(s[0:nb])
+
+        x_est = V_1.dot(np.linalg.inv(s_1).dot(U_1.T.dot(self.tau)))
+        if self.useAPriori:
+            self.xStd = self.xStdModel + x_est
+        else:
+            self.xStd = x_est
 
     def output(self):
         """Do some pretty printing of parameters."""
@@ -519,6 +544,14 @@ class Identification(object):
         plt.show()
         self.measurements.close()
 
+    def printMemUsage(self):
+        import humanize
+        print "Memory usage:"
+        for v in self.__dict__.keys():
+            if type(self.__dict__[v]).__module__ == np.__name__:
+                print "{}: {} ".format( v, (humanize.naturalsize(self.__dict__[v].nbytes, binary=True)) ),
+        print "\n"
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
@@ -533,9 +566,12 @@ def main():
     identification.computeRegressors()
     identification.getBaseParameters()
     identification.estimateTorques()
+    identification.printMemUsage()
 
     if identification.essentialParams:
-        identification.getBaseEssentialParameters()
+        #identification.getBaseEssentialParameters()
+        identification.getStdEssentialParameters()
+        identification.estimateTorques()
     if args.explain:
         identification.output()
     if args.plot:

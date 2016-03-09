@@ -18,30 +18,37 @@ from robotran import idinvbar, invdynabar, delidinvbar
 class Identification(object):
     def __init__(self, urdf_file, measurements_file):
         ## options
-        self.robotranRegressor = False # use robotran symbolic regressor to estimate torques (else iDyntreee)
+        self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
+        self.skip_samples = 2    #how many values to skip before using the next sample
+
+        self.robotranRegressor = False # use robotran symbolic regressor to estimate torques (else iDynTree)
+
         # simulate torques from target values, don't use both
         self.iDynSimulate = False # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = False # simulate torque using robotran (instead of reading measurements)
+
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'model']
         self.estimateWith = 'base'
-        self.useAPriori = False  #use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
-        self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
+
+        #use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
+        self.useAPriori = False
+
+        self.essentialParams = True #whether to get and use essential parameters
         ## end options
 
         self.URDF_FILE = urdf_file
         self.measurements = np.load(measurements_file)
-        self.num_samples = self.measurements['positions'].shape[0]
+        self.num_samples = (self.measurements['positions'].shape[0]-self.start_offset)/(self.skip_samples+1)
         print 'loaded {} measurement samples (using {})'.format(
-                self.num_samples, self.num_samples-self.start_offset)
-        self.num_samples-=self.start_offset
+                self.measurements['positions'].shape[0], self.num_samples)
 
         # create generator instance and load model
         self.generator = iDynTree.DynamicsRegressorGenerator()
         self.generator.loadRobotAndSensorsModelFromFile(self.URDF_FILE)
         print 'loaded model {}'.format(self.URDF_FILE)
 
-        # define what regressor type to use
+        # define what regressor type to use and options for it
         regrXml = '''
         <regressor>
           <jointTorqueDynamics>
@@ -165,20 +172,18 @@ class Identification(object):
 
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
-        for row in range(0+self.start_offset, self.num_samples+self.start_offset):
+        for row in range(0, self.num_samples):
+            m_idx = self.start_offset+(row*(self.skip_samples)+row)
             if self.simulate:
-                pos = self.measurements['target_positions'][row]
-                vel = self.measurements['target_velocities'][row]
-                acc = self.measurements['target_accelerations'][row]
+                pos = self.measurements['target_positions'][m_idx]
+                vel = self.measurements['target_velocities'][m_idx]
+                acc = self.measurements['target_accelerations'][m_idx]
             else:
                 # read measurements
-                pos = self.measurements['positions'][row]
-                vel = self.measurements['velocities'][row]
-                acc = self.measurements['accelerations'][row]
-                torq = self.measurements['torques'][row]
-
-            # use zero based again for matrices etc.
-            row-=self.start_offset
+                pos = self.measurements['positions'][m_idx]
+                vel = self.measurements['velocities'][m_idx]
+                acc = self.measurements['accelerations'][m_idx]
+                torq = self.measurements['torques'][m_idx]
 
             #test
             """
@@ -282,7 +287,7 @@ class Identification(object):
         # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
             print "Error while computing basis matrix"
 
-        # convert stacks
+        # prepare stacks
         self.YStd = self.regressor_stack
 
         if self.useAPriori:
@@ -326,8 +331,8 @@ class Identification(object):
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.useAPriori:
-            # TODO: something about the base params must be wrong
             if self.robotranRegressor:
+                # TODO: something about the symbolic base params must be wrong
                 self.xBase = self.xBase + self.xStdModelAsBase   #both param vecs barycentric
             else:
                 self.xBase = self.xBase + np.dot(B.T, self.xStdModel)   #both param vecs link relative linearized
@@ -378,15 +383,14 @@ class Identification(object):
 
             self.tauMeasured = np.reshape(self.tau, (self.num_samples, self.N_DOFS))
         else:
-            self.tauMeasured = self.measurements['torques'][self.start_offset:, :]
+            self.tauMeasured = self.measurements['torques'][self.start_offset:-2:self.skip_samples+1, :]
 
-    def getEssentialParameters(self):
+    def getBaseEssentialParameters(self):
         """
         iteratively get essential parameters from previously identified base parameters.
 
         based on Gautier et al., Identification of Consistent Standard Dynamic Parameters (...), 2013
         """
-        self.estimateTorques()
 
         if self.estimateWith is not 'base':
             print("Warning: not getting essential parameters, need to be estimating with base params")
@@ -502,7 +506,7 @@ class Identification(object):
                    ]
         #print "torque diff: {}".format(self.tauMeasured - self.tauEstimated)
 
-        T = self.measurements['times'][self.start_offset:]
+        T = self.measurements['times'][self.start_offset:-2:self.skip_samples+1]
         for (data, title) in datasets:
             plt.figure()
             plt.title(title)
@@ -522,17 +526,19 @@ def main():
     parser.add_argument('--measurements', required=True, type=str, help='the file to load the measurements from')
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
     parser.add_argument('--explain', help='whether to explain parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=True)
+    parser.set_defaults(plot=False, explain=True, essential=True)
     args = parser.parse_args()
 
     identification = Identification(args.model, args.measurements)
     identification.computeRegressors()
     identification.getBaseParameters()
-    identification.getEssentialParameters()
+    identification.estimateTorques()
 
-    if(args.explain):
+    if identification.essentialParams:
+        identification.getBaseEssentialParameters()
+    if args.explain:
         identification.output()
-    if(args.plot):
+    if args.plot:
         identification.plot()
 
 if __name__ == '__main__':

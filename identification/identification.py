@@ -362,14 +362,16 @@ class Identification(object):
 
     def getStdFromBase(self):
         # project back to standard parameters
+        """
         if self.robotranRegressor:
             # delete some unimportant columns for getting the same amount of base params as iDynTree
             # so we can use the same projection back to the standard parameters
-            #la.pinv(np.delete(self.YBase, (5,3,1), 1))
-            xBaseReduced = np.dot(la.pinv(self.YBase), self.tau.T)
+            xBaseReduced = np.dot(la.pinv(np.delete(self.YBase, (5,3,1), 1)), self.tau.T)
             self.xStd = np.dot(self.B, xBaseReduced)
         else:
             self.xStd = np.dot(self.B, self.xBase)
+        """
+        self.xStd = np.dot(self.B, self.xBase)
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.useAPriori:
@@ -429,8 +431,9 @@ class Identification(object):
         Gautier et al., Identification of Consistent Standard Dynamic Parameters (...), 2013
         """
 
-        r_sigma = 15    #target ratio of parameters' relative std deviation
+        #r_sigma = 12    #target ratio of parameters' relative std deviation
         not_essential_idx = list()
+        ratio = 0
 
         while 1:
             # get new torque estimation to calc error norm (new estimation with updated parameters)
@@ -452,18 +455,20 @@ class Identification(object):
                 if la.norm(self.xBase[i]) != 0:
                     p_sigma_x[i] /= la.norm(self.xBase[i])
 
+            old_ratio = ratio
             ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
             print "min-max ratio of relative stddevs: {}".format(ratio)
 
             #while loop condition moved to here
-            if ratio < r_sigma:
+            #if ratio < r_sigma:
+            #    break
+            if ratio >= old_ratio:
                 break
 
             #cancel the parameter with largest deviation
             param_idx = np.argmax(p_sigma_x)
             not_essential_idx.append(param_idx)
             self.xBase[param_idx] = 0
-            embed()
 
         self.sigma_x = sigma_x
         self.sigma_rho = sigma_rho
@@ -481,16 +486,17 @@ class Identification(object):
             # get independent columns, i.e. those std parameter indices that are
             # the base parameters grouped with the dependent ones (TODO: non-unique choice, so probably
             # doesn't correspond to svd solution! ideally, get base parameters with QR as well)
+            # also, this leaves out other parameters that are dependent but also part of essential
+            # base parameters
             #Q,R,P = sla.qr(self.YStd, pivoting=True, check_finite=True)
             R = np.linalg.qr(self.YStd, mode='r')
             std_base_cols = np.where(np.abs(R.diagonal()) > self.min_tol)[0]
             #std_non_base_cols = np.where(np.abs(R.diagonal()) < self.min_tol)[0]
 
             self.stdEssentialIdx = np.concatenate((std_base_cols[self.baseEssentialIdx],
-                                                   #np.array([14,15,18,19,29,39,49])
+                                                   #np.array([14,15,18,19,29,39])
                                                   ))
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
-            #std_non_base_cols[self.baseEssentialIdx]
 
         print("Getting std essential parameters took %.03f sec." % t.interval)
 
@@ -526,17 +532,19 @@ class Identification(object):
 
             #WLS, weight with stddev of error
             if self.useWLS:
-                self.YStdHat = self.YStdHat * 1/self.sigma_x
-                self.tau = self.tau * 1/self.sigma_rho
+                YStdHat_ = self.YStdHat.copy()
+                YStdHat_[:, self.stdEssentialIdx] = self.YStdHat[:, self.stdEssentialIdx] * \
+                                                    1/self.sigma_x[self.baseEssentialIdx]
+                tau_ = self.tau * 1/self.sigma_rho
+                YStdHatInv_ = la.pinv(YStdHat_)
+                x_tmp = np.dot(YStdHatInv_, tau_.T)
+            else:
+                #estimate essential params
+                self.YStdHatInv = la.pinv(self.YStdHat)
+                x_tmp = np.dot(self.YStdHatInv, self.tau.T)
 
-            #estimate essential params
-            self.YStdHatInv = la.pinv(self.YStdHat)
-            x_tmp = np.dot(self.YStdHatInv, self.tau.T)
-
-            if self.useWLS:
-                x_tmp = x_tmp * self.sigma_x
-
-            #embed()
+            #if self.useWLS:
+            #    x_tmp[self.stdEssentialIdx] = x_tmp[self.stdEssentialIdx] * self.sigma_x[self.baseEssentialIdx]
 
             '''
             U_, s_, VH_ = la.svd(self.YStdHat, full_matrices=False)
@@ -613,6 +621,7 @@ class Identification(object):
                 t = Style.BRIGHT + t
             print t
             idx_p+=1
+        print Style.RESET_ALL
 
     def plot(self):
         """Display some torque plots."""
@@ -631,10 +640,13 @@ class Identification(object):
             ([self.tauEstimated], 'Estimated Torques'),
         ]
         #print "torque diff: {}".format(self.tauMeasured - self.tauEstimated)
+        ymin = np.min([self.tauMeasured, self.tauEstimated]) - 5
+        ymax = np.max([self.tauMeasured, self.tauEstimated]) + 5
 
         T = self.measurements['times'][self.start_offset:-2:self.skip_samples+1]
         for (data, title) in datasets:
             plt.figure()
+            plt.ylim([ymin, ymax])
             plt.title(title)
             for i in range(0, self.N_DOFS):
                 for d_i in range(0, len(data)):
@@ -681,6 +693,7 @@ def main():
         elif identification.estimateWith is 'std':
             identification.getNonsingularRegressor()
             identification.identifyStandardParameters()
+
     identification.printMemUsage()
 
     if args.explain:

@@ -16,14 +16,15 @@ def invdynabar(Qq_out, q, qd, qdd, delta, d):
     #with array elements starting at index 1 (vec[1]).
 
     # points of the kinematic chain (relative distances for one joint from the previous)
-    d = np.array(
-        [
-        [  0.,	 0.,	        0., 	0.,    	0.,	0.,     0.,	0.,		0.,	0.],
-        [  0.,	 0.045646,      0., 	0.,     0.,     0.,  0.036,	-0.075,		0.,	0.],
-        [  0.,	 0.219164,	0., 	0., 0.1091,	0., 	0.,	0.,		0.,	0.],
-        [  0.,	 0.001531,      0., 	0., -0.053,	-0.222,  -0.15,	   -0.1955,    0.,	-0.092]
-        ]
-    )
+    if d is None:
+        d = np.array(
+            [
+                [0., 0.,	        0., 	0.,    	0.,	0.,     0.,	0.,	0.,	0.],
+                [0., 0.045646,      0., 	0.,     0.,     0.,  0.036, -0.075,	0.,	0.],
+                [0., 0.219164,	0., 	0., 0.1091,	0., 	0.,	0.,		0.,	0.],
+                [0., 0.001531,      0., 	0., -0.053, -0.222,  -0.15,-0.1955,     0., -0.092]
+            ]
+        )
 
     # gravity
     g = [0.0, 0.0, 0.0, -9.81]
@@ -224,10 +225,10 @@ def invdynabar(Qq_out, q, qd, qdd, delta, d):
     GS19 = BETA29*b92+BETA39*b93
     GS29 = BETA69*b93+BS59*b92
     GS39 = BETA89*b92+BS99*b93
-    CF19 = -ALS29*b93+ALS39*b92+K911*OMP19+K912*OMP29+K913*OMP39+OM29*(K913*OM19+K923*OM29-Kd9*OM39)-OM39*(K912*OM19+K923*
-     OM39+Kd9*OM29)
-    CF29 = ALS19*b93+K912*OMP19+K923*OMP39+Kd9*OMP29-OM19*(K913*OM19+K923*OM29-Kd9*OM39)+OM39*(K911*OM19+K912*OM29+K913*
-     OM39)
+    CF19 = -ALS29*b93+ALS39*b92+K911*OMP19+K912*OMP29+K913*OMP39+OM29*(K913*OM19+K923*OM29-Kd9*OM39)-OM39*\
+           (K912*OM19+K923*OM39+Kd9*OM29)
+    CF29 = ALS19*b93+K912*OMP19+K923*OMP39+Kd9*OMP29-OM19*(K913*OM19+K923*OM29-Kd9*OM39)+OM39*\
+            (K911*OM19+K912*OM29+K913*OM39)
     CF39 = -ALS19*b92+K913*OMP19+K923*OMP29-Kd9*OMP39+OM19*(K912*OM19+K923*OM39+Kd9*OM29)-OM29*(K911*OM19+K912*OM29+K913*
      OM39)
     GS18 = GS19+BETA38*b83+BS18*br81

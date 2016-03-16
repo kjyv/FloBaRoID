@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8 -*-
 
+import sys
 import numpy as np
 import numpy.linalg as la
 #import numexpr as ne
@@ -30,24 +31,24 @@ class Identification(object):
         self.skip_samples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
-        self.robotranRegressor = False
+        self.robotranRegressor = 1
 
         # simulate torques from target values, don't use both
-        self.iDynSimulate = False # simulate torque using idyntree (instead of reading measurements)
-        self.robotranSimulate = False # simulate torque using robotran (instead of reading measurements)
+        self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
+        self.robotranSimulate = 1 # simulate torque using robotran (instead of reading measurements)
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'model']
-        self.estimateWith = 'std'
+        self.estimateWith = 'base'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
-        self.useAPriori = True
+        self.useAPriori = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
-        self.useWLS = False
+        self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.getEssentialParams = True
+        self.getEssentialParams = 0
 
         ## end options
 
@@ -118,6 +119,9 @@ class Identification(object):
             print("using a priori parameter data")
         if self.robotranRegressor:
             print("using robotran regressor")
+            if self.getEssentialParams:
+                print("can't get essential parameters with robotran regressor, aborting.")
+                sys.exit(-1)
         if self.iDynSimulate:
             print("using iDynTree to simulate robot dynamics")
         if self.robotranSimulate:
@@ -128,6 +132,8 @@ class Identification(object):
         print("estimating torques using {} parameters".format(self.estimateWith))
         if self.useWLS:
             print("using weighted least squares")
+        if self.getEssentialParams:
+            print("identifying essential parameters")
 
         sym_time = 0
         num_time = 0
@@ -229,17 +235,6 @@ class Identification(object):
                 #pos[0]+=np.deg2rad(20)
                 pos[1]-=np.deg2rad(41)
 
-                # from right to left arm
-                # joint         | direction
-                # 1 LShLat        | -1
-                # 2 LShYaw        | -1
-                # 4 LForearmPlate | -1
-                # 6 LWrj2         | -1
-                #pos[1]*=-1; vel[1]*=-1; acc[1]*=-1
-                #pos[2]*=-1; vel[2]*=-1; acc[2]*=-1
-                #pos[4]*=-1; vel[4]*=-1; acc[4]*=-1
-                #pos[6]*=-1; vel[6]*=-1; acc[6]*=-1
-
             if self.iDynSimulate or self.useAPriori:
                 # calc torques with iDynTree dynamicsComputation class
                 dynComp.setRobotState(q, dq, ddq, gravity)
@@ -265,7 +260,7 @@ class Identification(object):
                                       np.concatenate(([0], self.xStdModelAsBaseFull)), d)
 
             start = self.N_DOFS*row
-            # use symobolic regressor to get numeric regressor matrix
+            # use symobolic regressor to get numeric regressor matrix (base)
             if self.robotranRegressor:
                 with identificationHelpers.Timer() as t:
                     YSym = np.empty((7,48))
@@ -277,7 +272,7 @@ class Identification(object):
                     np.copyto(self.regressor_stack_sym[start:start+self.N_DOFS], YSym)
                 sym_time += t.interval
             else:
-                # get numerical regressor
+                # get numerical regressor (std)
                 with identificationHelpers.Timer() as t:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
                     self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
@@ -293,8 +288,6 @@ class Identification(object):
                     np.copyto(self.regressor_stack[start:start+self.N_DOFS], YStd)
                 num_time += t.interval
 
-            self.YStd = self.regressor_stack
-
             np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
             if self.useAPriori:
                 np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
@@ -304,6 +297,9 @@ class Identification(object):
                 self.tau = self.torques_stack - self.torquesAP_stack
             else:
                 self.tau = self.torques_stack
+
+        if not self.robotranRegressor:
+            self.YStd = self.regressor_stack
 
         if self.robotranRegressor:
             print('Symbolic regressors took %.03f sec.' % sym_time)
@@ -321,12 +317,12 @@ class Identification(object):
 
         self.B = subspaceBasis.toNumPy()
 
-        print("YStd: {}".format(self.YStd.shape)),
         print("tau: {}".format(self.tau.shape)),
 
         if self.robotranRegressor:
             self.YBase = self.regressor_stack_sym
         else:
+            print("YStd: {}".format(self.YStd.shape)),
             # project regressor to base regressor, Y_base = Y_std*B
             self.YBase = np.dot(self.YStd, self.B)
         print("YBase: {}".format(self.YBase.shape)),
@@ -708,7 +704,7 @@ if __name__ == '__main__':
     except Exception as e:
         if type(e) is not KeyboardInterrupt:
             # open ipdb when an exception happens
-            import sys, ipdb, traceback
+            import ipdb, traceback
             type, value, tb = sys.exc_info()
             traceback.print_exc()
             ipdb.post_mortem(tb)

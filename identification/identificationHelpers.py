@@ -49,9 +49,9 @@ class IdentificationHelpers(object):
         #mass is mass
         #com in idyntree is represented as first moment of mass, so com * mass. URDF uses com
         #inertia in idyntree is represented w.r.t. frame origin. URDF uses w.r.t com
-
+        params = params.copy()
         for i in range(0, self.n_params):
-            if (i % 10 == 0):   #for each joint
+            if (i % 10 == 0):   #for each link
                 link_mass = params[i]
                 #com
                 com_x = params[i+1]
@@ -61,12 +61,13 @@ class IdentificationHelpers(object):
                     params[i+1] = com_x / link_mass  #x of first moment -> x of com
                     params[i+2] = com_y / link_mass  #y of first moment -> y of com
                     params[i+3] = com_z / link_mass  #z of first moment -> z of com
+                else:
+                    params[i+1] = params[i+2] = params[i+3] = 0
                 p_com = iDynTree.PositionRaw(params[i+1], params[i+2], params[i+3])
 
                 #inertias
                 rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+10])
                 s_inertia = iDynTree.SpatialInertiaRaw(link_mass, p_com, rot_inertia_origin)
-                #s_inertia.fromRotationalInertiaWrtCenterOfMass(link_mass, p_com, rot_inertia)
                 rot_inertia_com = s_inertia.getRotationalInertiaWrtCenterOfMass()
                 params[i+4] = rot_inertia_com.getVal(0, 0)    #xx w.r.t. com
                 params[i+5] = rot_inertia_com.getVal(0, 1)    #xy w.r.t. com
@@ -74,6 +75,32 @@ class IdentificationHelpers(object):
                 params[i+7] = rot_inertia_com.getVal(1, 1)    #yy w.r.t. com
                 params[i+8] = rot_inertia_com.getVal(1, 2)    #yz w.r.t. com
                 params[i+9] = rot_inertia_com.getVal(2, 2)    #zz w.r.t. com
+        return params
 
     def paramsBary2Link(self, params):
-        return
+        params = params.copy()
+        for i in range(0, self.n_params):
+            if (i % 10 == 0):   #for each link
+                link_mass = params[i]
+                #com
+                com_x = params[i+1]
+                com_y = params[i+2]
+                com_z = params[i+3]
+                params[i+1] = com_x * link_mass  #x of first moment of mass
+                params[i+2] = com_y * link_mass  #y of first moment of mass
+                params[i+3] = com_z * link_mass  #z of first moment of mass
+                p_com = iDynTree.PositionRaw(params[i+1], params[i+2], params[i+3])
+
+                #inertias
+                rot_inertia_com = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+10])
+                s_inertia = iDynTree.SpatialInertiaRaw(link_mass, p_com, rot_inertia_com)
+                s_inertia.fromRotationalInertiaWrtCenterOfMass(link_mass, p_com, rot_inertia_com)
+                rot_inertia = s_inertia.getRotationalInertiaWrtFrameOrigin()
+                params[i+4] = rot_inertia.getVal(0, 0)    #xx w.r.t. com
+                params[i+5] = rot_inertia.getVal(0, 1)    #xy w.r.t. com
+                params[i+6] = rot_inertia.getVal(0, 2)    #xz w.r.t. com
+                params[i+7] = rot_inertia.getVal(1, 1)    #yy w.r.t. com
+                params[i+8] = rot_inertia.getVal(1, 2)    #yz w.r.t. com
+                params[i+9] = rot_inertia.getVal(2, 2)    #zz w.r.t. com
+
+        return params

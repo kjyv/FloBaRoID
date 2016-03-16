@@ -1,1 +1,1 @@
-./excite.py --model ../urdf/bigman_left_arm.urdf --plot --periods=5
+./excite.py --model ../model/bigman_left_arm.urdf --plot --periods=5

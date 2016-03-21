@@ -19,8 +19,16 @@ import identificationHelpers
 # symbolic regression
 from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 
+# Referenced papers:
+# Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
+# Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
+# Pham, 1991: Essential Parameters of Robots
+
 # TODO: load full model and programmatically cut off chain from certain joints/links to allow
 # subtree identification
+# TODO: write params to file/urdf file (ideally don't rewrite from model but only change values
+# in original xml tree)
+# TODO: add contact forces
 
 class Identification(object):
     def __init__(self, urdf_file, measurements_file):
@@ -37,6 +45,7 @@ class Identification(object):
         # simulate torques from target values, don't use both
         self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
+        self.addNoise = 0   #add some artificial zero-mean white noise to the 'measured' torques
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'model']
@@ -47,7 +56,7 @@ class Identification(object):
         self.useAPriori = 1
 
         # use weighted least squares(WLS) instead of ordinary least squares
-        # TODO: fix for std/base+apriori, for essential params use value magnitude?
+        # TODO: fix for std/base+apriori
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
@@ -264,6 +273,8 @@ class Identification(object):
                                       np.concatenate(([0], pad, vel)),
                                       np.concatenate(([0], pad, acc)),
                                       np.concatenate(([0], self.xStdModelAsBaseFull)), d=None)
+            if self.addNoise:
+                torq += np.random.normal(0,1.0)*(torq*0.01)
 
             start = self.N_DOFS*row
             # use symobolic regressor to get numeric regressor matrix (base)
@@ -306,29 +317,78 @@ class Identification(object):
         if not self.robotranRegressor:
             self.YStd = self.regressor_stack
 
-        ## get base regressor
-        # get subspace basis (for projection to base regressor/parameters)
-        subspaceBasis = iDynTree.MatrixDynSize()
-        if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
-        # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
-            print "Error while computing basis matrix"
-
-        self.B = subspaceBasis.toNumPy()
-
-        print("tau: {}".format(self.tau.shape)),
-
-        if self.robotranRegressor:
-            self.YBase = self.regressor_stack_sym
-        else:
-            print("YStd: {}".format(self.YStd.shape)),
-            # project regressor to base regressor, Y_base = Y_std*B
-            self.YBase = np.dot(self.YStd, self.B)
-        print("YBase: {}".format(self.YBase.shape)),
-
         if self.robotranRegressor:
             print('Symbolic regressors took %.03f sec.' % sym_time)
         else:
             print('Numeric regressors took %.03f sec.' % num_time)
+
+    def getBaseRegressoriDynTree(self):
+        """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
+
+        with identificationHelpers.Timer() as t:
+            # get subspace basis (for projection to base regressor/parameters)
+            subspaceBasis = iDynTree.MatrixDynSize()
+            if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
+            # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
+                print "Error while computing basis matrix"
+
+            self.B = subspaceBasis.toNumPy()
+
+            print("tau: {}".format(self.tau.shape)),
+
+            if self.robotranRegressor:
+                self.YBase = self.regressor_stack_sym
+            else:
+                print("YStd: {}".format(self.YStd.shape)),
+                # project regressor to base regressor, Y_base = Y_std*B
+                self.YBase = np.dot(self.YStd, self.B)
+            print("YBase: {}".format(self.YBase.shape))
+
+            self.num_base_params = self.YBase.shape[1]
+        print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
+
+    def getBaseRegressorQR(self):
+        """get base regressor and identifiable basis matrix with QR decomposition
+
+        gets independent columns (non-unique choice) each with its dependent ones, i.e.
+        those std parameter indices that form each of the base parameters (including the linear factors)
+        """
+        with identificationHelpers.Timer() as t:
+            Q,R,P = sla.qr(self.YStd, pivoting=True, check_finite=True)
+            self.Q, self.R, self.P = Q,R,P
+
+            #create permuation matrix out of vector
+            self.Pp = np.zeros((P.size, P.size))
+            for i in P:
+                self.Pp[i, P[i]] = 1
+
+            #get rank
+            r = np.where(np.abs(R.diagonal()) > self.min_tol)[0].size
+            self.num_base_params = r
+
+            #get basis projection matrix
+            self.B = la.pinv(Q[0:r,0:self.YStd.shape[1]])
+
+            #get regressor for base parameters
+            if self.robotranRegressor:
+                self.YBase = self.regressor_stack_sym
+            else:
+                print("YStd: {}".format(self.YStd.shape)),
+                # project regressor to base regressor, Y_base = Y_std*B
+                self.YBase = np.dot(self.YStd, self.B)
+            print("YBase: {}".format(self.YBase.shape))
+
+            # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
+            self.independent_cols = P[0:r]
+
+            # get column dependency matrix (what dependent columns are combined in each base parameter with what factor)
+            # j (independent column) = (value at i,j) * i (dependent column)
+            ind = self.independent_cols.size
+            R1 = R[0:ind,0:ind]
+            R2 = R[:ind, ind:]
+            self.linear_deps = la.inv(R1).dot(R2)
+
+        print("Getting the base regressor (QR) took %.03f sec." % t.interval)
 
     def identifyBaseParameters(self):
         """use previously computed regressors and identify base parameter vector."""
@@ -337,7 +397,7 @@ class Identification(object):
         self.YBaseInv = la.pinv(self.YBase)
         print("YBaseInv: {}".format(self.YBaseInv.shape))
 
-        # TODO: get jacobian and contact force for each contact frame (when iDynTree allows it)
+        # TODO: get jacobian and contact force for each contact frame (when added to iDynTree)
         # in order to also use FT sensors in hands and feet
         # assuming zero external forces for fixed base on trunk
         # jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
@@ -345,10 +405,10 @@ class Identification(object):
 
         #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
         self.xBase = la.lstsq(self.YBase, self.tau)[0]
-        self.num_base_params = self.xBase.size
         # print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
 
-    def getWeightedBaseParameters(self):
+    def getWeightedBaseParametersStdDev(self):
+        """add weighting with standard dev of estimation error on base regressor and params"""
         old_ew = self.estimateWith
         self.estimateWith = 'base'
         self.estimateTorques()
@@ -440,8 +500,7 @@ class Identification(object):
         """
         iteratively get essential parameters from previously identified base parameters.
 
-        based on Pham, Essential Parameters of Robots, 1991 and
-        Gautier et al., Identification of Consistent Standard Dynamic Parameters (...), 2013
+        based on Pham, 1991 and Gautier, 2013
         """
 
         with identificationHelpers.Timer() as t:
@@ -481,15 +540,16 @@ class Identification(object):
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
                 not_essential_idx.append(param_idx)
+                #TODO: keep this separate and don't modify xBase?
                 self.xBase[param_idx] = 0
 
             self.sigma_x = sigma_x
             self.sigma_rho = sigma_rho
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
-            print "Got {} essential parameters".format(len(self.baseEssentialIdx))
+            self.num_essential_params = len(self.baseEssentialIdx)
+            print "Got {} essential parameters".format(self.num_essential_params)
 
         print("Getting base essential parameters took %.03f sec." % t.interval)
-        # xBase now has only the essential parameters x_e and the rest zeros
 
     def getStdEssentialParameters(self):
         """
@@ -497,32 +557,43 @@ class Identification(object):
         """
 
         with identificationHelpers.Timer() as t:
-            # get independent columns, i.e. those std parameter indices that are
-            # the base parameters grouped with the dependent ones (TODO: non-unique choice, so probably
-            # doesn't correspond to svd solution! ideally, get base parameters with QR as well)
-            # also, this leaves out other parameters that are dependent but also part of essential
-            # base parameters
-            #Q,R,P = sla.qr(self.YStd, pivoting=True, check_finite=True)
-            R = np.linalg.qr(self.YStd, mode='r')
-            std_base_cols = np.where(np.abs(R.diagonal()) > self.min_tol)[0]
-            #std_non_base_cols = np.where(np.abs(R.diagonal()) < self.min_tol)[0]
+            # get the choice of indices into the std params of the independent columns
+            # of those, only select the std parameters that are essential
+            self.stdEssentialIdx = self.independent_cols[self.baseEssentialIdx]
 
-            self.stdEssentialIdx = np.concatenate((std_base_cols[self.baseEssentialIdx],
-                                                   #np.array([14,15,18,19,29,39])
-                                                  ))
+            # it seems we only want to identify the independent components among the base params,
+            # values look better at least (paper is not clear about it)
+            # intuitively, also the dependent ones should be essential as the linear combination is
+            # used to identify and calc the error
+            """
+            # then also get the ones that are linearly dependent on them -> base params
+            dependents = []
+            for i in range(0,self.linear_deps.shape[0]):
+                for j in range(0,self.linear_deps.shape[1]):
+                    if np.abs(self.linear_deps[i,j]) > self.min_tol:
+                        orgColi = self.P[self.independent_cols.size+i]
+                        orgColj = self.P[j]
+                        if orgColi not in dependents:
+                             dependents.append(orgColi)
+                        #print(
+                        #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
+                        #   .format(i, orgColi, j, orgColj))
+            self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
+            """
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
-        print("Getting std essential parameters took %.03f sec." % t.interval)
+            # get \hat{x_e}, zeros for non-essential params
+            self.xStdEssential = self.xStdModel.copy()
+            self.xStdEssential[self.stdNonEssentialIdx] = 0
 
     def getNonsingularRegressor(self):
         with identificationHelpers.Timer() as t:
             U, s, VH = la.svd(self.YStd, full_matrices=False)
             V = VH.T
-            nb = np.sum(s > self.min_tol)   #get rank of YStd
-            self.num_base_params = nb
+            nb = self.num_base_params
             st = self.N_PARAMS
 
-            # (YStdHat = non-singular YStd, called W_st in Gautier, 2015)
+            # non-singular YStd, called W_st in Gautier, 2015)
             self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
         print("Getting non-singular regressor took %.03f sec." % t.interval)
 
@@ -536,39 +607,20 @@ class Identification(object):
                 self.xStd = self.xStdModel + x_tmp
             else:
                 self.xStd = x_tmp
-            embed()
         print("Identifying std parameters took %.03f sec." % t.interval)
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
         with identificationHelpers.Timer() as t:
-            #ignore non-essential parameters
-            self.YStdHat[:, self.stdNonEssentialIdx] = 0
-
-            #WLS, weight with stddev of error
-            if self.useWLS:
-                YStdHat_ = self.YStdHat.copy()
-                YStdHat_[:, self.stdEssentialIdx] = self.YStdHat[:, self.stdEssentialIdx] * \
-                                                    1/self.sigma_x[self.baseEssentialIdx]
-                tau_ = self.tau * 1/self.sigma_rho
-                YStdHatInv_ = la.pinv(YStdHat_)
-                x_tmp = np.dot(YStdHatInv_, tau_.T)
-            else:
-                #estimate essential params
-                self.YStdHatInv = la.pinv(self.YStdHat)
-                x_tmp = np.dot(self.YStdHatInv, self.tau)
-
-            #if self.useWLS:
-            #    x_tmp[self.stdEssentialIdx] = x_tmp[self.stdEssentialIdx] * self.sigma_x[self.baseEssentialIdx]
-
-            '''
-            U_, s_, VH_ = la.svd(self.YStdHat, full_matrices=False)
-            V_1 = VH_.T[:, 0:nb]
-            U_1 = U_[:, 0:nb]
-            s_1 = np.diag(s_[0:nb])
-            x_tmp = V_1.dot(la.inv(s_1).dot(U_1.T.dot(self.tau)))
-            self.YStdHat_1 = U_1.dot(s_1.dot(V_1.T))
-            '''
+            # weighting with previously determined essential params
+            # calculates V_1e, U_1e etc. (Gautier, 2015)
+            Y = self.YStd.dot(np.diag(self.xStdEssential))
+            U_, s_, VH_ = la.svd(Y, full_matrices=False)
+            ne = self.num_essential_params  #nr. of essential params among base params
+            V_1 = VH_.T[:, 0:ne]
+            U_1 = U_[:, 0:ne]
+            s_1_inv = la.inv(np.diag(s_[0:ne]))
+            x_tmp = np.diag(self.xStdEssential).dot(V_1).dot(s_1_inv).dot(U_1.T).dot(self.tau)
 
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_tmp
@@ -579,7 +631,6 @@ class Identification(object):
 
     def output(self):
         """Do some pretty printing of parameters."""
-        # TODO: write params to file/urdf file
 
         import colorama
         from colorama import Fore, Back, Style
@@ -693,11 +744,13 @@ def main():
 
     identification = Identification(args.model, args.measurements)
     identification.computeRegressors()
+    if identification.getEssentialParams:
+        identification.getBaseRegressorQR()
+    else:
+        identification.getBaseRegressoriDynTree()
     identification.identifyBaseParameters()
 
     if identification.getEssentialParams:
-        if identification.useWLS:
-            identification.getWeightedBaseParameters()
         identification.getBaseEssentialParameters()
         identification.getStdEssentialParameters()
         identification.getNonsingularRegressor()
@@ -705,7 +758,7 @@ def main():
     else:
         if identification.estimateWith in ['base', 'std']:
             if identification.useWLS:
-                identification.getWeightedBaseParameters()
+                identification.getWeightedBaseParametersStdDev()
             identification.getStdFromBase()
         elif identification.estimateWith is 'std_direct':
             identification.getNonsingularRegressor()

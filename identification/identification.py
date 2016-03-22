@@ -52,11 +52,9 @@ class Identification(object):
         self.estimateWith = 'std'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
-        # TODO: make work with base+essential params (std is fine)
         self.useAPriori = 1
 
         # use weighted least squares(WLS) instead of ordinary least squares
-        # TODO: fix for std/base+apriori
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
@@ -143,7 +141,6 @@ class Identification(object):
         self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
 
         self.helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
-        self.weightedParams = False
 
     def computeRegressors(self):
         """compute regressors for each time step of the measurement data, stack them"""
@@ -354,8 +351,7 @@ class Identification(object):
         those std parameter indices that form each of the base parameters (including the linear factors)
         """
         with identificationHelpers.Timer() as t:
-            Q,R,P = sla.qr(self.YStd, pivoting=True, check_finite=True)
-            self.Q, self.R, self.P = Q,R,P
+            Q,R,P = sla.qr(self.YStd.T, pivoting=True, check_finite=True)
 
             #create permuation matrix out of vector
             self.Pp = np.zeros((P.size, P.size))
@@ -367,7 +363,7 @@ class Identification(object):
             self.num_base_params = r
 
             #get basis projection matrix
-            self.B = la.pinv(Q[0:r,0:self.YStd.shape[1]])
+            self.B = Q[:, 0:r]
 
             #get regressor for base parameters
             if self.robotranRegressor:
@@ -377,6 +373,9 @@ class Identification(object):
                 # project regressor to base regressor, Y_base = Y_std*B
                 self.YBase = np.dot(self.YStd, self.B)
             print("YBase: {}".format(self.YBase.shape))
+
+            Q,R,P = sla.qr(self.YStd, pivoting=True, check_finite=True)
+            self.Q, self.R, self.P = Q,R,P
 
             # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
             self.independent_cols = P[0:r]
@@ -394,8 +393,8 @@ class Identification(object):
         """use previously computed regressors and identify base parameter vector."""
 
         # invert equation to get parameter vector from measurements and model + system state values
-        self.YBaseInv = la.pinv(self.YBase)
-        print("YBaseInv: {}".format(self.YBaseInv.shape))
+        #self.YBaseInv = la.pinv(self.YBase)
+        #print("YBaseInv: {}".format(self.YBaseInv.shape))
 
         # TODO: get jacobian and contact force for each contact frame (when added to iDynTree)
         # in order to also use FT sensors in hands and feet
@@ -405,30 +404,41 @@ class Identification(object):
 
         #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
         self.xBase = la.lstsq(self.YBase, self.tau)[0]
-        # print "The base parameter vector {} is \n{}".format(xBase.shape, xBase)
+        #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
 
-    def getWeightedBaseParametersStdDev(self):
+    def getWeightedBaseParams(self):
         """add weighting with standard dev of estimation error on base regressor and params"""
-        old_ew = self.estimateWith
-        self.estimateWith = 'base'
-        self.estimateTorques()
-        self.estimateWith = old_ew
+
+        self.estimateTorques('base')
         # get standard deviation of measurement and modeling error \sigma_{rho}^2
-        self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))/ \
+        # for each joint subsystem (rho is assumed zero mean independent noise)
+        self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
                               (self.num_samples-self.num_base_params)
+        #repeat for each measurement block (n_joints * num_samples)
+        G = np.diag(np.tile(self.sigma_rho, self.num_samples))
 
         # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-        C_xx = self.sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
-        sigma_x = np.sqrt(np.diag(C_xx))
+        #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
+        #sigma_x = np.sqrt(np.diag(C_xx))
 
-        YBase_ = self.YBase * 1/sigma_x
-        tau_ = self.tau * 1/self.sigma_rho
+        # weight with deviations
+        YBase_ = G.dot(self.YBase)
+        tau_ = G.dot(self.tau)
 
-        #YBaseInv_ = la.pinv(YBase_)
-        #self.xBase = np.dot(YBaseInv_, tau_.T) # - np.sum( YBaseInv*jacobian*contactForces )
-        self.xBase = la.lstsq(YBase_, tau_)[0]
-        self.xBase *= 1/sigma_x
-        self.weightedParams = True
+        #identfy base params with weighted arrays
+        YBase = self.YBase
+        self.YBase = YBase_
+        tau = self.tau
+        self.tau = tau_
+        self.identifyBaseParameters()
+        self.tau = tau
+        self.YBase = YBase
+
+    def getBaseParamsFromParamError(self):
+        if self.robotranRegressor:
+            self.xBase = self.xBase + self.xStdModelAsBase   #both param vecs barycentric
+        else:
+            self.xBase = self.xBase + np.dot(self.B.T, self.xStdModel)   #both param vecs link relative linearized
 
     def getStdFromBase(self):
         # project back to standard parameters
@@ -445,46 +455,40 @@ class Identification(object):
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.useAPriori:
-            if self.robotranRegressor:
-                self.xBase = self.xBase + self.xStdModelAsBase   #both param vecs barycentric
-            else:
-                self.xBase = self.xBase + np.dot(self.B.T, self.xStdModel)   #both param vecs link relative linearized
-
             self.xStd = self.xStd + self.xStdModel
 
         # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
-    def estimateTorques(self):
+    def estimateTorques(self, estimateWith=None):
         """ get torque estimations, prepare for plotting """
 
         with identificationHelpers.Timer() as t:
+            if not estimateWith:
+                #use global parameter choice if none is given specifically
+                estimateWith = self.estimateWith
             if self.robotranRegressor:
-                if self.estimateWith is 'base':
+                if estimateWith is 'base':
                     tauEst = np.dot(self.YBase, self.xBase)
-                elif self.estimateWith is 'model':
-                    self.identifyBaseParameters()
+                elif estimateWith is 'model':
                     tauEst = np.dot(self.YBase, self.xStdModelAsBase)
-                elif self.estimateWith in ['std', 'std_direct']:
+                elif estimateWith in ['std', 'std_direct']:
                     print("Error: I don't have a standard regressor from symbolic equations.")
                     sys.exit(-1)
                 else:
                     print("unknown type of parameters: {}".format(self.estimateWith))
             else:
                 # estimate torques again with regressor and parameters
-                if self.estimateWith is 'model':
+                if estimateWith is 'model':
                     tauEst = np.dot(self.YStd, self.xStdModel) # idyntree standard regressor and parameters from URDF model
-                elif self.estimateWith is 'base':
+                elif estimateWith is 'base':
                     tauEst = np.dot(self.YBase, self.xBase)   # idyntree base regressor and identified base parameters
-                elif self.estimateWith in ['std', 'std_direct']:
+                elif estimateWith in ['std', 'std_direct']:
                     tauEst = np.dot(self.YStd, self.xStd)    # idyntree standard regressor and estimated standard parameters
                 else:
                     print("unknown type of parameters: {}".format(self.estimateWith))
 
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
             self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
-
-            if self.weightedParams:
-                self.tauEstimated *= self.sigma_rho
 
             if self.simulate:
                 if self.useAPriori:
@@ -494,26 +498,29 @@ class Identification(object):
                 self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
             else:
                 self.tauMeasured = self.measurements['torques'][self.start_offset:-2:self.skip_samples+1, :]
-        print("torque estimation took %.03f sec." % t.interval)
+        #print("torque estimation took %.03f sec." % t.interval)
 
     def getBaseEssentialParameters(self):
         """
         iteratively get essential parameters from previously identified base parameters.
+        (goal is to get similar influence of all parameters, i.e. decrease sensitivity to errors,
+        estimation with similar accuracy)
 
         based on Pham, 1991 and Gautier, 2013
+        but with new stop criterium
         """
 
+        # TODO: look at p_sigma_x ratios and why they get larger again
         with identificationHelpers.Timer() as t:
             #r_sigma = 12    #target ratio of parameters' relative std deviation
             not_essential_idx = list()
             ratio = 0
+            #r_sigma = 21
 
+            self.xBase_orig = self.xBase.copy()
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
-                old_ew = self.estimateWith
-                self.estimateWith = 'base'
-                self.estimateTorques()
-                self.estimateWith = old_ew
+                self.estimateTorques('base')
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))/(self.num_samples-self.num_base_params)
@@ -525,26 +532,27 @@ class Identification(object):
                 # get relative standard deviation
                 p_sigma_x = np.sqrt(sigma_x)
                 for i in range(0, p_sigma_x.size):
-                    if la.norm(self.xBase[i]) != 0:
-                        p_sigma_x[i] /= la.norm(self.xBase[i])
+                    if np.abs(self.xBase[i]) != 0:
+                        p_sigma_x[i] /= np.abs(self.xBase[i])
 
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {}".format(ratio)
-                #while loop condition moved to here
+                # while loop condition moved to here
+                # TODO: investigate this more
                 #if ratio < r_sigma:
-                #    break
-                if ratio >= old_ratio and old_ratio != 0:
+                #if ratio >= old_ratio and old_ratio != 0:
+                if ratio == old_ratio and old_ratio != 0:
                     break
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
                 not_essential_idx.append(param_idx)
-                #TODO: keep this separate and don't modify xBase?
                 self.xBase[param_idx] = 0
 
-            self.sigma_x = sigma_x
-            self.sigma_rho = sigma_rho
+            self.xBase = self.xBase_orig
+            #self.sigma_x = sigma_x
+            #self.sigma_rho = sigma_rho
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
             print "Got {} essential parameters".format(self.num_essential_params)
@@ -561,13 +569,14 @@ class Identification(object):
             # of those, only select the std parameters that are essential
             self.stdEssentialIdx = self.independent_cols[self.baseEssentialIdx]
 
+            """
             # it seems we only want to identify the independent components among the base params,
             # values look better at least (paper is not clear about it)
             # intuitively, also the dependent ones should be essential as the linear combination is
             # used to identify and calc the error
-            """
             # then also get the ones that are linearly dependent on them -> base params
             dependents = []
+            #to_delete = []
             for i in range(0,self.linear_deps.shape[0]):
                 for j in range(0,self.linear_deps.shape[1]):
                     if np.abs(self.linear_deps[i,j]) > self.min_tol:
@@ -575,14 +584,19 @@ class Identification(object):
                         orgColj = self.P[j]
                         if orgColi not in dependents:
                              dependents.append(orgColi)
+                        #orgColj has dependents, remove from stdEssentialIdx
+                        #to_delete.append(orgColj)
+
                         #print(
                         #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
                         #   .format(i, orgColi, j, orgColj))
-            self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
+            #self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
             """
+            # try to only identify those that are fully identifiable?
+            #np.delete(self.stdEssentialIdx, to_delete, 0)
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
-            # get \hat{x_e}, zeros for non-essential params
+            # get \hat{x_e}, set zeros for non-essential params
             self.xStdEssential = self.xStdModel.copy()
             self.xStdEssential[self.stdNonEssentialIdx] = 0
 
@@ -637,7 +651,7 @@ class Identification(object):
         colorama.init(autoreset=True)
 
         if not self.getEssentialParams:
-            self.stdEssentialIdx = []
+            self.stdEssentialIdx = range(0, self.N_PARAMS)
             self.stdNonEssentialIdx = []
 
         # convert params to COM-relative instead of frame origin-relative (linearized parameters)
@@ -739,27 +753,28 @@ def main():
     parser.add_argument('--measurements', required=True, type=str, help='the file to load the measurements from')
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
     parser.add_argument('--explain', help='whether to explain parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=True, essential=True)
+    parser.set_defaults(plot=False, explain=False)
     args = parser.parse_args()
 
     identification = Identification(args.model, args.measurements)
     identification.computeRegressors()
-    if identification.getEssentialParams:
-        identification.getBaseRegressorQR()
-    else:
-        identification.getBaseRegressoriDynTree()
+    identification.getBaseRegressoriDynTree()
     identification.identifyBaseParameters()
 
     if identification.getEssentialParams:
+        identification.getBaseRegressorQR()
         identification.getBaseEssentialParameters()
         identification.getStdEssentialParameters()
         identification.getNonsingularRegressor()
         identification.identifyStandardEssentialParameters()
+        identification.getBaseParamsFromParamError()
     else:
         if identification.estimateWith in ['base', 'std']:
             if identification.useWLS:
-                identification.getWeightedBaseParametersStdDev()
+                identification.getWeightedBaseParams()
             identification.getStdFromBase()
+            if identification.useAPriori:
+                identification.getBaseParamsFromParamError()
         elif identification.estimateWith is 'std_direct':
             identification.getNonsingularRegressor()
             identification.identifyStandardParameters()

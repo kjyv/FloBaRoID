@@ -354,6 +354,41 @@ class Identification(object):
             self.num_base_params = self.YBase.shape[1]
         print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
+    def getRandomRegressors(self, n_samples = 1000, fixed_base = True):
+        import random
+
+        R = np.array((self.N_OUT, self.N_PARAMS))
+        for i in range(0, n_samples):
+            # set random system state
+            q = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
+            dq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
+            ddq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
+
+            if fixed_base:
+                self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
+            else:
+                base_acceleration = iDynTree.Twist()
+                base_acceleration.zero()
+                #base_acceleration = random values...
+                self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)  # fixed base
+
+            #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+
+            # get regressor
+            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+            knownTerms = iDynTree.VectorDynSize(self.N_OUT)
+            if not self.generator.computeRegressor(regressor, knownTerms):
+                print "Error during numeric computation of regressor"
+
+            A = regressor.toNumPy()
+
+            if i==0:
+                R = A.T.dot(A)
+            else:
+                R += A.T.dot(A)
+
+        return R
+
     def getBaseRegressorQR(self):
         """get base regressor and identifiable basis matrix with QR decomposition
 
@@ -361,9 +396,11 @@ class Identification(object):
         those std parameter indices that form each of the base parameters (including the linear factors)
         """
         with identificationHelpers.Timer() as t:
-            #TODO: use random regressor as in iDynTree, save some time
+            #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix
-            Q,R,P = sla.qr(self.YStd.T, pivoting=True, mode='economic')
+            #TODO: this can be loaded from file if model structure doesn't change
+            Yrand = self.getRandomRegressors()
+            Q,R,P = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
             r = np.where(np.abs(R.diagonal()) > self.min_tol)[0].size

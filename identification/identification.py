@@ -452,11 +452,15 @@ class Identification(object):
             self.xBase = self.xBase + np.dot(self.B.T, self.xStdModel)   #both param vecs link relative linearized
 
     def getStdFromBase(self):
-        # Note: assumes that xBase is in absolute form,
-        # i.e. don't call before getBaseParamsFromParamError
+        # Note: assumes that xBase is still in error form if using a priori
+        # i.e. don't call after getBaseParamsFromParamError
 
         # project back to standard parameters
         self.xStd = np.dot(self.B, self.xBase)
+
+        # get estimated parameters from estimated error (add a priori knowledge)
+        if self.useAPriori:
+            self.xStd = self.xStd + self.xStdModel
 
         # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
@@ -775,9 +779,9 @@ def main():
         if identification.estimateWith in ['base', 'std']:
             identification.getBaseRegressoriDynTree()
             identification.identifyBaseParameters()
+            identification.getStdFromBase()
             if identification.useAPriori:
                 identification.getBaseParamsFromParamError()
-            identification.getStdFromBase()
         elif identification.estimateWith is 'std_direct':
             identification.getBaseRegressoriDynTree()
             identification.getNonsingularRegressor()

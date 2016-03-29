@@ -80,8 +80,10 @@ class TrajectoryGenerator(object):
         nf = [1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
-            self.oscillators.append( OscillationGenerator(w_f=self.w_f_global,
-                a=np.array(a[i]), b=np.array(b[i]), q0=q[i], nf=nf[i], use_deg=True) )
+            self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
+                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = True
+                                                        )
+                                   )
 
     def getAngle(self, dof):
         return self.oscillators[dof].getAngle(self.time)
@@ -258,10 +260,10 @@ def main():
     preprocess(Q, Qraw, V, Vraw, Vself, Vdot, Tau, TauRaw, T)
 
     #write sample arrays to data file
-    np.savez_compressed(args.filename, positions=Q, velocities=Vself,
-            accelerations=Vdot, torques=Tau,
-            target_positions=np.deg2rad(Qsent), target_velocities=np.deg2rad(QdotSent),
-            target_accelerations=np.deg2rad(QddotSent), times=T)
+    np.savez(args.filename, positions=Q, velocities=Vself,
+             accelerations=Vdot, torques=Tau,
+             target_positions=np.deg2rad(Qsent), target_velocities=np.deg2rad(QdotSent),
+             target_accelerations=np.deg2rad(QddotSent), times=T)
     print "saved measurements to {}".format(args.filename)
 
 def preprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,

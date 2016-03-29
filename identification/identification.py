@@ -28,7 +28,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # subtree identification
 # TODO: write params to file/urdf file (ideally don't rewrite from model but only change values
 # in original xml tree)
-# TODO: add contact forces
+# TODO: add/use contact forces
 
 class Identification(object):
     def __init__(self, urdf_file, measurements_file):
@@ -37,7 +37,8 @@ class Identification(object):
         # number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify)
         self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
-        self.skip_samples = 1    #how many values to skip before using the next sample
+
+        self.skip_samples = 2    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -58,7 +59,7 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
+        self.useEssentialParams = 1
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -490,6 +491,9 @@ class Identification(object):
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
             self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
 
+            self.sample_end = self.measurements['positions'].shape[0]
+            if self.skip_samples > 0: self.sample_end -= (self.skip_samples+1)
+
             if self.simulate:
                 if self.useAPriori:
                     tau = self.torques_stack    # use original measurements, not delta
@@ -497,7 +501,8 @@ class Identification(object):
                     tau = self.tau
                 self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
             else:
-                self.tauMeasured = self.measurements['torques'][self.start_offset:-2:self.skip_samples+1, :]
+                self.tauMeasured = self.measurements['torques'][self.start_offset:self.sample_end:self.skip_samples+1, :]
+
         #print("torque estimation took %.03f sec." % t.interval)
 
     def getBaseEssentialParameters(self):
@@ -722,7 +727,7 @@ class Identification(object):
         ymin = np.min([self.tauMeasured, self.tauEstimated]) - 5
         ymax = np.max([self.tauMeasured, self.tauEstimated]) + 5
 
-        T = self.measurements['times'][self.start_offset:-2:self.skip_samples+1]
+        T = self.measurements['times'][self.start_offset:self.sample_end:self.skip_samples+1]
         for (data, title) in datasets:
             plt.figure()
             plt.ylim([ymin, ymax])

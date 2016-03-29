@@ -67,6 +67,9 @@ class Identification(object):
             if self.useEssentialParams:
                 print("can't get essential parameters with robotran regressor, aborting.")
                 sys.exit(-1)
+            if self.estimateWith in ['std_direct']:
+                print("can't get standard parameters directly with robotran regressor, aborting.")
+                sys.exit(-1)
         if self.iDynSimulate:
             print("using iDynTree to simulate robot dynamics")
         if self.robotranSimulate:
@@ -218,7 +221,8 @@ class Identification(object):
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
         for row in range(0, self.num_samples):
-            #TODO: this takes 10 seconds. HELLO?!
+            # TODO: this takes multiple seconds because of lazy loading, try preload or use other
+            # data format
             with identificationHelpers.Timer() as t:
                 m_idx = self.start_offset+(row*(self.skip_samples)+row)
                 if self.simulate:
@@ -447,12 +451,11 @@ class Identification(object):
             self.xBase = self.xBase + np.dot(self.B.T, self.xStdModel)   #both param vecs link relative linearized
 
     def getStdFromBase(self):
+        # Note: assumes that xBase is in absolute form,
+        # i.e. don't call before getBaseParamsFromParamError
+
         # project back to standard parameters
         self.xStd = np.dot(self.B, self.xBase)
-
-        # get estimated parameters from estimated error (add a priori knowledge)
-        if self.useAPriori:
-            self.xStd = self.xStd + self.xStdModel
 
         # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
@@ -761,14 +764,15 @@ def main():
         identification.getStdEssentialParameters()
         identification.getNonsingularRegressor()
         identification.identifyStandardEssentialParameters()
-        identification.getBaseParamsFromParamError()
+        if identification.useAPriori:
+            identification.getBaseParamsFromParamError()
     else:
         if identification.estimateWith in ['base', 'std']:
             identification.getBaseRegressoriDynTree()
             identification.identifyBaseParameters()
-            identification.getStdFromBase()
             if identification.useAPriori:
                 identification.getBaseParamsFromParamError()
+            identification.getStdFromBase()
         elif identification.estimateWith is 'std_direct':
             identification.getBaseRegressoriDynTree()
             identification.getNonsingularRegressor()

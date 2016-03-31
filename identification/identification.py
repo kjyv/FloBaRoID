@@ -44,7 +44,7 @@ class Identification(object):
         self.robotranRegressor = 0
 
         # simulate torques from target values, don't use both
-        self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
+        self.iDynSimulate = 1 # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
         self.addNoise = 0   #add some artificial zero-mean white noise to the 'measured' torques
 
@@ -468,14 +468,16 @@ class Identification(object):
             # for each joint subsystem (rho is assumed zero mean independent noise)
             self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
                                   (self.num_samples-self.num_base_params)
-            #repeat for each measurement block (n_joints * num_samples)
+
+            # repeat stddev values for each measurement block (n_joints * num_samples)
+            # along the diagonal of G
             G = np.diag(np.tile(self.sigma_rho, self.num_samples))
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
             #sigma_x = np.sqrt(np.diag(C_xx))
 
-            # weight with deviations
+            # weight Y and tau with deviations, identify params
             YBase = G.dot(self.YBase)
             tau = G.dot(self.tau)
             self.useWLS = 0

@@ -5,6 +5,7 @@
 
 import numpy as np
 from math import sin, cos
+from get_bar import get_bar
 
 N_ACTUATED_JONTS = 7
 N_BLOCKED_JONTS = 2
@@ -70,83 +71,160 @@ def delidinvbar(delta_out, m, l, In, d):
             ]
         )
 
-    # Barycentric Masses
+    # Barycentric Masses (matrix)
 
-    mb1 = m[3]+m[4]+m[5]+m[6]+m[7]+m[8]+m[9]
-    mb4 = m[4]+m[5]+m[6]+m[7]+m[8]+m[9]
-    mb5 = m[5]+m[6]+m[7]+m[8]+m[9]
-    mb6 = m[6]+m[7]+m[8]+m[9]
-    mb7 = m[7]+m[8]+m[9]
-    mb8 = m[8]+m[9]
-    mb9 = m[9]
+    mb1 = np.zeros((70))
+    mb4 = np.zeros((70))
+    mb5 = np.zeros((70))
+    mb6 = np.zeros((70))
+    mb7 = np.zeros((70))
+    mb8 = np.zeros((70))
+    mb9 = np.zeros((70))
+    
+    mb1[0] = 1
+    mb4[1] = 1
+    mb5[2] = 1
+    mb6[3] = 1
+    mb7[4] = 1
+    mb8[5] = 1
+    mb9[6] = 1
 
-    # Barycentric Vectors
+    # Barycentric Vectors (matrix)
 
-    b31 = m[3]*l[1,3]
-    b32 = m[3]*l[2,3]+mb4*d[2,4]
-    b33 = m[3]*l[3,3]+mb4*d[3,4]
-    b41 = m[4]*l[1,4]
-    b42 = m[4]*l[2,4]
-    b43 = m[4]*l[3,4]+mb5*d[3,5]
-    b51 = m[5]*l[1,5]+mb6*d[1,6]
-    b52 = m[5]*l[2,5]
-    b53 = m[5]*l[3,5]+mb6*d[3,6]
-    b61 = m[6]*l[1,6]+mb7*d[1,7]
-    b62 = m[6]*l[2,6]
-    b63 = m[6]*l[3,6]+mb7*d[3,7]
-    b71 = m[7]*l[1,7]
-    b72 = m[7]*l[2,7]
-    b73 = m[7]*l[3,7]
-    b81 = m[8]*l[1,8]
-    b82 = m[8]*l[2,8]
-    b83 = m[8]*l[3,8]+mb9*d[3,9]
-    b91 = m[9]*l[1,9]
-    b92 = m[9]*l[2,9]
-    b93 = m[9]*l[3,9]
+    b31 = np.zeros((70))
+    b32 = np.zeros((70))
+    b33 = np.zeros((70))
+    b41 = np.zeros((70))
+    b42 = np.zeros((70))
+    b43 = np.zeros((70))
+    b51 = np.zeros((70))
+    b52 = np.zeros((70))
+    b53 = np.zeros((70))
+    b61 = np.zeros((70))
+    b62 = np.zeros((70))
+    b63 = np.zeros((70))
+    b71 = np.zeros((70))
+    b72 = np.zeros((70))
+    b73 = np.zeros((70))
+    b81 = np.zeros((70))
+    b82 = np.zeros((70))
+    b83 = np.zeros((70))
+    b91 = np.zeros((70))
+    b92 = np.zeros((70))
+    b93 = np.zeros((70))
+    
+    b31[7] = 1
+    b32[8] = 1
+    b33[9] = 1
+    b41[10] = 1
+    b42[11] = 1
+    b43[12] = 1
+    b51[13] = 1
+    b52[14] = 1
+    b53[15] = 1
+    b61[16] = 1
+    b62[17] = 1
+    b63[18] = 1
+    b71[19] = 1
+    b72[20] = 1
+    b73[21] = 1
+    b81[22] = 1
+    b82[23] = 1
+    b83[24] = 1
+    b91[25] = 1
+    b92[26] = 1
+    b93[27] = 1
+    
 
-    # Barycentric Tensors
-    K311 = In[1][3]+m[3]*l[2][3]*l[2][3]+m[3]*l[3][3]*l[3][3]+mb4*d[2][4]*d[2][4]+mb4*d[3][4]*d[3][4]
-    K312 = In[2][3]-m[3]*l[1][3]*l[2][3]
-    K313 = In[3][3]-m[3]*l[1][3]*l[3][3]
-    K322 = In[5][3]+m[3]*l[1][3]*l[1][3]+m[3]*l[3][3]*l[3][3]+mb4*d[3][4]*d[3][4]
-    K323 = In[6][3]-m[3]*l[2][3]*l[3][3]-mb4*d[2][4]*d[3][4]
-    K333 = In[9][3]+m[3]*l[1][3]*l[1][3]+m[3]*l[2][3]*l[2][3]+mb4*d[2][4]*d[2][4]
-    K411 = In[1][4]+m[4]*l[2][4]*l[2][4]+m[4]*l[3][4]*l[3][4]+mb5*d[3][5]*d[3][5]
-    K412 = In[2][4]-m[4]*l[1][4]*l[2][4]
-    K413 = In[3][4]-m[4]*l[1][4]*l[3][4]
-    K422 = In[5][4]+m[4]*l[1][4]*l[1][4]+m[4]*l[3][4]*l[3][4]+mb5*d[3][5]*d[3][5]
-    K423 = In[6][4]-m[4]*l[2][4]*l[3][4]
-    K433 = In[9][4]+m[4]*l[1][4]*l[1][4]+m[4]*l[2][4]*l[2][4]
-    K511 = In[1][5]+m[5]*l[2][5]*l[2][5]+m[5]*l[3][5]*l[3][5]+mb6*d[3][6]*d[3][6]
-    K512 = In[2][5]-m[5]*l[1][5]*l[2][5]
-    K513 = In[3][5]-m[5]*l[1][5]*l[3][5]-mb6*d[1][6]*d[3][6]
-    K522 = In[5][5]+m[5]*l[1][5]*l[1][5]+m[5]*l[3][5]*l[3][5]+mb6*d[1][6]*d[1][6]+mb6*d[3][6]*d[3][6]
-    K523 = In[6][5]-m[5]*l[2][5]*l[3][5]
-    K533 = In[9][5]+m[5]*l[1][5]*l[1][5]+m[5]*l[2][5]*l[2][5]+mb6*d[1][6]*d[1][6]
-    K611 = In[1][6]+m[6]*l[2][6]*l[2][6]+m[6]*l[3][6]*l[3][6]+mb7*d[3][7]*d[3][7]
-    K612 = In[2][6]-m[6]*l[1][6]*l[2][6]
-    K613 = In[3][6]-m[6]*l[1][6]*l[3][6]-mb7*d[1][7]*d[3][7]
-    K622 = In[5][6]+m[6]*l[1][6]*l[1][6]+m[6]*l[3][6]*l[3][6]+mb7*d[1][7]*d[1][7]+mb7*d[3][7]*d[3][7]
-    K623 = In[6][6]-m[6]*l[2][6]*l[3][6]
-    K633 = In[9][6]+m[6]*l[1][6]*l[1][6]+m[6]*l[2][6]*l[2][6]+mb7*d[1][7]*d[1][7]
-    K711 = In[1][7]+m[7]*l[2][7]*l[2][7]+m[7]*l[3][7]*l[3][7]
-    K712 = In[2][7]-m[7]*l[1][7]*l[2][7]
-    K713 = In[3][7]-m[7]*l[1][7]*l[3][7]
-    K722 = In[5][7]+m[7]*l[1][7]*l[1][7]+m[7]*l[3][7]*l[3][7]
-    K723 = In[6][7]-m[7]*l[2][7]*l[3][7]
-    K733 = In[9][7]+m[7]*l[1][7]*l[1][7]+m[7]*l[2][7]*l[2][7]
-    K811 = In[1][8]+m[8]*l[2][8]*l[2][8]+m[8]*l[3][8]*l[3][8]+mb9*d[3][9]*d[3][9]
-    K812 = In[2][8]-m[8]*l[1][8]*l[2][8]
-    K813 = In[3][8]-m[8]*l[1][8]*l[3][8]
-    K822 = In[5][8]+m[8]*l[1][8]*l[1][8]+m[8]*l[3][8]*l[3][8]+mb9*d[3][9]*d[3][9]
-    K823 = In[6][8]-m[8]*l[2][8]*l[3][8]
-    K833 = In[9][8]+m[8]*l[1][8]*l[1][8]+m[8]*l[2][8]*l[2][8]
-    K911 = In[1][9]+m[9]*l[2][9]*l[2][9]+m[9]*l[3][9]*l[3][9]
-    K912 = In[2][9]-m[9]*l[1][9]*l[2][9]
-    K913 = In[3][9]-m[9]*l[1][9]*l[3][9]
-    K922 = In[5][9]+m[9]*l[1][9]*l[1][9]+m[9]*l[3][9]*l[3][9]
-    K923 = In[6][9]-m[9]*l[2][9]*l[3][9]
-    K933 = In[9][9]+m[9]*l[1][9]*l[1][9]+m[9]*l[2][9]*l[2][9]
+    # Barycentric Tensors (matrix)
+    
+    K311 = np.zeros((70))
+    K312 = np.zeros((70))
+    K313 = np.zeros((70))
+    K322 = np.zeros((70))
+    K323 = np.zeros((70))
+    K333 = np.zeros((70))
+    K411 = np.zeros((70))
+    K412 = np.zeros((70))
+    K413 = np.zeros((70))
+    K422 = np.zeros((70))
+    K423 = np.zeros((70))
+    K433 = np.zeros((70))
+    K511 = np.zeros((70))
+    K512 = np.zeros((70))
+    K513 = np.zeros((70))
+    K522 = np.zeros((70))
+    K523 = np.zeros((70))
+    K533 = np.zeros((70))
+    K611 = np.zeros((70))
+    K612 = np.zeros((70))
+    K613 = np.zeros((70))
+    K622 = np.zeros((70))
+    K623 = np.zeros((70))
+    K633 = np.zeros((70))
+    K711 = np.zeros((70))
+    K712 = np.zeros((70))
+    K713 = np.zeros((70))
+    K722 = np.zeros((70))
+    K723 = np.zeros((70))
+    K733 = np.zeros((70))
+    K811 = np.zeros((70))
+    K812 = np.zeros((70))
+    K813 = np.zeros((70))
+    K822 = np.zeros((70))
+    K823 = np.zeros((70))
+    K833 = np.zeros((70))
+    K911 = np.zeros((70))
+    K912 = np.zeros((70))
+    K913 = np.zeros((70))
+    K922 = np.zeros((70))
+    K923 = np.zeros((70))
+    K933 = np.zeros((70))
+
+    K311[28] = 1
+    K312[29] = 1
+    K313[30] = 1
+    K322[31] = 1
+    K323[32] = 1
+    K333[33] = 1
+    K411[34] = 1
+    K412[35] = 1
+    K413[36] = 1
+    K422[37] = 1
+    K423[38] = 1
+    K433[39] = 1
+    K511[40] = 1
+    K512[41] = 1
+    K513[42] = 1
+    K522[43] = 1
+    K523[44] = 1
+    K533[45] = 1
+    K611[46] = 1
+    K612[47] = 1
+    K613[48] = 1
+    K622[49] = 1
+    K623[50] = 1
+    K633[51] = 1
+    K711[52] = 1
+    K712[53] = 1
+    K713[54] = 1
+    K722[55] = 1
+    K723[56] = 1
+    K733[57] = 1
+    K811[58] = 1
+    K812[59] = 1
+    K813[60] = 1
+    K822[61] = 1
+    K823[62] = 1
+    K833[63] = 1
+    K911[64] = 1
+    K912[65] = 1
+    K913[66] = 1
+    K922[67] = 1
+    K923[68] = 1
+    K933[69] = 1
+
+
 
     # Barycentric Tensors: elements Ks, Kd
     Ks9 = 0.500*(K922+K933)
@@ -190,52 +268,59 @@ def delidinvbar(delta_out, m, l, In, d):
 
     # Definition of Minimal Set of Dynamical Paramaters
 
-    delta_out[0] = b32
-    delta_out[1] = br31
-    delta_out[2] = b33
-    delta_out[3] = Kr312
-    delta_out[4] = Kr322
-    delta_out[5] = K323
-    delta_out[6] = b42
-    delta_out[7] = br43
-    delta_out[8] = Kr411
-    delta_out[9] = K412
-    delta_out[10] = K413
-    delta_out[11] = Kd4
-    delta_out[12] = K423
-    delta_out[13] = b51
-    delta_out[14] = br52
-    delta_out[15] = Kd5
-    delta_out[16] = Kr512
-    delta_out[17] = K513
-    delta_out[18] = Kr523
-    delta_out[19] = Kr533
-    delta_out[20] = b61
-    delta_out[21] = br63
-    delta_out[22] = K612
-    delta_out[23] = Kr613
-    delta_out[24] = Kr622
-    delta_out[25] = K623
-    delta_out[26] = Kd6
-    delta_out[27] = b71
-    delta_out[28] = br72
-    delta_out[29] = Kd7
-    delta_out[30] = K712
-    delta_out[31] = K713
-    delta_out[32] = K723
-    delta_out[33] = Kr733
-    delta_out[34] = br81
-    delta_out[35] = b83
-    delta_out[36] = K812
-    delta_out[37] = Kr813
-    delta_out[38] = Kr822
-    delta_out[39] = K823
-    delta_out[40] = Kd8
-    delta_out[41] = b92
-    delta_out[42] = b93
-    delta_out[43] = K911
-    delta_out[44] = K912
-    delta_out[45] = K913
-    delta_out[46] = Kd9
-    delta_out[47] = K923
+    A = b32
+    A = np.vstack((A,br31))
+    A = np.vstack((A,b33))
+    A = np.vstack((A,Kr312))
+    A = np.vstack((A,Kr322))
+    A = np.vstack((A,K323))
+    A = np.vstack((A,b42))
+    A = np.vstack((A,br43))
+    A = np.vstack((A,Kr411))
+    A = np.vstack((A,K412))
+    A = np.vstack((A,K413))
+    A = np.vstack((A,Kd4))
+    A = np.vstack((A,K423))
+    A = np.vstack((A,b51))
+    A = np.vstack((A,br52))
+    A = np.vstack((A,Kd5))
+    A = np.vstack((A,Kr512))
+    A = np.vstack((A,K513))
+    A = np.vstack((A,Kr523))
+    A = np.vstack((A,Kr533))
+    A = np.vstack((A,b61))
+    A = np.vstack((A,br63))
+    A = np.vstack((A,K612))
+    A = np.vstack((A,Kr613))
+    A = np.vstack((A,Kr622))
+    A = np.vstack((A,K623))
+    A = np.vstack((A,Kd6))
+    A = np.vstack((A,b71))
+    A = np.vstack((A,br72))
+    A = np.vstack((A,Kd7))
+    A = np.vstack((A,K712))
+    A = np.vstack((A,K713))
+    A = np.vstack((A,K723))
+    A = np.vstack((A,Kr733))
+    A = np.vstack((A,br81))
+    A = np.vstack((A,b83))
+    A = np.vstack((A,K812))
+    A = np.vstack((A,Kr813))
+    A = np.vstack((A,Kr822))
+    A = np.vstack((A,K823))
+    A = np.vstack((A,Kd8))
+    A = np.vstack((A,b92))
+    A = np.vstack((A,b93))
+    A = np.vstack((A,K911))
+    A = np.vstack((A,K912))
+    A = np.vstack((A,K913))
+    A = np.vstack((A,Kd9))
+    A = np.vstack((A,K923))
 
+    #get barycentric parameters
+    bar = get_bar(m,l,d,In)
+
+    # get base parameters from barycentric ones (using linear relation, A matrix) 
+    delta_out *= 0 # ensure delta is iput as 0
+    delta_out += np.dot(A,bar)
+    return A

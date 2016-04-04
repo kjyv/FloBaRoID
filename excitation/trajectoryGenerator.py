@@ -5,20 +5,28 @@ class TrajectoryGenerator(object):
         pulsating trajectory generator for one joint using fourier series from Swers, Gansemann (1997)
         gives values for one time instant at the current time
     '''
-    def __init__(self, dofs):
+    def __init__(self, dofs, use_deg=False):
         self.dofs = dofs
         self.oscillators = list()
 
-        #TODO: these are just some values, get them from optimzation or outside
-        self.w_f_global = 2.0
-        a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8]]
-        b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8]]
-        q = [10, 50, -80, -25, 50, 0, -15]
-        nf = [1,1,1,1,1,1,1]
+        #TODO: these are just some values, get them from optimization or outside
+        self.w_f_global = 1.0
+        #walkman left arm
+        #a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8], [-0.8]]
+        #b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8], [0.8]]
+        #q = [10, 50, -80, -25, 50, 0, -15, -15]
+        #kuka lwr4+
+        a = [[-0.7], [1.0], [-1.4], [-0.9], [0.4], [-0.5], [-0.9], [0.7]]
+        b = [[0.7], [1.0], [1.4], [0.9], [0.4], [0.5], [0.9], [0.7]]
+        q = [0, 0, 0, 0, 0, 0, 0, 0]
+
+        if not use_deg:
+            q = np.deg2rad(q)
+        nf = [1,1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
-                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = True
+                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = use_deg
                                                         )
                                    )
 

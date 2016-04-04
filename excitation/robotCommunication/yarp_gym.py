@@ -1,7 +1,7 @@
 import sys
 import yarp
 import numpy as np
-from trajectoryGenerator import OscillationGenerator, TrajectoryGenerator
+from trajectoryGenerator import TrajectoryGenerator
 
 def gen_position_msg(msg_port, angles, velocities):
     bottle = msg_port.prepare()
@@ -16,7 +16,7 @@ def gen_command(msg_port, command):
     return bottle
 
 def main(config, data):
-    #connect to yarp and open output port
+    # connect to yarp and open output port
     yarp.Network.init()
     yarp.Time.useNetworkClock("/clock")
     yarp.Time.now()  #use clock once to sync (?)
@@ -33,8 +33,8 @@ def main(config, data):
     data_port.open(portName+"i")
     yarp.Network.connect(portName+'o', portName+'i')
 
-    #init trajectory generator for all the joints
-    trajectories = TrajectoryGenerator(config['N_DOFS'])
+    # init trajectory generator for all the joints
+    trajectories = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
 
     t_init = yarp.Time.now()
     t_elapsed = 0.0
@@ -51,7 +51,7 @@ def main(config, data):
     sent_velocities = list()
     sent_accelerations = list()
 
-    #try high level p correction when using velocity ctrl
+    # try high level p correction when using velocity ctrl
     #e = [0] * config['N_DOFS']
     #velocity_correction = [0] * config['N_DOFS']
 
@@ -70,14 +70,14 @@ def main(config, data):
         #for i in range(0, config['N_DOFS']):
         #    target_velocities[i]+=velocity_correction[i]
 
-        #make sure we start moving at a position with zero velocity
+        # make sure we start moving at a position with zero velocity
         if not started:
             started = wait_for_zero_vel(t_elapsed, trajectories)
             t_elapsed = yarp.Time.now() - t_init
             waited_for_start = t_elapsed
 
             if started:
-                #set angles and wait one period to have settled at zero velocity position
+                # set angles and wait one period to have settled at zero velocity position
                 gen_position_msg(command_port, target_angles, target_velocities)
                 command_port.write()
 
@@ -89,7 +89,7 @@ def main(config, data):
                 print "ok."
             continue
 
-        #set target angles
+        # set target angles
         gen_position_msg(command_port, target_angles, target_velocities)
         command_port.write()
 
@@ -98,7 +98,7 @@ def main(config, data):
         sent_accelerations.append(target_accelerations)
         sent_time.append(yarp.Time.now())
 
-        #get and wait for next value, so sync to GYM loop
+        # get and wait for next value, so sync to GYM loop
         data = data_port.read(shouldWait=True)
 
         b_positions = data.get(0).asList()
@@ -119,37 +119,32 @@ def main(config, data):
         else:
             print "warning, wrong amount of values received! ({} DOFS vs. {})".format(config['N_DOFS'], b_positions.size())
 
-        #test manual correction for position error
+        # test manual correction for position error
         #p = 0
         #for i in range(0, config['N_DOFS']):
         #    e[i] = (angles[i] - positions[i])
         #    velocity_correction[i] = e[i]*p
 
-        #collect measurement data
+        # collect measurement data
         measured_positions.append(positions)
         measured_velocities.append(velocities)
         measured_torques.append(torques)
         measured_time.append(d_time)
         t_elapsed = d_time - t_init
 
-    #clean up
+    # clean up
     command_port.close()
     data_port.close()
     data['Q'] = np.array(measured_positions); del measured_positions
     data['Qsent'] = np.array(sent_positions);
     data['QdotSent'] = np.array(sent_velocities);
     data['QddotSent'] = np.array(sent_accelerations);
-    data['Qraw'] = np.zeros_like(data['Q'])   #will be calculated in preprocess()
     data['V'] = np.array(measured_velocities); del measured_velocities
-    data['Vdot'] = np.zeros_like(data['V'])   #will be calculated in preprocess()
-    data['Vraw'] = np.zeros_like(data['V'])   #will be calculated in preprocess()
-    data['Vself'] = np.zeros_like(data['V'])   #will be calculated in preprocess()
     data['Tau'] = np.array(measured_torques); del measured_torques
-    data['TauRaw'] = np.zeros_like(data['Tau'])   #will be calculated in preprocess()
     data['T'] = np.array(measured_time); del measured_time
 
     data['measured_frequency'] = len(sent_positions)/duration
 
-    ## some stats
+    # some stats
     print "got {} samples in {}s.".format(data['Q'].shape[0], duration),
     print "(about {} Hz)".format(data['measured_frequency'])

@@ -34,8 +34,8 @@ class Identification(object):
     def __init__(self, urdf_file, measurements_file):
         ## options
 
-        # number of samples to use
-        # (Khalil recommends about 500 times number of parameters to identify)
+        # determine number of samples to use
+        # (Khalil recommends about 500 times number of parameters to identify...)
         self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
 
         self.skip_samples = 2    #how many values to skip before using the next sample
@@ -102,6 +102,8 @@ class Identification(object):
             print 'loaded model {}'.format(self.URDF_FILE)
 
             # define what regressor type to use and options for it
+            # TODO: get from file
+            """
             regrXml = '''
             <regressor>
               <jointTorqueDynamics>
@@ -116,13 +118,31 @@ class Identification(object):
                 </joints>
               </jointTorqueDynamics>
             </regressor>'''
-            # or use <allJoints/>
+            """
+
+            regrXml = '''
+            <regressor>
+              <jointTorqueDynamics>
+                <joints>
+                    <joint>lwr_0_joint</joint>
+                    <joint>lwr_1_joint</joint>
+                    <joint>lwr_2_joint</joint>
+                    <joint>lwr_3_joint</joint>
+                    <joint>lwr_4_joint</joint>
+                    <joint>lwr_5_joint</joint>
+                    <joint>lwr_6_joint</joint>
+                </joints>
+              </jointTorqueDynamics>
+            </regressor>'''
+            #or use <allJoints/>
             self.generator.loadRegressorStructureFromString(regrXml)
 
+            # TODO: this and the following are not dependent on joints specified in regressor!
             self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
             print '# DOFs: {}'.format(self.N_DOFS)
 
             # Get the number of outputs of the regressor
+            # (should be #links - #fakeLinks)
             self.N_OUT = self.generator.getNrOfOutputs()
             print '# outputs: {}'.format(self.N_OUT)
 
@@ -222,8 +242,8 @@ class Identification(object):
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
         for row in range(0, self.num_samples):
-            # TODO: this takes multiple seconds because of lazy loading, try preload or use other
-            # data format
+            # TODO: this takes multiple seconds because of lazy loading, try preload
+            # or use other data format
             with identificationHelpers.Timer() as t:
                 m_idx = self.start_offset+(row*(self.skip_samples)+row)
                 if self.simulate:
@@ -535,7 +555,7 @@ class Identification(object):
             self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
 
             self.sample_end = self.measurements['positions'].shape[0]
-            if self.skip_samples > 0: self.sample_end -= (self.skip_samples+1)
+            if self.skip_samples > 0: self.sample_end -= (self.skip_samples)
 
             if self.simulate:
                 if self.useAPriori:
@@ -765,12 +785,19 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
+            #([self.measurements['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
+            #([self.measurements['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
+            #([self.measurements['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
         ]
-        #print "torque diff: {}".format(self.tauMeasured - self.tauEstimated)
-        ymin = np.min([self.tauMeasured, self.tauEstimated]) - 5
-        ymax = np.max([self.tauMeasured, self.tauEstimated]) + 5
+
+        # scale all figures to same ranges and add some margin
+        ymin = np.min([self.tauMeasured, self.tauEstimated])
+        ymin += ymin * 0.05
+        ymax = np.max([self.tauMeasured, self.tauEstimated])
+        ymax += ymax * 0.05
 
         T = self.measurements['times'][self.start_offset:self.sample_end:self.skip_samples+1]
+
         for (data, title) in datasets:
             plt.figure()
             plt.ylim([ymin, ymax])

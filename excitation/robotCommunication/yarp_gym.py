@@ -55,11 +55,6 @@ def main(config, data):
     #e = [0] * config['N_DOFS']
     #velocity_correction = [0] * config['N_DOFS']
 
-    def wait_for_zero_vel(t_elapsed, trajectories):
-        trajectories.setTime(t_elapsed)
-        if abs(round(trajectories.getVelocity(0))) < 5:
-            return True
-
     waited_for_start = 0
     started = False
     while t_elapsed < duration:
@@ -72,7 +67,7 @@ def main(config, data):
 
         # make sure we start moving at a position with zero velocity
         if not started:
-            started = wait_for_zero_vel(t_elapsed, trajectories)
+            started = trajectories.wait_for_zero_vel(t_elapsed)
             t_elapsed = yarp.Time.now() - t_init
             waited_for_start = t_elapsed
 

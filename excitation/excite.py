@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 from scipy import signal
+from IPython import embed
 
 from robotCommunication import yarp_gym, ros_moveit
 
@@ -26,7 +27,7 @@ data = {}   #hold some global data vars in here
 config = {}
 config['args'] = args
 
-import iDynTree
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 config['jointNames'] = iDynTree.StringVector([])
 iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
@@ -35,10 +36,11 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
                 accls, torques, torques_unfiltered, times, fs):
     # convert degs to rads
     # assuming angles don't wrap, otherwise use np.unwrap before
-    posis_rad = np.deg2rad(posis)
-    vels_rad = np.deg2rad(vels)
-    np.copyto(posis, posis_rad)
-    np.copyto(vels, vels_rad)
+    if args.yarp:
+        posis_rad = np.deg2rad(posis)
+        vels_rad = np.deg2rad(vels)
+        np.copyto(posis, posis_rad)
+        np.copyto(vels, vels_rad)
 
     # low-pass filter positions
     posis_orig = posis.copy()
@@ -84,10 +86,13 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
     plt.grid()
     """
 
-    # calc velocity self (from filtered positions, better than filtering noisy velocity measurements)
+    # calc velocity self (from filtered positions, seems better than filtering noisy velocity measurements)
     for i in range(1, posis.shape[0]):
         dT = times[i] - times[i-1]
-        vels_self[i] = (posis[i] - posis[i-1])/dT
+        if dT != 0:
+            vels_self[i] = (posis[i] - posis[i-1])/dT
+        else:
+            vels_self[i] = vels_self[i-1]
 
     # median filter of velocities self
     vels_self_orig = vels_self.copy()
@@ -102,7 +107,10 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
     # calc accelerations
     for i in range(1, vels_self.shape[0]):
         dT = times[i] - times[i-1]
-        accls[i] = (vels_self[i] - vels_self[i-1])/dT
+        if dT != 0:
+            accls[i] = (vels_self[i] - vels_self[i-1])/dT
+        else:
+            accls[i] = accls[i-1]
 
     # filter accelerations not necessary?
 
@@ -138,7 +146,7 @@ def plot(data):
         color_lvl = 8
         rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
         colors = sample(rgb,Nlines)
-        print colors[0:7]
+        print colors[0:config['N_DOFS']]
     else:
         # set some nice fixed colors
         colors = [[ 0.97254902,  0.62745098,  0.40784314],
@@ -169,7 +177,7 @@ def plot(data):
         sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
         print "joint {}: {}".format(i, sse)
 
-    print "histogram of yarp time diffs"
+    print "histogram of time diffs"
     dT = np.diff(T)
     H, B = np.histogram(dT)
     #plt.hist(H, B)
@@ -218,10 +226,6 @@ def plot(data):
         d+=1
     leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
     leg.draggable()
-
-    #yarp times over time indices
-    #plt.figure()
-    #plt.plot(range(0,len(T)), T)
 
     plt.show()
 

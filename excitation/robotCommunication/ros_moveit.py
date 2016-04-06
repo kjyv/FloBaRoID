@@ -61,16 +61,21 @@ def main(config, data):
     plan = group.plan()
     plan.joint_trajectory.points = []
 
-    # generate trajectory and send in one message
+    # generate trajectory and send in one message to moveit
     duration = config['args'].periods*trajectories.getPeriodLength()
     sent_positions = list()
     sent_time = list()
     sent_velocities = list()
     sent_accelerations = list()
 
-    t = 0
     step = 1.0/200   # data rate of 200 Hz
-    while t < duration:
+    start_t = 0
+    while not trajectories.wait_for_zero_vel(start_t):
+        start_t+=step
+    t = start_t
+
+    # add trajectory points to plan
+    while t < start_t+duration:
         trajectories.setTime(t)
         point = JointTrajectoryPoint()
         for i in range(0, config['N_DOFS']):
@@ -90,6 +95,7 @@ def main(config, data):
         sent_time.append(t)
         t+=step
 
+    # record measurements
     jSt = RecordJointStates()
     group.execute(plan, wait=False)
     num_sent = len(sent_positions)

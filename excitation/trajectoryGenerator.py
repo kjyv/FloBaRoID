@@ -16,19 +16,19 @@ class TrajectoryGenerator(object):
         #b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8], [0.8]]
         #q = [10, 50, -80, -25, 50, 0, -15, -15]
         #kuka lwr4+
-        a = [[-0.7], [1.0], [-1.4], [-0.9], [0.4], [-0.5], [-0.9], [0.7]]
-        b = [[0.7], [1.0], [1.4], [0.9], [0.4], [0.5], [0.9], [0.7]]
+        a = [[-0.7], [0.2], [-1.2], [-0.9], [0.4], [-1.3], [-0.9], [1.5]]
+        b = [[0.7], [0.2], [1.2], [0.9], [0.4], [1.3], [0.9], [0.5]]
         q = [0, 0, 0, 0, 0, 0, 0, 0]
 
-        if not use_deg:
+        self.use_deg = use_deg
+        if not self.use_deg:
             q = np.deg2rad(q)
         nf = [1,1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
                                                          b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = use_deg
-                                                        )
-                                   )
+                                                        ))
 
     def getAngle(self, dof):
         return self.oscillators[dof].getAngle(self.time)
@@ -46,6 +46,12 @@ class TrajectoryGenerator(object):
     def setTime(self, time):
         '''set current time in seconds'''
         self.time = time
+
+    def wait_for_zero_vel(self, t_elapsed):
+        self.setTime(t_elapsed)
+        if self.use_deg: thresh = 5
+        else: thresh = np.deg2rad(5)
+        return abs(self.getVelocity(0)) < thresh
 
 class OscillationGenerator(object):
     def __init__(self, w_f, a, b, q0, nf, use_deg):
@@ -69,7 +75,7 @@ class OscillationGenerator(object):
         #- t is the current time
         q = 0
         for l in range(1, self.nf+1):
-            q = (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) - \
+            q += (self.a[l-1]/(self.w_f*l))*np.sin(self.w_f*l*t) - \
                  (self.b[l-1]/(self.w_f*l))*np.cos(self.w_f*l*t)
         if self.use_deg:
             q = np.rad2deg(q)

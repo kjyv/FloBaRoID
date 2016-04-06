@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    std::string urdf_filename = rf.findFile("../../../urdf/bigman_left_arm.urdf");
+    std::string urdf_filename = rf.findFile("../../../model/kuka_lwr4.urdf");
     yInfo() << "Trying to open " << urdf_filename << " as robot model";
 
     iDynTree::Regressors::DynamicsRegressorGenerator generator;
@@ -56,6 +56,11 @@ int main(int argc, char *argv[])
     const char* regrXml =
         "<regressor>"
         "    <jointTorqueDynamics>"
+        "       <allJoints/>"
+        "    </jointTorqueDynamics>"
+        "</regressor>";
+
+/*
         "      <joints>"
         "        <joint>LShSag</joint>"
         "        <joint>LShLat</joint>"
@@ -65,8 +70,7 @@ int main(int argc, char *argv[])
         "        <joint>LWrj1</joint>"
         "        <joint>LWrj2</joint>"
         "      </joints>"
-        "    </jointTorqueDynamics>"
-        "</regressor>";
+*/
 
     generator.loadRegressorStructureFromString(regrXml);
 

@@ -267,10 +267,10 @@ class Identification(object):
                     # convert positions from urdf/idyntree convention to robotran conventions and
                     # joint     |  zero at   | direction
                     # 0 LShSag  |  20deg     |  1
-                    # 1 LShLat  |  -41deg    |  1
+                    # 1 LShLat  |  -42deg    |  1
                     # rest      |  0deg      |  1
                     #pos[0]+=np.deg2rad(20)
-                    pos[1]-=np.deg2rad(41)
+                    pos[1]-=np.deg2rad(42)
 
                 if self.iDynSimulate or self.useAPriori:
                     # calc torques with iDynTree dynamicsComputation class

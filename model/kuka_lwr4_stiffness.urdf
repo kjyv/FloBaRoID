@@ -38,6 +38,11 @@
   <!-- URDF model /-->
   <!-- and assemble your robot -->
   <link name="box">
+    <inertial>
+      <mass value="5.0"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0.50"/>
       <geometry>
@@ -51,7 +56,11 @@
       </geometry>
     </collision>
   </link>
-
+  <gazebo reference="box">
+    <static>true</static>
+    &gt;
+	
+  </gazebo>
   <!-- using the models -->
   <!-- First (shoulder) element of the arm. Fixed to its parent. -->
   <joint name="box_lwr_base_joint" type="fixed">
@@ -90,6 +99,14 @@
     <parent link="lwr_base_link"/>
     <child link="lwr_1_link"/>
   </joint>
+  <joint name="lwr_0_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_base_link"/>
+    <child link="lwr_1_link_dummy"/>
+  </joint>
+  <link name="lwr_1_link_dummy"/>
   <link name="lwr_1_link">
     <inertial>
       <mass value="2.0"/>
@@ -132,6 +149,14 @@
     <parent link="lwr_1_link"/>
     <child link="lwr_2_link"/>
   </joint>
+  <joint name="lwr_1_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_1_link"/>
+    <child link="lwr_2_link_dummy"/>
+  </joint>
+  <link name="lwr_2_link_dummy"/>
   <link name="lwr_2_link">
     <inertial>
       <mass value="2.0"/>
@@ -174,6 +199,14 @@
     <parent link="lwr_2_link"/>
     <child link="lwr_3_link"/>
   </joint>
+  <joint name="lwr_2_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_2_link"/>
+    <child link="lwr_3_link_dummy"/>
+  </joint>
+  <link name="lwr_3_link_dummy"/>
   <link name="lwr_3_link">
     <inertial>
       <mass value="2.0"/>
@@ -216,6 +249,14 @@
     <parent link="lwr_3_link"/>
     <child link="lwr_4_link"/>
   </joint>
+  <joint name="lwr_3_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_3_link"/>
+    <child link="lwr_4_link_dummy"/>
+  </joint>
+  <link name="lwr_4_link_dummy"/>
   <link name="lwr_4_link">
     <inertial>
       <mass value="2.0"/>
@@ -258,6 +299,14 @@
     <parent link="lwr_4_link"/>
     <child link="lwr_5_link"/>
   </joint>
+  <joint name="lwr_4_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_4_link"/>
+    <child link="lwr_5_link_dummy"/>
+  </joint>
+  <link name="lwr_5_link_dummy"/>
   <link name="lwr_5_link">
     <inertial>
       <mass value="2.0"/>
@@ -300,6 +349,14 @@
     <parent link="lwr_5_link"/>
     <child link="lwr_6_link"/>
   </joint>
+  <joint name="lwr_5_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_5_link"/>
+    <child link="lwr_6_link_dummy"/>
+  </joint>
+  <link name="lwr_6_link_dummy"/>
   <link name="lwr_6_link">
     <inertial>
       <mass value="0.2"/>
@@ -329,6 +386,14 @@
     <parent link="lwr_6_link"/>
     <child link="lwr_7_link"/>
   </joint>
+  <joint name="lwr_6_joint_stiffness" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="0" lower="0" upper="5000" velocity="20000"/>
+    <safety_controller k_position="30" k_velocity="30" soft_lower_limit="0" soft_upper_limit="5000"/>
+    <parent link="lwr_6_link"/>
+    <child link="lwr_7_link_dummy"/>
+  </joint>
+  <link name="lwr_7_link_dummy"/>
   <link name="lwr_7_link">
     <inertial>
       <mass value="0.2"/>
@@ -349,6 +414,43 @@
       </geometry>
     </collision>
   </link>
+  <gazebo>
+    <plugin filename="liblwr_hw_gazebo_plugin.so" name="lwr_lwr_hw_sim">
+      <robotNamespace>lwr</robotNamespace>
+    </plugin>
+  </gazebo>
+  <gazebo reference="lwr_base_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_1_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_2_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_3_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_4_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_5_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_6_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="lwr_7_link">
+    <gravity>true</gravity>
+    <material>Gazebo/Grey</material>
+  </gazebo>
   <transmission name="lwr_0_trans">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="lwr_0_joint">

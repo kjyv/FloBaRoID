@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import threading
+from IPython import embed
 
 import rospy
 import moveit_commander
@@ -43,10 +44,6 @@ def main(config, data):
     # in case there are previous executions still running
     group.stop()
 
-    # reset to homing position
-    group.set_named_target('full_lwr_home')
-    group.go()
-
     group.allow_replanning(True)
 
     # set higher goal tolerance in case moveit aborts with GOAL_TOLERANCE_VIOLATED.
@@ -58,6 +55,7 @@ def main(config, data):
     config['N_DOFS'] = len(group.get_current_joint_values())
     trajectories = TrajectoryGenerator(config['N_DOFS'])
 
+    # create some plan and clear its trajectory
     plan = group.plan()
     plan.joint_trajectory.points = []
 
@@ -88,12 +86,18 @@ def main(config, data):
 
         point.time_from_start = rospy.Duration(t)
         plan.joint_trajectory.points.append(point)
-
+        #if t == start_t:
+        #    print np.rad2deg(point.positions)
         sent_positions.append(point.positions)
         sent_velocities.append(point.velocities)
         sent_accelerations.append(point.accelerations)
         sent_time.append(t)
         t+=step
+
+    # move to start position
+    group.set_joint_value_target(plan.joint_trajectory.points[0].positions)
+    #group.set_named_target('full_lwr_home')
+    group.go()
 
     # record measurements
     jSt = RecordJointStates()
@@ -104,10 +108,10 @@ def main(config, data):
         # gets data in thread
         rospy.sleep(step)
 
-    data['Q'] = np.array(jSt.positions[0:num_sent])
-    data['V'] = np.array(jSt.velocities[0:num_sent])
+    data['Q'] = np.array(jSt.positions[0:num_sent])[:,0::2]
+    data['V'] = np.array(jSt.velocities[0:num_sent])[:,0::2]
     data['T'] = np.array(jSt.times[0:num_sent])
-    data['Tau'] = np.array(jSt.torques[0:num_sent])
+    data['Tau'] = np.array(jSt.torques[0:num_sent])[:,0::2]
     data['measured_frequency'] = data['Q'].shape[0] / duration
     data['Qsent'] = np.array(sent_positions);
     data['QdotSent'] = np.array(sent_velocities);

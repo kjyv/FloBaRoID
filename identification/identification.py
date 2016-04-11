@@ -31,7 +31,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # TODO: add/use contact forces
 
 class Identification(object):
-    def __init__(self, urdf_file, measurements_file):
+    def __init__(self, urdf_file, measurements_file, regressor_file):
         ## options
 
         # determine number of samples to use
@@ -44,13 +44,13 @@ class Identification(object):
         self.robotranRegressor = 0
 
         # simulate torques from target values, don't use both
-        self.iDynSimulate = 1 # simulate torque using idyntree (instead of reading measurements)
+        self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
         self.addNoise = 0   #add some artificial zero-mean white noise to the 'measured' torques
 
         # using which parameters to estimate torques for validation. Set to one of
-        # ['base', 'std', 'std_direct', 'model']
-        self.estimateWith = 'std'
+        # ['base', 'std', 'std_direct', 'urdf']
+        self.estimateWith = 'base'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
         self.useAPriori = 1
@@ -102,39 +102,16 @@ class Identification(object):
             print 'loaded model {}'.format(self.URDF_FILE)
 
             # define what regressor type to use and options for it
-            # TODO: get from file
-            """
             regrXml = '''
             <regressor>
               <jointTorqueDynamics>
-                <joints>
-                    <joint>LShSag</joint>
-                    <joint>LShLat</joint>
-                    <joint>LShYaw</joint>
-                    <joint>LElbj</joint>
-                    <joint>LForearmPlate</joint>
-                    <joint>LWrj1</joint>
-                    <joint>LWrj2</joint>
-                </joints>
+                <allJoints/>
               </jointTorqueDynamics>
             </regressor>'''
-            """
 
-            regrXml = '''
-            <regressor>
-              <jointTorqueDynamics>
-                <joints>
-                    <joint>lwr_0_joint</joint>
-                    <joint>lwr_1_joint</joint>
-                    <joint>lwr_2_joint</joint>
-                    <joint>lwr_3_joint</joint>
-                    <joint>lwr_4_joint</joint>
-                    <joint>lwr_5_joint</joint>
-                    <joint>lwr_6_joint</joint>
-                </joints>
-              </jointTorqueDynamics>
-            </regressor>'''
-            #or use <allJoints/>
+            if regressor_file:
+                with open(regressor_file, 'r') as file:
+                   regrXml = file.read()
             self.generator.loadRegressorStructureFromString(regrXml)
 
             # TODO: this and the following are not dependent on joints specified in regressor!
@@ -188,7 +165,7 @@ class Identification(object):
             xStdModel = iDynTree.VectorDynSize(self.N_PARAMS)
             self.generator.getModelParameters(xStdModel)
             self.xStdModel = xStdModel.toNumPy()
-            if self.estimateWith is 'model':
+            if self.estimateWith is 'urdf':
                 self.xStd = self.xStdModel
 
             if self.robotranSimulate or self.robotranRegressor:
@@ -327,17 +304,18 @@ class Identification(object):
                     np.copyto(self.regressor_stack[start:start+self.N_DOFS], YStd)
                 num_time += t.interval
 
-            with identificationHelpers.Timer() as t:
-                np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
-                if self.useAPriori:
-                    np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
+            # stack results onto matrices of previous timesteps
+            np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
+            if self.useAPriori:
+                np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
 
-                if self.useAPriori:
-                    # get torque delta to identify with
-                    self.tau = self.torques_stack - self.torquesAP_stack
-                else:
-                    self.tau = self.torques_stack
-            simulate_time+=t.interval
+        with identificationHelpers.Timer() as t:
+            if self.useAPriori:
+                # get torque delta to identify with
+                self.tau = self.torques_stack - self.torquesAP_stack
+            else:
+                self.tau = self.torques_stack
+        simulate_time+=t.interval
 
         if not self.robotranRegressor:
             self.YStd = self.regressor_stack
@@ -374,7 +352,7 @@ class Identification(object):
             self.num_base_params = self.YBase.shape[1]
         print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
-    def getRandomRegressors(self, n_samples = 1000, fixed_base = True):
+    def getRandomRegressors(self, n_samples = 2000, fixed_base = True):
         import random
 
         R = np.array((self.N_OUT, self.N_PARAMS))
@@ -389,10 +367,8 @@ class Identification(object):
             else:
                 base_acceleration = iDynTree.Twist()
                 base_acceleration.zero()
-                #base_acceleration = random values...
+                #TODO: base_acceleration = random values...
                 self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)  # fixed base
-
-            #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
             # get regressor
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
@@ -451,7 +427,7 @@ class Identification(object):
             self.independent_cols = P[0:r]
 
             # get column dependency matrix (what dependent columns are combined in each base parameter with what factor)
-            # j (independent column) = (value at i,j) * i (dependent column)
+            # i (independent column) = (value at i,j) * j (dependent column)
             ind = self.independent_cols.size
             R1 = R[0:ind,0:ind]
             R2 = R[:ind, ind:]
@@ -533,7 +509,7 @@ class Identification(object):
             if self.robotranRegressor:
                 if estimateWith is 'base':
                     tauEst = np.dot(self.YBase, self.xBase)
-                elif estimateWith is 'model':
+                elif estimateWith is 'urdf':
                     tauEst = np.dot(self.YBase, self.xStdModelAsBase)
                 elif estimateWith in ['std', 'std_direct']:
                     print("Error: I don't have a standard regressor from symbolic equations.")
@@ -542,7 +518,7 @@ class Identification(object):
                     print("unknown type of parameters: {}".format(self.estimateWith))
             else:
                 # estimate torques again with regressor and parameters
-                if estimateWith is 'model':
+                if estimateWith is 'urdf':
                     tauEst = np.dot(self.YStd, self.xStdModel) # idyntree standard regressor and parameters from URDF model
                 elif estimateWith is 'base':
                     tauEst = np.dot(self.YBase, self.xBase)   # idyntree base regressor and identified base parameters
@@ -575,13 +551,14 @@ class Identification(object):
         estimation with similar accuracy)
 
         based on Pham, 1991 and Gautier, 2013
-        but with new stop criterium
+        but with different stop criterium
         """
 
-        # TODO: look at p_sigma_x ratios and why they get larger again
+        # TODO: look at p_sigma_x ratios and what it means when they get larger again or stay the same
+        # TODO: look at random nans, probably random regressor can go wrong
         with identificationHelpers.Timer() as t:
             not_essential_idx = list()
-            #r_sigma = 21    #target ratio of parameters' relative std deviation
+            r_sigma = 20    #target ratio of parameters' relative std deviation
             ratio = 0
 
             self.xBase_orig = self.xBase.copy()
@@ -605,10 +582,16 @@ class Identification(object):
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {}".format(ratio)
+
+                if math.isnan(ratio):
+                    print("error: ratio of stddevs is nan. please investigate")
+                    embed()
+
                 # while loop condition moved to here
                 #if ratio < r_sigma:
                 #if ratio >= old_ratio and old_ratio != 0:
-                if ratio == old_ratio and old_ratio != 0:
+                #if ratio == old_ratio and old_ratio != 0:
+                if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
                     break
 
                 #cancel the parameter with largest deviation
@@ -616,9 +599,10 @@ class Identification(object):
                 not_essential_idx.append(param_idx)
                 self.xBase[param_idx] = 0
 
+            # leave base params unchanged
             self.xBase = self.xBase_orig
-            #self.sigma_x = sigma_x
-            #self.sigma_rho = sigma_rho
+
+            # get indices of the essential base params
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
             print "Got {} essential parameters".format(self.num_essential_params)
@@ -631,14 +615,17 @@ class Identification(object):
         """
 
         with identificationHelpers.Timer() as t:
-            # get the choice of indices into the std params of the independent columns
-            # of those, only select the std parameters that are essential
+            # get the choice of indices into the std params of the independent columns.
+            # Of those, only select the std parameters that are essential
             self.stdEssentialIdx = self.independent_cols[self.baseEssentialIdx]
 
             # it seems we only want to identify the independent components among the base params,
             # values look better at least (paper is not clear about it)
             # intuitively, also the dependent ones should be essential as the linear combination is
             # used to identify and calc the error
+
+            #TODO: something seems wrong, check that indices are right here (dependents include not identifiable params?)
+
             """
             # also get the ones that are linearly dependent on them -> base params
             dependents = []
@@ -646,19 +633,24 @@ class Identification(object):
             for i in range(0,self.linear_deps.shape[0]):
                 for j in range(0,self.linear_deps.shape[1]):
                     if np.abs(self.linear_deps[i,j]) > self.min_tol:
-                        orgColi = self.P[self.independent_cols.size+i]
-                        orgColj = self.P[j]
-                        if orgColi not in dependents:
-                             dependents.append(orgColi)
-                        #orgColj has dependents, remove from stdEssentialIdx
-                        #to_delete.append(orgColj)
+                        dep_org_col = self.P[self.independent_cols.size+j]
+                        indep_org_col = self.P[i]
+                        if dep_org_col not in dependents:
+                             dependents.append(dep_org_col)
+                        #indep_org_col has dependents, remove from stdEssentialIdx
+                        #to_delete.append(indep_org_col)
 
                         #print(
                         #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
-                        #   .format(i, orgColi, j, orgColj))
-            #self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
+                        #   .format(i, dep_org_col, j, indep_org_col))
+            #print self.stdEssentialIdx
+            print len(dependents)
+            print dependents
+            self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
             """
-            # try to only identify those that are fully identifiable?
+
+            # consider trying to only identify those that are fully identifiable?
+
             #np.delete(self.stdEssentialIdx, to_delete, 0)
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
@@ -785,6 +777,7 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
+            ([self.tauMeasured - self.tauEstimated], 'Estimation Error'),
             #([self.measurements['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
             #([self.measurements['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
             #([self.measurements['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
@@ -824,12 +817,15 @@ def main():
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--measurements', required=True, type=str, help='the file to load the measurements from')
+    parser.add_argument('--regressor', required=False, type=str,
+                        help='the file containing the regressor structure(for the iDynTree generator).\
+                              Identifies on all joints if not specified.')
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
     parser.add_argument('--explain', help='whether to explain parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=False)
+    parser.set_defaults(plot=False, explain=False, regressor=None)
     args = parser.parse_args()
 
-    identification = Identification(args.model, args.measurements)
+    identification = Identification(args.model, args.measurements, args.regressor)
     identification.computeRegressors()
 
     if identification.useEssentialParams:
@@ -842,14 +838,13 @@ def main():
         if identification.useAPriori:
             identification.getBaseParamsFromParamError()
     else:
+        identification.getBaseRegressoriDynTree()
         if identification.estimateWith in ['base', 'std']:
-            identification.getBaseRegressoriDynTree()
             identification.identifyBaseParameters()
             identification.getStdFromBase()
             if identification.useAPriori:
                 identification.getBaseParamsFromParamError()
         elif identification.estimateWith is 'std_direct':
-            identification.getBaseRegressoriDynTree()
             identification.getNonsingularRegressor()
             identification.identifyStandardParameters()
 

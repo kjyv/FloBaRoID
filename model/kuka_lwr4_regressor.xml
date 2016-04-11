@@ -1,0 +1,13 @@
+<regressor>
+    <jointTorqueDynamics>
+        <joints>
+            <joint>lwr_0_joint</joint>
+            <joint>lwr_1_joint</joint>
+            <joint>lwr_2_joint</joint>
+            <joint>lwr_3_joint</joint>
+            <joint>lwr_4_joint</joint>
+            <joint>lwr_5_joint</joint>
+            <joint>lwr_6_joint</joint>
+        </joints>
+    </jointTorqueDynamics>
+</regressor>

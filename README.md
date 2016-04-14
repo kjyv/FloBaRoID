@@ -2,15 +2,14 @@
 
 a bunch of python scripts to:
 
-* excite a robot (using [Yarp](https://github.com/robotology/yarp) at the moment) and record measurements (using a separate C++ [GYM](https://github.com/robotology-playground/GYM) module)
-* identify mass, com, and inertia parameters from a URDF model description of the robot and from the previously taken measurements
+* excite a robot with fourier series trajectories and record state and torque measurements (using [Yarp](https://github.com/robotology/yarp) or ROS/MoveIt! at the moment)
+* identify mass, com, and inertia parameters using a URDF model description of the robot and from the measurements
 
 details:
-* excitation can be parameterized to get ideal trajectories (finding these parameters not yet
+* excitation can be parameterized to get ideal trajectories (finding these parameters automatically not yet
   implemented)
 * acceleration and velocity values can be derived from position readings, all are low-pass filtered without time shift
-* implements reduction of standard parameters to base parameters and further to essential
-  parameters, allows estimating only those
+* implements reduction of standard parameters to base parameters and further to essential parameters, estimating only those that are relevant for the measurement data and leaving the others untouched
 * allows weighted least squares instead of ordinary least squares
 * allows estimation of parameter error in addition to absolute parameters using known CAD values
 
@@ -19,8 +18,8 @@ requirements for identification:
 * python modules: numpy, scipy, matplotlib, ipython, ipdb, iDynTree python bindings, colorama
 
 requirements for excitation:
-* c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module)
-* python modules: yarp or ros, moveit_msg, moveit_commander
+* for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module), python modules: yarp
+* for ros: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit_msg, moveit_commander
 
 known issues:
 * excitation is not very generic yet

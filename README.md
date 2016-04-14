@@ -18,8 +18,8 @@ requirements for identification:
 * python modules: numpy, scipy, matplotlib, ipython, ipdb, iDynTree python bindings, colorama
 
 requirements for excitation:
-* for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module), python modules: yarp
-* for ros: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit_msg, moveit_commander
+* for yarp/walkman: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module, python modules: yarp
+* for ros/kuka: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit_msg, moveit_commander
 
 known issues:
 * excitation is not very generic yet

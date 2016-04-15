@@ -104,3 +104,29 @@ class IdentificationHelpers(object):
                 params[i+9] = rot_inertia.getVal(2, 2)    #zz w.r.t. com
 
         return params
+
+    def replaceParamsInURDF(self, urdf_file, params, link_names):
+        """ set new inertia parameters from params and urdf_file, write to new temp file """
+
+        from IPython import embed
+        import xml.etree.ElementTree as ET
+
+        xStdBary = self.paramsLink2Bary(params)
+
+        tree = ET.parse(urdf_file)
+        for l in tree.findall('link'):
+            if l.attrib['name'] in link_names:
+                link_id = link_names.index(l.attrib['name'])
+                l.find('inertial/mass').attrib['value'] = str(xStdBary[link_id*10])
+                l.find('inertial/origin').attrib['xyz'] = '{} {} {}'.format(xStdBary[link_id*10+1],
+                                                                            xStdBary[link_id*10+2],
+                                                                            xStdBary[link_id*10+3])
+                inert = l.find('inertial/inertia')
+                inert.attrib['ixx'] = str(xStdBary[link_id*10+4])
+                inert.attrib['ixy'] = str(xStdBary[link_id*10+5])
+                inert.attrib['ixz'] = str(xStdBary[link_id*10+6])
+                inert.attrib['iyy'] = str(xStdBary[link_id*10+7])
+                inert.attrib['iyz'] = str(xStdBary[link_id*10+8])
+                inert.attrib['izz'] = str(xStdBary[link_id*10+9])
+
+        tree.write(urdf_file + '.tmp')

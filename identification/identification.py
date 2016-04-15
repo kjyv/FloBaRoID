@@ -31,12 +31,12 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # TODO: add/use contact forces
 
 class Identification(object):
-    def __init__(self, urdf_file, measurements_file, regressor_file):
+    def __init__(self, urdf_file, measurements_files, regressor_file):
         ## options
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        self.start_offset = 200  #how many samples from the begginning of the measurements are skipped
+        self.start_offset = 0  #how many samples from the begginning of the measurements are skipped
 
         self.skip_samples = 2    #how many values to skip before using the next sample
 
@@ -60,6 +60,8 @@ class Identification(object):
 
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 1
+
+        self.showMemUsage = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -91,7 +93,25 @@ class Identification(object):
             self.min_tol = 1e-3
 
             self.URDF_FILE = urdf_file
-            self.measurements = np.load(measurements_file)
+
+            self.measurements = {}
+            for fn in measurements_files:
+                m = np.load(fn[0])
+                mv = {}
+                for k in m.keys():
+                    mv[k] = m[k]
+                    if not self.measurements.has_key(k):
+                        #first file
+                        self.measurements[k] = m[k]
+                    else:
+                        if k == 'times':
+                            mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
+                            mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
+                        #following files, append data
+                        self.measurements[k] = np.concatenate((self.measurements[k], mv[k]), axis=0)
+
+                m.close()
+
             self.num_samples = (self.measurements['positions'].shape[0]-self.start_offset)/(self.skip_samples+1)
             print 'loaded {} measurement samples (using {})'.format(
                 self.measurements['positions'].shape[0], self.num_samples)
@@ -99,6 +119,10 @@ class Identification(object):
             # create generator instance and load model
             self.generator = iDynTree.DynamicsRegressorGenerator()
             self.generator.loadRobotAndSensorsModelFromFile(self.URDF_FILE)
+
+            # load also with new model class for some functions
+            self.model = iDynTree.Model()
+            iDynTree.modelFromURDF(self.URDF_FILE, self.model)
             print 'loaded model {}'.format(self.URDF_FILE)
 
             # define what regressor type to use and options for it
@@ -129,6 +153,11 @@ class Identification(object):
 
             self.N_LINKS = self.generator.getNrOfLinks()
             print '# links: {} ({} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks())
+
+            self.link_names = []
+            for i in range(0, self.N_LINKS):
+                self.link_names.append(self.model.getLinkName(i))
+            print '({})'.format(self.link_names)
 
             self.gravity_twist = iDynTree.Twist()
             self.gravity_twist.zero()
@@ -190,15 +219,11 @@ class Identification(object):
                     inert[8, i+2] = xStdModelBary[i*10+8]     #zy
                     inert[9, i+2] = xStdModelBary[i*10+9]     #zz w.r.t. com
 
-                # load into new model class for some functions
-                model = iDynTree.Model()
-                iDynTree.modelFromURDF(self.URDF_FILE, model)
-
                 # get relative link positions from params
                 # # (could also just get them from xStdModelBary...)
                 d = np.zeros((4,10))  # should be 3 x 7, but invdynabar is funny and uses matlab indexing
                 for i in range(1, self.N_DOFS+1):
-                    j = model.getJoint(i-1)
+                    j = self.model.getJoint(i-1)
                     # get position relative to parent joint
                     l1 = j.getFirstAttachedLink()
                     l2 = j.getSecondAttachedLink()
@@ -276,6 +301,8 @@ class Identification(object):
                     torq += np.random.normal(0,1.0)*(torq*0.01)
             simulate_time += t.interval
 
+            #...still in sample loop
+
             start = self.N_DOFS*row
             # use symobolic regressor to get numeric regressor matrix (base)
             if self.robotranRegressor:
@@ -291,7 +318,7 @@ class Identification(object):
                 # get numerical regressor (std)
                 with identificationHelpers.Timer() as t:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
-                    self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
                     # get (standard) regressor
                     regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
@@ -352,9 +379,10 @@ class Identification(object):
             self.num_base_params = self.YBase.shape[1]
         print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
-    def getRandomRegressors(self, n_samples = 2000, fixed_base = True):
+    def getRandomRegressors(self, fixed_base = True):
         import random
 
+        n_samples = 20000 #self.num_samples*2
         R = np.array((self.N_OUT, self.N_PARAMS))
         for i in range(0, n_samples):
             # set random system state
@@ -368,7 +396,7 @@ class Identification(object):
                 base_acceleration = iDynTree.Twist()
                 base_acceleration.zero()
                 #TODO: base_acceleration = random values...
-                self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)  # fixed base
+                self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
 
             # get regressor
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
@@ -378,6 +406,8 @@ class Identification(object):
 
             A = regressor.toNumPy()
 
+            # add to previous regressors, linear dependency doesn't change
+            # (if too many, saturation or accuracy problems?)
             if i==0:
                 R = A.T.dot(A)
             else:
@@ -459,7 +489,7 @@ class Identification(object):
 
         if self.useWLS:
             """add weighting with standard dev of estimation error on base regressor and params."""
-            self.estimateTorques('base')
+            self.estimateRegressorTorques('base')
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
             self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
@@ -499,8 +529,8 @@ class Identification(object):
 
         # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
-    def estimateTorques(self, estimateWith=None):
-        """ get torque estimations, prepare for plotting """
+    def estimateRegressorTorques(self, estimateWith=None):
+        """ get torque estimations using regressors, prepare for plotting """
 
         with identificationHelpers.Timer() as t:
             if not estimateWith:
@@ -542,7 +572,52 @@ class Identification(object):
             else:
                 self.tauMeasured = self.measurements['torques'][self.start_offset:self.sample_end:self.skip_samples+1, :]
 
+            self.T = self.measurements['times'][self.start_offset:self.sample_end:self.skip_samples+1]
+
         #print("torque estimation took %.03f sec." % t.interval)
+
+    def estimateValidationTorques(self, file):
+        """ calculate torques of trajectory from validation measurements and identified params """
+        # TODO: get identified params directly into idyntree (new KinDynComputations class does not have
+        # inverse dynamics yet, so has to go over new urdf file now)
+
+        v_data = np.load(file)
+        dynComp = iDynTree.DynamicsComputations();
+
+        self.helpers.replaceParamsInURDF(self.URDF_FILE, self.xStd, self.link_names)
+        dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
+        gravity = iDynTree.SpatialAcc();
+        gravity.zero()
+        gravity.setVal(2, -9.81);
+
+        self.tauEstimated = None
+        for m_idx in range(0, v_data['positions'].shape[0], self.skip_samples):
+            # read measurements
+            pos = v_data['positions'][m_idx]
+            vel = v_data['velocities'][m_idx]
+            acc = v_data['accelerations'][m_idx]
+            torq = v_data['torques'][m_idx]
+
+            # system state for iDynTree
+            q = iDynTree.VectorDynSize.fromPyList(pos)
+            dq = iDynTree.VectorDynSize.fromPyList(vel)
+            ddq = iDynTree.VectorDynSize.fromPyList(acc)
+
+            # calc torques with iDynTree dynamicsComputation class
+            dynComp.setRobotState(q, dq, ddq, gravity)
+
+            torques = iDynTree.VectorDynSize(self.N_DOFS)
+            baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
+
+            # compute inverse dynamics with idyntree (simulate)
+            dynComp.inverseDynamics(torques, baseReactionForce)
+            if self.tauEstimated == None:
+                self.tauEstimated = torques.toNumPy()
+            else:
+                self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
+
+        self.tauMeasured = v_data['torques'][::self.skip_samples]
+        self.T = v_data['times'][::self.skip_samples]
 
     def getBaseEssentialParameters(self):
         """
@@ -564,7 +639,7 @@ class Identification(object):
             self.xBase_orig = self.xBase.copy()
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
-                self.estimateTorques('base')
+                self.estimateRegressorTorques('base')
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))/(self.num_samples-self.num_base_params)
@@ -789,8 +864,6 @@ class Identification(object):
         ymax = np.max([self.tauMeasured, self.tauEstimated])
         ymax += ymax * 0.05
 
-        T = self.measurements['times'][self.start_offset:self.sample_end:self.skip_samples+1]
-
         for (data, title) in datasets:
             plt.figure()
             plt.ylim([ymin, ymax])
@@ -798,11 +871,11 @@ class Identification(object):
             for i in range(0, self.N_DOFS):
                 for d_i in range(0, len(data)):
                     l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                    plt.plot(T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                    plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
             leg = plt.legend(loc='best', fancybox=True, fontsize=10)
             leg.draggable()
         plt.show()
-        self.measurements.close()
+        #self.measurements.close()
 
     def printMemUsage(self):
         import humanize
@@ -816,7 +889,10 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
-    parser.add_argument('--measurements', required=True, type=str, help='the file to load the measurements from')
+    parser.add_argument('--measurements', required=True, nargs='*', action='append', type=str,
+                        help='the file(s) to load the measurements from')
+    parser.add_argument('--verification', required=False, type=str,
+                        help='the file to load the verification trajectory from')
     parser.add_argument('--regressor', required=False, type=str,
                         help='the file containing the regressor structure(for the iDynTree generator).\
                               Identifies on all joints if not specified.')
@@ -848,12 +924,16 @@ def main():
             identification.getNonsingularRegressor()
             identification.identifyStandardParameters()
 
-    #identification.printMemUsage()
+    if identification.showMemUsage:
+        identification.printMemUsage()
 
     if args.explain:
         identification.output()
     if args.plot:
-        identification.estimateTorques()
+        if args.verification:
+            identification.estimateValidationTorques(args.verification)
+        else:
+            identification.estimateRegressorTorques()
         identification.plot()
 
 if __name__ == '__main__':

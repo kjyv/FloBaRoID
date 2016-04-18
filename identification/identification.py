@@ -26,8 +26,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
-# TODO: write params to file/urdf file (ideally don't rewrite from model but only change values
-# in original xml tree)
+# TODO: write params to file/urdf file, give explicit option for that
 # TODO: add/use contact forces
 
 class Identification(object):
@@ -303,6 +302,12 @@ class Identification(object):
 
             #...still in sample loop
 
+            if self.useAPriori and math.isnan(torqAP[0]) :
+                #print "torques contain nans. Please investigate"
+                #embed()
+                # possibly just a very small number in C that gets converted to nan?
+                torqAP[:] = 0
+
             start = self.N_DOFS*row
             # use symobolic regressor to get numeric regressor matrix (base)
             if self.robotranRegressor:
@@ -456,17 +461,16 @@ class Identification(object):
             # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
             self.independent_cols = P[0:r]
 
-            # get column dependency matrix (what dependent columns are combined in each base parameter with what factor)
-            # i (independent column) = (value at i,j) * j (dependent column)
-            ind = self.independent_cols.size
-            R1 = R[0:ind,0:ind]
-            R2 = R[:ind, ind:]
+            # get column dependency matrix (with what factor are columns of each base parameter dependent)
+            # i (independent column) = (value at i,j) * j (dependent column index among the others)
+            R1 = R[0:r, 0:r]
+            R2 = R[0:r, r:]
             self.linear_deps = la.inv(R1).dot(R2)
 
         print("Getting the base regressor (QR) took %.03f sec." % t.interval)
 
     def identifyBaseParameters(self, YBase=None, tau=None):
-        """use previously computed regressors and identify base parameter vector."""
+        """use previously computed regressors and identify base parameter vector using ordinary or weighted least squares."""
 
         if YBase is None:
             YBase = self.YBase
@@ -486,6 +490,8 @@ class Identification(object):
 
         self.xBase = la.lstsq(YBase, tau)[0]
         #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
+
+        self.xBaseModel = np.dot(self.B.T, self.xStdModel)
 
         if self.useWLS:
             """add weighting with standard dev of estimation error on base regressor and params."""
@@ -633,7 +639,7 @@ class Identification(object):
         # TODO: look at random nans, probably random regressor can go wrong
         with identificationHelpers.Timer() as t:
             not_essential_idx = list()
-            r_sigma = 20    #target ratio of parameters' relative std deviation
+            r_sigma = 25    #target ratio of parameters' relative std deviation
             ratio = 0
 
             self.xBase_orig = self.xBase.copy()
@@ -646,6 +652,10 @@ class Identification(object):
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
+
+                # TODO: since also side diagonals carry information on how this param influences other
+                # params, try using norm of columns instead of diagonal elements
+                #sigma_x = np.linalg.norm(C_xx, axis=1)
                 sigma_x = np.diag(C_xx)
 
                 # get relative standard deviation
@@ -657,10 +667,6 @@ class Identification(object):
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {}".format(ratio)
-
-                if math.isnan(ratio):
-                    print("error: ratio of stddevs is nan. please investigate")
-                    embed()
 
                 # while loop condition moved to here
                 #if ratio < r_sigma:
@@ -675,9 +681,11 @@ class Identification(object):
                 self.xBase[param_idx] = 0
 
             # leave base params unchanged
+            self.xBase_essential = self.xBase.copy()
             self.xBase = self.xBase_orig
 
             # get indices of the essential base params
+            self.baseNonEssentialIdx = not_essential_idx
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
             print "Got {} essential parameters".format(self.num_essential_params)
@@ -694,44 +702,64 @@ class Identification(object):
             # Of those, only select the std parameters that are essential
             self.stdEssentialIdx = self.independent_cols[self.baseEssentialIdx]
 
-            # it seems we only want to identify the independent components among the base params,
-            # values look better at least (paper is not clear about it)
-            # intuitively, also the dependent ones should be essential as the linear combination is
-            # used to identify and calc the error
+            # intuitively, also the dependent columns should be essential as the linear combination
+            # is used to identify and calc the error
+            useDependents = True
+            if useDependents:
+                # also get the ones that are linearly dependent on them -> base params
+                dependents = []
+                #to_delete = []
+                for i in self.baseEssentialIdx:
+                    for j in range(0,self.linear_deps.shape[1]):
+                        if np.abs(self.linear_deps[i,j]) > 0.1:
+                            dep_org_col = self.P[self.independent_cols.size+j]
+                            indep_org_col = self.P[i]
+                            if dep_org_col not in dependents:
+                                dependents.append(dep_org_col)
+                            #indep_org_col has dependents, remove from stdEssentialIdx to get fully identifiable
+                            #to_delete.append(indep_org_col)
 
-            #TODO: something seems wrong, check that indices are right here (dependents include not identifiable params?)
-
-            """
-            # also get the ones that are linearly dependent on them -> base params
-            dependents = []
-            #to_delete = []
-            for i in range(0,self.linear_deps.shape[0]):
-                for j in range(0,self.linear_deps.shape[1]):
-                    if np.abs(self.linear_deps[i,j]) > self.min_tol:
-                        dep_org_col = self.P[self.independent_cols.size+j]
-                        indep_org_col = self.P[i]
-                        if dep_org_col not in dependents:
-                             dependents.append(dep_org_col)
-                        #indep_org_col has dependents, remove from stdEssentialIdx
-                        #to_delete.append(indep_org_col)
-
-                        #print(
-                        #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
-                        #   .format(i, dep_org_col, j, indep_org_col))
-            #print self.stdEssentialIdx
-            print len(dependents)
-            print dependents
-            self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
-            """
-
-            # consider trying to only identify those that are fully identifiable?
+                            #print(
+                            #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
+                            #   .format(i, dep_org_col, j, indep_org_col))
+                #print self.stdEssentialIdx
+                #print len(dependents)
+                print dependents
+                self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
 
             #np.delete(self.stdEssentialIdx, to_delete, 0)
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
-            # get \hat{x_e}, set zeros for non-essential params
-            self.xStdEssential = self.xStdModel.copy()
-            self.xStdEssential[self.stdNonEssentialIdx] = 0
+            ## get \hat{x_e}, set zeros for non-essential params
+            if useDependents:
+                # we don't really know what the weights are if we have more std essential than base
+                # essentials, so use CAD/previous params for weighting
+                self.xStdEssential = self.xStdModel.copy()
+
+                # set essential but zero cad values to small values that are in possible range of those parameters
+                # so something can be estimated
+                #self.xStdEssential[np.where(self.xStdEssential == 0)[0]] = .1
+                idx = 0
+                for p in self.xStdEssential:
+                    if p == 0:
+                        v = 0.1
+                        p_start = idx/10*10
+                        if idx % 10 in [1,2,3]:   #com value
+                            v = np.mean(self.xStdModel[p_start + 1:p_start + 4])
+                        elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
+                            inertia_range = np.array([4,5,6,7,8,9])+p_start
+                            v = np.mean(self.xStdModel[np.where(self.xStdModel[inertia_range] != 0)[0]+p_start+4])
+                        if v == 0: v = 0.1
+                        self.xStdEssential[idx] = v
+                        #print idx, idx % 10, v
+                    idx += 1
+
+                # cancel non-essential std params so they are not identified
+                self.xStdEssential[self.stdNonEssentialIdx] = 0
+            else:
+                # weighting using base essential params (like in Gautier, 2013)
+                self.xStdEssential = np.zeros_like(self.xStdModel)
+                self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[np.where(self.xBase_essential != 0)[0]]
 
     def getNonsingularRegressor(self):
         with identificationHelpers.Timer() as t:
@@ -774,7 +802,7 @@ class Identification(object):
             else:
                 self.xStd = x_tmp
 
-        print("Identifying std essential parameters took %.03f sec." % t.interval)
+        print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
     def output(self):
         """Do some pretty printing of parameters."""
@@ -832,6 +860,57 @@ class Identification(object):
             if idx_p in self.stdNonEssentialIdx:
                 t = Style.DIM + t
             if idx_p in self.stdEssentialIdx:
+                t = Style.BRIGHT + t
+            print t
+            idx_p+=1
+        print Style.RESET_ALL
+
+        ## print base params
+
+        if not self.useEssentialParams:
+            self.baseEssentialIdx = range(0, self.N_PARAMS)
+            self.baseNonEssentialIdx = []
+
+        # collect values for parameters
+        lines = list()
+        for idx_p in range(0,self.num_base_params):
+            if self.xBase_essential[idx_p] != 0:
+                new = self.xBase_essential[idx_p]
+            else:
+                new = self.xBase[idx_p]
+            old = self.xBaseModel[idx_p]
+            diff = new - old
+            deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
+            dep_factors = self.linear_deps[idx_p, deps]
+
+            param_columns = ' |{}| deps:'.format(self.independent_cols[idx_p])
+            for p in range(0, len(deps)):
+                param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
+            lines.append((old, new, diff, param_columns))
+
+        column_widths = [15, 15, 7, 30]   # widths of the columns
+        precisions = [8, 8, 4, 0]         # numerical precision
+
+        # print column header
+        template = ''
+        for w in range(0, len(column_widths)):
+            template += '|{{{}:{}}}'.format(w, column_widths[w])
+        print template.format("Model", "Approx", "Error", "Description")
+
+        # print values/description
+        template = ''
+        for w in range(0, len(column_widths)):
+            if(type(lines[0][w]) == str):
+                # strings don't have precision
+                template += '|{{{}:{}}}'.format(w, column_widths[w])
+            else:
+                template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+        idx_p = 0
+        for l in lines:
+            t = template.format(*l)
+            if idx_p in self.baseNonEssentialIdx:
+                t = Style.DIM + t
+            if idx_p in self.baseEssentialIdx:
                 t = Style.BRIGHT + t
             print t
             idx_p+=1

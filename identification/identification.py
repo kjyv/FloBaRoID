@@ -59,6 +59,7 @@ class Identification(object):
 
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 1
+        self.dontIdentifyMasses = 1
 
         self.showMemUsage = 0
 
@@ -639,7 +640,7 @@ class Identification(object):
         # TODO: look at random nans, probably random regressor can go wrong
         with identificationHelpers.Timer() as t:
             not_essential_idx = list()
-            r_sigma = 25    #target ratio of parameters' relative std deviation
+            r_sigma = 20    #target ratio of parameters' relative std deviation
             ratio = 0
 
             self.xBase_orig = self.xBase.copy()
@@ -728,6 +729,12 @@ class Identification(object):
                 self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
 
             #np.delete(self.stdEssentialIdx, to_delete, 0)
+
+            #remove mass params if present
+            if self.dontIdentifyMasses:
+                ps = range(0,self.N_PARAMS, 10)
+                self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
+
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
             ## get \hat{x_e}, set zeros for non-essential params
@@ -745,10 +752,10 @@ class Identification(object):
                         v = 0.1
                         p_start = idx/10*10
                         if idx % 10 in [1,2,3]:   #com value
-                            v = np.mean(self.xStdModel[p_start + 1:p_start + 4])
+                            v = np.mean(self.xStdModel[p_start + 1:p_start + 4]) * 0.1
                         elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
                             inertia_range = np.array([4,5,6,7,8,9])+p_start
-                            v = np.mean(self.xStdModel[np.where(self.xStdModel[inertia_range] != 0)[0]+p_start+4])
+                            v = np.mean(self.xStdModel[np.where(self.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1
                         if v == 0: v = 0.1
                         self.xStdEssential[idx] = v
                         #print idx, idx % 10, v
@@ -883,7 +890,9 @@ class Identification(object):
             deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
             dep_factors = self.linear_deps[idx_p, deps]
 
-            param_columns = ' |{}| deps:'.format(self.independent_cols[idx_p])
+            param_columns = ' |{}|'.format(self.independent_cols[idx_p])
+            if len(deps):
+                param_columns += " deps:"
             for p in range(0, len(deps)):
                 param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
             lines.append((old, new, diff, param_columns))

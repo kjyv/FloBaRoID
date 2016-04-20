@@ -59,7 +59,12 @@ class Identification(object):
 
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 1
+
+        # whether to take out masses from essential params to be identified because they are e.g.
+        # well known or introduce problems
         self.dontIdentifyMasses = 1
+
+        self.outputBarycentric = 0
 
         self.showMemUsage = 0
 
@@ -388,13 +393,17 @@ class Identification(object):
     def getRandomRegressors(self, fixed_base = True):
         import random
 
-        n_samples = 20000 #self.num_samples*2
+        n_samples = 50000 #self.num_samples*2
         R = np.array((self.N_OUT, self.N_PARAMS))
         for i in range(0, n_samples):
             # set random system state
             q = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
             dq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
             ddq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
+
+            # TODO: conceal to joint limits
+
+            # TODO: handle for fixed dofs (set vel and acc to zero)
 
             if fixed_base:
                 self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
@@ -554,13 +563,15 @@ class Identification(object):
                 else:
                     print("unknown type of parameters: {}".format(self.estimateWith))
             else:
-                # estimate torques again with regressor and parameters
+                # estimate torques with idyntree regressor and different params
                 if estimateWith is 'urdf':
-                    tauEst = np.dot(self.YStd, self.xStdModel) # idyntree standard regressor and parameters from URDF model
+                    tauEst = np.dot(self.YStd, self.xStdModel)
+                elif estimateWith is 'base_essential':
+                    tauEst = np.dot(self.YBase, self.xBase_essential)
                 elif estimateWith is 'base':
-                    tauEst = np.dot(self.YBase, self.xBase)   # idyntree base regressor and identified base parameters
+                    tauEst = np.dot(self.YBase, self.xBase)
                 elif estimateWith in ['std', 'std_direct']:
-                    tauEst = np.dot(self.YStd, self.xStd)    # idyntree standard regressor and estimated standard parameters
+                    tauEst = np.dot(self.YStd, self.xStd)
                 else:
                     print("unknown type of parameters: {}".format(self.estimateWith))
 
@@ -672,8 +683,8 @@ class Identification(object):
                 # while loop condition moved to here
                 #if ratio < r_sigma:
                 #if ratio >= old_ratio and old_ratio != 0:
-                #if ratio == old_ratio and old_ratio != 0:
-                if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
+                if ratio == old_ratio and old_ratio != 0:
+                #if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
                     break
 
                 #cancel the parameter with largest deviation
@@ -823,10 +834,15 @@ class Identification(object):
             self.stdNonEssentialIdx = []
 
         # convert params to COM-relative instead of frame origin-relative (linearized parameters)
-        xStd = self.xStd
-        if not self.robotranRegressor:
-            xStd = self.helpers.paramsLink2Bary(self.xStd)
-        xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
+        if self.outputBarycentric:
+            if not self.robotranRegressor:
+              xStd = self.helpers.paramsLink2Bary(self.xStd)
+            xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
+            print("Barycentric (relative to COM) Standard Parameters")
+        else:
+            xStd = self.xStd
+            xStdModel = self.xStdModel
+            print("Linear (realtive to Frame) Standard Parameters")
 
         # collect values for parameters
         description = self.generator.getDescriptionOfParameters()
@@ -873,20 +889,29 @@ class Identification(object):
         print Style.RESET_ALL
 
         ## print base params
+        if self.estimateWith is 'urdf':
+            return
 
+        print("Base Parameters and Corrseponding standard columns")
         if not self.useEssentialParams:
-            self.baseEssentialIdx = range(0, self.N_PARAMS)
-            self.baseNonEssentialIdx = []
+            baseEssentialIdx = range(0, self.N_PARAMS)
+            baseNonEssentialIdx = []
+            xBase_essential = self.xBase
+        else:
+            baseEssentialIdx = self.baseEssentialIdx
+            baseNonEssentialIdx = self.baseNonEssentialIdx
+            xBase_essential = self.xBase_essential
 
         # collect values for parameters
         lines = list()
         for idx_p in range(0,self.num_base_params):
-            if self.xBase_essential[idx_p] != 0:
-                new = self.xBase_essential[idx_p]
+            if xBase_essential[idx_p] != 0:
+                new = xBase_essential[idx_p]
             else:
                 new = self.xBase[idx_p]
             old = self.xBaseModel[idx_p]
             diff = new - old
+
             deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
             dep_factors = self.linear_deps[idx_p, deps]
 
@@ -917,9 +942,9 @@ class Identification(object):
         idx_p = 0
         for l in lines:
             t = template.format(*l)
-            if idx_p in self.baseNonEssentialIdx:
+            if idx_p in baseNonEssentialIdx:
                 t = Style.DIM + t
-            if idx_p in self.baseEssentialIdx:
+            if idx_p in baseEssentialIdx:
                 t = Style.BRIGHT + t
             print t
             idx_p+=1
@@ -1002,7 +1027,7 @@ def main():
         if identification.useAPriori:
             identification.getBaseParamsFromParamError()
     else:
-        identification.getBaseRegressoriDynTree()
+        identification.getBaseRegressorQR()
         if identification.estimateWith in ['base', 'std']:
             identification.identifyBaseParameters()
             identification.getStdFromBase()

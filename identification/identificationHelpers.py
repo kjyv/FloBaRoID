@@ -78,6 +78,7 @@ class IdentificationHelpers(object):
         return params
 
     def paramsBary2Link(self, params):
+        # TODO: check/use RigidBodyInertiaNonLinearParametrization::fromInertialParameters()
         params = params.copy()
         for i in range(0, self.n_params):
             if (i % 10 == 0):   #for each link

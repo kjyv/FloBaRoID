@@ -62,7 +62,7 @@
   </joint>
   <link name="lwr_base_link">
     <inertial>
-      <mass value="2.7"/>
+      <mass value="1.6"/>
       <origin xyz="0 0 0.055"/>
       <inertia ixx="0.00381666666667" ixy="0" ixz="0" iyy="0.0036" iyz="0" izz="0.00381666666667"/>
     </inertial>

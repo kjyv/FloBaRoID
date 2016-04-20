@@ -86,7 +86,8 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
     plt.grid()
     """
 
-    # calc velocity self (from filtered positions, seems better than filtering noisy velocity measurements)
+    # calc velocity instead of taking measurements (uses filtered positions,
+    # seems better than filtering noisy velocity measurements)
     for i in range(1, posis.shape[0]):
         dT = times[i] - times[i-1]
         if dT != 0:
@@ -94,7 +95,7 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
         else:
             vels_self[i] = vels_self[i-1]
 
-    # median filter of velocities self
+    # median filter of velocities self to remove outliers
     vels_self_orig = vels_self.copy()
     for j in range(0, config['N_DOFS']):
         vels_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], 9)
@@ -112,7 +113,7 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
         else:
             accls[i] = accls[i-1]
 
-    # filter accelerations not necessary?
+    # filtering accelerations not necessary?
 
     # median filter of accelerations
     accls_orig = accls.copy()

@@ -473,7 +473,7 @@ class Identification(object):
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix
             #TODO: this can be loaded from file if model structure doesn't change
-            Yrand = self.getRandomRegressors(n_samples=50000)
+            Yrand = self.getRandomRegressors(n_samples=2000)
             Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
@@ -687,13 +687,19 @@ class Identification(object):
             r_sigma = 20    #target ratio of parameters' relative std deviation
             ratio = 0
 
+            self.estimateRegressorTorques('base')
+            rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+            sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
+
             self.xBase_orig = self.xBase.copy()
+            b_c = 0 #how many params were canceled
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
-                sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))/(self.num_samples-self.num_base_params)
+                rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+                sigma_rho = rho/(self.num_samples-self.num_base_params)
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
@@ -711,19 +717,23 @@ class Identification(object):
 
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
-                print "min-max ratio of relative stddevs: {}".format(ratio)
+
+                # use f-test to determine if model reduction can be accepted or not
+                F = ((rho - rho_start) / (self.num_base_params - b_c)) /  \
+                    (rho_start / (self.num_samples-self.num_base_params))
+                print "min-max ratio of relative stddevs: {}: F: {}".format(ratio, F)
 
                 # while loop condition moved to here
-                #if ratio < r_sigma:
-                #if ratio >= old_ratio and old_ratio != 0:
-                if ratio == old_ratio and old_ratio != 0:
+                #if ratio == old_ratio and old_ratio != 0:
                 #if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
+                if F > 3.85:    #alpha = 5%
                     break
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
                 not_essential_idx.append(param_idx)
                 self.xBase[param_idx] = 0
+                b_c += 1
 
             # leave base params unchanged
             self.xBase_essential = self.xBase.copy()

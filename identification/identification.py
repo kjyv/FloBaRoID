@@ -365,17 +365,27 @@ class Identification(object):
         else:
             print('Numeric regressors took %.03f sec.' % num_time)
 
-    def getBaseRegressoriDynTree(self):
+    def getBaseRegressorSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
 
         with identificationHelpers.Timer() as t:
             # get subspace basis (for projection to base regressor/parameters)
-            subspaceBasis = iDynTree.MatrixDynSize()
-            if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
-            # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
-                print "Error while computing basis matrix"
+            if False:
+                subspaceBasis = iDynTree.MatrixDynSize()
+                if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
+                # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
+                    print "Error while computing basis matrix"
 
-            self.B = subspaceBasis.toNumPy()
+                self.B = subspaceBasis.toNumPy()
+            else:
+                Yrand = self.getRandomRegressors(2000)
+                #A = iDynTree.MatrixDynSize(self.N_PARAMS, self.N_PARAMS)
+                #self.generator.generate_random_regressors(A, False, True, 2000)
+                #Yrand = A.toNumPy()
+                U, s, Vh = la.svd(Yrand, full_matrices=False)
+                r = np.sum(s>self.min_tol)
+                self.B = -Vh.T[:, 0:r]
+                self.num_base_params = r
 
             print("tau: {}".format(self.tau.shape)),
 
@@ -390,18 +400,43 @@ class Identification(object):
             self.num_base_params = self.YBase.shape[1]
         print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
-    def getRandomRegressors(self, fixed_base = True):
+    def getRandomRegressors(self, fixed_base = True, n_samples=None):
+        """
+        Utility function for generating a random regressor for numerical base parameter calculation
+        Given n_samples, the Y (n_samples*getNrOfOutputs() X getNrOfParameters() ) regressor is
+        obtained by stacking the n_samples generated regressors This function returns Y^T Y
+        (getNrOfParameters() X getNrOfParameters() ) (that share the row space with Y)
+        """
         import random
 
-        n_samples = 50000 #self.num_samples*2
+        if not n_samples:
+            n_samples = 10000 #self.N_DOFS * 1000
         R = np.array((self.N_OUT, self.N_PARAMS))
+        regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+        knownTerms = iDynTree.VectorDynSize(self.N_OUT)
         for i in range(0, n_samples):
             # set random system state
-            q = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
-            dq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
-            ddq = iDynTree.VectorDynSize.fromPyList((np.random.rand(self.N_DOFS)*np.pi).tolist())
 
-            # TODO: conceal to joint limits
+            """
+            # TODO: conceal to joint limits from urdf
+            q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
+                                   2.96705972839,  2.09439510239,  2.96705972839])
+            #q_lim_pos.fill(np.pi)
+            q_lim_neg = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239,
+                                  -2.96705972839, -2.09439510239, -2.96705972839])
+            #q_lim_neg.fill(np.pi)
+            dq_lim = np.array([1.91986217719, 1.91986217719, 2.23402144255, 2.23402144255,
+                               3.56047167407, 3.21140582367, 3.21140582367])
+            #dq_lim.fill(np.pi)
+
+            q = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*q_lim_pos).tolist())
+            dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
+            ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
+            """
+
+            q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+            dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+            ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
             # TODO: handle for fixed dofs (set vel and acc to zero)
 
@@ -414,8 +449,6 @@ class Identification(object):
                 self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
 
             # get regressor
-            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
-            knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             if not self.generator.computeRegressor(regressor, knownTerms):
                 print "Error during numeric computation of regressor"
 
@@ -440,15 +473,15 @@ class Identification(object):
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix
             #TODO: this can be loaded from file if model structure doesn't change
-            Yrand = self.getRandomRegressors()
-            Q,R,P = sla.qr(Yrand.T, pivoting=True, mode='economic')
+            Yrand = self.getRandomRegressors(n_samples=50000)
+            Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
-            r = np.where(np.abs(R.diagonal()) > self.min_tol)[0].size
+            r = np.where(np.abs(Rt.diagonal()) > self.min_tol)[0].size
             self.num_base_params = r
 
             #get basis projection matrix
-            self.B = Q[:, 0:r]
+            self.B = Qt[:, 0:r]
 
             #get regressor for base parameters
             if self.robotranRegressor:
@@ -460,7 +493,7 @@ class Identification(object):
             print("YBase: {}".format(self.YBase.shape))
 
             # seems we have to do QR again for column space dependencies
-            Q,R,P = sla.qr(self.YStd, pivoting=True, mode='economic')
+            Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
             self.Q, self.R, self.P = Q,R,P
 
             #create permuation matrix out of vector
@@ -842,7 +875,7 @@ class Identification(object):
         else:
             xStd = self.xStd
             xStdModel = self.xStdModel
-            print("Linear (realtive to Frame) Standard Parameters")
+            print("Linear (relative to Frame) Standard Parameters")
 
         # collect values for parameters
         description = self.generator.getDescriptionOfParameters()
@@ -905,10 +938,10 @@ class Identification(object):
         # collect values for parameters
         lines = list()
         for idx_p in range(0,self.num_base_params):
-            if xBase_essential[idx_p] != 0:
-                new = xBase_essential[idx_p]
-            else:
-                new = self.xBase[idx_p]
+            #if xBase_essential[idx_p] != 0:
+            #    new = xBase_essential[idx_p]
+            #else:
+            new = self.xBase[idx_p]
             old = self.xBaseModel[idx_p]
             diff = new - old
 
@@ -920,6 +953,7 @@ class Identification(object):
                 param_columns += " deps:"
             for p in range(0, len(deps)):
                 param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
+
             lines.append((old, new, diff, param_columns))
 
         column_widths = [15, 15, 7, 30]   # widths of the columns

@@ -2,13 +2,13 @@
 #-*- coding: utf-8 -*-
 
 import sys
+import math
 import numpy as np
 import numpy.linalg as la
 #import numexpr as ne
 import scipy.linalg as sla
 
-import math
-import matplotlib; matplotlib.use('qt4agg')
+import matplotlib #; matplotlib.use('qt4agg')
 import matplotlib.pyplot as plt
 from IPython import embed
 

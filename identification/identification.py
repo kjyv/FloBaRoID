@@ -28,6 +28,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # subtree identification
 # TODO: write params to file/urdf file, give explicit option for that
 # TODO: add/use contact forces
+# TODO: save random regressor to file next to urdf
 
 class Identification(object):
     def __init__(self, urdf_file, measurements_files, regressor_file):
@@ -49,7 +50,7 @@ class Identification(object):
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'urdf']
-        self.estimateWith = 'base'
+        self.estimateWith = 'std'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
         self.useAPriori = 1
@@ -563,7 +564,7 @@ class Identification(object):
         if self.robotranRegressor:
             self.xBase = self.xBase + self.xStdModelAsBase   #both param vecs barycentric
         else:
-            self.xBase = self.xBase + np.dot(self.B.T, self.xStdModel)   #both param vecs link relative linearized
+            self.xBase = self.xBase + self.xBaseModel   #both param vecs link relative linearized
 
     def getStdFromBase(self):
         # Note: assumes that xBase is still in error form if using a priori
@@ -673,15 +674,13 @@ class Identification(object):
     def getBaseEssentialParameters(self):
         """
         iteratively get essential parameters from previously identified base parameters.
-        (goal is to get similar influence of all parameters, i.e. decrease sensitivity to errors,
-        estimation with similar accuracy)
+        (goal is to get similar influence of all parameters, i.e. decrease condition number by throwing
+        out parameters that are too sensitive to errors. The remaining params should be estimated with
+        similar accuracy)
 
-        based on Pham, 1991 and Gautier, 2013
-        but with different stop criterium
+        based on Pham, 1991 and Gautier, 2013 and Jubien, 2014
         """
 
-        # TODO: look at p_sigma_x ratios and what it means when they get larger again or stay the same
-        # TODO: look at random nans, probably random regressor can go wrong
         with identificationHelpers.Timer() as t:
             not_essential_idx = list()
             r_sigma = 20    #target ratio of parameters' relative std deviation
@@ -692,6 +691,7 @@ class Identification(object):
             sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
             self.xBase_orig = self.xBase.copy()
+            #self.xBase += self.xBaseModel
             b_c = 0 #how many params were canceled
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
@@ -721,17 +721,23 @@ class Identification(object):
                 # use f-test to determine if model reduction can be accepted or not
                 F = ((rho - rho_start) / (self.num_base_params - b_c)) /  \
                     (rho_start / (self.num_samples-self.num_base_params))
-                print "min-max ratio of relative stddevs: {}: F: {}".format(ratio, F)
+                print "min-max ratio of relative stddevs: {}, F: {}".format(ratio, F)
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
                 #if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
-                if F > 3.85:    #alpha = 5%
+                if np.abs(F) > 3.85:    #alpha = 5%
                     break
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
-                not_essential_idx.append(param_idx)
+                if param_idx not in not_essential_idx:
+                    not_essential_idx.append(param_idx)
+                else:
+                    # TODO: if parameter was set to zero and still has the largest std deviation,
+                    # something is weird..?
+                    print("param {} already canceled before, stopping".format(param_idx))
+                    break
                 self.xBase[param_idx] = 0
                 b_c += 1
 
@@ -819,8 +825,11 @@ class Identification(object):
                 self.xStdEssential[self.stdNonEssentialIdx] = 0
             else:
                 # weighting using base essential params (like in Gautier, 2013)
+                # (paper is not specifying if using absolute base params or identified errors)
                 self.xStdEssential = np.zeros_like(self.xStdModel)
-                self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[np.where(self.xBase_essential != 0)[0]]
+                self.xStdEssential[self.stdEssentialIdx] = \
+                        self.xBase_essential[np.where(self.xBase_essential != 0)[0]] \
+                        + self.xBaseModel[np.where(self.xBase_essential != 0)[0]]
 
     def getNonsingularRegressor(self):
         with identificationHelpers.Timer() as t:

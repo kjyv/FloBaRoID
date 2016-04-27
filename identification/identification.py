@@ -475,7 +475,6 @@ class Identification(object):
             #QR of transposed gives us basis of column space of original matrix
             #TODO: this can be loaded from file if model structure doesn't change
             Yrand = self.getRandomRegressors(n_samples=4000)
-            #Yrand = self.YStd
             Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
@@ -644,7 +643,7 @@ class Identification(object):
         gravity.setVal(2, -9.81);
 
         self.tauEstimated = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.skip_samples):
+        for m_idx in range(0, v_data['positions'].shape[0], self.skip_samples+1):
             # read measurements
             pos = v_data['positions'][m_idx]
             vel = v_data['velocities'][m_idx]
@@ -669,8 +668,12 @@ class Identification(object):
             else:
                 self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
 
+        if self.skip_samples > 0:
         self.tauMeasured = v_data['torques'][::self.skip_samples]
         self.T = v_data['times'][::self.skip_samples]
+        else:
+            self.tauMeasured = v_data['torques']
+            self.T = v_data['times']
 
     def getBaseEssentialParameters(self):
         """

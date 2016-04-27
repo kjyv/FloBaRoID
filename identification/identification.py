@@ -63,7 +63,7 @@ class Identification(object):
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
-        self.dontIdentifyMasses = 1
+        self.dontIdentifyMasses = 0
 
         self.outputBarycentric = 0
 
@@ -474,7 +474,8 @@ class Identification(object):
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix
             #TODO: this can be loaded from file if model structure doesn't change
-            Yrand = self.getRandomRegressors(n_samples=2000)
+            Yrand = self.getRandomRegressors(n_samples=4000)
+            #Yrand = self.YStd
             Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
@@ -663,7 +664,7 @@ class Identification(object):
 
             # compute inverse dynamics with idyntree (simulate)
             dynComp.inverseDynamics(torques, baseReactionForce)
-            if self.tauEstimated == None:
+            if self.tauEstimated is None:
                 self.tauEstimated = torques.toNumPy()
             else:
                 self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
@@ -686,13 +687,14 @@ class Identification(object):
             r_sigma = 20    #target ratio of parameters' relative std deviation
             ratio = 0
 
+            self.xBase_orig = self.xBase.copy()
+            #self.xBase += self.xBaseModel
+            b_c = 0 #how many params were canceled
+
             self.estimateRegressorTorques('base')
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
-            self.xBase_orig = self.xBase.copy()
-            #self.xBase += self.xBaseModel
-            b_c = 0 #how many params were canceled
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
@@ -765,24 +767,25 @@ class Identification(object):
 
             # intuitively, also the dependent columns should be essential as the linear combination
             # is used to identify and calc the error
-            useDependents = True
+            useDependents = False
             if useDependents:
                 # also get the ones that are linearly dependent on them -> base params
                 dependents = []
                 #to_delete = []
-                for i in self.baseEssentialIdx:
+                for i in range(0, self.linear_deps.shape[0]):
                     for j in range(0,self.linear_deps.shape[1]):
                         if np.abs(self.linear_deps[i,j]) > 0.1:
                             dep_org_col = self.P[self.independent_cols.size+j]
                             indep_org_col = self.P[i]
-                            if dep_org_col not in dependents:
+                            if dep_org_col not in dependents and indep_org_col in self.stdEssentialIdx:
                                 dependents.append(dep_org_col)
                             #indep_org_col has dependents, remove from stdEssentialIdx to get fully identifiable
                             #to_delete.append(indep_org_col)
 
                             #print(
-                            #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
-                            #   .format(i, dep_org_col, j, indep_org_col))
+                            #    ('''col {} in W2(col {} in a) is a linear combination of col {} in W1''' +\
+                            #    '''(col {} in a) with factor {}''')\
+                            #   .format(i, dep_org_col, j, indep_org_col, self.linear_deps[i,j]))
                 #print self.stdEssentialIdx
                 #print len(dependents)
                 print dependents
@@ -828,8 +831,8 @@ class Identification(object):
                 # (paper is not specifying if using absolute base params or identified errors)
                 self.xStdEssential = np.zeros_like(self.xStdModel)
                 self.xStdEssential[self.stdEssentialIdx] = \
-                        self.xBase_essential[np.where(self.xBase_essential != 0)[0]] \
-                        + self.xBaseModel[np.where(self.xBase_essential != 0)[0]]
+                        self.xBase_essential[self.baseEssentialIdx] \
+                        + self.xBaseModel[self.baseEssentialIdx]
 
     def getNonsingularRegressor(self):
         with identificationHelpers.Timer() as t:
@@ -1104,7 +1107,7 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+    main()
     except Exception as e:
         if type(e) is not KeyboardInterrupt:
             # open ipdb when an exception happens

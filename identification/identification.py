@@ -7,6 +7,7 @@ import numpy as np
 import numpy.linalg as la
 #import numexpr as ne
 import scipy.linalg as sla
+import scipy.stats as stats
 
 import matplotlib #; matplotlib.use('qt4agg')
 import matplotlib.pyplot as plt
@@ -711,6 +712,15 @@ class Identification(object):
 
             # get initial standard deviation
             self.estimateRegressorTorques('base')
+            error = np.mean(self.tauMeasured-self.tauEstimated, axis=1)
+            error_norm_start = np.square(la.norm(error))
+            '''
+            A2, critical, significant = stats.anderson(error, dist='norm')
+            if A2 < critical[2]:   #5%
+                print("error is normal distributed")
+            else:
+                print("error is not normal distributed! (A2={})".format(A2))
+            '''
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             #sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
@@ -722,6 +732,7 @@ class Identification(object):
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
                 sigma_rho = rho/(self.num_samples-self.num_base_params)
+                error_norm = np.square(la.norm(np.mean(self.tauMeasured-self.tauEstimated, axis=1)))
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
@@ -741,8 +752,8 @@ class Identification(object):
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
 
                 # use f-test to determine if model reduction can be accepted or not
-                F = ((rho - rho_start) / (self.num_base_params - b_c)) /  \
-                    (rho_start / (self.num_samples-self.num_base_params))
+                F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
+                    (error_norm_start / (self.num_samples-self.num_base_params))
                 print "min-max ratio of relative stddevs: {}, F: {}".format(ratio, F)
 
                 # while loop condition moved to here
@@ -801,7 +812,8 @@ class Identification(object):
 
             # intuitively, also the dependent columns should be essential as the linear combination
             # is used to identify and calc the error
-            useDependents = False
+            useDependents = 0
+            useCADWeighting = 1
             if useDependents:
                 # also get the ones that are linearly dependent on them -> base params
                 dependents = []
@@ -835,7 +847,7 @@ class Identification(object):
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
             ## get \hat{x_e}, set zeros for non-essential params
-            if useDependents:
+            if useDependents or useCADWeighting:
                 # we don't really know what the weights are if we have more std essential than base
                 # essentials, so use CAD/previous params for weighting
                 self.xStdEssential = self.xStdModel.copy()
@@ -978,10 +990,10 @@ class Identification(object):
         print Style.RESET_ALL
 
         ## print base params
-        if self.estimateWith is 'urdf':
+        if self.estimateWith in ['urdf', 'std_direct']:
             return
 
-        print("Base Parameters and Corrseponding standard columns")
+        print("Base Parameters and Corresponding standard columns")
         if not self.useEssentialParams:
             baseEssentialIdx = range(0, self.N_PARAMS)
             baseNonEssentialIdx = []

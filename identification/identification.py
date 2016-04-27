@@ -38,7 +38,7 @@ class Identification(object):
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.start_offset = 0  #how many samples from the begginning of the measurements are skipped
 
-        self.skip_samples = 2    #how many values to skip before using the next sample
+        self.skip_samples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -674,8 +674,8 @@ class Identification(object):
                 self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
 
         if self.skip_samples > 0:
-        self.tauMeasured = v_data['torques'][::self.skip_samples]
-        self.T = v_data['times'][::self.skip_samples]
+            self.tauMeasured = v_data['torques'][::self.skip_samples]
+            self.T = v_data['times'][::self.skip_samples]
         else:
             self.tauMeasured = v_data['torques']
             self.T = v_data['times']
@@ -691,20 +691,30 @@ class Identification(object):
         """
 
         with identificationHelpers.Timer() as t:
-            not_essential_idx = list()
-            r_sigma = 20    #target ratio of parameters' relative std deviation
-            ratio = 0
+            # if columns are deleted or just cancelled by setting to zero
+            delete_columns = 0
 
+            # keep current values
             xBase_orig = self.xBase.copy()
             YBase_orig = self.YBase.copy()
-            #self.xBase += self.xBaseModel
-            b_c = 0 #how many params were canceled
-            base_idx = range(0,self.num_base_params)
 
+            # add a priori info, xBase includes only parameter diffs
+            self.xBase += self.xBaseModel
+
+            # count how many params were canceled
+            b_c = 0
+
+            # list of param indices to keep the original indices when deleting columns
+            base_idx = range(0,self.num_base_params)
+            not_essential_idx = list()
+            ratio = 0
+
+            # get initial standard deviation
             self.estimateRegressorTorques('base')
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
-            sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
+            #sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
+            # start removing non-essential parameters
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
@@ -737,12 +747,13 @@ class Identification(object):
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
-                #if ratio == old_ratio and old_ratio != 0 or ratio < r_sigma:
-                if np.abs(F) > 3.85:    #alpha = 5%
-                    break
+                #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
+                #if np.abs(F) > 3.85:    #alpha = 5%
+                #    break
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
+                #get its index among the base params (otherwise it doesnt take deletion into account)
                 param_base_idx = base_idx[param_idx]
                 if param_base_idx not in not_essential_idx:
                     not_essential_idx.append(param_base_idx)
@@ -750,22 +761,30 @@ class Identification(object):
                     # TODO: if parameter was set to zero and still has the largest std deviation,
                     # something is weird..?
                     print("param {} already canceled before, stopping".format(param_base_idx))
-                    #break
-                #self.xBase[param_idx] = 0
-                self.xBase = np.delete(self.xBase, param_idx, 0)
-                base_idx = np.delete(base_idx, param_idx, 0)
-                self.YBase = np.delete(self.YBase, param_idx, 1)
-                b_c += 1
+                    break
 
-            # leave base params unchanged
-            self.xBase_essential = self.xBase.copy()
-            self.xBase = xBase_orig
-            self.YBase = YBase_orig
+                if delete_columns:
+                    self.xBase = np.delete(self.xBase, param_idx, 0)
+                    base_idx = np.delete(base_idx, param_idx, 0)
+                    self.YBase = np.delete(self.YBase, param_idx, 1)
+                else:
+                    self.xBase[param_idx] = 0
+                b_c += 1
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
+
+            # leave previous base params and regressor unchanged
+            if delete_columns:
+                self.xBase_essential = np.zeros_like(xBase_orig)
+                self.xBase_essential[self.baseEssentialIdx] = self.xBase.copy()
+            else:
+                self.xBase_essential = self.xBase.copy()
+            self.xBase = xBase_orig
+            self.YBase = YBase_orig
+
             print "Got {} essential parameters".format(self.num_essential_params)
 
         print("Getting base essential parameters took %.03f sec." % t.interval)
@@ -897,7 +916,7 @@ class Identification(object):
 
         import colorama
         from colorama import Fore, Back, Style
-        colorama.init()
+        colorama.init(autoreset=True)
 
         if not self.useEssentialParams:
             self.stdEssentialIdx = range(0, self.N_PARAMS)
@@ -1122,7 +1141,7 @@ def main():
 
 if __name__ == '__main__':
     try:
-    main()
+        main()
     except Exception as e:
         if type(e) is not KeyboardInterrupt:
             # open ipdb when an exception happens

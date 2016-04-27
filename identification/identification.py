@@ -68,6 +68,7 @@ class Identification(object):
         self.outputBarycentric = 0
 
         self.showMemUsage = 0
+        self.show_random_regressor = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -411,7 +412,7 @@ class Identification(object):
         import random
 
         if not n_samples:
-            n_samples = 10000 #self.N_DOFS * 1000
+            n_samples = 2000 #self.N_DOFS * 1000
         R = np.array((self.N_OUT, self.N_PARAMS))
         regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
         knownTerms = iDynTree.VectorDynSize(self.N_OUT)
@@ -461,6 +462,10 @@ class Identification(object):
                 R = A.T.dot(A)
             else:
                 R += A.T.dot(A)
+
+        if self.show_random_regressor:
+            plt.imshow(R, interpolation='nearest')
+            plt.show()
 
         return R
 
@@ -690,9 +695,11 @@ class Identification(object):
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
-            self.xBase_orig = self.xBase.copy()
+            xBase_orig = self.xBase.copy()
+            YBase_orig = self.YBase.copy()
             #self.xBase += self.xBaseModel
             b_c = 0 #how many params were canceled
+            base_idx = range(0,self.num_base_params)
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
@@ -731,19 +738,24 @@ class Identification(object):
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
-                if param_idx not in not_essential_idx:
-                    not_essential_idx.append(param_idx)
+                param_base_idx = base_idx[param_idx]
+                if param_base_idx not in not_essential_idx:
+                    not_essential_idx.append(param_base_idx)
                 else:
                     # TODO: if parameter was set to zero and still has the largest std deviation,
                     # something is weird..?
-                    print("param {} already canceled before, stopping".format(param_idx))
-                    break
-                self.xBase[param_idx] = 0
+                    print("param {} already canceled before, stopping".format(param_base_idx))
+                    #break
+                #self.xBase[param_idx] = 0
+                self.xBase = np.delete(self.xBase, param_idx, 0)
+                base_idx = np.delete(base_idx, param_idx, 0)
+                self.YBase = np.delete(self.YBase, param_idx, 1)
                 b_c += 1
 
             # leave base params unchanged
             self.xBase_essential = self.xBase.copy()
-            self.xBase = self.xBase_orig
+            self.xBase = xBase_orig
+            self.YBase = YBase_orig
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
@@ -780,9 +792,10 @@ class Identification(object):
                             #indep_org_col has dependents, remove from stdEssentialIdx to get fully identifiable
                             #to_delete.append(indep_org_col)
 
-                            #print(
-                            #    '''col {} in W2(col {} in a) is a linear combination of col {} in W1 (col {} in a)'''\
-                            #   .format(i, dep_org_col, j, indep_org_col))
+                            print(
+                                ('col {} in W2(col {} in YStd) is a linear combination of col {} in W1 ' +\
+                                '(col {} in YStd with factor {})')\
+                               .format(i, dep_org_col, j, indep_org_col, self.linear_deps[i,j]))
                 #print self.stdEssentialIdx
                 #print len(dependents)
                 print dependents
@@ -879,7 +892,7 @@ class Identification(object):
 
         import colorama
         from colorama import Fore, Back, Style
-        colorama.init(autoreset=True)
+        colorama.init()
 
         if not self.useEssentialParams:
             self.stdEssentialIdx = range(0, self.N_PARAMS)

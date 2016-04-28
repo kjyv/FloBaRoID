@@ -755,10 +755,11 @@ class Identification(object):
 
                 if use_f_test:
                     # use f-test to determine if model reduction can be accepted or not
-                    lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - self.tauEstimated.T).T) )
-                    print "lack_of_fit: {}".format(lack_of_fit / (self.num_samples - (self.num_base_params-b_c)))
 
                     #lack-of-fit
+                    #lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - self.tauEstimated.T).T) )
+                    #print "lack_of_fit: {}".format(lack_of_fit / (self.num_samples - (self.num_base_params-b_c)))
+
                     #F = ( lack_of_fit / (self.num_samples - (self.num_base_params-b_c))) /  \
                     #    ( pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
 

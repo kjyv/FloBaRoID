@@ -39,7 +39,7 @@ class Identification(object):
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.start_offset = 0  #how many samples from the begginning of the measurements are skipped
 
-        self.skip_samples = 4    #how many values to skip before using the next sample
+        self.skip_samples = 4   #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -306,7 +306,7 @@ class Identification(object):
                                           np.concatenate(([0], pad, acc)),
                                           np.concatenate(([0], self.xStdModelAsBaseFull)), d=None)
                 if self.addNoise:
-                    torq += np.random.normal(0,1.0)*(torq*0.01)
+                    torq += np.random.normal(0.0,0.1)
             simulate_time += t.interval
 
             #...still in sample loop
@@ -710,19 +710,22 @@ class Identification(object):
             not_essential_idx = list()
             ratio = 0
 
-            # get initial standard deviation
+            # get initial errors of estimation
             self.estimateRegressorTorques('base')
             error = np.mean(self.tauMeasured-self.tauEstimated, axis=1)
-            error_norm_start = np.square(la.norm(error))
-            '''
-            A2, critical, significant = stats.anderson(error, dist='norm')
-            if A2 < critical[2]:   #5%
+            k2, p = stats.normaltest(error)
+
+            use_f_test = p > 0.05  #5%
+            if use_f_test:
                 print("error is normal distributed")
+                pure_error = np.sum(np.square( (self.tauMeasured.T - np.mean(self.tauMeasured, axis=1)).T ))
+                print "pure_error: {}".format(pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
+                error_norm_start = np.square(la.norm(error))
             else:
-                print("error is not normal distributed! (A2={})".format(A2))
-            '''
+                print("error is not normal distributed (p={}), can't use f-test".format(p))
+                F = 0
+
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
-            #sigma_rho_start = rho_start/(self.num_samples-self.num_base_params)
 
             # start removing non-essential parameters
             while 1:
@@ -732,7 +735,6 @@ class Identification(object):
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
                 sigma_rho = rho/(self.num_samples-self.num_base_params)
-                error_norm = np.square(la.norm(np.mean(self.tauMeasured-self.tauEstimated, axis=1)))
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
@@ -751,16 +753,29 @@ class Identification(object):
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
 
-                # use f-test to determine if model reduction can be accepted or not
-                F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
-                    (error_norm_start / (self.num_samples-self.num_base_params))
+                if use_f_test:
+                    # use f-test to determine if model reduction can be accepted or not
+                    lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - self.tauEstimated.T).T) )
+                    print "lack_of_fit: {}".format(lack_of_fit / (self.num_samples - (self.num_base_params-b_c)))
+
+                    #lack-of-fit
+                    #F = ( lack_of_fit / (self.num_samples - (self.num_base_params-b_c))) /  \
+                    #    ( pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
+
+                    #f-test from janot
+                    error_norm = np.square(la.norm(np.mean(self.tauMeasured-self.tauEstimated, axis=1)))
+                    F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
+                        (error_norm_start / (self.num_samples-self.num_base_params))
+
                 print "min-max ratio of relative stddevs: {}, F: {}".format(ratio, F)
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
-                #if np.abs(F) > 3.85:    #alpha = 5%
-                #    break
+                if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
+                    break
+                if not use_f_test and ratio < 25:
+                    break
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
@@ -1152,13 +1167,15 @@ def main():
         identification.plot()
 
 if __name__ == '__main__':
-    try:
-        main()
+   # import ipdb
+   # import traceback
+    #try:
+    main()
+    '''
     except Exception as e:
-        if type(e) is not KeyboardInterrupt:
+        if not isinstance(e, KeyboardInterrupt):
             # open ipdb when an exception happens
-            import ipdb, traceback
             type, value, tb = sys.exc_info()
             traceback.print_exc()
             ipdb.post_mortem(tb)
-
+    '''

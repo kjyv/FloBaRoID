@@ -25,11 +25,11 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
 
+# TODO: save random regressor to file next to urdf
+# TODO: write params to file/urdf file, use explicit option for that independent of verification
+# TODO: add/use contact forces
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
-# TODO: write params to file/urdf file, give explicit option for that
-# TODO: add/use contact forces
-# TODO: save random regressor to file next to urdf
 
 class Identification(object):
     def __init__(self, urdf_file, measurements_files, regressor_file):
@@ -306,7 +306,7 @@ class Identification(object):
                                           np.concatenate(([0], pad, acc)),
                                           np.concatenate(([0], self.xStdModelAsBaseFull)), d=None)
                 if self.addNoise:
-                    torq += np.random.normal(0.0,0.1)
+                    torq += np.random.randn(self.N_DOFS)*0.03
             simulate_time += t.interval
 
             #...still in sample loop
@@ -642,7 +642,8 @@ class Identification(object):
         v_data = np.load(file)
         dynComp = iDynTree.DynamicsComputations();
 
-        self.helpers.replaceParamsInURDF(self.URDF_FILE, self.xStd, self.link_names)
+        self.helpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
+                                         params=self.xStd, link_names=self.link_names)
         dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
         gravity = iDynTree.SpatialAcc();
         gravity.zero()
@@ -757,7 +758,8 @@ class Identification(object):
                     # use f-test to determine if model reduction can be accepted or not
 
                     #lack-of-fit
-                    #lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - self.tauEstimated.T).T) )
+                    #lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - \
+                    #              self.tauEstimated.T).T) )
                     #print "lack_of_fit: {}".format(lack_of_fit / (self.num_samples - (self.num_base_params-b_c)))
 
                     #F = ( lack_of_fit / (self.num_samples - (self.num_base_params-b_c))) /  \

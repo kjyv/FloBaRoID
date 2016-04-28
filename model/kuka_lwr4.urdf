@@ -21,7 +21,7 @@
     <color rgba="0 0 0 1.0"/>
   </material>
   <material name="Kuka/Orange">
-     <color rgba="1.0 0.487 0 1.0"/>
+    <color rgba="1.0 0.487 0 1.0"/>
   </material>
   <material name="Kuka/Silver">
     <color rgba="1.0 1.0 1.0 1.0"/>
@@ -41,21 +41,20 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0.50"/>
       <geometry>
-        <box size="1.0 1.0 1.0"/>
+        <box size="1.20 .74 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.50"/>
       <geometry>
-        <box size="1.0 1.0 1.0"/>
+        <box size="1.20 .74 1.0"/>
       </geometry>
     </collision>
   </link>
-
   <!-- using the models -->
   <!-- First (shoulder) element of the arm. Fixed to its parent. -->
   <joint name="box_lwr_base_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 1"/>
+    <origin rpy="0 0 0" xyz="-0.25 0 1"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="box"/>
     <child link="lwr_base_link"/>
@@ -64,7 +63,7 @@
     <inertial>
       <mass value="1.6"/>
       <origin xyz="0 0 0.055"/>
-      <inertia ixx="0.00381666666667" ixy="0" ixz="0" iyy="0.0036" iyz="0" izz="0.00381666666667"/>
+      <inertia ixx="0.00305333333333" ixy="0" ixz="0" iyy="0.00288" iyz="0" izz="0.00305333333333"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0"/>
@@ -94,7 +93,7 @@
     <inertial>
       <mass value="2.7"/>
       <origin rpy="0 0 0" xyz="0 -0.06 0.130"/>
-      <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.0118666666667"/>
+      <inertia ixx="0.01845" ixy="0" ixz="0" iyy="0.00405" iyz="0" izz="0.01602"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 -0.008"/>
@@ -136,7 +135,7 @@
     <inertial>
       <mass value="2.7"/>
       <origin rpy="0 0 0" xyz="0 0.06 0.07"/>
-      <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.0118666666667"/>
+      <inertia ixx="0.01845" ixy="0" ixz="0" iyy="0.00405" iyz="0" izz="0.01602"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0.0"/>
@@ -178,7 +177,7 @@
     <inertial>
       <mass value="2.7"/>
       <origin rpy="0 0 0" xyz="0 0.06 0.130"/>
-      <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.0118666666667"/>
+      <inertia ixx="0.01845" ixy="0" ixz="0" iyy="0.00405" iyz="0" izz="0.01602"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 -0.008"/>
@@ -220,7 +219,7 @@
     <inertial>
       <mass value="2.7"/>
       <origin rpy="0 0 0" xyz="0 -0.06 0.07"/>
-      <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.0118666666667"/>
+      <inertia ixx="0.01845" ixy="0" ixz="0" iyy="0.00405" iyz="0" izz="0.01602"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0.0"/>
@@ -262,7 +261,7 @@
     <inertial>
       <mass value="1.7"/>
       <origin rpy="0 0 0" xyz="0 0 0.124"/>
-      <inertia ixx="0.0126506666667" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.0108506666667"/>
+      <inertia ixx="0.0107530666667" ixy="0" ixz="0" iyy="0.00255" iyz="0" izz="0.00922306666667"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 -0.008"/>
@@ -304,7 +303,7 @@
     <inertial>
       <mass value="1.6"/>
       <origin rpy="0 0 0" xyz="0 0 0.0625"/>
-      <inertia ixx="0.000520833333333" ixy="0" ixz="0" iyy="0.000520833333333" iyz="0" izz="0.000520833333333"/>
+      <inertia ixx="0.00416666666667" ixy="0" ixz="0" iyy="0.00416666666667" iyz="0" izz="0.00416666666667"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0"/>
@@ -333,7 +332,7 @@
     <inertial>
       <mass value="0.3"/>
       <origin xyz="0 0 0"/>
-      <inertia ixx="0.0333333333333" ixy="0" ixz="0" iyy="0.0333333333333" iyz="0" izz="0.0333333333333"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.05"/>
     </inertial>
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0"/>

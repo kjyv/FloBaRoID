@@ -106,7 +106,7 @@ class IdentificationHelpers(object):
 
         return params
 
-    def replaceParamsInURDF(self, urdf_file, params, link_names):
+    def replaceParamsInURDF(self, input_urdf, output_urdf, params, link_names):
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
         from IPython import embed
@@ -114,7 +114,7 @@ class IdentificationHelpers(object):
 
         xStdBary = self.paramsLink2Bary(params)
 
-        tree = ET.parse(urdf_file)
+        tree = ET.parse(input_urdf)
         for l in tree.findall('link'):
             if l.attrib['name'] in link_names:
                 link_id = link_names.index(l.attrib['name'])
@@ -130,4 +130,5 @@ class IdentificationHelpers(object):
                 inert.attrib['iyz'] = str(xStdBary[link_id*10+8])
                 inert.attrib['izz'] = str(xStdBary[link_id*10+9])
 
-        tree.write(urdf_file + '.tmp')
+        tree.write(output_urdf)
+        # TODO: add <?xml version="1.0" ?> to first line

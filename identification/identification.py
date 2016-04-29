@@ -37,8 +37,9 @@ class Identification(object):
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        self.startOffset = 0  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 4   #how many values to skip before using the next sample
+        # TODO: use start offset for all measurement files
+        self.startOffset = 200  #how many samples from the beginning of the (first) measurement are skipped
+        self.skipSamples = 0   #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -709,12 +710,19 @@ class Identification(object):
         out parameters that are too sensitive to errors. The remaining params should be estimated with
         similar accuracy)
 
-        based on Pham, 1991 and Gautier, 2013 and Jubien, 2014
+        based on Pham, 1991; Gautier, 2013 and Jubien, 2014
         """
 
         with identificationHelpers.Timer() as t:
-            # if columns are deleted or just cancelled by setting to zero
-            delete_columns = 0
+            # if columns are deleted or just cancelled by setting to zero (deleting actually changes
+            # the regressor for C_xx, so should be the right way)
+            delete_columns = 1
+
+            # use mean least squares (actually median least abs) to determine when the error
+            # introduced by model reduction gets too large
+            # TODO: the stop error level might be reached already from the beginning, so possibly
+            # add 5% to error at start (or will this be too much?)
+            use_mse = True
 
             # keep current values
             xBase_orig = self.xBase.copy()
@@ -733,15 +741,20 @@ class Identification(object):
 
             # get initial errors of estimation
             self.estimateRegressorTorques('base')
-            error = np.mean(self.tauMeasured-self.tauEstimated, axis=1)
-            k2, p = stats.normaltest(error)
+            error_start = np.median(self.tauMeasured-self.tauEstimated, axis=1)
+            k2, p = stats.normaltest(error_start)
+
+            torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
+            mse_start = np.sum(np.square(error_start)/self.tauMeasured.shape[0])
+            mse_percent_start = mse_start/np.mean(torq_range)
+            print("starting percentual error {}".format(mse_percent_start))
 
             use_f_test = p > 0.05  #5%
             if use_f_test:
                 print("error is normal distributed")
                 pure_error = np.sum(np.square( (self.tauMeasured.T - np.mean(self.tauMeasured, axis=1)).T ))
                 print "pure_error: {}".format(pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
-                error_norm_start = np.square(la.norm(error))
+                error_norm_start = np.square(la.norm(error_start))
             else:
                 print("error is not normal distributed (p={}), can't use f-test".format(p))
                 F = 0
@@ -771,9 +784,13 @@ class Identification(object):
                     if np.abs(self.xBase[i]) != 0:
                         p_sigma_x[i] /= np.abs(self.xBase[i])
 
+                print("{} params|".format(self.num_base_params-b_c)),
+
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
+                print "min-max ratio of relative stddevs: {},".format(ratio),
 
+                error = np.median(self.tauMeasured-self.tauEstimated, axis=1)
                 if use_f_test:
                     # use f-test to determine if model reduction can be accepted or not
 
@@ -786,11 +803,22 @@ class Identification(object):
                     #    ( pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
 
                     #f-test from janot
-                    error_norm = np.square(la.norm(np.mean(self.tauMeasured-self.tauEstimated, axis=1)))
+                    error_norm = np.square(la.norm(error))
                     F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
                         (error_norm_start / (self.num_samples-self.num_base_params))
+                    print("F: {},".format(F)),
 
-                print "min-max ratio of relative stddevs: {}, F: {}".format(ratio, F)
+                if use_mse:
+                    mse = np.sum(np.abs(error)/self.tauMeasured.shape[0])
+                    # allow 5% error of maximum torque for each dof
+                    #TODO: read torq limits from urdf
+                    mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
+
+                    #allow 5% of mean/median of measured value range
+                    mse_max_val = mse/np.mean(torq_range)
+                    mse_percent = mse_max_torq
+                    print("mse as % of torq limits {},".format(mse_max_torq)),
+                    print("mse as % of torq range {}".format(mse_max_val))
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
@@ -798,6 +826,8 @@ class Identification(object):
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
                 if not use_f_test and ratio < 25:
+                    break
+                if use_mse and mse_percent+mse_percent_start > 0.015:
                     break
 
                 #cancel the parameter with largest deviation
@@ -820,6 +850,8 @@ class Identification(object):
                     self.xBase[param_idx] = 0
                 b_c += 1
 
+            print("essential rel stddevs: {}".format(p_sigma_x))
+
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
             self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
@@ -829,10 +861,10 @@ class Identification(object):
             if delete_columns:
                 self.xBase_essential = np.zeros_like(xBase_orig)
                 self.xBase_essential[self.baseEssentialIdx] = self.xBase.copy()
+                self.YBase = YBase_orig
             else:
                 self.xBase_essential = self.xBase.copy()
             self.xBase = xBase_orig
-            self.YBase = YBase_orig
 
             print "Got {} essential parameters".format(self.num_essential_params)
 

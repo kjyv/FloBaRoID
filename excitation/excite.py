@@ -7,6 +7,7 @@ import scipy as sp
 from scipy import signal
 from IPython import embed
 
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from robotCommunication import yarp_gym, ros_moveit
 
 import argparse
@@ -16,11 +17,12 @@ parser.add_argument('--filename', type=str, help='the filename to save the measu
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
 parser.add_argument('--dryrun', help="don't send the trajectory", action='store_true')
+parser.add_argument('--simulate', help="simulate torques for measured values (e.g. for gazebo)", action='store_true')
 parser.add_argument('--yarp', help="use yarp for robot communication", action='store_true')
 parser.add_argument('--ros', help="use ros for robot communication", action='store_true')
 parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
-parser.set_defaults(plot=False, dryrun=False, random_colors=False, filename='measurements.npz', periods=1)
+parser.set_defaults(plot=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
 data = {}   #hold some global data vars in here
@@ -246,6 +248,29 @@ def main():
     # filter, differentiate, convert, etc.
     postprocess(data['Q'], data['Qraw'], data['V'], data['Vraw'], data['Vself'], data['Vdot'],
                 data['Tau'], data['TauRaw'], data['T'], data['measured_frequency'])
+
+    if args.simulate:
+        dynComp = iDynTree.DynamicsComputations();
+        dynComp.loadRobotModelFromFile(args.model);
+        gravity = iDynTree.SpatialAcc();
+        gravity.zero()
+        gravity.setVal(2, -9.81);
+        torques = iDynTree.VectorDynSize(config['N_DOFS'])
+
+        for t in range(0, len(data['T'])):
+            pos = data['Q'][t]
+            vel = data['Vself'][t]
+            acc = data['Vdot'][t]
+            q = iDynTree.VectorDynSize.fromPyList(pos)
+            dq = iDynTree.VectorDynSize.fromPyList(vel)
+            ddq = iDynTree.VectorDynSize.fromPyList(acc)
+
+            dynComp.setRobotState(q, dq, ddq, gravity)
+            baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
+
+            # compute inverse dynamics with idyntree (simulate)
+            dynComp.inverseDynamics(torques, baseReactionForce)
+            data['Tau'][t] = torques.toNumPy()
 
     # write sample arrays to data file
     np.savez(args.filename, positions=data['Q'], velocities=data['Vself'],

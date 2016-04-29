@@ -429,15 +429,15 @@ class Identification(object):
             import random
 
             if not n_samples:
-                n_samples = 2000 #self.N_DOFS * 1000
+                n_samples = self.N_DOFS * 1000
             R = np.array((self.N_OUT, self.N_PARAMS))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             for i in range(0, n_samples):
                 # set random system state
 
-                """
                 # TODO: conceal to joint limits from urdf (these are kuka lwr4)
+                """
                 q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
                                        2.96705972839,  2.09439510239,  2.96705972839])
                 #q_lim_pos.fill(np.pi)
@@ -497,8 +497,7 @@ class Identification(object):
         with identificationHelpers.Timer() as t:
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix
-            #TODO: this can be loaded from file if model structure doesn't change
-            Yrand = self.getRandomRegressors(n_samples=4000)
+            Yrand = self.getRandomRegressors(n_samples=5000)
             Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
             #get rank
@@ -655,7 +654,8 @@ class Identification(object):
     def estimateValidationTorques(self, file):
         """ calculate torques of trajectory from validation measurements and identified params """
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not have
-        # inverse dynamics yet, so has to go over new urdf file now)
+        # inverse dynamics yet, so we have to go over a new urdf file now)
+        import os
 
         v_data = np.load(file)
         dynComp = iDynTree.DynamicsComputations();
@@ -663,6 +663,8 @@ class Identification(object):
         self.helpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
                                          new_params=self.xStd, link_names=self.link_names)
         dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
+        os.remove(self.URDF_FILE + '.tmp')
+
         gravity = iDynTree.SpatialAcc();
         gravity.zero()
         gravity.setVal(2, -9.81);
@@ -694,8 +696,8 @@ class Identification(object):
                 self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
 
         if self.skipSamples > 0:
-            self.tauMeasured = v_data['torques'][::self.skipSamples]
-            self.T = v_data['times'][::self.skipSamples]
+            self.tauMeasured = v_data['torques'][::self.skipSamples+1]
+            self.T = v_data['times'][::self.skipSamples+1]
         else:
             self.tauMeasured = v_data['torques']
             self.T = v_data['times']
@@ -795,7 +797,7 @@ class Identification(object):
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 35:
+                if not use_f_test and ratio < 25:
                     break
 
                 #cancel the parameter with largest deviation

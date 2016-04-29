@@ -1,6 +1,7 @@
+import time
+from IPython import embed
 import iDynTree
 
-import time
 class Timer(object):
     def __enter__(self):
         self.start = time.clock()
@@ -106,13 +107,11 @@ class IdentificationHelpers(object):
 
         return params
 
-    def replaceParamsInURDF(self, input_urdf, output_urdf, params, link_names):
+    def replaceParamsInURDF(self, input_urdf, output_urdf, new_params, link_names):
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
-        from IPython import embed
         import xml.etree.ElementTree as ET
-
-        xStdBary = self.paramsLink2Bary(params)
+        xStdBary = self.paramsLink2Bary(new_params)
 
         tree = ET.parse(input_urdf)
         for l in tree.findall('link'):
@@ -130,5 +129,4 @@ class IdentificationHelpers(object):
                 inert.attrib['iyz'] = str(xStdBary[link_id*10+8])
                 inert.attrib['izz'] = str(xStdBary[link_id*10+9])
 
-        tree.write(output_urdf)
-        # TODO: add <?xml version="1.0" ?> to first line
+        tree.write(output_urdf, xml_declaration=True)

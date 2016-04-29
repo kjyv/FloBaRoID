@@ -24,9 +24,9 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
 # Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
+# Jubien, 2014: Dynamic identification of the Kuka LWR robot using motor torques and joint torque
+# sensors data
 
-# TODO: save random regressor to file next to urdf
-# TODO: write params to file/urdf file, use explicit option for that independent of verification
 # TODO: add/use contact forces
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
@@ -37,9 +37,8 @@ class Identification(object):
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        self.start_offset = 0  #how many samples from the begginning of the measurements are skipped
-
-        self.skip_samples = 4   #how many values to skip before using the next sample
+        self.startOffset = 0  #how many samples from the beginning of the (first) measurement are skipped
+        self.skipSamples = 4   #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -69,7 +68,7 @@ class Identification(object):
         self.outputBarycentric = 0
 
         self.showMemUsage = 0
-        self.show_random_regressor = 0
+        self.showRandomRegressor = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -102,6 +101,7 @@ class Identification(object):
 
             self.URDF_FILE = urdf_file
 
+            # load data from multiple files and concatenate, fix timing
             self.measurements = {}
             for fn in measurements_files:
                 m = np.load(fn[0])
@@ -120,7 +120,7 @@ class Identification(object):
 
                 m.close()
 
-            self.num_samples = (self.measurements['positions'].shape[0]-self.start_offset)/(self.skip_samples+1)
+            self.num_samples = (self.measurements['positions'].shape[0]-self.startOffset)/(self.skipSamples+1)
             print 'loaded {} measurement samples (using {})'.format(
                 self.measurements['positions'].shape[0], self.num_samples)
 
@@ -255,7 +255,7 @@ class Identification(object):
             # TODO: this takes multiple seconds because of lazy loading, try preload
             # or use other data format
             with identificationHelpers.Timer() as t:
-                m_idx = self.start_offset+(row*(self.skip_samples)+row)
+                m_idx = self.startOffset+(row*(self.skipSamples)+row)
                 if self.simulate:
                     pos = self.measurements['target_positions'][m_idx]
                     vel = self.measurements['target_velocities'][m_idx]
@@ -381,7 +381,7 @@ class Identification(object):
 
                 self.B = subspaceBasis.toNumPy()
             else:
-                Yrand = self.getRandomRegressors(2000)
+                Yrand = self.getRandomRegressors(5000)
                 #A = iDynTree.MatrixDynSize(self.N_PARAMS, self.N_PARAMS)
                 #self.generator.generate_random_regressors(A, False, True, 2000)
                 #Yrand = A.toNumPy()
@@ -410,61 +410,79 @@ class Identification(object):
         obtained by stacking the n_samples generated regressors This function returns Y^T Y
         (getNrOfParameters() X getNrOfParameters() ) (that share the row space with Y)
         """
-        import random
 
-        if not n_samples:
-            n_samples = 2000 #self.N_DOFS * 1000
-        R = np.array((self.N_OUT, self.N_PARAMS))
-        regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
-        knownTerms = iDynTree.VectorDynSize(self.N_OUT)
-        for i in range(0, n_samples):
-            # set random system state
+        regr_filename = self.URDF_FILE + '.regressor.npz'
+        generate_new = False
+        try:
+            regr_file = np.load(regr_filename)
+            R = regr_file['R']
+            n = regr_file['n']
+            print("loaded random regressor from {}".format(regr_filename))
+            if n != n_samples:
+                generate_new = True
+            #TODO: save and check timestamp of urdf file, if newer regenerate
+        except IOError, KeyError:
+            generate_new = True
 
-            """
-            # TODO: conceal to joint limits from urdf
-            q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
-                                   2.96705972839,  2.09439510239,  2.96705972839])
-            #q_lim_pos.fill(np.pi)
-            q_lim_neg = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239,
-                                  -2.96705972839, -2.09439510239, -2.96705972839])
-            #q_lim_neg.fill(np.pi)
-            dq_lim = np.array([1.91986217719, 1.91986217719, 2.23402144255, 2.23402144255,
-                               3.56047167407, 3.21140582367, 3.21140582367])
-            #dq_lim.fill(np.pi)
+        if generate_new:
+            print("generating random regressor")
+            import random
 
-            q = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*q_lim_pos).tolist())
-            dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
-            ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
-            """
+            if not n_samples:
+                n_samples = 2000 #self.N_DOFS * 1000
+            R = np.array((self.N_OUT, self.N_PARAMS))
+            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+            knownTerms = iDynTree.VectorDynSize(self.N_OUT)
+            for i in range(0, n_samples):
+                # set random system state
 
-            q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-            dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-            ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                """
+                # TODO: conceal to joint limits from urdf (these are kuka lwr4)
+                q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
+                                       2.96705972839,  2.09439510239,  2.96705972839])
+                #q_lim_pos.fill(np.pi)
+                q_lim_neg = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239,
+                                      -2.96705972839, -2.09439510239, -2.96705972839])
+                #q_lim_neg.fill(np.pi)
+                dq_lim = np.array([1.91986217719, 1.91986217719, 2.23402144255, 2.23402144255,
+                                   3.56047167407, 3.21140582367, 3.21140582367])
+                #dq_lim.fill(np.pi)
 
-            # TODO: handle for fixed dofs (set vel and acc to zero)
+                q = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*q_lim_pos).tolist())
+                dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
+                ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
+                """
 
-            if fixed_base:
-                self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
-            else:
-                base_acceleration = iDynTree.Twist()
-                base_acceleration.zero()
-                #TODO: base_acceleration = random values...
-                self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
+                q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
-            # get regressor
-            if not self.generator.computeRegressor(regressor, knownTerms):
-                print "Error during numeric computation of regressor"
+                # TODO: handle for fixed dofs (set vel and acc to zero)
 
-            A = regressor.toNumPy()
+                if fixed_base:
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
+                else:
+                    base_acceleration = iDynTree.Twist()
+                    base_acceleration.zero()
+                    #TODO: base_acceleration = random values...
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
 
-            # add to previous regressors, linear dependency doesn't change
-            # (if too many, saturation or accuracy problems?)
-            if i==0:
-                R = A.T.dot(A)
-            else:
-                R += A.T.dot(A)
+                # get regressor
+                if not self.generator.computeRegressor(regressor, knownTerms):
+                    print "Error during numeric computation of regressor"
 
-        if self.show_random_regressor:
+                A = regressor.toNumPy()
+
+                # add to previous regressors, linear dependency doesn't change
+                # (if too many, saturation or accuracy problems?)
+                if i==0:
+                    R = A.T.dot(A)
+                else:
+                    R += A.T.dot(A)
+
+            np.savez(regr_filename, R=R, n=n_samples)
+
+        if self.showRandomRegressor:
             plt.imshow(R, interpolation='nearest')
             plt.show()
 
@@ -619,7 +637,7 @@ class Identification(object):
             self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
 
             self.sample_end = self.measurements['positions'].shape[0]
-            if self.skip_samples > 0: self.sample_end -= (self.skip_samples)
+            if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
 
             if self.simulate:
                 if self.useAPriori:
@@ -628,9 +646,9 @@ class Identification(object):
                     tau = self.tau
                 self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
             else:
-                self.tauMeasured = self.measurements['torques'][self.start_offset:self.sample_end:self.skip_samples+1, :]
+                self.tauMeasured = self.measurements['torques'][self.startOffset:self.sample_end:self.skipSamples+1, :]
 
-            self.T = self.measurements['times'][self.start_offset:self.sample_end:self.skip_samples+1]
+            self.T = self.measurements['times'][self.startOffset:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
 
@@ -643,14 +661,14 @@ class Identification(object):
         dynComp = iDynTree.DynamicsComputations();
 
         self.helpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
-                                         params=self.xStd, link_names=self.link_names)
+                                         new_params=self.xStd, link_names=self.link_names)
         dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
         gravity = iDynTree.SpatialAcc();
         gravity.zero()
         gravity.setVal(2, -9.81);
 
         self.tauEstimated = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.skip_samples+1):
+        for m_idx in range(0, v_data['positions'].shape[0], self.skipSamples+1):
             # read measurements
             pos = v_data['positions'][m_idx]
             vel = v_data['velocities'][m_idx]
@@ -675,9 +693,9 @@ class Identification(object):
             else:
                 self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
 
-        if self.skip_samples > 0:
-            self.tauMeasured = v_data['torques'][::self.skip_samples]
-            self.T = v_data['times'][::self.skip_samples]
+        if self.skipSamples > 0:
+            self.tauMeasured = v_data['torques'][::self.skipSamples]
+            self.T = v_data['times'][::self.skipSamples]
         else:
             self.tauMeasured = v_data['torques']
             self.T = v_data['times']
@@ -777,7 +795,7 @@ class Identification(object):
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 25:
+                if not use_f_test and ratio < 35:
                     break
 
                 #cancel the parameter with largest deviation
@@ -831,7 +849,7 @@ class Identification(object):
             # intuitively, also the dependent columns should be essential as the linear combination
             # is used to identify and calc the error
             useDependents = 0
-            useCADWeighting = 1
+            useCADWeighting = 0
             if useDependents:
                 # also get the ones that are linearly dependent on them -> base params
                 dependents = []
@@ -1112,16 +1130,20 @@ class Identification(object):
 
     def printMemUsage(self):
         import humanize
+        total = 0
         print "Memory usage:"
         for v in self.__dict__.keys():
             if type(self.__dict__[v]).__module__ == np.__name__:
-                print "{}: {} ".format( v, (humanize.naturalsize(self.__dict__[v].nbytes, binary=True)) ),
-        print "\n"
+                size = self.__dict__[v].nbytes
+                total += size
+                print "{}: {} ".format( v, (humanize.naturalsize(size, binary=True)) ),
+        print "- total: {}".format(humanize.naturalsize(total, binary=True))
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
+    parser.add_argument('--output', required=False, type=str, help='the file to save the identified params to')
     parser.add_argument('--measurements', required=True, nargs='*', action='append', type=str,
                         help='the file(s) to load the measurements from')
     parser.add_argument('--verification', required=False, type=str,
@@ -1134,40 +1156,44 @@ def main():
     parser.set_defaults(plot=False, explain=False, regressor=None)
     args = parser.parse_args()
 
-    identification = Identification(args.model, args.measurements, args.regressor)
-    identification.computeRegressors()
+    idf = Identification(args.model, args.measurements, args.regressor)
+    idf.computeRegressors()
 
-    if identification.useEssentialParams:
-        identification.getBaseRegressorQR()
-        identification.identifyBaseParameters()
-        identification.getBaseEssentialParameters()
-        identification.getStdEssentialParameters()
-        identification.getNonsingularRegressor()
-        identification.identifyStandardEssentialParameters()
-        if identification.useAPriori:
-            identification.getBaseParamsFromParamError()
+    if idf.useEssentialParams:
+        idf.getBaseRegressorQR()
+        idf.identifyBaseParameters()
+        idf.getBaseEssentialParameters()
+        idf.getStdEssentialParameters()
+        idf.getNonsingularRegressor()
+        idf.identifyStandardEssentialParameters()
+        if idf.useAPriori:
+            idf.getBaseParamsFromParamError()
     else:
-        identification.getBaseRegressorQR()
-        if identification.estimateWith in ['base', 'std']:
-            identification.identifyBaseParameters()
-            identification.getStdFromBase()
-            if identification.useAPriori:
-                identification.getBaseParamsFromParamError()
-        elif identification.estimateWith is 'std_direct':
-            identification.getNonsingularRegressor()
-            identification.identifyStandardParameters()
+        idf.getBaseRegressorQR()
+        if idf.estimateWith in ['base', 'std']:
+            idf.identifyBaseParameters()
+            idf.getStdFromBase()
+            if idf.useAPriori:
+                idf.getBaseParamsFromParamError()
+        elif idf.estimateWith is 'std_direct':
+            idf.getNonsingularRegressor()
+            idf.identifyStandardParameters()
 
-    if identification.showMemUsage:
-        identification.printMemUsage()
+    if idf.showMemUsage:
+        idf.printMemUsage()
+
+    if args.output:
+        idf.helpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.output, \
+                                        new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain:
-        identification.output()
+        idf.output()
     if args.plot:
         if args.verification:
-            identification.estimateValidationTorques(args.verification)
+            idf.estimateValidationTorques(args.verification)
         else:
-            identification.estimateRegressorTorques()
-        identification.plot()
+            idf.estimateRegressorTorques()
+        idf.plot()
 
 if __name__ == '__main__':
    # import ipdb

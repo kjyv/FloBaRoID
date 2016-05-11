@@ -38,8 +38,8 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         # TODO: use start offset for all measurement files
-        self.startOffset = 0  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 4   #how many values to skip before using the next sample
+        self.startOffset = 200  #how many samples from the beginning of the (first) measurement are skipped
+        self.skipSamples = 0    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -753,10 +753,10 @@ class Identification(object):
             error_start = error_func(self)
             k2, p = stats.normaltest(error_start)
 
-            if False:
+            if True:
                 h = plt.hist(error_start, 50)
                 plt.title("error probability")
-                plt.show()
+                plt.draw()
 
             #range of measured torque
             torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
@@ -764,9 +764,10 @@ class Identification(object):
             #mean squared error
             mse_start = mse_func(error_start, self)
             mse_percent_start = mse_start/np.median(torq_range)
-            print("starting percentual error {}".format(mse_percent_start))
+            pham_percent_start = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+            print("starting percentual error {}".format(pham_percent_start))
 
-            use_f_test = p > 0.05  #5%
+            use_f_test = False #p > 0.05  #5%
             if use_f_test:
                 print("error is normal distributed")
                 pure_error = np.sum(np.square( (self.tauMeasured.T - np.mean(self.tauMeasured, axis=1)).T ))
@@ -807,6 +808,7 @@ class Identification(object):
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {},".format(ratio),
 
+                print("cond(YBase):{}".format(la.cond(self.YBase))),
                 error = error_func(self)
 
                 if use_f_test:
@@ -831,13 +833,17 @@ class Identification(object):
                     #TODO: read torq limits from urdf
                     #mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
 
-                    #allow 5% of mean/median of measured value range
+                        #allow 5% of mean/median of measured value range
                     mse_meas_torq = mse/np.median(torq_range)
                     mse_percent = mse_meas_torq
                     error_increase = mse_percent - mse_percent_start
+
+                    pham_percent = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+                    error_increase_pham = pham_percent - pham_percent_start
+
                     #print("% mse of torq limits {},".format(mse_max_torq)),
                     #print("% mse of measured range {},".format(mse_meas_torq)),
-                    print("error increase {}").format(error_increase)
+                    print("error increase {}").format(error_increase_pham)
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
@@ -847,7 +853,7 @@ class Identification(object):
                     break
                 if not use_f_test and ratio < 30:
                     break
-                if use_mse and error_increase > 0.02:
+                if use_mse and error_increase_pham > 5:
                     break
 
                 #cancel the parameter with largest deviation
@@ -1049,16 +1055,21 @@ class Identification(object):
         description = self.generator.getDescriptionOfParameters()
         idx_p = 0
         lines = list()
+        sum_diff_pc = 0
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
             new = xStd[idx_p]
             apriori = xStdModel[idx_p]
             real = xStdReal[idx_p]
 
+            # get error percentage
             if model_output:
                 diff = new - real
                 if real != 0:
                     diff_pc = (100*diff)/real
+                    if idx_p in self.stdEssentialIdx:
+                        sum_diff_pc += np.abs(diff_pc)
                 else:
+                    #TODO: if real is 0, we can't calc percent. alternative?
                     diff_pc = 0
             else:
                 diff = new - apriori
@@ -1067,11 +1078,11 @@ class Identification(object):
             if idx_p % 10 == 0:
                 d = Fore.GREEN + d
 
+            #values for each line
             if model_output:
                 vals = [real, apriori, new, diff, diff_pc, d]
             else:
                 vals = [apriori, new, diff, d]
-
             lines.append(vals)
 
             idx_p+=1
@@ -1112,6 +1123,9 @@ class Identification(object):
             print t
             idx_p+=1
         print Style.RESET_ALL
+
+        if model_output:
+            print("Mean error of identified params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
 
         ## print base params
         if self.estimateWith in ['urdf', 'std_direct']:
@@ -1238,7 +1252,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
-    parser.add_argument('--model_output', required=False, type=str, help='the file to load the model params for comparison from')
+    parser.add_argument('--model_output', required=False, type=str, help='the file to load the model params for\
+                        comparison from')
     parser.add_argument('-o', '--output', required=False, type=str, help='the file to save the identified params to')
 
     parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,

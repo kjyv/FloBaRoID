@@ -773,8 +773,8 @@ class Identification(object):
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
 
-                # TODO: since also side diagonals carry information on how this param influences other
-                # params, try using norm of columns instead of diagonal elements
+                # TODO: since also side diagonals carry information on how this param influences
+                # other params, try using norm of columns instead of diagonal elements
                 #sigma_x = np.linalg.norm(C_xx, axis=1)
                 sigma_x = np.diag(C_xx)
 
@@ -1032,36 +1032,47 @@ class Identification(object):
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
             new = xStd[idx_p]
             apriori = xStdModel[idx_p]
-            diff = new - apriori
             real = xStdReal[idx_p]
+
+            if model_output:
+                diff = new - real
+                if real != 0:
+                    diff_pc = (100*diff)/real
+                else:
+                    diff_pc = 0
+            else:
+                diff = new - apriori
+
             #print beginning of each link block in green
             if idx_p % 10 == 0:
                 d = Fore.GREEN + d
 
-            vals = [real, apriori, new, diff, d]
-            if not model_output:
-                vals.pop(0)
+            if model_output:
+                vals = [real, apriori, new, diff, diff_pc, d]
+            else:
+                vals = [apriori, new, diff, d]
+
             lines.append(vals)
 
             idx_p+=1
             if idx_p == len(xStd):
                 break
 
-        column_widths = [15, 15, 15, 7, 45]   # widths of the columns
-        precisions = [8, 8, 8, 4, 0]         # numerical precision
-
-        if not model_output:
-            column_widths.pop(0)
-            precisions.pop(0)
+        if model_output:
+            column_widths = [13, 13, 13, 7, 7, 45]
+            precisions = [8, 8, 8, 4, 1, 0]
+        else:
+            column_widths = [13, 13, 7, 45]
+            precisions = [8, 8, 4, 0]
 
         # print column header
         template = ''
         for w in range(0, len(column_widths)):
             template += '|{{{}:{}}}'.format(w, column_widths[w])
         if model_output:
-            print template.format("A priori", "Approx", "Error", "Description")
+            print template.format("'Real'", "A priori", "Approx", "Error", "%e", "Description")
         else:
-            print template.format("'Real'", "A priori", "Approx", "Error", "Description")
+            print template.format("A priori", "Approx", "Error", "Description")
 
         # print values/description
         template = ''

@@ -38,8 +38,8 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         # TODO: use start offset for all measurement files
-        self.startOffset = 200  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 0   #how many values to skip before using the next sample
+        self.startOffset = 0  #how many samples from the beginning of the (first) measurement are skipped
+        self.skipSamples = 4   #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -107,18 +107,18 @@ class Identification(object):
             for fa in measurements_files:
                 for fn in fa:
                     m = np.load(fn)
-                mv = {}
-                for k in m.keys():
-                    mv[k] = m[k]
-                    if not self.measurements.has_key(k):
-                        #first file
-                        self.measurements[k] = m[k]
-                    else:
-                        if k == 'times':
-                            mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
-                            mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
-                        #following files, append data
-                        self.measurements[k] = np.concatenate((self.measurements[k], mv[k]), axis=0)
+                    mv = {}
+                    for k in m.keys():
+                        mv[k] = m[k]
+                        if not self.measurements.has_key(k):
+                            #first file
+                            self.measurements[k] = m[k]
+                        else:
+                            if k == 'times':
+                                mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
+                                mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
+                            #following files, append data
+                            self.measurements[k] = np.concatenate((self.measurements[k], mv[k]), axis=0)
                 m.close()
 
             self.num_samples = (self.measurements['positions'].shape[0]-self.startOffset)/(self.skipSamples+1)
@@ -720,8 +720,6 @@ class Identification(object):
 
             # use mean least squares (actually median least abs) to determine when the error
             # introduced by model reduction gets too large
-            # TODO: the stop error level might be reached already from the beginning, so possibly
-            # add 5% to error at start (or will this be too much?)
             use_mse = True
 
             # keep current values
@@ -741,12 +739,31 @@ class Identification(object):
 
             # get initial errors of estimation
             self.estimateRegressorTorques('base')
-            error_start = np.median(self.tauMeasured-self.tauEstimated, axis=1)
+
+            def error_func(inst):
+                rho = np.median(inst.tauMeasured-inst.tauEstimated, axis=1)   #error of median over all joints
+                #rho = np.mean(inst.tauMeasured-inst.tauEstimated, axis=1)
+                #rho = np.square(la.norm(inst.tauMeasured-inst.tauEstimated))
+                return rho
+
+            def mse_func(error, inst):
+                mse = np.sum(np.abs(error)/inst.tauMeasured.shape[0])
+                return mse
+
+            error_start = error_func(self)
             k2, p = stats.normaltest(error_start)
 
+            if False:
+                h = plt.hist(error_start, 50)
+                plt.title("error probability")
+                plt.show()
+
+            #range of measured torque
             torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
-            mse_start = np.sum(np.square(error_start)/self.tauMeasured.shape[0])
-            mse_percent_start = mse_start/np.mean(torq_range)
+
+            #mean squared error
+            mse_start = mse_func(error_start, self)
+            mse_percent_start = mse_start/np.median(torq_range)
             print("starting percentual error {}".format(mse_percent_start))
 
             use_f_test = p > 0.05  #5%
@@ -790,7 +807,8 @@ class Identification(object):
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {},".format(ratio),
 
-                error = np.median(self.tauMeasured-self.tauEstimated, axis=1)
+                error = error_func(self)
+
                 if use_f_test:
                     # use f-test to determine if model reduction can be accepted or not
 
@@ -809,25 +827,27 @@ class Identification(object):
                     print("F: {},".format(F)),
 
                 if use_mse:
-                    mse = np.sum(np.abs(error)/self.tauMeasured.shape[0])
-                    # allow 5% error of maximum torque for each dof
+                    mse = mse_func(error, self)
                     #TODO: read torq limits from urdf
-                    mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
+                    #mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
 
                     #allow 5% of mean/median of measured value range
-                    mse_max_val = mse/np.mean(torq_range)
-                    mse_percent = mse_max_torq
-                    print("mse as % of torq limits {},".format(mse_max_torq)),
-                    print("mse as % of torq range {}".format(mse_max_val))
+                    mse_meas_torq = mse/np.median(torq_range)
+                    mse_percent = mse_meas_torq
+                    error_increase = mse_percent - mse_percent_start
+                    #print("% mse of torq limits {},".format(mse_max_torq)),
+                    #print("% mse of measured range {},".format(mse_meas_torq)),
+                    print("error increase {}").format(error_increase)
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
+                #TODO: check if f-test has any benefits in determining error through model reduction
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 25:
+                if not use_f_test and ratio < 30:
                     break
-                if use_mse and mse_percent+mse_percent_start > 0.015:
+                if use_mse and error_increase > 0.02:
                     break
 
                 #cancel the parameter with largest deviation
@@ -1174,7 +1194,7 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
-            ([self.tauMeasured - self.tauEstimated], 'Estimation Error'),
+            ([np.mean(self.tauMeasured - self.tauEstimated, axis=1)], 'Estimation Error'),
             #([self.measurements['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
             #([self.measurements['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
             #([self.measurements['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
@@ -1190,10 +1210,14 @@ class Identification(object):
             plt.figure()
             plt.ylim([ymin, ymax])
             plt.title(title)
-            for i in range(0, self.N_DOFS):
-                for d_i in range(0, len(data)):
-                    l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                    plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+            for d_i in range(0, len(data)):
+                if len(data[d_i].shape) > 1:
+                    for i in range(0, data[d_i].shape[1]):
+                        l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
+                        plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                else:
+                    plt.plot(self.T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+
             leg = plt.legend(loc='best', fancybox=True, fontsize=10)
             leg.draggable()
         plt.show()

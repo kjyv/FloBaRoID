@@ -104,8 +104,9 @@ class Identification(object):
 
             # load data from multiple files and concatenate, fix timing
             self.measurements = {}
-            for fn in measurements_files:
-                m = np.load(fn[0])
+            for fa in measurements_files:
+                for fn in fa:
+                    m = np.load(fn)
                 mv = {}
                 for k in m.keys():
                     mv[k] = m[k]
@@ -118,7 +119,6 @@ class Identification(object):
                             mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
                         #following files, append data
                         self.measurements[k] = np.concatenate((self.measurements[k], mv[k]), axis=0)
-
                 m.close()
 
             self.num_samples = (self.measurements['positions'].shape[0]-self.startOffset)/(self.skipSamples+1)
@@ -993,7 +993,7 @@ class Identification(object):
 
         print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
-    def output(self):
+    def output(self, model_output=None, print_base=False):
         """Do some pretty printing of parameters."""
 
         import colorama
@@ -1015,30 +1015,53 @@ class Identification(object):
             xStdModel = self.xStdModel
             print("Linear (relative to Frame) Standard Parameters")
 
+        #if requested, load params from other urdf for comparison
+        if model_output:
+            dc = iDynTree.DynamicsComputations()
+            dc.loadRobotModelFromFile(model_output)
+            tmp = iDynTree.VectorDynSize(self.N_PARAMS)
+            dc.getModelDynamicsParameters(tmp)
+            xStdReal = tmp.toNumPy()
+        else:
+            xStdReal = xStdModel
+
         # collect values for parameters
         description = self.generator.getDescriptionOfParameters()
         idx_p = 0
         lines = list()
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
             new = xStd[idx_p]
-            old = xStdModel[idx_p]
-            diff = new - old
+            apriori = xStdModel[idx_p]
+            diff = new - apriori
+            real = xStdReal[idx_p]
             #print beginning of each link block in green
             if idx_p % 10 == 0:
                 d = Fore.GREEN + d
-            lines.append((old, new, diff, d))
+
+            vals = [real, apriori, new, diff, d]
+            if not model_output:
+                vals.pop(0)
+            lines.append(vals)
+
             idx_p+=1
             if idx_p == len(xStd):
                 break
 
-        column_widths = [15, 15, 7, 45]   # widths of the columns
-        precisions = [8, 8, 4, 0]         # numerical precision
+        column_widths = [15, 15, 15, 7, 45]   # widths of the columns
+        precisions = [8, 8, 8, 4, 0]         # numerical precision
+
+        if not model_output:
+            column_widths.pop(0)
+            precisions.pop(0)
 
         # print column header
         template = ''
         for w in range(0, len(column_widths)):
             template += '|{{{}:{}}}'.format(w, column_widths[w])
-        print template.format("Model", "Approx", "Error", "Description")
+        if model_output:
+            print template.format("A priori", "Approx", "Error", "Description")
+        else:
+            print template.format("'Real'", "A priori", "Approx", "Error", "Description")
 
         # print values/description
         template = ''
@@ -1061,6 +1084,9 @@ class Identification(object):
 
         ## print base params
         if self.estimateWith in ['urdf', 'std_direct']:
+            return
+
+        if not print_base:
             return
 
         print("Base Parameters and Corresponding standard columns")
@@ -1176,18 +1202,24 @@ class Identification(object):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
-    parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
-    parser.add_argument('--output', required=False, type=str, help='the file to save the identified params to')
-    parser.add_argument('--measurements', required=True, nargs='*', action='append', type=str,
+    parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
+    parser.add_argument('--model_output', required=False, type=str, help='the file to load the model params for comparison from')
+    parser.add_argument('-o', '--output', required=False, type=str, help='the file to save the identified params to')
+
+    parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,
                         help='the file(s) to load the measurements from')
+
     parser.add_argument('--verification', required=False, type=str,
                         help='the file to load the verification trajectory from')
+
     parser.add_argument('--regressor', required=False, type=str,
                         help='the file containing the regressor structure(for the iDynTree generator).\
                               Identifies on all joints if not specified.')
+
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
-    parser.add_argument('--explain', help='whether to explain parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=False, regressor=None)
+    parser.add_argument('-e', '--explain', help='whether to explain identified parameters', action='store_true')
+    parser.add_argument('--explain_base', help='whether to explain identified base parameters as well', action='store_true')
+    parser.set_defaults(plot=False, explain=False, explain_base=False, regressor=None, model_output=None)
     args = parser.parse_args()
 
     idf = Identification(args.model, args.measurements, args.regressor)
@@ -1221,7 +1253,7 @@ def main():
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain:
-        idf.output()
+        idf.output(args.model_output, args.explain_base)
     if args.plot:
         if args.verification:
             idf.estimateValidationTorques(args.verification)

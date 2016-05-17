@@ -37,9 +37,8 @@ class Identification(object):
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        # TODO: use start offset for all measurement files
-        self.startOffset = 200  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 0    #how many values to skip before using the next sample
+        self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
+        self.skipSamples = 2    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -66,10 +65,11 @@ class Identification(object):
         # well known or introduce problems
         self.dontIdentifyMasses = 0
 
+        # some investigation output
         self.outputBarycentric = 0
-
         self.showMemUsage = 0
         self.showRandomRegressor = 0
+        self.showErrorHistogram = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -112,16 +112,21 @@ class Identification(object):
                         mv[k] = m[k]
                         if not self.measurements.has_key(k):
                             #first file
-                            self.measurements[k] = m[k]
+                            if k == 'times':
+                                self.measurements[k] = m[k][self.startOffset:]
+                            else:
+                                self.measurements[k] = m[k][self.startOffset:, :]
                         else:
+                            #following files, append data
                             if k == 'times':
                                 mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
                                 mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
-                            #following files, append data
-                            self.measurements[k] = np.concatenate((self.measurements[k], mv[k]), axis=0)
-                m.close()
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:]), axis=0)
+                            else:
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:, :]), axis=0)
+                    m.close()
 
-            self.num_samples = (self.measurements['positions'].shape[0]-self.startOffset)/(self.skipSamples+1)
+            self.num_samples = (self.measurements['positions'].shape[0])/(self.skipSamples+1)
             print 'loaded {} measurement samples (using {})'.format(
                 self.measurements['positions'].shape[0], self.num_samples)
 
@@ -256,7 +261,7 @@ class Identification(object):
             # TODO: this takes multiple seconds because of lazy loading, try preload
             # or use other data format
             with identificationHelpers.Timer() as t:
-                m_idx = self.startOffset+(row*(self.skipSamples)+row)
+                m_idx = row*(self.skipSamples)+row
                 if self.simulate:
                     pos = self.measurements['target_positions'][m_idx]
                     vel = self.measurements['target_velocities'][m_idx]
@@ -646,9 +651,9 @@ class Identification(object):
                     tau = self.tau
                 self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
             else:
-                self.tauMeasured = self.measurements['torques'][self.startOffset:self.sample_end:self.skipSamples+1, :]
+                self.tauMeasured = self.measurements['torques'][0:self.sample_end:self.skipSamples+1, :]
 
-            self.T = self.measurements['times'][self.startOffset:self.sample_end:self.skipSamples+1]
+            self.T = self.measurements['times'][0:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
 
@@ -753,7 +758,7 @@ class Identification(object):
             error_start = error_func(self)
             k2, p = stats.normaltest(error_start)
 
-            if True:
+            if self.showErrorHistogram:
                 h = plt.hist(error_start, 50)
                 plt.title("error probability")
                 plt.draw()
@@ -790,10 +795,6 @@ class Identification(object):
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
-
-                # TODO: since also side diagonals carry information on how this param influences
-                # other params, try using norm of columns instead of diagonal elements
-                #sigma_x = np.linalg.norm(C_xx, axis=1)
                 sigma_x = np.diag(C_xx)
 
                 # get relative standard deviation
@@ -851,7 +852,7 @@ class Identification(object):
                 #TODO: check if f-test has any benefits in determining error through model reduction
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 30:
+                if not use_f_test and ratio < 27:
                     break
                 if use_mse and error_increase_pham > 5:
                     break
@@ -1056,6 +1057,7 @@ class Identification(object):
         idx_p = 0
         lines = list()
         sum_diff_pc = 0
+        sum_diff_pc_all = 0
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
             new = xStd[idx_p]
             apriori = xStdModel[idx_p]
@@ -1066,6 +1068,7 @@ class Identification(object):
                 diff = new - real
                 if real != 0:
                     diff_pc = (100*diff)/real
+                    sum_diff_pc_all += np.abs(diff_pc)
                     if idx_p in self.stdEssentialIdx:
                         sum_diff_pc += np.abs(diff_pc)
                 else:
@@ -1126,6 +1129,7 @@ class Identification(object):
 
         if model_output:
             print("Mean error of identified params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
+            print("Mean error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
 
         ## print base params
         if self.estimateWith in ['urdf', 'std_direct']:

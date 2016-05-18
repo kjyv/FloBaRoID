@@ -70,6 +70,7 @@ class Identification(object):
         self.showMemUsage = 0
         self.showRandomRegressor = 0
         self.showErrorHistogram = 0
+        self.showBaseGrouping = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -708,6 +709,9 @@ class Identification(object):
             self.tauMeasured = v_data['torques']
             self.T = v_data['times']
 
+        val_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        print("validation error: {}%".format(val_error))
+
     def getBaseEssentialParameters(self):
         """
         iteratively get essential parameters from previously identified base parameters.
@@ -1020,7 +1024,7 @@ class Identification(object):
 
         print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
-    def output(self, model_output=None, print_base=False):
+    def output(self, model_output=None):
         """Do some pretty printing of parameters."""
 
         import colorama
@@ -1127,15 +1131,34 @@ class Identification(object):
             idx_p+=1
         print Style.RESET_ALL
 
+
+        # get condition number for each of the links
+        linkConds = {}
+        for i in range(0, self.N_LINKS):
+            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
+
+            for j in range(0, self.num_base_params):
+                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
+                    if dep in range(i*10, i*10+9):
+                        base_columns.append(j)
+            if not len(base_columns):
+                linkConds[i] = 99999
+            else:
+                linkConds[i] = la.cond(self.YBase[:, base_columns])
+
+            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+
+        print("Condition numbers for links: [{}]\n".format(linkConds))
+
         if model_output:
             print("Mean error of identified params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
-            print("Mean error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
+            print("Mean error of all params: {}% \n".format(sum_diff_pc_all/len(self.xStd)))
 
         ## print base params
         if self.estimateWith in ['urdf', 'std_direct']:
             return
 
-        if not print_base:
+        if not self.showBaseGrouping:
             return
 
         print("Base Parameters and Corresponding standard columns")
@@ -1263,8 +1286,8 @@ def main():
     parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,
                         help='the file(s) to load the measurements from')
 
-    parser.add_argument('--verification', required=False, type=str,
-                        help='the file to load the verification trajectory from')
+    parser.add_argument('--validation', required=False, type=str,
+                        help='the file to load the validation trajectory from')
 
     parser.add_argument('--regressor', required=False, type=str,
                         help='the file containing the regressor structure(for the iDynTree generator).\
@@ -1272,8 +1295,7 @@ def main():
 
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
     parser.add_argument('-e', '--explain', help='whether to explain identified parameters', action='store_true')
-    parser.add_argument('--explain_base', help='whether to explain identified base parameters as well', action='store_true')
-    parser.set_defaults(plot=False, explain=False, explain_base=False, regressor=None, model_output=None)
+    parser.set_defaults(plot=False, explain=False, regressor=None, model_output=None)
     args = parser.parse_args()
 
     idf = Identification(args.model, args.measurements, args.regressor)
@@ -1307,10 +1329,10 @@ def main():
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain:
-        idf.output(args.model_output, args.explain_base)
+        idf.output(args.model_output)
     if args.plot:
-        if args.verification:
-            idf.estimateValidationTorques(args.verification)
+        if args.validation:
+            idf.estimateValidationTorques(args.validation)
         else:
             idf.estimateRegressorTorques()
         idf.plot()

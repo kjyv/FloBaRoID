@@ -40,7 +40,7 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 2    #how many values to skip before using the next sample
+        self.skipSamples = 0    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -62,6 +62,12 @@ class Identification(object):
 
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 1
+
+        # whether only "good" data is being selected or simply all is used
+        self.selectBlocksFromMeasurements = 1
+        self.block_size = 500  # needs to be at least as much as parameters so regressor is square or higher
+        self.usedBlocks = list()
+        self.unusedBlocks = list()
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -128,14 +134,34 @@ class Identification(object):
                             if k == 'times':
                                 mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
                                 mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
-                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:]), axis=0)
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:]),
+                                                                      axis=0)
                             else:
-                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:, :]), axis=0)
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:, :]),
+                                                                      axis=0)
                     m.close()
 
             self.num_samples = (self.measurements['positions'].shape[0])/(self.skipSamples+1)
             print 'loaded {} measurement samples (using {})'.format(
                 self.measurements['positions'].shape[0], self.num_samples)
+
+            # create data that identification is working on (subset of all measurements)
+            self.samples = {}
+            self.block_pos = 0
+            if self.selectBlocksFromMeasurements:
+                # fill with starting block
+                for k in self.measurements.keys():
+                    if k == 'times':
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos+self.block_size]
+                    else:
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos+self.block_size, :]
+
+                self.old_condition_number = 1e20
+
+                self.num_samples = (self.samples['positions'].shape[0])/(self.skipSamples+1)
+            else:
+                # simply use all data
+                self.samples = self.measurements
 
             # create generator instance and load model
             self.generator = iDynTree.DynamicsRegressorGenerator()
@@ -181,36 +207,79 @@ class Identification(object):
                 self.link_names.append(self.model.getLinkName(i))
             print '({})'.format(self.link_names)
 
-            self.gravity_twist = iDynTree.Twist()
-            self.gravity_twist.zero()
-            self.gravity_twist.setVal(2, -9.81)
-
             self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
-
-            self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_samples, self.N_PARAMS))
-            if self.robotranRegressor:
-                self.regressor_stack_sym = np.zeros(shape=(self.N_DOFS*self.num_samples, 45))
-            self.torques_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
-            self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
 
             self.helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
 
         print("Initialization took %.03f sec." % t.interval)
 
-    def computeRegressors(self):
-        """compute regressors for each time step of the measurement data, stack them"""
+    def hasMoreSamples(self):
+        """ tell if there are more samples to be added to the date used for identification """
 
-        sym_time = 0
-        num_time = 0
-        simulate_time = 0
+        if not self.selectBlocksFromMeasurements:
+            return False
 
+        if self.block_pos+self.block_size >= self.measurements['positions'].shape[0]:
+            return False
+
+        return True
+
+    def updateNumSamples(self):
+        self.num_samples = (self.samples['positions'].shape[0])/(self.skipSamples+1)
+
+    def removeLastSampleBlock(self):
+        for k in self.measurements.keys():
+            #TODO: determine proper block size if at end of data
+            self.samples[k] = np.delete(self.samples[k], range(self.block_pos-self.block_size, self.block_pos),
+                                        axis=0)
+        self.updateNumSamples()
+
+    def nextSampleBlock(self):
+        """ fill samples with next measurements block """
+
+        # advance to next block or end of data
+        self.block_pos += self.block_size
+        block_size = self.block_size
+        if self.block_pos > self.measurements['positions'].shape[0]:
+            self.block_pos -= self.block_size
+            block_size = self.measurements['positions'].shape[0] - self.block_pos
+            self.block_pos = self.measurements['positions'].shape[0]
+
+        for k in self.measurements.keys():
+            if k == 'times':
+                self.samples[k] = np.concatenate((self.samples[k],
+                                                  self.measurements[k][self.block_pos:self.block_pos + block_size]),
+                                                 axis=0)
+                #TODO: fix time offsets
+            else:
+                self.samples[k] = np.concatenate((self.samples[k],
+                                                  self.measurements[k][self.block_pos:self.block_pos + block_size,:]),
+                                                 axis=0)
+
+        self.updateNumSamples()
+
+    def checkBlockImprovement(self):
+        new_condition_number = la.cond(self.YStd)
+        if new_condition_number > self.old_condition_number:
+            print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
+            self.removeLastSampleBlock()
+            self.unusedBlocks.append(self.block_pos)
+        else:
+            self.usedBlocks.append(self.block_pos)
+            self.old_condition_number = new_condition_number
+
+    def initRegressors(self):
         with identificationHelpers.Timer() as t:
+            self.gravity_twist = iDynTree.Twist()
+            self.gravity_twist.zero()
+            self.gravity_twist.setVal(2, -9.81)
+
             if self.simulate or self.useAPriori:
-                dynComp = iDynTree.DynamicsComputations();
-                dynComp.loadRobotModelFromFile(self.URDF_FILE);
-                gravity = iDynTree.SpatialAcc();
-                gravity.zero()
-                gravity.setVal(2, -9.81);
+                self.dynComp = iDynTree.DynamicsComputations();
+                self.dynComp.loadRobotModelFromFile(self.URDF_FILE);
+                self.gravity = iDynTree.SpatialAcc();
+                self.gravity.zero()
+                self.gravity.setVal(2, -9.81);
 
             # get model parameters
             xStdModel = iDynTree.VectorDynSize(self.N_PARAMS)
@@ -263,6 +332,19 @@ class Identification(object):
             self.tauMeasured = list()
         print("Init for computing regressors took %.03f sec." % t.interval)
 
+    def computeRegressors(self):
+        """compute regressors for each time step of the measurement data, stack them"""
+
+        sym_time = 0
+        num_time = 0
+        simulate_time = 0
+
+        self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_samples, self.N_PARAMS))
+        if self.robotranRegressor:
+            self.regressor_stack_sym = np.zeros(shape=(self.N_DOFS*self.num_samples, 45))
+        self.torques_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
+        self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
+
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
         for row in range(0, self.num_samples):
@@ -271,15 +353,15 @@ class Identification(object):
             with identificationHelpers.Timer() as t:
                 m_idx = row*(self.skipSamples)+row
                 if self.simulate:
-                    pos = self.measurements['target_positions'][m_idx]
-                    vel = self.measurements['target_velocities'][m_idx]
-                    acc = self.measurements['target_accelerations'][m_idx]
+                    pos = self.samples['target_positions'][m_idx]
+                    vel = self.samples['target_velocities'][m_idx]
+                    acc = self.samples['target_accelerations'][m_idx]
                 else:
-                    # read measurements
-                    pos = self.measurements['positions'][m_idx]
-                    vel = self.measurements['velocities'][m_idx]
-                    acc = self.measurements['accelerations'][m_idx]
-                    torq = self.measurements['torques'][m_idx]
+                    # read samples
+                    pos = self.samples['positions'][m_idx]
+                    vel = self.samples['velocities'][m_idx]
+                    acc = self.samples['accelerations'][m_idx]
+                    torq = self.samples['torques'][m_idx]
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromPyList(pos)
@@ -298,13 +380,13 @@ class Identification(object):
 
                 if self.iDynSimulate or self.useAPriori:
                     # calc torques with iDynTree dynamicsComputation class
-                    dynComp.setRobotState(q, dq, ddq, gravity)
+                    self.dynComp.setRobotState(q, dq, ddq, self.gravity)
 
                     torques = iDynTree.VectorDynSize(self.N_DOFS)
                     baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
 
                     # compute inverse dynamics with idyntree (simulate)
-                    dynComp.inverseDynamics(torques, baseReactionForce)
+                    self.dynComp.inverseDynamics(torques, baseReactionForce)
                     if self.useAPriori:
                         torqAP = torques.toNumPy()
                     if self.iDynSimulate:
@@ -615,7 +697,7 @@ class Identification(object):
 
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
-            G = np.diag(np.tile(self.sigma_rho, self.num_samples))
+            G = np.diag(np.repeat(1/self.sigma_rho, self.num_samples))
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -624,6 +706,7 @@ class Identification(object):
             # weight Y and tau with deviations, identify params
             YBase = G.dot(self.YBase)
             tau = G.dot(self.tau)
+            print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
             self.useWLS = 0
             self.identifyBaseParameters(YBase, tau)
             self.useWLS = 1
@@ -680,7 +763,7 @@ class Identification(object):
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
             self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
 
-            self.sample_end = self.measurements['positions'].shape[0]
+            self.sample_end = self.samples['positions'].shape[0]
             if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
 
             if self.simulate:
@@ -690,9 +773,9 @@ class Identification(object):
                     tau = self.tau
                 self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
             else:
-                self.tauMeasured = self.measurements['torques'][0:self.sample_end:self.skipSamples+1, :]
+                self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
 
-            self.T = self.measurements['times'][0:self.sample_end:self.skipSamples+1]
+            self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
 
@@ -898,7 +981,7 @@ class Identification(object):
                     break
                 if not use_f_test and ratio < 15:
                     break
-                if use_mse and error_increase_pham > 3.5:
+                if use_mse and error_increase_pham > 5:
                     break
 
                 #cancel the parameter with largest deviation
@@ -1258,6 +1341,8 @@ class Identification(object):
 
         res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         print("Relative residual error (torque prediction): {}%".format(res_error))
+        print "unused blocks: {}".format(self.unusedBlocks)
+        print "used blocks: {}".format(self.usedBlocks)
 
     def plot(self):
         """Display some torque plots."""
@@ -1275,9 +1360,9 @@ class Identification(object):
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
             ([self.tauMeasured - self.tauEstimated], 'Estimation Error'),
-            #([self.measurements['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
-            #([self.measurements['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
-            #([self.measurements['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
+            #([self.samples['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
+            #([self.samples['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
+            #([self.samples['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
         ]
 
         # scale all figures to same ranges and add some margin
@@ -1301,7 +1386,7 @@ class Identification(object):
             leg = plt.legend(loc='best', fancybox=True, fontsize=10)
             leg.draggable()
         plt.show()
-        #self.measurements.close()
+        #self.samples.close()
 
     def printMemUsage(self):
         import humanize
@@ -1338,27 +1423,39 @@ def main():
     args = parser.parse_args()
 
     idf = Identification(args.model, args.measurements, args.regressor)
-    idf.computeRegressors()
+    idf.initRegressors()
 
-    if idf.useEssentialParams:
-        idf.getBaseRegressorQR()
-        idf.identifyBaseParameters()
-        idf.getBaseEssentialParameters()
-        idf.getStdEssentialParameters()
-        idf.getNonsingularRegressor()
-        idf.identifyStandardEssentialParameters()
-        if idf.useAPriori:
-            idf.getBaseParamsFromParamError()
-    else:
-        idf.getBaseRegressorQR()
-        if idf.estimateWith in ['base', 'std']:
+    # loop over input blocks and select good ones
+    while 1:
+        print("Doing identification on {} samples".format(idf.num_samples))
+
+        idf.computeRegressors()
+
+        if idf.useEssentialParams:
+            idf.getBaseRegressorQR()  #TODO: put some of this out of loop
             idf.identifyBaseParameters()
-            idf.getStdFromBase()
+            idf.getBaseEssentialParameters()
+            idf.getStdEssentialParameters()
+            idf.getNonsingularRegressor()
+            idf.identifyStandardEssentialParameters()
             if idf.useAPriori:
                 idf.getBaseParamsFromParamError()
-        elif idf.estimateWith is 'std_direct':
-            idf.getNonsingularRegressor()
-            idf.identifyStandardParameters()
+        else:
+            idf.getBaseRegressorQR()
+            if idf.estimateWith in ['base', 'std']:
+                idf.identifyBaseParameters()
+                idf.getStdFromBase()
+                if idf.useAPriori:
+                    idf.getBaseParamsFromParamError()
+            elif idf.estimateWith is 'std_direct':
+                idf.getNonsingularRegressor()
+                idf.identifyStandardParameters()
+
+        idf.checkBlockImprovement()
+        if idf.hasMoreSamples():
+            idf.nextSampleBlock()
+        else:
+            break
 
     idf.estimateRegressorTorques()
 
@@ -1377,6 +1474,8 @@ def main():
             idf.estimateValidationTorques(args.validation)
 
         idf.plot()
+
+    print("\n")
 
 if __name__ == '__main__':
    # import ipdb

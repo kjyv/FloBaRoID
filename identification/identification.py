@@ -66,8 +66,6 @@ class Identification(object):
         # whether only "good" data is being selected or simply all is used
         self.selectBlocksFromMeasurements = 1
         self.block_size = 500  # needs to be at least as much as parameters so regressor is square or higher
-        self.usedBlocks = list()
-        self.unusedBlocks = list()
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -152,9 +150,9 @@ class Identification(object):
                 # fill with starting block
                 for k in self.measurements.keys():
                     if k == 'times':
-                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos+self.block_size]
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size]
                     else:
-                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos+self.block_size, :]
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size, :]
 
                 self.old_condition_number = 1e20
 
@@ -162,6 +160,9 @@ class Identification(object):
             else:
                 # simply use all data
                 self.samples = self.measurements
+
+            self.usedBlocks = list()
+            self.unusedBlocks = list()
 
             # create generator instance and load model
             self.generator = iDynTree.DynamicsRegressorGenerator()
@@ -219,7 +220,7 @@ class Identification(object):
         if not self.selectBlocksFromMeasurements:
             return False
 
-        if self.block_pos+self.block_size >= self.measurements['positions'].shape[0]:
+        if self.block_pos + self.block_size >= self.measurements['positions'].shape[0]:
             return False
 
         return True
@@ -228,43 +229,44 @@ class Identification(object):
         self.num_samples = (self.samples['positions'].shape[0])/(self.skipSamples+1)
 
     def removeLastSampleBlock(self):
+        print "removing block starting at {}".format(self.block_pos)
         for k in self.measurements.keys():
-            #TODO: determine proper block size if at end of data
-            self.samples[k] = np.delete(self.samples[k], range(self.block_pos-self.block_size, self.block_pos),
+            self.samples[k] = np.delete(self.samples[k], range(self.num_samples - self.block_size, self.num_samples),
                                         axis=0)
         self.updateNumSamples()
+        print "now we have {} samples left".format(self.num_samples)
 
     def nextSampleBlock(self):
         """ fill samples with next measurements block """
 
         # advance to next block or end of data
         self.block_pos += self.block_size
-        block_size = self.block_size
-        if self.block_pos > self.measurements['positions'].shape[0]:
-            self.block_pos -= self.block_size
-            block_size = self.measurements['positions'].shape[0] - self.block_pos
-            self.block_pos = self.measurements['positions'].shape[0]
+
+        if self.block_pos + self.block_size > self.measurements['positions'].shape[0]:
+            self.block_size = self.measurements['positions'].shape[0] - self.block_pos
+
+        print "adding next block: {}".format(self.block_pos)
 
         for k in self.measurements.keys():
             if k == 'times':
                 self.samples[k] = np.concatenate((self.samples[k],
-                                                  self.measurements[k][self.block_pos:self.block_pos + block_size]),
+                                                  self.measurements[k][self.block_pos:self.block_pos + self.block_size]),
                                                  axis=0)
                 #TODO: fix time offsets
             else:
                 self.samples[k] = np.concatenate((self.samples[k],
-                                                  self.measurements[k][self.block_pos:self.block_pos + block_size,:]),
+                                                  self.measurements[k][self.block_pos:self.block_pos + self.block_size,:]),
                                                  axis=0)
-
         self.updateNumSamples()
 
     def checkBlockImprovement(self):
-        new_condition_number = la.cond(self.YStd)
+        new_condition_number = la.cond(self.YBase)
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.removeLastSampleBlock()
             self.unusedBlocks.append(self.block_pos)
         else:
+            print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.usedBlocks.append(self.block_pos)
             self.old_condition_number = new_condition_number
 
@@ -1023,6 +1025,23 @@ class Identification(object):
 
             print "Got {} essential parameters".format(self.num_essential_params)
 
+            # get condition number for each of the links
+            linkConds = {}
+            for i in range(0, self.N_LINKS):
+                base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
+
+                for j in range(0, self.num_base_params):
+                    for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
+                        if dep in range(i*10, i*10+9):
+                            base_columns.append(j)
+                if not len(base_columns):
+                    linkConds[i] = 99999
+                else:
+                    linkConds[i] = la.cond(self.YBase[:, base_columns])
+
+                #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+            print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
+
         print("Getting base essential parameters took %.03f sec." % t.interval)
 
     def getStdEssentialParameters(self):
@@ -1148,6 +1167,32 @@ class Identification(object):
 
         print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
+
+    def estimateParameters(self):
+        print("Doing identification on {} samples".format(self.num_samples))
+
+        self.computeRegressors()
+
+        if self.useEssentialParams:
+            self.getBaseRegressorQR()  #TODO: put some of this into one time init code
+            self.identifyBaseParameters()
+            self.getBaseEssentialParameters()
+            self.getStdEssentialParameters()
+            self.getNonsingularRegressor()
+            self.identifyStandardEssentialParameters()
+            if self.useAPriori:
+                self.getBaseParamsFromParamError()
+        else:
+            self.getBaseRegressorQR()
+            if self.estimateWith in ['base', 'std']:
+                self.identifyBaseParameters()
+                self.getStdFromBase()
+                if self.useAPriori:
+                    self.getBaseParamsFromParamError()
+            elif self.estimateWith is 'std_direct':
+                self.getNonsingularRegressor()
+                self.identifyStandardParameters()
+
     def output(self, model_output=None):
         """Do some pretty printing of parameters."""
 
@@ -1255,23 +1300,6 @@ class Identification(object):
             idx_p+=1
         print Style.RESET_ALL
 
-
-        # get condition number for each of the links
-        linkConds = {}
-        for i in range(0, self.N_LINKS):
-            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
-
-            for j in range(0, self.num_base_params):
-                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
-                    if dep in range(i*10, i*10+9):
-                        base_columns.append(j)
-            if not len(base_columns):
-                linkConds[i] = 99999
-            else:
-                linkConds[i] = la.cond(self.YBase[:, base_columns])
-
-            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
-
         ## print base params
         if self.showBaseGrouping and not self.estimateWith in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
@@ -1333,16 +1361,15 @@ class Identification(object):
                 idx_p+=1
             print Style.RESET_ALL
 
-        print("Condition numbers for links: [{}]\n".format(linkConds))
-
         if model_output:
             print("Mean relative error of essential params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
             print("Mean relative error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
 
         res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         print("Relative residual error (torque prediction): {}%".format(res_error))
-        print "unused blocks: {}".format(self.unusedBlocks)
-        print "used blocks: {}".format(self.usedBlocks)
+        if self.selectBlocksFromMeasurements:
+            print "unused blocks: {}".format(self.unusedBlocks)
+            print "used blocks: {}".format(self.usedBlocks)
 
     def plot(self):
         """Display some torque plots."""
@@ -1425,37 +1452,24 @@ def main():
     idf = Identification(args.model, args.measurements, args.regressor)
     idf.initRegressors()
 
-    # loop over input blocks and select good ones
-    while 1:
-        print("Doing identification on {} samples".format(idf.num_samples))
+    if idf.selectBlocksFromMeasurements:
+        # loop over input blocks and select good ones
+        running = 1
+        while running > -1:
+            # if stopping, run one last time to get parameters with all the selected sample blocks
+            if running == 0:
+                running = -1
 
-        idf.computeRegressors()
+            idf.estimateParameters()
 
-        if idf.useEssentialParams:
-            idf.getBaseRegressorQR()  #TODO: put some of this out of loop
-            idf.identifyBaseParameters()
-            idf.getBaseEssentialParameters()
-            idf.getStdEssentialParameters()
-            idf.getNonsingularRegressor()
-            idf.identifyStandardEssentialParameters()
-            if idf.useAPriori:
-                idf.getBaseParamsFromParamError()
-        else:
-            idf.getBaseRegressorQR()
-            if idf.estimateWith in ['base', 'std']:
-                idf.identifyBaseParameters()
-                idf.getStdFromBase()
-                if idf.useAPriori:
-                    idf.getBaseParamsFromParamError()
-            elif idf.estimateWith is 'std_direct':
-                idf.getNonsingularRegressor()
-                idf.identifyStandardParameters()
-
-        idf.checkBlockImprovement()
-        if idf.hasMoreSamples():
-            idf.nextSampleBlock()
-        else:
-            break
+            if running > 0:
+                idf.checkBlockImprovement()
+            if idf.hasMoreSamples() and running == 1:
+                idf.nextSampleBlock()
+            elif running == 1:
+                running = 0
+    else:
+        idf.estimateParameters()
 
     idf.estimateRegressorTorques()
 

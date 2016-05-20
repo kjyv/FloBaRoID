@@ -25,7 +25,12 @@ def main():
     xStdModel = iDynTree.VectorDynSize(n_params)
     dynComp.getModelDynamicsParameters(xStdModel)
     xStdModel = xStdModel.toNumPy()
+    # percentage noise
+    #for p in range(0, len(xStdModel)):
+    #    xStdModel[p] += np.random.randn()*args.noise*xStdModel[p]
+    # additive noise
     xStdModel += np.random.randn(n_params)*args.noise
+
 
     helpers = identificationHelpers.IdentificationHelpers(n_params)
     helpers.replaceParamsInURDF(input_urdf=args.urdf_input, output_urdf=args.urdf_output, \

@@ -22,14 +22,24 @@ class TrajectoryGenerator(object):
         #a = [[-0.7], [0.8], [-1.2], [-0.7], [0.8], [1.0], [-0.9], [1.3]]
         #b = [[0.7], [0.8], [1.2], [0.7], [0.8], [-1.0], [0.9], [0.3]]
         #q = [0, 0, 1, 1, 0, 0, 0, 0]
-        a = [[-0.0], [0.0], [-1.2], [-0.7], [0.8], [1.3], [-1.0], [1.3]]
-        b = [[0.0], [0.0], [1.2], [0.7], [0.8], [-1.3], [1.0], [0.3]]
-        q = [0, 0, 0, 0, 0, 1, 1, 0]
+        #a = [[-0.0], [1.0], [-1.2], [-0.7], [0.8], [-1.3], [-1.0], [1.3]]
+        #b = [[1.0], [0.0], [1.2], [0.7], [0.8], [1.3], [1.0], [1.3]]
+        #q = [-1.0, -1.0, 0, 0, 0, 0, -1, 0]
+        a = [0]*dofs
+        b = [0]*dofs
+        nf = np.random.randint(1,4,7)
+        for i in range(0, self.dofs):
+            # TODO: use joint limits here
+            a[i] = np.random.rand(nf[i])*2.5-1.25
+            b[i] = np.random.rand(nf[i])*2.5-1.25
+        q = np.random.rand(7)*2-1
+        print a
+        print b
+        print q
 
         self.use_deg = use_deg
         if not self.use_deg:
             q = np.deg2rad(q)
-        nf = [1,1,1,1,1,1,1,1]
 
         for i in range(0, dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),

@@ -273,6 +273,7 @@ def main():
             data['Tau'][t] = torques.toNumPy()
 
     # write sample arrays to data file
+    # TODO: save frequency (and maybe raw values) as well
     np.savez(args.filename, positions=data['Q'], velocities=data['Vself'],
              accelerations=data['Vdot'], torques=data['Tau'],
              target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),

@@ -6,6 +6,8 @@ import math
 import numpy as np
 import numpy.linalg as la
 #import numexpr as ne
+import scipy as sp
+from scipy import signal
 import scipy.linalg as sla
 import scipy.stats as stats
 
@@ -64,6 +66,10 @@ class Identification(object):
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
         self.dontIdentifyMasses = 0
+
+        # whether to filter the regressor columns
+        # (but cutoff frequency is system dependent)
+        self.filterRegressor = 1
 
         # some investigation output
         self.outputBarycentric = 0
@@ -166,8 +172,9 @@ class Identification(object):
             self.N_PARAMS = self.generator.getNrOfParameters()
             print '# params: {}'.format(self.N_PARAMS)
 
-            self.N_LINKS = self.generator.getNrOfLinks()
-            print '# links: {} ({} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks())
+            self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+            print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
+                                                 self.generator.getNrOfFakeLinks())
 
             self.link_names = []
             for i in range(0, self.N_LINKS):
@@ -375,6 +382,8 @@ class Identification(object):
         else:
             print('Numeric regressors took %.03f sec.' % num_time)
 
+        # filter regressor columns
+
     def getBaseRegressorSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
 
@@ -540,6 +549,35 @@ class Identification(object):
             R1 = R[0:r, 0:r]
             R2 = R[0:r, r:]
             self.linear_deps = la.inv(R1).dot(R2)
+
+            if self.filterRegressor:
+                order = 6  #Filter order
+                fs = 200.0   #TODO: get from measurements
+                fc = fs/2 - 10 #90.0   #Cut-off frequency (Hz)
+                b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
+                for j in range(0, self.num_base_params):
+                    self.YBase[:, j] = sp.signal.filtfilt(b, a, self.YBase[:, j])
+
+                """
+                # Plot the frequency and phase response of the filter
+                w, h = sp.signal.freqz(b, a, worN=8000)
+                plt.subplot(2, 1, 1)
+                plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
+                plt.plot(fc, 0.5*np.sqrt(2), 'ko')
+                plt.axvline(fc, color='k')
+                plt.xlim(0, 0.5*fs)
+                plt.title("Lowpass Filter Frequency Response")
+                plt.xlabel('Frequency [Hz]')
+
+                plt.subplot(2,1,2)
+                h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
+                plt.plot(w, h_Phase)
+                plt.ylabel('Phase (radians)')
+                plt.xlabel(r'Frequency (Hz)')
+                plt.title(r'Phase response')
+                plt.subplots_adjust(hspace=0.5)
+                plt.grid()
+                """
 
         print("Getting the base regressor (QR) took %.03f sec." % t.interval)
 
@@ -710,7 +748,7 @@ class Identification(object):
             self.T = v_data['times']
 
         val_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-        print("validation error: {}%".format(val_error))
+        print("Validation error: {}%".format(val_error))
 
     def getBaseEssentialParameters(self):
         """
@@ -787,6 +825,7 @@ class Identification(object):
                 F = 0
 
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+            p_sigma_x = 0
 
             # start removing non-essential parameters
             while 1:
@@ -802,6 +841,7 @@ class Identification(object):
                 sigma_x = np.diag(C_xx)
 
                 # get relative standard deviation
+                prev_p_sigma_x = p_sigma_x
                 p_sigma_x = np.sqrt(sigma_x)
                 for i in range(0, p_sigma_x.size):
                     if np.abs(self.xBase[i]) != 0:
@@ -856,9 +896,9 @@ class Identification(object):
                 #TODO: check if f-test has any benefits in determining error through model reduction
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 27:
+                if not use_f_test and ratio < 15:
                     break
-                if use_mse and error_increase_pham > 5:
+                if use_mse and error_increase_pham > 3.5:
                     break
 
                 #cancel the parameter with largest deviation
@@ -881,7 +921,8 @@ class Identification(object):
                     self.xBase[param_idx] = 0
                 b_c += 1
 
-            print("essential rel stddevs: {}".format(p_sigma_x))
+            not_essential_idx.pop()
+            print("essential rel stddevs: {}".format(prev_p_sigma_x))
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
@@ -1148,77 +1189,75 @@ class Identification(object):
 
             #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
 
+        ## print base params
+        if self.showBaseGrouping and not self.estimateWith in ['urdf', 'std_direct']:
+            print("Base Parameters and Corresponding standard columns")
+            if not self.useEssentialParams:
+                baseEssentialIdx = range(0, self.N_PARAMS)
+                baseNonEssentialIdx = []
+                xBase_essential = self.xBase
+            else:
+                baseEssentialIdx = self.baseEssentialIdx
+                baseNonEssentialIdx = self.baseNonEssentialIdx
+                xBase_essential = self.xBase_essential
+
+            # collect values for parameters
+            lines = list()
+            for idx_p in range(0,self.num_base_params):
+                #if xBase_essential[idx_p] != 0:
+                #    new = xBase_essential[idx_p]
+                #else:
+                new = self.xBase[idx_p]
+                old = self.xBaseModel[idx_p]
+                diff = new - old
+
+                deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
+                dep_factors = self.linear_deps[idx_p, deps]
+
+                param_columns = ' |{}|'.format(self.independent_cols[idx_p])
+                if len(deps):
+                    param_columns += " deps:"
+                for p in range(0, len(deps)):
+                    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
+
+                lines.append((old, new, diff, param_columns))
+
+            column_widths = [15, 15, 7, 30]   # widths of the columns
+            precisions = [8, 8, 4, 0]         # numerical precision
+
+            # print column header
+            template = ''
+            for w in range(0, len(column_widths)):
+                template += '|{{{}:{}}}'.format(w, column_widths[w])
+            print template.format("Model", "Approx", "Error", "Description")
+
+            # print values/description
+            template = ''
+            for w in range(0, len(column_widths)):
+                if(type(lines[0][w]) == str):
+                    # strings don't have precision
+                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                else:
+                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+            idx_p = 0
+            for l in lines:
+                t = template.format(*l)
+                if idx_p in baseNonEssentialIdx:
+                    t = Style.DIM + t
+                if idx_p in baseEssentialIdx:
+                    t = Style.BRIGHT + t
+                print t
+                idx_p+=1
+            print Style.RESET_ALL
+
         print("Condition numbers for links: [{}]\n".format(linkConds))
 
         if model_output:
-            print("Mean error of identified params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
-            print("Mean error of all params: {}% \n".format(sum_diff_pc_all/len(self.xStd)))
+            print("Mean relative error of essential params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
+            print("Mean relative error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
 
-        ## print base params
-        if self.estimateWith in ['urdf', 'std_direct']:
-            return
-
-        if not self.showBaseGrouping:
-            return
-
-        print("Base Parameters and Corresponding standard columns")
-        if not self.useEssentialParams:
-            baseEssentialIdx = range(0, self.N_PARAMS)
-            baseNonEssentialIdx = []
-            xBase_essential = self.xBase
-        else:
-            baseEssentialIdx = self.baseEssentialIdx
-            baseNonEssentialIdx = self.baseNonEssentialIdx
-            xBase_essential = self.xBase_essential
-
-        # collect values for parameters
-        lines = list()
-        for idx_p in range(0,self.num_base_params):
-            #if xBase_essential[idx_p] != 0:
-            #    new = xBase_essential[idx_p]
-            #else:
-            new = self.xBase[idx_p]
-            old = self.xBaseModel[idx_p]
-            diff = new - old
-
-            deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
-            dep_factors = self.linear_deps[idx_p, deps]
-
-            param_columns = ' |{}|'.format(self.independent_cols[idx_p])
-            if len(deps):
-                param_columns += " deps:"
-            for p in range(0, len(deps)):
-                param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
-
-            lines.append((old, new, diff, param_columns))
-
-        column_widths = [15, 15, 7, 30]   # widths of the columns
-        precisions = [8, 8, 4, 0]         # numerical precision
-
-        # print column header
-        template = ''
-        for w in range(0, len(column_widths)):
-            template += '|{{{}:{}}}'.format(w, column_widths[w])
-        print template.format("Model", "Approx", "Error", "Description")
-
-        # print values/description
-        template = ''
-        for w in range(0, len(column_widths)):
-            if(type(lines[0][w]) == str):
-                # strings don't have precision
-                template += '|{{{}:{}}}'.format(w, column_widths[w])
-            else:
-                template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-        idx_p = 0
-        for l in lines:
-            t = template.format(*l)
-            if idx_p in baseNonEssentialIdx:
-                t = Style.DIM + t
-            if idx_p in baseEssentialIdx:
-                t = Style.BRIGHT + t
-            print t
-            idx_p+=1
-        print Style.RESET_ALL
+        res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        print("Relative residual error (torque prediction): {}%".format(res_error))
 
     def plot(self):
         """Display some torque plots."""
@@ -1235,7 +1274,7 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
-            ([np.mean(self.tauMeasured - self.tauEstimated, axis=1)], 'Estimation Error'),
+            ([self.tauMeasured - self.tauEstimated], 'Estimation Error'),
             #([self.measurements['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
             #([self.measurements['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
             #([self.measurements['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
@@ -1321,6 +1360,8 @@ def main():
             idf.getNonsingularRegressor()
             idf.identifyStandardParameters()
 
+    idf.estimateRegressorTorques()
+
     if idf.showMemUsage:
         idf.printMemUsage()
 
@@ -1330,11 +1371,11 @@ def main():
 
     if args.explain:
         idf.output(args.model_output)
+
     if args.plot:
         if args.validation:
             idf.estimateValidationTorques(args.validation)
-        else:
-            idf.estimateRegressorTorques()
+
         idf.plot()
 
 if __name__ == '__main__':

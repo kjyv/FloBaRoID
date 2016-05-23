@@ -58,6 +58,7 @@ class Identification(object):
         self.useAPriori = 1
 
         # use weighted least squares(WLS) instead of ordinary least squares
+        # (seems to not increase or even decrease quality of estimation)
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
@@ -78,6 +79,7 @@ class Identification(object):
         # some investigation output
         self.outputBarycentric = 0
         self.showMemUsage = 0
+        self.showTiming = 0
         self.showRandomRegressor = 0
         self.showErrorHistogram = 0
         self.showBaseGrouping = 0
@@ -139,9 +141,10 @@ class Identification(object):
                                                                       axis=0)
                     m.close()
 
-            self.num_samples = (self.measurements['positions'].shape[0])/(self.skipSamples+1)
+            self.num_loaded_samples = self.measurements['positions'].shape[0]
+            self.num_used_samples = self.num_loaded_samples/(self.skipSamples+1)
             print 'loaded {} measurement samples (using {})'.format(
-                self.measurements['positions'].shape[0], self.num_samples)
+                self.num_loaded_samples, self.num_used_samples)
 
             # create data that identification is working on (subset of all measurements)
             self.samples = {}
@@ -156,7 +159,8 @@ class Identification(object):
 
                 self.old_condition_number = 1e20
 
-                self.num_samples = (self.samples['positions'].shape[0])/(self.skipSamples+1)
+                self.num_selected_samples = self.samples['positions'].shape[0]
+                self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
             else:
                 # simply use all data
                 self.samples = self.measurements
@@ -212,7 +216,8 @@ class Identification(object):
 
             self.helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
 
-        print("Initialization took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Initialization took %.03f sec." % t.interval)
 
     def hasMoreSamples(self):
         """ tell if there are more samples to be added to the date used for identification """
@@ -220,21 +225,22 @@ class Identification(object):
         if not self.selectBlocksFromMeasurements:
             return False
 
-        if self.block_pos + self.block_size >= self.measurements['positions'].shape[0]:
+        if self.block_pos + self.block_size >= self.num_loaded_samples:
             return False
 
         return True
 
     def updateNumSamples(self):
-        self.num_samples = (self.samples['positions'].shape[0])/(self.skipSamples+1)
+        self.num_selected_samples = self.samples['positions'].shape[0]
+        self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
 
     def removeLastSampleBlock(self):
         print "removing block starting at {}".format(self.block_pos)
         for k in self.measurements.keys():
-            self.samples[k] = np.delete(self.samples[k], range(self.num_samples - self.block_size, self.num_samples),
-                                        axis=0)
+            self.samples[k] = np.delete(self.samples[k], range(self.num_selected_samples - self.block_size,
+                                        self.num_selected_samples), axis=0)
         self.updateNumSamples()
-        print "now we have {} samples left".format(self.num_samples)
+        print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
 
     def nextSampleBlock(self):
         """ fill samples with next measurements block """
@@ -242,25 +248,29 @@ class Identification(object):
         # advance to next block or end of data
         self.block_pos += self.block_size
 
-        if self.block_pos + self.block_size > self.measurements['positions'].shape[0]:
-            self.block_size = self.measurements['positions'].shape[0] - self.block_pos
+        if self.block_pos + self.block_size > self.num_loaded_samples:
+            self.block_size = self.num_loaded_samples - self.block_pos
 
-        print "adding next block: {}".format(self.block_pos)
+        print "adding next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
 
         for k in self.measurements.keys():
             if k == 'times':
-                self.samples[k] = np.concatenate((self.samples[k],
-                                                  self.measurements[k][self.block_pos:self.block_pos + self.block_size]),
-                                                 axis=0)
-                #TODO: fix time offsets
+                mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size]
+                #fix time offsets
+                mv = mv - mv[0] + (mv[1]-mv[0]) #let values start with first time diff
+                mv = mv + self.samples[k][-1] #add after previous times
+                self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
             else:
-                self.samples[k] = np.concatenate((self.samples[k],
-                                                  self.measurements[k][self.block_pos:self.block_pos + self.block_size,:]),
-                                                 axis=0)
+                mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size,:]
+                self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
         self.updateNumSamples()
 
     def checkBlockImprovement(self):
+        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori (no difference?)
         new_condition_number = la.cond(self.YBase)
+        #other options: amount of essential params increases
+        #estimation error gets smaller
+        #per link condition number
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.removeLastSampleBlock()
@@ -332,7 +342,13 @@ class Identification(object):
 
             self.tauEstimated = list()
             self.tauMeasured = list()
-        print("Init for computing regressors took %.03f sec." % t.interval)
+
+            # get model dependent projection matrix and linear column dependencies (i.e. base
+            # groupings)
+            self.getBaseRegressorQR()
+
+        if self.showTiming:
+            print("Init for computing regressors took %.03f sec." % t.interval)
 
     def computeRegressors(self):
         """compute regressors for each time step of the measurement data, stack them"""
@@ -341,17 +357,15 @@ class Identification(object):
         num_time = 0
         simulate_time = 0
 
-        self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_samples, self.N_PARAMS))
+        self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples, self.N_PARAMS))
         if self.robotranRegressor:
-            self.regressor_stack_sym = np.zeros(shape=(self.N_DOFS*self.num_samples, 45))
-        self.torques_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
-        self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*self.num_samples))
+            self.regressor_stack_sym = np.zeros(shape=(self.N_DOFS*self.num_used_samples, 45))
+        self.torques_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples))
+        self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples))
 
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
-        for row in range(0, self.num_samples):
-            # TODO: this takes multiple seconds because of lazy loading, try preload
-            # or use other data format
+        for row in range(0, self.num_used_samples):
             with identificationHelpers.Timer() as t:
                 m_idx = row*(self.skipSamples)+row
                 if self.simulate:
@@ -459,14 +473,13 @@ class Identification(object):
         if not self.robotranRegressor:
             self.YStd = self.regressor_stack
 
-        print('Simulation for regressors took %.03f sec.' % simulate_time)
+        if self.showTiming:
+            print('Simulation for regressors took %.03f sec.' % simulate_time)
 
-        if self.robotranRegressor:
-            print('Symbolic regressors took %.03f sec.' % sym_time)
-        else:
-            print('Numeric regressors took %.03f sec.' % num_time)
-
-        # filter regressor columns
+            if self.robotranRegressor:
+                print('Symbolic regressors took %.03f sec.' % sym_time)
+            else:
+                print('Numeric regressors took %.03f sec.' % num_time)
 
     def getBaseRegressorSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
@@ -498,10 +511,11 @@ class Identification(object):
                 print("YStd: {}".format(self.YStd.shape)),
                 # project regressor to base regressor, Y_base = Y_std*B
                 self.YBase = np.dot(self.YStd, self.B)
-            print("YBase: {}".format(self.YBase.shape))
+            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             self.num_base_params = self.YBase.shape[1]
-        print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
     def getRandomRegressors(self, fixed_base = True, n_samples=None):
         """
@@ -536,7 +550,7 @@ class Identification(object):
             for i in range(0, n_samples):
                 # set random system state
 
-                # TODO: conceal to joint limits from urdf (these are kuka lwr4)
+                # TODO: restrict to joint limits from urdf (these are kuka lwr4)
                 """
                 q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
                                        2.96705972839,  2.09439510239,  2.96705972839])
@@ -594,19 +608,38 @@ class Identification(object):
         gets independent columns (non-unique choice) each with its dependent ones, i.e.
         those std parameter indices that form each of the base parameters (including the linear factors)
         """
+        #using random regressor gives us structural base params, not dependent on excitation
+        #QR of transposed gives us basis of column space of original matrix
+        Yrand = self.getRandomRegressors(n_samples=5000)
+        Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
+
+        #get rank
+        r = np.where(np.abs(Rt.diagonal()) > self.min_tol)[0].size
+        self.num_base_params = r
+
+        #get basis projection matrix
+        self.B = Qt[:, 0:r]
+
+        # seems we have to do QR again for column space dependencies
+        Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
+        self.Q, self.R, self.P = Q,R,P
+
+        #create permuation matrix out of vector
+        self.Pp = np.zeros((P.size, P.size))
+        for i in P:
+            self.Pp[i, P[i]] = 1
+
+        # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
+        self.independent_cols = P[0:r]
+
+        # get column dependency matrix (with what factor are columns of each base parameter dependent)
+        # i (independent column) = (value at i,j) * j (dependent column index among the others)
+        R1 = R[0:r, 0:r]
+        R2 = R[0:r, r:]
+        self.linear_deps = la.inv(R1).dot(R2)
+
+    def getBaseRegressor(self):
         with identificationHelpers.Timer() as t:
-            #using random regressor gives us structural base params, not dependent on excitation
-            #QR of transposed gives us basis of column space of original matrix
-            Yrand = self.getRandomRegressors(n_samples=5000)
-            Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
-
-            #get rank
-            r = np.where(np.abs(Rt.diagonal()) > self.min_tol)[0].size
-            self.num_base_params = r
-
-            #get basis projection matrix
-            self.B = Qt[:, 0:r]
-
             #get regressor for base parameters
             if self.robotranRegressor:
                 self.YBase = self.regressor_stack_sym
@@ -614,29 +647,12 @@ class Identification(object):
                 print("YStd: {}".format(self.YStd.shape)),
                 # project regressor to base regressor, Y_base = Y_std*B
                 self.YBase = np.dot(self.YStd, self.B)
-            print("YBase: {}".format(self.YBase.shape))
-
-            # seems we have to do QR again for column space dependencies
-            Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
-            self.Q, self.R, self.P = Q,R,P
-
-            #create permuation matrix out of vector
-            self.Pp = np.zeros((P.size, P.size))
-            for i in P:
-                self.Pp[i, P[i]] = 1
-
-            # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
-            self.independent_cols = P[0:r]
-
-            # get column dependency matrix (with what factor are columns of each base parameter dependent)
-            # i (independent column) = (value at i,j) * j (dependent column index among the others)
-            R1 = R[0:r, 0:r]
-            R2 = R[0:r, r:]
-            self.linear_deps = la.inv(R1).dot(R2)
+            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             if self.filterRegressor:
+                #TODO: try doing this for the rows of each joint separately
                 order = 6  #Filter order
-                fs = 200.0   #TODO: get from measurements
+                fs = 200.0   #Sampling freq #TODO: get from measurements
                 fc = fs/2 - 10 #90.0   #Cut-off frequency (Hz)
                 b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
@@ -663,7 +679,8 @@ class Identification(object):
                 plt.grid()
                 """
 
-        print("Getting the base regressor (QR) took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Getting the base regressor (QR) took %.03f sec." % t.interval)
 
     def identifyBaseParameters(self, YBase=None, tau=None):
         """use previously computed regressors and identify base parameter vector using ordinary or weighted least squares."""
@@ -695,11 +712,11 @@ class Identification(object):
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
             self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
-                                  (self.num_samples-self.num_base_params)
+                                  (self.num_used_samples-self.num_base_params)
 
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
-            G = np.diag(np.repeat(1/self.sigma_rho, self.num_samples))
+            G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -763,7 +780,7 @@ class Identification(object):
                     print("unknown type of parameters: {}".format(self.estimateWith))
 
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
-            self.tauEstimated = np.reshape(tauEst, (self.num_samples, self.N_DOFS))
+            self.tauEstimated = np.reshape(tauEst, (self.num_used_samples, self.N_DOFS))
 
             self.sample_end = self.samples['positions'].shape[0]
             if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
@@ -773,7 +790,7 @@ class Identification(object):
                     tau = self.torques_stack    # use original measurements, not delta
                 else:
                     tau = self.tau
-                self.tauMeasured = np.reshape(tau, (self.num_samples, self.N_DOFS))
+                self.tauMeasured = np.reshape(tau, (self.num_used_samples, self.N_DOFS))
             else:
                 self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
 
@@ -903,7 +920,7 @@ class Identification(object):
             if use_f_test:
                 print("error is normal distributed")
                 pure_error = np.sum(np.square( (self.tauMeasured.T - np.mean(self.tauMeasured, axis=1)).T ))
-                print "pure_error: {}".format(pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
+                print "pure_error: {}".format(pure_error / (self.num_used_samples*self.N_DOFS - self.num_used_samples))
                 error_norm_start = np.square(la.norm(error_start))
             else:
                 print("error is not normal distributed (p={}), can't use f-test".format(p))
@@ -919,7 +936,7 @@ class Identification(object):
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
-                sigma_rho = rho/(self.num_samples-self.num_base_params)
+                sigma_rho = rho/(self.num_used_samples-self.num_base_params)
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
                 C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
@@ -947,15 +964,15 @@ class Identification(object):
                     #lack-of-fit
                     #lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - \
                     #              self.tauEstimated.T).T) )
-                    #print "lack_of_fit: {}".format(lack_of_fit / (self.num_samples - (self.num_base_params-b_c)))
+                    #print "lack_of_fit: {}".format(lack_of_fit / (self.num_used_samples - (self.num_base_params-b_c)))
 
-                    #F = ( lack_of_fit / (self.num_samples - (self.num_base_params-b_c))) /  \
-                    #    ( pure_error / (self.num_samples*self.N_DOFS - self.num_samples))
+                    #F = ( lack_of_fit / (self.num_used_samples - (self.num_base_params-b_c))) /  \
+                    #    ( pure_error / (self.num_used_samples*self.N_DOFS - self.num_used_samples))
 
                     #f-test from janot
                     error_norm = np.square(la.norm(error))
                     F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
-                        (error_norm_start / (self.num_samples-self.num_base_params))
+                        (error_norm_start / (self.num_used_samples-self.num_base_params))
                     print("F: {},".format(F)),
 
                 if use_mse:
@@ -963,7 +980,7 @@ class Identification(object):
                     #TODO: read torq limits from urdf
                     #mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
 
-                        #allow 5% of mean/median of measured value range
+                    #allow 5% of mean/median of measured value range
                     mse_meas_torq = mse/np.median(torq_range)
                     mse_percent = mse_meas_torq
                     error_increase = mse_percent - mse_percent_start
@@ -994,7 +1011,7 @@ class Identification(object):
                     not_essential_idx.append(param_base_idx)
                 else:
                     # TODO: if parameter was set to zero and still has the largest std deviation,
-                    # something is weird..?
+                    # something is weird..? (only happens when not deleting columns)
                     print("param {} already canceled before, stopping".format(param_base_idx))
                     break
 
@@ -1025,24 +1042,8 @@ class Identification(object):
 
             print "Got {} essential parameters".format(self.num_essential_params)
 
-            # get condition number for each of the links
-            linkConds = {}
-            for i in range(0, self.N_LINKS):
-                base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
-
-                for j in range(0, self.num_base_params):
-                    for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
-                        if dep in range(i*10, i*10+9):
-                            base_columns.append(j)
-                if not len(base_columns):
-                    linkConds[i] = 99999
-                else:
-                    linkConds[i] = la.cond(self.YBase[:, base_columns])
-
-                #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
-            print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
-
-        print("Getting base essential parameters took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Getting base essential parameters took %.03f sec." % t.interval)
 
     def getStdEssentialParameters(self):
         """
@@ -1133,7 +1134,8 @@ class Identification(object):
 
             # non-singular YStd, called W_st in Gautier, 2013
             self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
-        print("Getting non-singular regressor took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Getting non-singular regressor took %.03f sec." % t.interval)
 
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
@@ -1145,7 +1147,8 @@ class Identification(object):
                 self.xStd = self.xStdModel + x_tmp
             else:
                 self.xStd = x_tmp
-        print("Identifying std parameters took %.03f sec." % t.interval)
+        if self.showTiming:
+            print("Identifying std parameters took %.03f sec." % t.interval)
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
@@ -1165,16 +1168,16 @@ class Identification(object):
             else:
                 self.xStd = x_tmp
 
-        print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
+        if self.showTiming:
+            print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
 
     def estimateParameters(self):
-        print("Doing identification on {} samples".format(self.num_samples))
+        print("Doing identification on {} samples".format(self.num_used_samples))
 
         self.computeRegressors()
-
         if self.useEssentialParams:
-            self.getBaseRegressorQR()  #TODO: put some of this into one time init code
+            self.getBaseRegressor()
             self.identifyBaseParameters()
             self.getBaseEssentialParameters()
             self.getStdEssentialParameters()
@@ -1183,7 +1186,7 @@ class Identification(object):
             if self.useAPriori:
                 self.getBaseParamsFromParamError()
         else:
-            self.getBaseRegressorQR()
+            self.getBaseRegressor()
             if self.estimateWith in ['base', 'std']:
                 self.identifyBaseParameters()
                 self.getStdFromBase()
@@ -1192,6 +1195,24 @@ class Identification(object):
             elif self.estimateWith is 'std_direct':
                 self.getNonsingularRegressor()
                 self.identifyStandardParameters()
+
+
+        # get condition number for each of the links
+        linkConds = {}
+        for i in range(0, self.N_LINKS):
+            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
+
+            for j in range(0, self.num_base_params):
+                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
+                    if dep in range(i*10, i*10+9):
+                        base_columns.append(j)
+            if not len(base_columns):
+                linkConds[i] = 99999
+            else:
+                linkConds[i] = la.cond(self.YBase[:, base_columns])
+
+            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+        print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
 
     def output(self, model_output=None):
         """Do some pretty printing of parameters."""
@@ -1239,6 +1260,7 @@ class Identification(object):
             # get error percentage
             if model_output:
                 diff = new - real
+                if real == 0: real = 0.001
                 if real != 0:
                     diff_pc = (100*diff)/real
                     sum_diff_pc_all += np.abs(diff_pc)
@@ -1301,7 +1323,7 @@ class Identification(object):
         print Style.RESET_ALL
 
         ## print base params
-        if self.showBaseGrouping and not self.estimateWith in ['urdf', 'std_direct']:
+        if self.showBaseGrouping and self.estimateWith not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not self.useEssentialParams:
                 baseEssentialIdx = range(0, self.N_PARAMS)
@@ -1361,15 +1383,17 @@ class Identification(object):
                 idx_p+=1
             print Style.RESET_ALL
 
+        if self.selectBlocksFromMeasurements:
+            print "used blocks: {}".format(self.usedBlocks)
+            print "unused blocks: {}".format(self.unusedBlocks)
+            print "final condition number: {}".format(la.cond(self.YBase))
+
         if model_output:
             print("Mean relative error of essential params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
             print("Mean relative error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
 
         res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         print("Relative residual error (torque prediction): {}%".format(res_error))
-        if self.selectBlocksFromMeasurements:
-            print "unused blocks: {}".format(self.unusedBlocks)
-            print "used blocks: {}".format(self.usedBlocks)
 
     def plot(self):
         """Display some torque plots."""
@@ -1453,23 +1477,21 @@ def main():
     idf.initRegressors()
 
     if idf.selectBlocksFromMeasurements:
+        old_essential_option = idf.useEssentialParams
+        idf.useEssentialParams = 0
         # loop over input blocks and select good ones
-        running = 1
-        while running > -1:
-            # if stopping, run one last time to get parameters with all the selected sample blocks
-            if running == 0:
-                running = -1
-
+        while 1:
             idf.estimateParameters()
+            idf.checkBlockImprovement()
 
-            if running > 0:
-                idf.checkBlockImprovement()
-            if idf.hasMoreSamples() and running == 1:
+            if idf.hasMoreSamples():
                 idf.nextSampleBlock()
-            elif running == 1:
-                running = 0
-    else:
-        idf.estimateParameters()
+            else:
+                break
+        idf.useEssentialParams = old_essential_option
+
+    print("estimating output parameters...")
+    idf.estimateParameters()
 
     idf.estimateRegressorTorques()
 

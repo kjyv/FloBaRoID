@@ -62,19 +62,20 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 1
+        self.useEssentialParams = 0
 
         # whether only "good" data is being selected or simply all is used
-        self.selectBlocksFromMeasurements = 1
-        self.block_size = 500  # needs to be at least as much as parameters so regressor is square or higher
+        self.selectBlocksFromMeasurements = 0
+        self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
         self.dontIdentifyMasses = 0
 
         # whether to filter the regressor columns
-        # (but cutoff frequency is system dependent)
-        self.filterRegressor = 1
+        # (cutoff frequency is system dependent)
+        # doesn't make any difference though it seems
+        self.filterRegressor = 0
 
         # some investigation output
         self.outputBarycentric = 0
@@ -158,6 +159,7 @@ class Identification(object):
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size, :]
 
                 self.old_condition_number = 1e20
+                self.last_largest_value = 1e20
 
                 self.num_selected_samples = self.samples['positions'].shape[0]
                 self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
@@ -266,11 +268,47 @@ class Identification(object):
         self.updateNumSamples()
 
     def checkBlockImprovement(self):
+        """ check if we want to add a new data block to the already selected ones """
+        # criteria:
+        # condition number of (base) regressor (+variations)
+        # largest per link condition number gets smaller
+        # also try estimation error gets smaller
+
         #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori (no difference?)
         new_condition_number = la.cond(self.YBase)
-        #other options: amount of essential params increases
-        #estimation error gets smaller
-        #per link condition number
+
+        # get condition number for each of the links
+        linkConds = {}
+        for i in range(0, self.N_LINKS):
+            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
+
+            for j in range(0, self.num_base_params):
+                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
+                    if dep in range(i*10, i*10+9):
+                        base_columns.append(j)
+            if not len(base_columns):
+                linkConds[i] = 99999
+            else:
+                linkConds[i] = la.cond(self.YBase[:, base_columns])
+
+            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+        print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
+
+        """
+        largest_idx = np.argmax(linkConds)
+        largest_val = linkConds[largest_idx]
+
+        if largest_val < self.last_largest_value:
+            print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
+            self.usedBlocks.append(self.block_pos)
+            self.last_largest_value = largest_val
+        else:
+            print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
+            self.removeLastSampleBlock()
+            self.unusedBlocks.append(self.block_pos)
+
+        """
+
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.removeLastSampleBlock()
@@ -279,6 +317,7 @@ class Identification(object):
             print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.usedBlocks.append(self.block_pos)
             self.old_condition_number = new_condition_number
+
 
     def initRegressors(self):
         with identificationHelpers.Timer() as t:
@@ -650,13 +689,13 @@ class Identification(object):
             print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             if self.filterRegressor:
-                #TODO: try doing this for the rows of each joint separately
                 order = 6  #Filter order
                 fs = 200.0   #Sampling freq #TODO: get from measurements
                 fc = fs/2 - 10 #90.0   #Cut-off frequency (Hz)
                 b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
-                    self.YBase[:, j] = sp.signal.filtfilt(b, a, self.YBase[:, j])
+                    for i in range(0, self.N_DOFS):
+                        self.YBase[i::self.N_DOFS, j] = sp.signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
 
                 """
                 # Plot the frequency and phase response of the filter
@@ -1196,24 +1235,6 @@ class Identification(object):
                 self.getNonsingularRegressor()
                 self.identifyStandardParameters()
 
-
-        # get condition number for each of the links
-        linkConds = {}
-        for i in range(0, self.N_LINKS):
-            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
-
-            for j in range(0, self.num_base_params):
-                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
-                    if dep in range(i*10, i*10+9):
-                        base_columns.append(j)
-            if not len(base_columns):
-                linkConds[i] = 99999
-            else:
-                linkConds[i] = la.cond(self.YBase[:, base_columns])
-
-            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
-        print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
-
     def output(self, model_output=None):
         """Do some pretty printing of parameters."""
 
@@ -1250,27 +1271,40 @@ class Identification(object):
         description = self.generator.getDescriptionOfParameters()
         idx_p = 0
         lines = list()
-        sum_diff_pc = 0
-        sum_diff_pc_all = 0
+        sum_diff_r_pc_ess = 0
+        sum_diff_r_pc_all = 0
+        sum_pc_delta_all = 0
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
-            new = xStd[idx_p]
+            approx = xStd[idx_p]
             apriori = xStdModel[idx_p]
             real = xStdReal[idx_p]
 
-            # get error percentage
+            if real == 0: real = 0.01
+
+            # get error percentage (new to real)
+            diff_real = approx - real
             if model_output:
-                diff = new - real
-                if real == 0: real = 0.001
-                if real != 0:
-                    diff_pc = (100*diff)/real
-                    sum_diff_pc_all += np.abs(diff_pc)
+                # set real params that are 0 to some small value
+                diff_r_pc = (100*diff_real)/real
+
+                #add to final error percent sum
+                sum_diff_r_pc_all += np.abs(diff_r_pc)
                     if idx_p in self.stdEssentialIdx:
-                        sum_diff_pc += np.abs(diff_pc)
+                    sum_diff_r_pc_ess += np.abs(diff_r_pc)
+
+            # get error percentage (new to apriori)
+            diff_apriori = apriori - real
+            if model_output:
+                if apriori == 0: apriori = 0.01
+                diff_a_pc = (100*diff_apriori)/real
+                pc_delta = np.abs(diff_r_pc) - np.abs(diff_a_pc)
+                sum_pc_delta_all += pc_delta
+
+            diff = apriori - approx
+            if apriori != 0:
+                diff_pc = (100*diff)/apriori
                 else:
-                    #TODO: if real is 0, we can't calc percent. alternative?
                     diff_pc = 0
-            else:
-                diff = new - apriori
 
             #print beginning of each link block in green
             if idx_p % 10 == 0:
@@ -1278,9 +1312,9 @@ class Identification(object):
 
             #values for each line
             if model_output:
-                vals = [real, apriori, new, diff, diff_pc, d]
+                vals = [real, apriori, approx, diff_real, diff_r_pc, pc_delta, d]
             else:
-                vals = [apriori, new, diff, d]
+                vals = [apriori, approx, diff, diff_pc, d]
             lines.append(vals)
 
             idx_p+=1
@@ -1288,20 +1322,20 @@ class Identification(object):
                 break
 
         if model_output:
-            column_widths = [13, 13, 13, 7, 7, 45]
-            precisions = [8, 8, 8, 4, 1, 0]
+            column_widths = [13, 13, 13, 7, 7, 7, 45]
+            precisions = [8, 8, 8, 4, 1, 1, 0]
         else:
-            column_widths = [13, 13, 7, 45]
-            precisions = [8, 8, 4, 0]
+            column_widths = [13, 13, 7, 7, 45]
+            precisions = [8, 8, 4, 1, 0]
 
         # print column header
         template = ''
         for w in range(0, len(column_widths)):
             template += '|{{{}:{}}}'.format(w, column_widths[w])
         if model_output:
-            print template.format("'Real'", "A priori", "Approx", "Error", "%e", "Description")
+            print template.format("'Real'", "A priori", "Approx", "Error", "%e", u"Δ%e".encode('utf-8'), "Description")
         else:
-            print template.format("A priori", "Approx", "Error", "Description")
+            print template.format("A priori", "Approx", "Error", "%e", "Description")
 
         # print values/description
         template = ''
@@ -1322,7 +1356,8 @@ class Identification(object):
             idx_p+=1
         print Style.RESET_ALL
 
-        ## print base params
+
+        ### print base params
         if self.showBaseGrouping and self.estimateWith not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not self.useEssentialParams:
@@ -1389,11 +1424,14 @@ class Identification(object):
             print "final condition number: {}".format(la.cond(self.YBase))
 
         if model_output:
-            print("Mean relative error of essential params: {}%".format(sum_diff_pc/len(self.stdEssentialIdx)))
-            print("Mean relative error of all params: {}%".format(sum_diff_pc_all/len(self.xStd)))
+            if self.useEssentialParams:
+                print("Mean relative error of essential params: {}%".format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
+            print("Mean relative error of all params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
+            print("Mean error delta (apriori error vs approx error) of all params: {}%".format(sum_pc_delta_all/len(self.xStd)))
 
         res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         print("Relative residual error (torque prediction): {}%".format(res_error))
+
 
     def plot(self):
         """Display some torque plots."""

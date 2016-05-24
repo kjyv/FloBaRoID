@@ -40,7 +40,7 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 0    #how many values to skip before using the next sample
+        self.skipSamples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -57,6 +57,15 @@ class Identification(object):
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
         self.useAPriori = 1
 
+        # whether only "good" data is being selected or simply all is used
+        self.selectBlocksFromMeasurements = 1
+        self.block_size = 500  # needs to be at least as much as parameters so regressor is square or higher
+
+        # whether to filter the regressor columns
+        # (cutoff frequency is system dependent)
+        # doesn't make any difference though it seems
+        self.filterRegressor = 0
+
         # use weighted least squares(WLS) instead of ordinary least squares
         # (seems to not increase or even decrease quality of estimation)
         self.useWLS = 0
@@ -64,18 +73,9 @@ class Identification(object):
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 0
 
-        # whether only "good" data is being selected or simply all is used
-        self.selectBlocksFromMeasurements = 0
-        self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
-
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
         self.dontIdentifyMasses = 0
-
-        # whether to filter the regressor columns
-        # (cutoff frequency is system dependent)
-        # doesn't make any difference though it seems
-        self.filterRegressor = 0
 
         # some investigation output
         self.outputBarycentric = 0
@@ -83,7 +83,7 @@ class Identification(object):
         self.showTiming = 0
         self.showRandomRegressor = 0
         self.showErrorHistogram = 0
-        self.showBaseGrouping = 0
+        self.showBaseParams = 0
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -158,8 +158,8 @@ class Identification(object):
                     else:
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size, :]
 
-                self.old_condition_number = 1e20
-                self.last_largest_value = 1e20
+                self.old_condition_number = 1e60
+                self.last_largest_value = 1e60
 
                 self.num_selected_samples = self.samples['positions'].shape[0]
                 self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
@@ -240,7 +240,7 @@ class Identification(object):
         print "removing block starting at {}".format(self.block_pos)
         for k in self.measurements.keys():
             self.samples[k] = np.delete(self.samples[k], range(self.num_selected_samples - self.block_size,
-                                        self.num_selected_samples), axis=0)
+                                                               self.num_selected_samples), axis=0)
         self.updateNumSamples()
         print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
 
@@ -269,16 +269,16 @@ class Identification(object):
 
     def checkBlockImprovement(self):
         """ check if we want to add a new data block to the already selected ones """
-        # criteria:
-        # condition number of (base) regressor (+variations)
-        # largest per link condition number gets smaller
-        # also try estimation error gets smaller
-
-        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori (no difference?)
+        # possible criteria:
+        # * condition number of (base) regressor (+variations)
+        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori (no difference or worse)
         new_condition_number = la.cond(self.YBase)
 
+        # * largest per link condition number gets smaller (some are really huge though and are not
+        # getting smaller with most new data)
+
         # get condition number for each of the links
-        linkConds = {}
+        linkConds = list()
         for i in range(0, self.N_LINKS):
             base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
 
@@ -287,36 +287,33 @@ class Identification(object):
                     if dep in range(i*10, i*10+9):
                         base_columns.append(j)
             if not len(base_columns):
-                linkConds[i] = 99999
+                linkConds.append(99999)
             else:
-                linkConds[i] = la.cond(self.YBase[:, base_columns])
+                linkConds.append(la.cond(self.YBase[:, base_columns]))
 
             #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
         print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
 
         """
-        largest_idx = np.argmax(linkConds)
-        largest_val = linkConds[largest_idx]
-
-        if largest_val < self.last_largest_value:
-            print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
-            self.usedBlocks.append(self.block_pos)
-            self.last_largest_value = largest_val
-        else:
-            print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
-            self.removeLastSampleBlock()
-            self.unusedBlocks.append(self.block_pos)
-
+        largest_idx = np.argmax(linkConds)  #2+np.argmax(linkConds[2:7])
+        new_condition_number = linkConds[largest_idx]
         """
+
+        # * estimation error gets smaller
+        # new_condition_number = self.res_error
 
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.removeLastSampleBlock()
             self.unusedBlocks.append(self.block_pos)
+            is_better = False
         else:
             print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
             self.usedBlocks.append(self.block_pos)
             self.old_condition_number = new_condition_number
+            is_better = True
+
+        return is_better
 
 
     def initRegressors(self):
@@ -833,6 +830,8 @@ class Identification(object):
             else:
                 self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
 
+            self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+
             self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
@@ -1037,9 +1036,9 @@ class Identification(object):
                 #TODO: check if f-test has any benefits in determining error through model reduction
                 if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
                     break
-                if not use_f_test and ratio < 15:
+                if not use_f_test and ratio < 17:
                     break
-                if use_mse and error_increase_pham > 5:
+                if use_mse and error_increase_pham > 3.5:
                     break
 
                 #cancel the parameter with largest deviation
@@ -1055,6 +1054,7 @@ class Identification(object):
                     break
 
                 if delete_columns:
+                    self.prev_xBase = self.xBase.copy()
                     self.xBase = np.delete(self.xBase, param_idx, 0)
                     base_idx = np.delete(base_idx, param_idx, 0)
                     self.YBase = np.delete(self.YBase, param_idx, 1)
@@ -1073,7 +1073,7 @@ class Identification(object):
             # leave previous base params and regressor unchanged
             if delete_columns:
                 self.xBase_essential = np.zeros_like(xBase_orig)
-                self.xBase_essential[self.baseEssentialIdx] = self.xBase.copy()
+                self.xBase_essential[self.baseEssentialIdx] = self.prev_xBase
                 self.YBase = YBase_orig
             else:
                 self.xBase_essential = self.xBase.copy()
@@ -1158,7 +1158,6 @@ class Identification(object):
                 self.xStdEssential[self.stdNonEssentialIdx] = 0
             else:
                 # weighting using base essential params (like in Gautier, 2013)
-                # (paper is not specifying if using absolute base params or identified errors)
                 self.xStdEssential = np.zeros_like(self.xStdModel)
                 self.xStdEssential[self.stdEssentialIdx] = \
                         self.xBase_essential[self.baseEssentialIdx] \
@@ -1194,7 +1193,7 @@ class Identification(object):
         with identificationHelpers.Timer() as t:
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
-            Y = self.YStd.dot(np.diag(self.xStdEssential))
+            Y = self.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
             U_, s_, VH_ = la.svd(Y, full_matrices=False)
             ne = self.num_essential_params  #nr. of essential params among base params
             V_1 = VH_.T[:, 0:ne]
@@ -1235,12 +1234,12 @@ class Identification(object):
                 self.getNonsingularRegressor()
                 self.identifyStandardParameters()
 
-    def output(self, model_output=None):
+    def output(self, model_output=None, summary_only=False):
         """Do some pretty printing of parameters."""
 
         import colorama
         from colorama import Fore, Back, Style
-        colorama.init(autoreset=True)
+        colorama.init(autoreset=False)
 
         if not self.useEssentialParams:
             self.stdEssentialIdx = range(0, self.N_PARAMS)
@@ -1251,11 +1250,13 @@ class Identification(object):
             if not self.robotranRegressor:
               xStd = self.helpers.paramsLink2Bary(self.xStd)
             xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
-            print("Barycentric (relative to COM) Standard Parameters")
+            if not summary_only:
+                print("Barycentric (relative to COM) Standard Parameters")
         else:
             xStd = self.xStd
             xStdModel = self.xStdModel
-            print("Linear (relative to Frame) Standard Parameters")
+            if not summary_only:
+                print("Linear (relative to Frame) Standard Parameters")
 
         #if requested, load params from other urdf for comparison
         if model_output:
@@ -1264,6 +1265,7 @@ class Identification(object):
             tmp = iDynTree.VectorDynSize(self.N_PARAMS)
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
+            xBaseReal = np.dot(self.B.T, xStdReal)
         else:
             xStdReal = xStdModel
 
@@ -1274,37 +1276,49 @@ class Identification(object):
         sum_diff_r_pc_ess = 0
         sum_diff_r_pc_all = 0
         sum_pc_delta_all = 0
+        sum_pc_delta_ess = 0
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
             approx = xStd[idx_p]
             apriori = xStdModel[idx_p]
             real = xStdReal[idx_p]
 
-            if real == 0: real = 0.01
+            # set real params that are 0 to some small value
+            #if real == 0: real = 0.01
 
             # get error percentage (new to real)
             diff_real = approx - real
             if model_output:
-                # set real params that are 0 to some small value
-                diff_r_pc = (100*diff_real)/real
+                if real != 0:
+                    diff_r_pc = (100*diff_real)/real
+                else:
+                    diff_r_pc = (100*diff_real)/0.01
 
                 #add to final error percent sum
                 sum_diff_r_pc_all += np.abs(diff_r_pc)
-                    if idx_p in self.stdEssentialIdx:
+                if idx_p in self.stdEssentialIdx:
                     sum_diff_r_pc_ess += np.abs(diff_r_pc)
 
             # get error percentage (new to apriori)
             diff_apriori = apriori - real
             if model_output:
-                if apriori == 0: apriori = 0.01
-                diff_a_pc = (100*diff_apriori)/real
-                pc_delta = np.abs(diff_r_pc) - np.abs(diff_a_pc)
+                #if apriori == 0: apriori = 0.01
+                if real!= 0:
+                    diff_a_pc = (100*diff_apriori)/real
+                else:
+                    diff_a_pc = (100*diff_apriori)/0.01
+                #pc_delta = np.abs(diff_r_pc) - np.abs(diff_a_pc)
+                if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
+                else: pc_delta = 0
                 sum_pc_delta_all += pc_delta
+                if idx_p in self.stdEssentialIdx:
+                    sum_pc_delta_ess += pc_delta
 
+            # get difference between apriori and identified values (when real values are not known)
             diff = apriori - approx
             if apriori != 0:
                 diff_pc = (100*diff)/apriori
-                else:
-                    diff_pc = 0
+            else:
+                diff_pc = (100*diff)/0.01
 
             #print beginning of each link block in green
             if idx_p % 10 == 0:
@@ -1312,7 +1326,7 @@ class Identification(object):
 
             #values for each line
             if model_output:
-                vals = [real, apriori, approx, diff_real, diff_r_pc, pc_delta, d]
+                vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, d]
             else:
                 vals = [apriori, approx, diff, diff_pc, d]
             lines.append(vals)
@@ -1328,37 +1342,38 @@ class Identification(object):
             column_widths = [13, 13, 7, 7, 45]
             precisions = [8, 8, 4, 1, 0]
 
-        # print column header
-        template = ''
-        for w in range(0, len(column_widths)):
-            template += '|{{{}:{}}}'.format(w, column_widths[w])
-        if model_output:
-            print template.format("'Real'", "A priori", "Approx", "Error", "%e", u"Δ%e".encode('utf-8'), "Description")
-        else:
-            print template.format("A priori", "Approx", "Error", "%e", "Description")
-
-        # print values/description
-        template = ''
-        for w in range(0, len(column_widths)):
-            if(type(lines[0][w]) == str):
-                # strings don't have precision
+        if not summary_only:
+            # print column header
+            template = ''
+            for w in range(0, len(column_widths)):
                 template += '|{{{}:{}}}'.format(w, column_widths[w])
+            if model_output:
+                print template.format("'Real'", "A priori", "Approx", "Error", "%e", u"Δ%e".encode('utf-8'), "Description")
             else:
-                template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-        idx_p = 0
-        for l in lines:
-            t = template.format(*l)
-            if idx_p in self.stdNonEssentialIdx:
-                t = Style.DIM + t
-            if idx_p in self.stdEssentialIdx:
-                t = Style.BRIGHT + t
-            print t
-            idx_p+=1
-        print Style.RESET_ALL
+                print template.format("A priori", "Approx", "Error", "%e", "Description")
 
+            # print values/description
+            template = ''
+            for w in range(0, len(column_widths)):
+                if(type(lines[0][w]) == str):
+                    # strings don't have precision
+                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                else:
+                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+            idx_p = 0
+            for l in lines:
+                t = template.format(*l)
+                if idx_p in self.stdNonEssentialIdx:
+                    t = Style.DIM + t
+                if idx_p in self.stdEssentialIdx:
+                    t = Style.BRIGHT + t
+                print t,
+                idx_p+=1
+                print Style.RESET_ALL
+            print "\n"
 
         ### print base params
-        if self.showBaseGrouping and self.estimateWith not in ['urdf', 'std_direct']:
+        if self.showBaseParams and self.estimateWith not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not self.useEssentialParams:
                 baseEssentialIdx = range(0, self.N_PARAMS)
@@ -1372,12 +1387,14 @@ class Identification(object):
             # collect values for parameters
             lines = list()
             for idx_p in range(0,self.num_base_params):
-                #if xBase_essential[idx_p] != 0:
-                #    new = xBase_essential[idx_p]
-                #else:
-                new = self.xBase[idx_p]
+                if self.useEssentialParams: # and xBase_essential[idx_p] != 0:
+                    new = xBase_essential[idx_p]
+                else:
+                    new = self.xBase[idx_p]
                 old = self.xBaseModel[idx_p]
                 diff = new - old
+                if model_output:
+                    real = xBaseReal[idx_p]
 
                 deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
                 dep_factors = self.linear_deps[idx_p, deps]
@@ -1388,49 +1405,67 @@ class Identification(object):
                 for p in range(0, len(deps)):
                     param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
 
-                lines.append((old, new, diff, param_columns))
-
-            column_widths = [15, 15, 7, 30]   # widths of the columns
-            precisions = [8, 8, 4, 0]         # numerical precision
-
-            # print column header
-            template = ''
-            for w in range(0, len(column_widths)):
-                template += '|{{{}:{}}}'.format(w, column_widths[w])
-            print template.format("Model", "Approx", "Error", "Description")
-
-            # print values/description
-            template = ''
-            for w in range(0, len(column_widths)):
-                if(type(lines[0][w]) == str):
-                    # strings don't have precision
-                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                if model_output:
+                    lines.append((real, old, new, diff, param_columns))
                 else:
-                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-            idx_p = 0
-            for l in lines:
-                t = template.format(*l)
-                if idx_p in baseNonEssentialIdx:
-                    t = Style.DIM + t
-                if idx_p in baseEssentialIdx:
-                    t = Style.BRIGHT + t
-                print t
-                idx_p+=1
-            print Style.RESET_ALL
+                    lines.append((old, new, diff, param_columns))
+
+            if model_output:
+                column_widths = [15, 15, 15, 7, 30]   # widths of the columns
+                precisions = [8, 8, 8, 4, 0]         # numerical precision
+            else:
+                column_widths = [15, 15, 7, 30]   # widths of the columns
+                precisions = [8, 8, 4, 0]         # numerical precision
+
+            if not summary_only:
+                # print column header
+                template = ''
+                for w in range(0, len(column_widths)):
+                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                if model_output:
+                    print template.format("Real", "Model", "Approx", "Error", u"%σ".encode('utf-8'), "Description")
+                else:
+                    print template.format("Model", "Approx", "Error", "Description")
+
+                # print values/description
+                template = ''
+                for w in range(0, len(column_widths)):
+                    if(type(lines[0][w]) == str):
+                        # strings don't have precision
+                        template += '|{{{}:{}}}'.format(w, column_widths[w])
+                    else:
+                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+                idx_p = 0
+                for l in lines:
+                    t = template.format(*l)
+                    if idx_p in baseNonEssentialIdx:
+                        t = Style.DIM + t
+                    if idx_p in baseEssentialIdx:
+                        t = Style.BRIGHT + t
+                    print t,
+                    idx_p+=1
+                    print Style.RESET_ALL
+                print "\n"
 
         if self.selectBlocksFromMeasurements:
             print "used blocks: {}".format(self.usedBlocks)
             print "unused blocks: {}".format(self.unusedBlocks)
-            print "final condition number: {}".format(la.cond(self.YBase))
+            print "condition number: {}".format(la.cond(self.YBase))
 
         if model_output:
             if self.useEssentialParams:
-                print("Mean relative error of essential params: {}%".format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
+                print("Mean relative error of essential params: {}%".\
+                        format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
             print("Mean relative error of all params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
-            print("Mean error delta (apriori error vs approx error) of all params: {}%".format(sum_pc_delta_all/len(self.xStd)))
 
-        res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-        print("Relative residual error (torque prediction): {}%".format(res_error))
+            if self.useEssentialParams:
+                print("Mean error delta (apriori error vs approx error) of essential params: {}%".\
+                        format(sum_pc_delta_ess/len(self.stdEssentialIdx)))
+            print("Mean error delta (apriori error vs approx error) of all params: {}%".\
+                    format(sum_pc_delta_all/len(self.xStd)))
+
+        print("Relative residual error (torque prediction): {}%".format(self.res_error))
+        print("\n")
 
 
     def plot(self):
@@ -1520,7 +1555,9 @@ def main():
         # loop over input blocks and select good ones
         while 1:
             idf.estimateParameters()
-            idf.checkBlockImprovement()
+            idf.estimateRegressorTorques()
+            if(idf.checkBlockImprovement()):
+                idf.output(args.model_output, summary_only=True)
 
             if idf.hasMoreSamples():
                 idf.nextSampleBlock()

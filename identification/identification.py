@@ -901,10 +901,6 @@ class Identification(object):
         """
 
         with identificationHelpers.Timer() as t:
-            # if columns are deleted or just cancelled by setting to zero (deleting actually changes
-            # the regressor for C_xx, so should be the right way)
-            delete_columns = 1
-
             # use mean least squares (actually median least abs) to determine when the error
             # introduced by model reduction gets too large
             use_error_criterion = 1
@@ -1022,18 +1018,15 @@ class Identification(object):
                 if param_base_idx not in not_essential_idx:
                     not_essential_idx.append(param_base_idx)
                 else:
-                    # TODO: if parameter was set to zero and still has the largest std deviation,
-                    # something is weird..? (only happens when not deleting columns)
+                    # if parameter was set to zero and still has the largest std deviation,
+                    # something is weird..? (probably only happens when not deleting columns)
                     print("param {} already canceled before, stopping".format(param_base_idx))
                     break
 
-                if delete_columns:
-                    self.prev_xBase = self.xBase.copy()
-                    self.xBase = np.delete(self.xBase, param_idx, 0)
-                    base_idx = np.delete(base_idx, param_idx, 0)
-                    self.YBase = np.delete(self.YBase, param_idx, 1)
-                else:
-                    self.xBase[param_idx] = 0
+                self.prev_xBase = self.xBase.copy()
+                self.xBase = np.delete(self.xBase, param_idx, 0)
+                base_idx = np.delete(base_idx, param_idx, 0)
+                self.YBase = np.delete(self.YBase, param_idx, 1)
                 b_c += 1
 
             not_essential_idx.pop()
@@ -1045,12 +1038,9 @@ class Identification(object):
             self.num_essential_params = len(self.baseEssentialIdx)
 
             # leave previous base params and regressor unchanged
-            if delete_columns:
-                self.xBase_essential = np.zeros_like(xBase_orig)
-                self.xBase_essential[self.baseEssentialIdx] = self.prev_xBase
-                self.YBase = YBase_orig
-            else:
-                self.xBase_essential = self.xBase.copy()
+            self.xBase_essential = np.zeros_like(xBase_orig)
+            self.xBase_essential[self.baseEssentialIdx] = self.prev_xBase
+            self.YBase = YBase_orig
             self.xBase = xBase_orig
 
             print "Got {} essential parameters".format(self.num_essential_params)

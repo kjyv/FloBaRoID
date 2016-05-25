@@ -271,7 +271,7 @@ class Identification(object):
         """ check if we want to add a new data block to the already selected ones """
         # possible criteria:
         # * condition number of (base) regressor (+variations)
-        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori (no difference or worse)
+        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori
         new_condition_number = la.cond(self.YBase)
 
         # * largest per link condition number gets smaller (some are really huge though and are not
@@ -907,7 +907,7 @@ class Identification(object):
 
             # use mean least squares (actually median least abs) to determine when the error
             # introduced by model reduction gets too large
-            use_mse = True
+            use_error_criterion = 1
 
             # keep current values
             xBase_orig = self.xBase.copy()
@@ -928,7 +928,7 @@ class Identification(object):
             self.estimateRegressorTorques('base')
 
             def error_func(inst):
-                rho = np.median(inst.tauMeasured-inst.tauEstimated, axis=1)   #error of median over all joints
+                rho = inst.tauMeasured-inst.tauEstimated   #error of median over all joints
                 #rho = np.mean(inst.tauMeasured-inst.tauEstimated, axis=1)
                 #rho = np.square(la.norm(inst.tauMeasured-inst.tauEstimated))
                 return rho
@@ -938,7 +938,6 @@ class Identification(object):
                 return mse
 
             error_start = error_func(self)
-            k2, p = stats.normaltest(error_start)
 
             if self.showErrorHistogram:
                 h = plt.hist(error_start, 50)
@@ -946,23 +945,19 @@ class Identification(object):
                 plt.draw()
 
             #range of measured torque
-            torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
+            #torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
 
-            #mean squared error
-            mse_start = mse_func(error_start, self)
-            mse_percent_start = mse_start/np.median(torq_range)
+            #get starting mean squared error
+            #mse_start = mse_func(error_start, self)
+            #mse_percent_start = mse_start/np.median(torq_range)
             pham_percent_start = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))
 
-            use_f_test = False #p > 0.05  #5%
-            if use_f_test:
+            k2, p = stats.normaltest(error_start, axis=0)
+            if np.mean(p) > 0.05:
                 print("error is normal distributed")
-                pure_error = np.sum(np.square( (self.tauMeasured.T - np.mean(self.tauMeasured, axis=1)).T ))
-                print "pure_error: {}".format(pure_error / (self.num_used_samples*self.N_DOFS - self.num_used_samples))
-                error_norm_start = np.square(la.norm(error_start))
             else:
-                print("error is not normal distributed (p={}), can't use f-test".format(p))
-                F = 0
+                print("error is not normal distributed (p={})".format(p))
 
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             p_sigma_x = 0
@@ -994,34 +989,14 @@ class Identification(object):
                 print "min-max ratio of relative stddevs: {},".format(ratio),
 
                 print("cond(YBase):{}".format(la.cond(self.YBase))),
-                error = error_func(self)
+                #error = error_func(self)
 
-                if use_f_test:
-                    # use f-test to determine if model reduction can be accepted or not
-
-                    #lack-of-fit
-                    #lack_of_fit = self.N_DOFS*np.sum( np.square( (np.mean(self.tauMeasured, axis=1) - \
-                    #              self.tauEstimated.T).T) )
-                    #print "lack_of_fit: {}".format(lack_of_fit / (self.num_used_samples - (self.num_base_params-b_c)))
-
-                    #F = ( lack_of_fit / (self.num_used_samples - (self.num_base_params-b_c))) /  \
-                    #    ( pure_error / (self.num_used_samples*self.N_DOFS - self.num_used_samples))
-
-                    #f-test from janot
-                    error_norm = np.square(la.norm(error))
-                    F = ((error_norm - error_norm_start) / (self.num_base_params - b_c)) /  \
-                        (error_norm_start / (self.num_used_samples-self.num_base_params))
-                    print("F: {},".format(F)),
-
-                if use_mse:
-                    mse = mse_func(error, self)
-                    #TODO: read torq limits from urdf
-                    #mse_max_torq = mse/np.mean([176,176,100,100,100,38,38])
-
+                if use_error_criterion:
+                    #mse = mse_func(error, self)
                     #allow 5% of mean/median of measured value range
-                    mse_meas_torq = mse/np.median(torq_range)
-                    mse_percent = mse_meas_torq
-                    error_increase = mse_percent - mse_percent_start
+                    #mse_meas_torq = mse/np.median(torq_range)
+                    #mse_percent = mse_meas_torq
+                    #error_increase = mse_percent - mse_percent_start
 
                     pham_percent = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
                     error_increase_pham = pham_percent - pham_percent_start
@@ -1029,16 +1004,15 @@ class Identification(object):
                     #print("% mse of torq limits {},".format(mse_max_torq)),
                     #print("% mse of measured range {},".format(mse_meas_torq)),
                     print("error increase {}").format(error_increase_pham)
+                else:
+                    print("")
 
                 # while loop condition moved to here
                 #if ratio == old_ratio and old_ratio != 0:
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
-                #TODO: check if f-test has any benefits in determining error through model reduction
-                if use_f_test and F > stats.f.ppf(0.95, self.num_base_params, self.num_base_params-b_c):    #alpha = 5%
+                if ratio < 25:
                     break
-                if not use_f_test and ratio < 17:
-                    break
-                if use_mse and error_increase_pham > 3.5:
+                if use_error_criterion and error_increase_pham > 3.5:
                     break
 
                 #cancel the parameter with largest deviation

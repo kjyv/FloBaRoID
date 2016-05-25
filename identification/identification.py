@@ -71,7 +71,7 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
+        self.useEssentialParams = 1
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -305,7 +305,7 @@ class Identification(object):
         """
 
         # * estimation error gets smaller
-        # new_condition_number = self.res_error
+        # new_condition_number = self.val_error
 
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
@@ -387,6 +387,7 @@ class Identification(object):
             # get model dependent projection matrix and linear column dependencies (i.e. base
             # groupings)
             self.getBaseRegressorQR()
+            self.res_error = 100
 
         if self.showTiming:
             print("Init for computing regressors took %.03f sec." % t.interval)
@@ -857,7 +858,7 @@ class Identification(object):
         gravity.zero()
         gravity.setVal(2, -9.81);
 
-        self.tauEstimated = None
+        self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.skipSamples+1):
             # read measurements
             pos = v_data['positions'][m_idx]
@@ -878,20 +879,20 @@ class Identification(object):
 
             # compute inverse dynamics with idyntree (simulate)
             dynComp.inverseDynamics(torques, baseReactionForce)
-            if self.tauEstimated is None:
-                self.tauEstimated = torques.toNumPy()
+            if self.tauEstimatedValidation is None:
+                self.tauEstimatedValidation = torques.toNumPy()
             else:
-                self.tauEstimated = np.vstack((self.tauEstimated, torques.toNumPy()))
+                self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques.toNumPy()))
 
         if self.skipSamples > 0:
-            self.tauMeasured = v_data['torques'][::self.skipSamples+1]
+            self.tauMeasuredValidation = v_data['torques'][::self.skipSamples+1]
             self.T = v_data['times'][::self.skipSamples+1]
         else:
-            self.tauMeasured = v_data['torques']
+            self.tauMeasuredValidation = v_data['torques']
             self.T = v_data['times']
 
-        val_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-        print("Validation error: {}%".format(val_error))
+        self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation)*100/la.norm(self.tauMeasuredValidation)
+        print("Validation error: {}%".format(self.val_error))
 
     def getBaseEssentialParameters(self):
         """
@@ -1026,7 +1027,7 @@ class Identification(object):
 
                     old_showStd = self.showStandardParams
                     old_showBase = self.showStandardParams
-                    self.showStandardParams = 0
+                    self.showStandardParams = 1
                     self.showBaseParams = 1
                     self.output()
                     self.showStandardParams = old_showStd
@@ -1115,10 +1116,13 @@ class Identification(object):
 
             #np.delete(self.stdEssentialIdx, to_delete, 0)
 
-            #remove mass params if present
+            # remove mass params if present
             if self.dontIdentifyMasses:
                 ps = range(0,self.N_PARAMS, 10)
                 self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
+
+            # add some other params for testing (useCADWeighting and maybe increase change num_essential_params)
+            #self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, [19,22,21,25,26,27,31,33,34,35,38,41,42,44,45,46,48,49,55,56,57,58,63,64,66,68,70,75,76,79]))
 
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
@@ -1203,7 +1207,7 @@ class Identification(object):
 
 
     def estimateParameters(self):
-        print("Doing identification on {} samples".format(self.num_used_samples))
+        print("doing identification on {} samples".format(self.num_used_samples)),
 
         self.computeRegressors()
         if self.useEssentialParams:
@@ -1237,7 +1241,6 @@ class Identification(object):
             self.stdEssentialIdx = range(0, self.N_PARAMS)
             self.stdNonEssentialIdx = []
 
-
         #if requested, load params from other urdf for comparison
         if self.urdf_file_real:
             dc = iDynTree.DynamicsComputations()
@@ -1246,8 +1249,6 @@ class Identification(object):
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
             xBaseReal = np.dot(self.B.T, xStdReal)
-        else:
-            xStdReal = xStdModel
 
         if self.showStandardParams:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
@@ -1280,11 +1281,12 @@ class Identification(object):
                 #get some error values for each parameter
                 approx = xStd[idx_p]
                 apriori = xStdModel[idx_p]
-                real = xStdReal[idx_p]
-                # set real params that are 0 to some small value
-                #if real == 0: real = 0.01
 
                 if self.urdf_file_real:
+                    real = xStdReal[idx_p]
+                    # set real params that are 0 to some small value
+                    #if real == 0: real = 0.01
+
                     # get error percentage (new to real)
                     # so if 100% are the real value, how big is the error
                     diff_real = approx - real
@@ -1466,22 +1468,23 @@ class Identification(object):
         if self.urdf_file_real:
             if self.showStandardParams:
                 if self.useEssentialParams:
-                    print("Mean relative error of essential params: {}%".\
+                    print("Mean relative error of essential std params: {}%".\
                             format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
-                print("Mean relative error of all params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
+                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
 
                 if self.useEssentialParams:
-                    print("Mean error delta (apriori error vs approx error) of essential params: {}%".\
+                    print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
                             format(sum_pc_delta_ess/len(self.stdEssentialIdx)))
-                print("Mean error delta (apriori error vs approx error) of all params: {}%".\
+                print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(self.xStd)))
 
         self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         self.estimateRegressorTorques(estimateWith='urdf')
-        apriori_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        self.apriori_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
 
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
-                format(self.res_error, apriori_error))
+                format(self.res_error, self.apriori_error))
+        print ""
 
     def plot(self):
         """Display some torque plots."""
@@ -1571,6 +1574,7 @@ def main():
         while 1:
             idf.estimateParameters()
             idf.estimateRegressorTorques()
+            #idf.estimateValidationTorques(args.validation)
             if(idf.checkBlockImprovement()):
                 idf.output(summary_only=True)
 
@@ -1580,7 +1584,7 @@ def main():
                 break
         idf.useEssentialParams = old_essential_option
 
-    print("estimating output parameters...")
+    print("checked all blocks, estimating output parameters...")
     idf.estimateParameters()
 
     idf.estimateRegressorTorques()

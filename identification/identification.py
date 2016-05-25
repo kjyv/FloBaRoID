@@ -34,13 +34,13 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # subtree identification
 
 class Identification(object):
-    def __init__(self, urdf_file, measurements_files, regressor_file):
+    def __init__(self, urdf_file, urdf_file_real, measurements_files, regressor_file):
         ## options
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 2    #how many values to skip before using the next sample
+        self.skipSamples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -78,11 +78,15 @@ class Identification(object):
         self.dontIdentifyMasses = 0
 
         # some investigation output
-        self.outputBarycentric = 0
-        self.showMemUsage = 0
-        self.showTiming = 0
-        self.showRandomRegressor = 0
-        self.showErrorHistogram = 0
+        self.outputBarycentric = 0     #output all values in barycentric (e.g. urdf) form
+        self.showMemUsage = 0          #print used memory for different variables
+        self.showTiming = 0            #show times various steps have taken
+        self.showRandomRegressor = 0   #show 2d plot of random regressor
+        self.showErrorHistogram = 0    #show estimation error distribution
+        self.showEssentialSteps = 0    #stop after every reduction step and show values
+
+        # output options
+        self.showStandardParams = 1
         self.showBaseParams = 0
 
         if self.useAPriori:
@@ -115,6 +119,7 @@ class Identification(object):
             self.min_tol = 1e-3
 
             self.URDF_FILE = urdf_file
+            self.urdf_file_real = urdf_file_real
 
             # load data from multiple files and concatenate, fix timing
             self.measurements = {}
@@ -956,6 +961,7 @@ class Identification(object):
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             p_sigma_x = 0
 
+            run_once = 0
             # start removing non-essential parameters
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
@@ -982,7 +988,7 @@ class Identification(object):
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
                 print "min-max ratio of relative stddevs: {},".format(ratio),
 
-                print("cond(YBase):{}".format(la.cond(self.YBase))),
+                print("cond(YBase):{},".format(la.cond(self.YBase))),
                 #error = error_func(self)
 
                 if use_error_criterion:
@@ -1008,6 +1014,29 @@ class Identification(object):
                     break
                 if use_error_criterion and error_increase_pham > 2.5:
                     break
+
+                if run_once and self.showEssentialSteps:
+                    # get indices of the essential base params
+                    self.baseNonEssentialIdx = not_essential_idx
+                    self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
+                    self.num_essential_params = len(self.baseEssentialIdx)
+                    self.xBase_essential = np.zeros_like(xBase_orig)
+                    self.xBase_essential[self.baseEssentialIdx] = self.xBase
+                    self.p_sigma_x = p_sigma_x
+
+                    old_showStd = self.showStandardParams
+                    old_showBase = self.showStandardParams
+                    self.showStandardParams = 0
+                    self.showBaseParams = 1
+                    self.output()
+                    self.showStandardParams = old_showStd
+                    self.showBaseParams = old_showBase
+
+                    print base_idx, np.argmax(p_sigma_x)
+                    print self.baseNonEssentialIdx
+                    raw_input("Press return...")
+                else:
+                    run_once = 1
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
@@ -1197,7 +1226,7 @@ class Identification(object):
                 self.getNonsingularRegressor()
                 self.identifyStandardParameters()
 
-    def output(self, model_output=None, summary_only=False):
+    def output(self, summary_only=False):
         """Do some pretty printing of parameters."""
 
         import colorama
@@ -1208,23 +1237,11 @@ class Identification(object):
             self.stdEssentialIdx = range(0, self.N_PARAMS)
             self.stdNonEssentialIdx = []
 
-        # convert params to COM-relative instead of frame origin-relative (linearized parameters)
-        if self.outputBarycentric:
-            if not self.robotranRegressor:
-              xStd = self.helpers.paramsLink2Bary(self.xStd)
-            xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
-            if not summary_only:
-                print("Barycentric (relative to COM) Standard Parameters")
-        else:
-            xStd = self.xStd
-            xStdModel = self.xStdModel
-            if not summary_only:
-                print("Linear (relative to Frame) Standard Parameters")
 
         #if requested, load params from other urdf for comparison
-        if model_output:
+        if self.urdf_file_real:
             dc = iDynTree.DynamicsComputations()
-            dc.loadRobotModelFromFile(model_output)
+            dc.loadRobotModelFromFile(self.urdf_file_real)
             tmp = iDynTree.VectorDynSize(self.N_PARAMS)
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
@@ -1232,118 +1249,132 @@ class Identification(object):
         else:
             xStdReal = xStdModel
 
-        # collect values for parameters
-        description = self.generator.getDescriptionOfParameters()
-        idx_p = 0   #count (std) params
-        idx_ep = 0  #count essential params
-        lines = list()
-        sum_diff_r_pc_ess = 0
-        sum_diff_r_pc_all = 0
-        sum_pc_delta_all = 0
-        sum_pc_delta_ess = 0
-        for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
-            #print beginning of each link block in green
-            if idx_p % 10 == 0:
-                d = Fore.GREEN + d
+        if self.showStandardParams:
+            # convert params to COM-relative instead of frame origin-relative (linearized parameters)
+            if self.outputBarycentric:
+                if not self.robotranRegressor:
+                  xStd = self.helpers.paramsLink2Bary(self.xStd)
+                xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
+                if not summary_only:
+                    print("Barycentric (relative to COM) Standard Parameters")
+            else:
+                xStd = self.xStd
+                xStdModel = self.xStdModel
+                if not summary_only:
+                    print("Linear (relative to Frame) Standard Parameters")
 
-            #get some error values for each parameter
-            approx = xStd[idx_p]
-            apriori = xStdModel[idx_p]
-            real = xStdReal[idx_p]
-            # set real params that are 0 to some small value
-            #if real == 0: real = 0.01
+            # collect values for parameters
+            description = self.generator.getDescriptionOfParameters()
+            idx_p = 0   #count (std) params
+            idx_ep = 0  #count essential params
+            lines = list()
+            sum_diff_r_pc_ess = 0
+            sum_diff_r_pc_all = 0
+            sum_pc_delta_all = 0
+            sum_pc_delta_ess = 0
+            for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
+                #print beginning of each link block in green
+                if idx_p % 10 == 0:
+                    d = Fore.GREEN + d
 
-            if model_output:
-                # get error percentage (new to real)
-                # so if 100% are the real value, how big is the error
-                diff_real = approx - real
-                if real != 0:
-                    diff_r_pc = (100*diff_real)/real
+                #get some error values for each parameter
+                approx = xStd[idx_p]
+                apriori = xStdModel[idx_p]
+                real = xStdReal[idx_p]
+                # set real params that are 0 to some small value
+                #if real == 0: real = 0.01
+
+                if self.urdf_file_real:
+                    # get error percentage (new to real)
+                    # so if 100% are the real value, how big is the error
+                    diff_real = approx - real
+                    if real != 0:
+                        diff_r_pc = (100*diff_real)/real
+                    else:
+                        diff_r_pc = (100*diff_real)/0.01
+
+                    #add to final error percent sum
+                    sum_diff_r_pc_all += np.abs(diff_r_pc)
+                    if idx_p in self.stdEssentialIdx:
+                        sum_diff_r_pc_ess += np.abs(diff_r_pc)
+
+                    # get error percentage (new to apriori)
+                    diff_apriori = apriori - real
+                    #if apriori == 0: apriori = 0.01
+                    if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
+                    else: pc_delta = 0
+                    sum_pc_delta_all += pc_delta
+                    if idx_p in self.stdEssentialIdx:
+                        sum_pc_delta_ess += pc_delta
                 else:
-                    diff_r_pc = (100*diff_real)/0.01
+                    # get percentage difference between apriori and identified values
+                    # (shown when real values are not known)
+                    diff = approx - apriori
+                    if apriori != 0:
+                        diff_pc = (100*diff)/apriori
+                    else:
+                        diff_pc = (100*diff)/0.01
 
-                #add to final error percent sum
-                sum_diff_r_pc_all += np.abs(diff_r_pc)
-                if idx_p in self.stdEssentialIdx:
-                    sum_diff_r_pc_ess += np.abs(diff_r_pc)
-
-                # get error percentage (new to apriori)
-                diff_apriori = apriori - real
-                #if apriori == 0: apriori = 0.01
-                if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
-                else: pc_delta = 0
-                sum_pc_delta_all += pc_delta
-                if idx_p in self.stdEssentialIdx:
-                    sum_pc_delta_ess += pc_delta
-            else:
-                # get percentage difference between apriori and identified values
-                # (shown when real values are not known)
-                diff = approx - apriori
-                if apriori != 0:
-                    diff_pc = (100*diff)/apriori
+                #values for each line
+                if self.useEssentialParams and idx_ep < self.num_base_params and idx_p in self.stdEssentialIdx:
+                    sigma = self.p_sigma_x[idx_ep]
                 else:
-                    diff_pc = (100*diff)/0.01
+                    sigma = 0.0
 
-            #values for each line
-            if self.useEssentialParams and idx_ep < self.num_base_params and idx_p in self.stdEssentialIdx:
-                sigma = self.p_sigma_x[idx_ep]
-            else:
-                sigma = 0.0
-
-            if model_output:
-                vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, sigma, d]
-            else:
-                vals = [apriori, approx, diff, diff_pc, sigma, d]
-            lines.append(vals)
-
-            if self.useEssentialParams and idx_p in self.stdEssentialIdx:
-                idx_ep+=1
-            idx_p+=1
-            if idx_p == len(xStd):
-                break
-
-        if model_output:
-            column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
-            precisions = [8, 8, 8, 4, 1, 1, 3, 0]
-        else:
-            column_widths = [13, 13, 7, 7, 6, 45]
-            precisions = [8, 8, 4, 1, 3, 0]
-
-        if not summary_only:
-            # print column header
-            template = ''
-            for w in range(0, len(column_widths)):
-                template += '|{{{}:{}}}'.format(w, column_widths[w])
-            if model_output:
-                print template.format("'Real'", "A priori", "Approx", "Change", "%e", u"Δ%e".encode('utf-8'), u"%σ".encode('utf-8'), "Description")
-            else:
-                print template.format("A priori", "Approx", "Change", "%e", u"%σ".encode('utf-8'), "Description")
-
-            # print values/description
-            template = ''
-            for w in range(0, len(column_widths)):
-                if(type(lines[0][w]) == str):
-                    # strings don't have precision
-                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                if self.urdf_file_real:
+                    vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, sigma, d]
                 else:
-                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-            idx_p = 0
-            for l in lines:
-                t = template.format(*l)
-                if idx_p in self.stdNonEssentialIdx:
-                    t = Style.DIM + t
-                if idx_p in self.stdEssentialIdx:
-                    t = Style.BRIGHT + t
-                print t,
+                    vals = [apriori, approx, diff, diff_pc, sigma, d]
+                lines.append(vals)
+
+                if self.useEssentialParams and idx_p in self.stdEssentialIdx:
+                    idx_ep+=1
                 idx_p+=1
-                print Style.RESET_ALL
-            print "\n"
+                if idx_p == len(xStd):
+                    break
+
+            if self.urdf_file_real:
+                column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
+                precisions = [8, 8, 8, 4, 1, 1, 3, 0]
+            else:
+                column_widths = [13, 13, 7, 7, 6, 45]
+                precisions = [8, 8, 4, 1, 3, 0]
+
+            if not summary_only:
+                # print column header
+                template = ''
+                for w in range(0, len(column_widths)):
+                    template += '|{{{}:{}}}'.format(w, column_widths[w])
+                if self.urdf_file_real:
+                    print template.format("'Real'", "A priori", "Approx", "Change", "%e", u"Δ%e".encode('utf-8'), u"%σ".encode('utf-8'), "Description")
+                else:
+                    print template.format("A priori", "Approx", "Change", "%e", u"%σ".encode('utf-8'), "Description")
+
+                # print values/description
+                template = ''
+                for w in range(0, len(column_widths)):
+                    if(type(lines[0][w]) == str):
+                        # strings don't have precision
+                        template += '|{{{}:{}}}'.format(w, column_widths[w])
+                    else:
+                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+                idx_p = 0
+                for l in lines:
+                    t = template.format(*l)
+                    if idx_p in self.stdNonEssentialIdx:
+                        t = Style.DIM + t
+                    if idx_p in self.stdEssentialIdx:
+                        t = Style.BRIGHT + t
+                    print t,
+                    idx_p+=1
+                    print Style.RESET_ALL
+                print "\n"
 
         ### print base params
         if self.showBaseParams and self.estimateWith not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not self.useEssentialParams:
-                baseEssentialIdx = range(0, self.N_PARAMS)
+                baseEssentialIdx = range(0, self.num_base_params)
                 baseNonEssentialIdx = []
                 xBase_essential = self.xBase
             else:
@@ -1354,17 +1385,18 @@ class Identification(object):
             # collect values for parameters
             idx_ep = 0
             lines = list()
-            for idx_p in range(0,self.num_base_params):
+            for idx_p in range(0, self.num_base_params):
                 if self.useEssentialParams: # and xBase_essential[idx_p] != 0:
                     new = xBase_essential[idx_p]
                 else:
                     new = self.xBase[idx_p]
                 old = self.xBaseModel[idx_p]
                 diff = new - old
-                if model_output:
+                if self.urdf_file_real:
                     real = xBaseReal[idx_p]
                     error = new - real
 
+                # collect linear dependencies for this param
                 deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
                 dep_factors = self.linear_deps[idx_p, deps]
 
@@ -1379,17 +1411,17 @@ class Identification(object):
                 else:
                     sigma = 0.0
 
-                if model_output:
-                    lines.append((real, old, new, diff, error, sigma, param_columns))
+                if self.urdf_file_real:
+                    lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
                 else:
                     lines.append((old, new, diff, sigma, param_columns))
 
                 if self.useEssentialParams and idx_p in self.baseEssentialIdx:
                     idx_ep+=1
 
-            if model_output:
-                column_widths = [13, 13, 13, 7, 7, 6, 30]   # widths of the columns
-                precisions = [8, 8, 8, 4, 4, 3, 0]         # numerical precision
+            if self.urdf_file_real:
+                column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
+                precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
             else:
                 column_widths = [13, 13, 7, 6, 30]   # widths of the columns
                 precisions = [8, 8, 4, 3, 0]         # numerical precision
@@ -1399,8 +1431,8 @@ class Identification(object):
                 template = ''
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if model_output:
-                    print template.format("Real", "Model", "Approx", "Change", "Error", u"%σ".encode('utf-8'), "Description")
+                if self.urdf_file_real:
+                    print template.format("\#", "Real", "Model", "Approx", "Change", "Error", u"%σ".encode('utf-8'), "Description")
                 else:
                     print template.format("Model", "Approx", "Change", u"%σ".encode('utf-8'), "Description")
 
@@ -1417,8 +1449,10 @@ class Identification(object):
                     t = template.format(*l)
                     if idx_p in baseNonEssentialIdx:
                         t = Style.DIM + t
-                    if idx_p in baseEssentialIdx:
+                    elif idx_p in baseEssentialIdx:
                         t = Style.BRIGHT + t
+                    if self.showEssentialSteps and l[-2] == np.max(self.p_sigma_x):
+                        t = Fore.CYAN + t
                     print t,
                     idx_p+=1
                     print Style.RESET_ALL
@@ -1429,17 +1463,18 @@ class Identification(object):
             print "unused blocks: {}".format(self.unusedBlocks)
             print "condition number: {}".format(la.cond(self.YBase))
 
-        if model_output:
-            if self.useEssentialParams:
-                print("Mean relative error of essential params: {}%".\
-                        format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
-            print("Mean relative error of all params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
+        if self.urdf_file_real:
+            if self.showStandardParams:
+                if self.useEssentialParams:
+                    print("Mean relative error of essential params: {}%".\
+                            format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
+                print("Mean relative error of all params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
 
-            if self.useEssentialParams:
-                print("Mean error delta (apriori error vs approx error) of essential params: {}%".\
-                        format(sum_pc_delta_ess/len(self.stdEssentialIdx)))
-            print("Mean error delta (apriori error vs approx error) of all params: {}%".\
-                    format(sum_pc_delta_all/len(self.xStd)))
+                if self.useEssentialParams:
+                    print("Mean error delta (apriori error vs approx error) of essential params: {}%".\
+                            format(sum_pc_delta_ess/len(self.stdEssentialIdx)))
+                print("Mean error delta (apriori error vs approx error) of all params: {}%".\
+                        format(sum_pc_delta_all/len(self.xStd)))
 
         self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         self.estimateRegressorTorques(estimateWith='urdf')
@@ -1507,7 +1542,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
-    parser.add_argument('--model_output', required=False, type=str, help='the file to load the model params for\
+    parser.add_argument('--model_real', required=False, type=str, help='the file to load the model params for\
                         comparison from')
     parser.add_argument('-o', '--output', required=False, type=str, help='the file to save the identified params to')
 
@@ -1523,10 +1558,10 @@ def main():
 
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
     parser.add_argument('-e', '--explain', help='whether to explain identified parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=False, regressor=None, model_output=None)
+    parser.set_defaults(plot=False, explain=False, regressor=None, model_real=None)
     args = parser.parse_args()
 
-    idf = Identification(args.model, args.measurements, args.regressor)
+    idf = Identification(args.model, args.model_real, args.measurements, args.regressor)
     idf.initRegressors()
 
     if idf.selectBlocksFromMeasurements:
@@ -1537,7 +1572,7 @@ def main():
             idf.estimateParameters()
             idf.estimateRegressorTorques()
             if(idf.checkBlockImprovement()):
-                idf.output(args.model_output, summary_only=True)
+                idf.output(summary_only=True)
 
             if idf.hasMoreSamples():
                 idf.nextSampleBlock()
@@ -1558,7 +1593,7 @@ def main():
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain:
-        idf.output(args.model_output)
+        idf.output()
 
     if args.plot:
         if args.validation:

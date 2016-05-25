@@ -40,7 +40,7 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 4    #how many values to skip before using the next sample
+        self.skipSamples = 2    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -58,8 +58,8 @@ class Identification(object):
         self.useAPriori = 1
 
         # whether only "good" data is being selected or simply all is used
-        self.selectBlocksFromMeasurements = 1
-        self.block_size = 500  # needs to be at least as much as parameters so regressor is square or higher
+        self.selectBlocksFromMeasurements = 0
+        self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -830,8 +830,6 @@ class Identification(object):
             else:
                 self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
 
-            self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-
             self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
@@ -1008,7 +1006,7 @@ class Identification(object):
                 #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
                 if ratio < 25:
                     break
-                if use_error_criterion and error_increase_pham > 3.5:
+                if use_error_criterion and error_increase_pham > 2.5:
                     break
 
                 #cancel the parameter with largest deviation
@@ -1031,6 +1029,7 @@ class Identification(object):
 
             not_essential_idx.pop()
             print("essential rel stddevs: {}".format(prev_p_sigma_x))
+            self.p_sigma_x = prev_p_sigma_x
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
@@ -1235,23 +1234,29 @@ class Identification(object):
 
         # collect values for parameters
         description = self.generator.getDescriptionOfParameters()
-        idx_p = 0
+        idx_p = 0   #count (std) params
+        idx_ep = 0  #count essential params
         lines = list()
         sum_diff_r_pc_ess = 0
         sum_diff_r_pc_all = 0
         sum_pc_delta_all = 0
         sum_pc_delta_ess = 0
         for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
+            #print beginning of each link block in green
+            if idx_p % 10 == 0:
+                d = Fore.GREEN + d
+
+            #get some error values for each parameter
             approx = xStd[idx_p]
             apriori = xStdModel[idx_p]
             real = xStdReal[idx_p]
-
             # set real params that are 0 to some small value
             #if real == 0: real = 0.01
 
-            # get error percentage (new to real)
-            diff_real = approx - real
             if model_output:
+                # get error percentage (new to real)
+                # so if 100% are the real value, how big is the error
+                diff_real = approx - real
                 if real != 0:
                     diff_r_pc = (100*diff_real)/real
                 else:
@@ -1262,49 +1267,47 @@ class Identification(object):
                 if idx_p in self.stdEssentialIdx:
                     sum_diff_r_pc_ess += np.abs(diff_r_pc)
 
-            # get error percentage (new to apriori)
-            diff_apriori = apriori - real
-            if model_output:
+                # get error percentage (new to apriori)
+                diff_apriori = apriori - real
                 #if apriori == 0: apriori = 0.01
-                if real!= 0:
-                    diff_a_pc = (100*diff_apriori)/real
-                else:
-                    diff_a_pc = (100*diff_apriori)/0.01
-                #pc_delta = np.abs(diff_r_pc) - np.abs(diff_a_pc)
                 if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
                 else: pc_delta = 0
                 sum_pc_delta_all += pc_delta
                 if idx_p in self.stdEssentialIdx:
                     sum_pc_delta_ess += pc_delta
-
-            # get difference between apriori and identified values (when real values are not known)
-            diff = apriori - approx
-            if apriori != 0:
-                diff_pc = (100*diff)/apriori
             else:
-                diff_pc = (100*diff)/0.01
-
-            #print beginning of each link block in green
-            if idx_p % 10 == 0:
-                d = Fore.GREEN + d
+                # get percentage difference between apriori and identified values
+                # (shown when real values are not known)
+                diff = approx - apriori
+                if apriori != 0:
+                    diff_pc = (100*diff)/apriori
+                else:
+                    diff_pc = (100*diff)/0.01
 
             #values for each line
-            if model_output:
-                vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, d]
+            if self.useEssentialParams and idx_ep < self.num_base_params and idx_p in self.stdEssentialIdx:
+                sigma = self.p_sigma_x[idx_ep]
             else:
-                vals = [apriori, approx, diff, diff_pc, d]
+                sigma = 0.0
+
+            if model_output:
+                vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, sigma, d]
+            else:
+                vals = [apriori, approx, diff, diff_pc, sigma, d]
             lines.append(vals)
 
+            if self.useEssentialParams and idx_p in self.stdEssentialIdx:
+                idx_ep+=1
             idx_p+=1
             if idx_p == len(xStd):
                 break
 
         if model_output:
-            column_widths = [13, 13, 13, 7, 7, 7, 45]
-            precisions = [8, 8, 8, 4, 1, 1, 0]
+            column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
+            precisions = [8, 8, 8, 4, 1, 1, 3, 0]
         else:
-            column_widths = [13, 13, 7, 7, 45]
-            precisions = [8, 8, 4, 1, 0]
+            column_widths = [13, 13, 7, 7, 6, 45]
+            precisions = [8, 8, 4, 1, 3, 0]
 
         if not summary_only:
             # print column header
@@ -1312,9 +1315,9 @@ class Identification(object):
             for w in range(0, len(column_widths)):
                 template += '|{{{}:{}}}'.format(w, column_widths[w])
             if model_output:
-                print template.format("'Real'", "A priori", "Approx", "Error", "%e", u"Δ%e".encode('utf-8'), "Description")
+                print template.format("'Real'", "A priori", "Approx", "Change", "%e", u"Δ%e".encode('utf-8'), u"%σ".encode('utf-8'), "Description")
             else:
-                print template.format("A priori", "Approx", "Error", "%e", "Description")
+                print template.format("A priori", "Approx", "Change", "%e", u"%σ".encode('utf-8'), "Description")
 
             # print values/description
             template = ''
@@ -1349,6 +1352,7 @@ class Identification(object):
                 xBase_essential = self.xBase_essential
 
             # collect values for parameters
+            idx_ep = 0
             lines = list()
             for idx_p in range(0,self.num_base_params):
                 if self.useEssentialParams: # and xBase_essential[idx_p] != 0:
@@ -1359,6 +1363,7 @@ class Identification(object):
                 diff = new - old
                 if model_output:
                     real = xBaseReal[idx_p]
+                    error = new - real
 
                 deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
                 dep_factors = self.linear_deps[idx_p, deps]
@@ -1369,17 +1374,25 @@ class Identification(object):
                 for p in range(0, len(deps)):
                     param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
 
-                if model_output:
-                    lines.append((real, old, new, diff, param_columns))
+                if self.useEssentialParams and idx_p in self.baseEssentialIdx:
+                    sigma = self.p_sigma_x[idx_ep]
                 else:
-                    lines.append((old, new, diff, param_columns))
+                    sigma = 0.0
+
+                if model_output:
+                    lines.append((real, old, new, diff, error, sigma, param_columns))
+                else:
+                    lines.append((old, new, diff, sigma, param_columns))
+
+                if self.useEssentialParams and idx_p in self.baseEssentialIdx:
+                    idx_ep+=1
 
             if model_output:
-                column_widths = [15, 15, 15, 7, 30]   # widths of the columns
-                precisions = [8, 8, 8, 4, 0]         # numerical precision
+                column_widths = [13, 13, 13, 7, 7, 6, 30]   # widths of the columns
+                precisions = [8, 8, 8, 4, 4, 3, 0]         # numerical precision
             else:
-                column_widths = [15, 15, 7, 30]   # widths of the columns
-                precisions = [8, 8, 4, 0]         # numerical precision
+                column_widths = [13, 13, 7, 6, 30]   # widths of the columns
+                precisions = [8, 8, 4, 3, 0]         # numerical precision
 
             if not summary_only:
                 # print column header
@@ -1387,9 +1400,9 @@ class Identification(object):
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if model_output:
-                    print template.format("Real", "Model", "Approx", "Error", u"%σ".encode('utf-8'), "Description")
+                    print template.format("Real", "Model", "Approx", "Change", "Error", u"%σ".encode('utf-8'), "Description")
                 else:
-                    print template.format("Model", "Approx", "Error", "Description")
+                    print template.format("Model", "Approx", "Change", u"%σ".encode('utf-8'), "Description")
 
                 # print values/description
                 template = ''
@@ -1428,9 +1441,12 @@ class Identification(object):
             print("Mean error delta (apriori error vs approx error) of all params: {}%".\
                     format(sum_pc_delta_all/len(self.xStd)))
 
-        print("Relative residual error (torque prediction): {}%".format(self.res_error))
-        print("\n")
+        self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        self.estimateRegressorTorques(estimateWith='urdf')
+        apriori_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
 
+        print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
+                format(self.res_error, apriori_error))
 
     def plot(self):
         """Display some torque plots."""

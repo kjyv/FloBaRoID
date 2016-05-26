@@ -749,8 +749,15 @@ class Identification(object):
         self.xBaseModel = np.dot(self.B.T, self.xStdModel)
 
         if self.useWLS:
-            """add weighting with standard dev of estimation error on base regressor and params."""
+            """
+            additionally do weighted least squares IDIM-WLS, cf. Poignet, Gautier, 2000 and Gautier, 1997.
+            adds weighting with standard dev of estimation error on base regressor and params.
+            """
+
+
+            # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
+
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
             self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
@@ -758,7 +765,9 @@ class Identification(object):
 
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
-            G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
+            # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
+            import scipy.sparse as sparse
+            G = sparse.spdiags(np.repeat(self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -768,6 +777,8 @@ class Identification(object):
             YBase = G.dot(self.YBase)
             tau = G.dot(self.tau)
             print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
+
+            # get identified values using weighted matrices without weighing them again
             self.useWLS = 0
             self.identifyBaseParameters(YBase, tau)
             self.useWLS = 1
@@ -1090,7 +1101,7 @@ class Identification(object):
             # intuitively, also the dependent columns should be essential as the linear combination
             # is used to identify and calc the error
             useDependents = 0
-            useCADWeighting = 0
+            useCADWeighting = 0   # usually produces exact same result, but might be good for some tests
             if useDependents:
                 # also get the ones that are linearly dependent on them -> base params
                 dependents = []

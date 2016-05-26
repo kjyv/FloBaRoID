@@ -15,6 +15,20 @@ class IdentificationHelpers(object):
     def __init__(self, n_params):
         self.n_params = n_params
 
+    def checkPhysicalConsistency(self, params):
+        """check params for physical consistency, expect params relative to link frame"""
+
+        cons = {}
+        for i in range(0, self.n_params):
+            if (i % 10 == 0):   #for each link
+                p_vec = iDynTree.Vector10()
+                for j in range(0, 10):
+                    p_vec.setVal(j, params[i+j])
+                rbi = iDynTree.RigidBodyInertiaNonLinearParametrization()
+                iDynTree.RigidBodyInertiaNonLinearParametrization.fromInertialParameters(rbi, p_vec)
+                cons[i / 10] = rbi.isPhysicallyConsistent()
+        return cons
+
     def inertiaParams2RotationalInertiaRaw(self, params):
         #take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix
         #expects six parameter vector
@@ -68,7 +82,7 @@ class IdentificationHelpers(object):
 
                 #inertias
                 rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+10])
-                s_inertia = iDynTree.SpatialInertiaRaw(link_mass, p_com, rot_inertia_origin)
+                s_inertia = iDynTree.SpatialInertia(link_mass, p_com, rot_inertia_origin)
                 rot_inertia_com = s_inertia.getRotationalInertiaWrtCenterOfMass()
                 params[i+4] = rot_inertia_com.getVal(0, 0)    #xx w.r.t. com
                 params[i+5] = rot_inertia_com.getVal(0, 1)    #xy w.r.t. com
@@ -79,7 +93,6 @@ class IdentificationHelpers(object):
         return params
 
     def paramsBary2Link(self, params):
-        # TODO: check/use RigidBodyInertiaNonLinearParametrization::fromInertialParameters()
         params = params.copy()
         for i in range(0, self.n_params):
             if (i % 10 == 0):   #for each link
@@ -95,7 +108,7 @@ class IdentificationHelpers(object):
 
                 #inertias
                 rot_inertia_com = self.inertiaParams2RotationalInertiaRaw(params[i+4:i+10])
-                s_inertia = iDynTree.SpatialInertiaRaw(link_mass, p_com, rot_inertia_com)
+                s_inertia = iDynTree.SpatialInertia(link_mass, p_com, rot_inertia_com)
                 s_inertia.fromRotationalInertiaWrtCenterOfMass(link_mass, p_com, rot_inertia_com)
                 rot_inertia = s_inertia.getRotationalInertiaWrtFrameOrigin()
                 params[i+4] = rot_inertia.getVal(0, 0)    #xx w.r.t. com

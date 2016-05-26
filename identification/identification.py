@@ -1465,6 +1465,10 @@ class Identification(object):
             print "unused blocks: {}".format(self.unusedBlocks)
             print "condition number: {}".format(la.cond(self.YBase))
 
+        if self.showStandardParams:
+            print("Per-link physical consistency (a priori): {}".format(self.helpers.checkPhysicalConsistency(self.xStdModel)))
+            print("Per-link physical consistency (identified): {}".format(self.helpers.checkPhysicalConsistency(self.xStd)))
+
         if self.urdf_file_real:
             if self.showStandardParams:
                 if self.useEssentialParams:

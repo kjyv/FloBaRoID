@@ -1,0 +1,386 @@
+<robot name="kuka-lwr" xmlns:controller="http://playerstage.sourceforge.net/gazebo/xmlschema/#controller" xmlns:interface="http://playerstage.sourceforge.net/gazebo/xmlschema/#interface" xmlns:sensor="http://playerstage.sourceforge.net/gazebo/xmlschema/#sensor" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <material name="DarkGrey">
+        <color rgba="0.3 0.3 0.3 1.0" />
+    </material>
+    <material name="Red">
+        <color rgba="0.3 0.3 0.3 1.0" />
+    </material>
+    <material name="Black">
+        <color rgba="0 0 0 1.0" />
+    </material>
+    <material name="Orange">
+        <color rgba="1.0 0.487 0 1.0" />
+    </material>
+    <material name="Silver">
+        <color rgba="1.0 1.0 1.0 1.0" />
+    </material>
+    <material name="Grey">
+        <color rgba="0.7 0.7 0.7 1.0" />
+    </material>
+    <material name="Blue">
+        <color rgba="0.0 0.0 0.8 1.0" />
+    </material>
+    <material name="HandGray">
+        <color rgba="0.953 0.996 0.694 1.0" />
+    </material>
+    <material name="SickBlue">
+        <color rgba="0.3058 0.5921 0.7294 1.0" />
+    </material>
+    <link name="world" />
+    <joint name="arm_world_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0.01" />
+        <parent link="world" />
+        <child link="lwr_arm_base_link" />
+    </joint>
+    <!--link name="world_link">
+    <inertial>
+      <mass value="50.0"/>
+      <com xyz="0 0 0"/>
+      <inertia ixx="0.01" ixy="0.00" ixz="0.00" iyy="0.01" iyz="0.00" izz="0.01"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.95"/>
+      <geometry>
+        <box size="0.5 0.5 0.05"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0.50"/>
+      <geometry>
+        <box size="0.5 0.5 0.05"/>
+      </geometry>
+    </collision>
+  </link-->
+    <!-- First (shoulder) element of the arm. Fixed to its parent. -->
+    <!--joint name="world_lwr_arm_base_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 1.1"/>
+    <parent link="world_link"/>
+    <child link="lwr_arm_base_link"/>
+  </joint-->
+    <link name="lwr_arm_base_link">
+        <inertial>
+            <mass value="1.2" />
+            <origin rpy="0 0 0" xyz="0 0 0.055" />
+            <inertia ixx="0.00229" ixy="0" ixz="0" iyy="0.00216" iyz="0" izz="0.00229" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_base.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.01" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_base_convex.stl" scale="0.9 0.9 0.9" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_base_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_0_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.11" />
+        <axis xyz="0 0 1" />
+        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
+        <dynamics damping="5.0" />
+        <parent link="lwr_arm_base_link" />
+        <child link="lwr_arm_1_link" />
+    </joint>
+    <gazebo reference="lwr_arm_0_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_0_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_0_motor" />
+        <joint name="lwr_arm_0_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_1_link">
+        <inertial>
+            <mass value="2.0" />
+            <origin rpy="0 0 0" xyz="0 0 0.130" />
+            <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.0118666666667" iyz="0" izz="0.003" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_segment_a.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_segment_a_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_1_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_1_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.20" />
+        <axis xyz="0 -1 0" />
+        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
+        <dynamics damping="5.0" />
+        <parent link="lwr_arm_1_link" />
+        <child link="lwr_arm_2_link" />
+    </joint>
+    <gazebo reference="lwr_arm_1_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_1_trans" type="pr2_mechanism_model/SimpleTransmission">
+        <actuator name="lwr_arm_1_motor" />
+        <joint name="lwr_arm_1_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_2_link">
+        <inertial>
+            <mass value="2.0" />
+            <origin rpy="0 0 0" xyz="0 -0.06 0.07" />
+            <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.0118666666667" iyz="0" izz="0.003" />
+        </inertial>
+        <visual>
+            <origin rpy="3.14159265359 0 3.14159265359" xyz="0 0 0.2" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_segment_b.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="3.14159265359 0 3.14159265359" xyz="0 0 0.2" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_segment_b_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_2_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_2_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.20" />
+        <axis xyz="0 0 1" />
+        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
+        <dynamics damping="3.0" />
+        <parent link="lwr_arm_2_link" />
+        <child link="lwr_arm_3_link" />
+    </joint>
+    <gazebo reference="lwr_arm_2_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_2_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_2_motor" />
+        <joint name="lwr_arm_2_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_3_link">
+        <inertial>
+            <mass value="2.0" />
+            <origin rpy="0 0 0" xyz="0 -0.06 0.130" />
+            <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.0118666666667" iyz="0" izz="0.003" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_segment_a.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_segment_a_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_3_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_3_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.20" />
+        <axis xyz="0 1 0" />
+        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="2.26892802759" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
+        <dynamics damping="3.0" />
+        <parent link="lwr_arm_3_link" />
+        <child link="lwr_arm_4_link" />
+    </joint>
+    <gazebo reference="lwr_arm_3_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_3_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_3_motor" />
+        <joint name="lwr_arm_3_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_4_link">
+        <inertial>
+            <mass value="2.0" />
+            <origin rpy="0 0 0" xyz="0 0.06 0.07" />
+            <inertia ixx="0.0136666666667" ixy="0" ixz="0" iyy="0.0118666666667" iyz="0" izz="0.003" />
+        </inertial>
+        <visual>
+            <origin rpy="0 3.14159265359 3.14159265359" xyz="0 0 0.2" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_segment_b.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="0 3.14159265359 3.14159265359" xyz="0 0 0.2" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_segment_b_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_4_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_4_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.20" />
+        <axis xyz="0 0 1" />
+        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
+        <dynamics damping="1.0" />
+        <parent link="lwr_arm_4_link" />
+        <child link="lwr_arm_5_link" />
+    </joint>
+    <gazebo reference="lwr_arm_4_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_4_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_4_motor" />
+        <joint name="lwr_arm_4_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_5_link">
+        <inertial>
+            <mass value="2.0" />
+            <origin rpy="0 0 0" xyz="0 0 0.124" />
+            <inertia ixx="0.0126506666667" ixy="0" ixz="0" iyy="0.0108506666667" iyz="0" izz="0.003" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry name="lwr_arm_5_geom">
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_segment_last.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Orange" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_segment_last_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_5_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_5_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.19" />
+        <axis xyz="0 -1 0" />
+        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="3.14159265359" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
+        <dynamics damping="1.0" />
+        <parent link="lwr_arm_5_link" />
+        <child link="lwr_arm_6_link" />
+    </joint>
+    <gazebo reference="lwr_arm_5_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_5_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_5_motor" />
+        <joint name="lwr_arm_5_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_6_link">
+        <inertial>
+            <mass value="1.0" />
+            <origin rpy="0 0 0" xyz="0 0 0.0" />
+            <inertia ixx="0.00260416666667" ixy="0" ixz="0" iyy="0.00260416666667" iyz="0" izz="0.00260416666667" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_wrist.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Grey" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_wrist_convex.stl" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_6_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <joint name="lwr_arm_6_joint" type="revolute">
+        <origin rpy="0 0 0" xyz="0 0 0.078" />
+        <axis xyz="0 0 1" />
+        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="3.14159265359" />
+        <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
+        <dynamics damping="1.0" />
+        <parent link="lwr_arm_6_link" />
+        <child link="lwr_arm_7_link" />
+    </joint>
+    <gazebo reference="lwr_arm_6_joint">
+        <provideFeedback>1</provideFeedback>
+        <implicitSpringDamper>1</implicitSpringDamper>
+    </gazebo>
+    <transmission name="lwr_arm_6_trans" type="SimpleTransmission">
+        <actuator name="lwr_arm_6_motor" />
+        <joint name="lwr_arm_6_joint" />
+        <mechanicalReduction>1.0</mechanicalReduction>
+    </transmission>
+    <link name="lwr_arm_7_link">
+        <inertial>
+            <mass value="0.2" />
+            <origin xyz="0 0 0" />
+            <inertia ixx="6.66666666667e-05" ixy="0" ixz="0" iyy="6.66666666667e-05" iyz="0" izz="0.00012" />
+        </inertial>
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_flanche.dae" scale="100 100 100" />
+            </geometry>
+            <material name="Grey" />
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <!--mesh filename="model://kuka-lwr-4plus/meshes/convex/arm_flanche_convex.stl" scale="1.0 1.0 1.0"/-->
+                <mesh filename="model://kuka-lwr-4plus/meshes/arm_flanche.dae" scale="100 100 100" />
+            </geometry>
+            <surface>
+                <friction>
+                    <ode>
+                        <mu>0.01</mu>
+                        <mu2>0.01</mu2>
+                    </ode>
+                </friction>
+            </surface>
+        </collision>
+    </link>
+    <gazebo reference="lwr_arm_7_link">
+        <!--<material value="kuka-lwr.material"/>-->
+    </gazebo>
+    <!--joint name="lwr_arm_hand_fixed_joint" type="fixed">
+    <parent link="lwr_arm_7_link"/>
+    <child link="lwr_tool_mount"/>
+  </joint>
+  <link name="lwr_tool_mount"/-->
+    <!--xacro:lwr_arm_gazebo_controller namespace="" prefix="lwr" port="49938"/-->
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+</robot>

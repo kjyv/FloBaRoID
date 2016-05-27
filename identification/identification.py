@@ -67,11 +67,11 @@ class Identification(object):
         self.filterRegressor = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
-        # (seems to not increase or even decrease quality of estimation)
+        # needs small condition number, otherwise might amplify some parameters too much
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 1
+        self.useEssentialParams = 0
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -220,7 +220,6 @@ class Identification(object):
             print '({})'.format(self.link_names)
 
             self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
-
             self.helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
 
         if self.showTiming:
@@ -274,13 +273,16 @@ class Identification(object):
 
     def checkBlockImprovement(self):
         """ check if we want to add a new data block to the already selected ones """
-        # possible criteria:
+        # possible criteria for minimization:
         # * condition number of (base) regressor (+variations)
-        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori
-        new_condition_number = la.cond(self.YBase)
-
         # * largest per link condition number gets smaller (some are really huge though and are not
         # getting smaller with most new data)
+        # * estimation error gets smaller (same data or validation)
+        # ratio of min/max rel std devs
+
+        # use condition number of regressor
+        #new_condition_number = la.cond(self.YBase.dot(np.diag(self.xBaseModel)))   #weighted with a priori
+        new_condition_number = la.cond(self.YBase)
 
         # get condition number for each of the links
         linkConds = list()
@@ -300,12 +302,32 @@ class Identification(object):
         print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
 
         """
+        # use largest link condition number
         largest_idx = np.argmax(linkConds)  #2+np.argmax(linkConds[2:7])
         new_condition_number = linkConds[largest_idx]
         """
 
-        # * estimation error gets smaller
+        # use validation error
         # new_condition_number = self.val_error
+
+        # use std dev ratio
+        """
+        # get standard deviation of measurement and modeling error \sigma_{rho}^2
+        rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+        sigma_rho = rho/(self.num_used_samples-self.num_base_params)
+
+        # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+        C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
+        sigma_x = np.diag(C_xx)
+
+        # get relative standard deviation
+        p_sigma_x = np.sqrt(sigma_x)
+        for i in range(0, p_sigma_x.size):
+            if np.abs(self.xBase[i]) != 0:
+                p_sigma_x[i] /= np.abs(self.xBase[i])
+
+        new_condition_number = np.max(p_sigma_x)/np.min(p_sigma_x)
+        """
 
         if new_condition_number > self.old_condition_number:
             print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
@@ -754,7 +776,6 @@ class Identification(object):
             adds weighting with standard dev of estimation error on base regressor and params.
             """
 
-
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
 
@@ -767,7 +788,8 @@ class Identification(object):
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             import scipy.sparse as sparse
-            G = sparse.spdiags(np.repeat(self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -1003,7 +1025,6 @@ class Identification(object):
                 print("cond(YBase):{},".format(la.cond(self.YBase))),
                 #error = error_func(self)
 
-                if use_error_criterion:
                     #mse = mse_func(error, self)
                     #allow 5% of mean/median of measured value range
                     #mse_meas_torq = mse/np.median(torq_range)
@@ -1016,15 +1037,13 @@ class Identification(object):
                     #print("% mse of torq limits {},".format(mse_max_torq)),
                     #print("% mse of measured range {},".format(mse_meas_torq)),
                     print("error increase {}").format(error_increase_pham)
-                else:
-                    print("")
 
                 # while loop condition moved to here
-                #if ratio == old_ratio and old_ratio != 0:
-                #if ratio == old_ratio and old_ratio != 0 or ratio < 20:
-                if ratio < 25:
+                # TODO: consider to only stop when under ratio
+                # if error is to large at that point, advise to get more/better data
+                if ratio < 20:
                     break
-                if use_error_criterion and error_increase_pham > 2.5:
+                if use_error_criterion and error_increase_pham > 3.5:
                     break
 
                 if run_once and self.showEssentialSteps:
@@ -1329,7 +1348,7 @@ class Identification(object):
                         diff_pc = (100*diff)/0.01
 
                 #values for each line
-                if self.useEssentialParams and idx_ep < self.num_base_params and idx_p in self.stdEssentialIdx:
+                if self.useEssentialParams and idx_ep < self.num_essential_params and idx_p in self.stdEssentialIdx:
                     sigma = self.p_sigma_x[idx_ep]
                 else:
                     sigma = 0.0
@@ -1469,7 +1488,6 @@ class Identification(object):
                     print t,
                     idx_p+=1
                     print Style.RESET_ALL
-                print "\n"
 
         if self.selectBlocksFromMeasurements:
             print "used blocks: {}".format(self.usedBlocks)
@@ -1499,7 +1517,6 @@ class Identification(object):
 
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
                 format(self.res_error, self.apriori_error))
-        print ""
 
     def plot(self):
         """Display some torque plots."""
@@ -1562,7 +1579,7 @@ def main():
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--model_real', required=False, type=str, help='the file to load the model params for\
                         comparison from')
-    parser.add_argument('-o', '--output', required=False, type=str, help='the file to save the identified params to')
+    parser.add_argument('-o', '--model_output', required=False, type=str, help='the file to save the identified params to')
 
     parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,
                         help='the file(s) to load the measurements from')
@@ -1589,7 +1606,7 @@ def main():
         while 1:
             idf.estimateParameters()
             idf.estimateRegressorTorques()
-            #idf.estimateValidationTorques(args.validation)
+            #if args.validation: idf.estimateValidationTorques(args.validation)
             if(idf.checkBlockImprovement()):
                 idf.output(summary_only=True)
 
@@ -1599,34 +1616,26 @@ def main():
                 break
         idf.useEssentialParams = old_essential_option
 
-    print("checked all blocks, estimating output parameters...")
+    print("estimating output parameters...")
     idf.estimateParameters()
-
     idf.estimateRegressorTorques()
 
-    if idf.showMemUsage:
-        idf.printMemUsage()
-
-    if args.output:
-        idf.helpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.output, \
+    if idf.showMemUsage: idf.printMemUsage()
+    if args.model_output:
+        idf.helpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
                                         new_params=idf.xStd, link_names=idf.link_names)
 
-    if args.explain:
-        idf.output()
-
-    if args.plot:
-        if args.validation:
-            idf.estimateValidationTorques(args.validation)
-
-        idf.plot()
-
-    print("\n")
+    if args.explain: idf.output()
+    if args.validation: idf.estimateValidationTorques(args.validation)
+    if args.plot: idf.plot()
 
 if __name__ == '__main__':
    # import ipdb
    # import traceback
     #try:
     main()
+    print "\n"
+
     '''
     except Exception as e:
         if not isinstance(e, KeyboardInterrupt):

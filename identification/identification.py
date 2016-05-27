@@ -827,6 +827,9 @@ class Identification(object):
         else:
             self.xBase += self.xBaseModel   #both param vecs link relative linearized
 
+        if self.useAPriori:
+            self.xBase_essential[self.baseEssentialIdx] += self.xBaseModel[self.baseEssentialIdx]
+
     def getStdFromBase(self):
         # Note: assumes that xBase is still in error form if using a priori
         # i.e. don't call after getBaseParamsFromParamError
@@ -948,11 +951,6 @@ class Identification(object):
             xBase_orig = self.xBase.copy()
             YBase_orig = self.YBase.copy()
 
-            # add a priori info, xBase includes only parameter diffs
-            # to calculate proper errors
-            if self.useAPriori:
-                self.xBase += self.xBaseModel
-
             # count how many params were canceled
             b_c = 0
 
@@ -964,8 +962,11 @@ class Identification(object):
             # get initial errors of estimation
             self.estimateRegressorTorques('base')
 
+            if not self.useAPriori:
+                self.tauEstimated = self.tauMeasured - self.tauEstimated
+
             def error_func(inst):
-                rho = inst.tauMeasured-inst.tauEstimated   #error of median over all joints
+                rho = inst.tauEstimated
                 #rho = np.mean(inst.tauMeasured-inst.tauEstimated, axis=1)
                 #rho = np.square(la.norm(inst.tauMeasured-inst.tauEstimated))
                 return rho
@@ -983,10 +984,10 @@ class Identification(object):
                 plt.title("error probability")
                 plt.draw()
 
-            pham_percent_start = la.norm(self.tauMeasured-self.tauEstimated)*100/la.norm(self.tauMeasured)
+            pham_percent_start = la.norm(self.tauEstimated)*100/la.norm(self.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))
 
-            rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+            rho_start = np.square(la.norm(self.tauEstimated))
             p_sigma_x = 0
 
             has_run_once = 0
@@ -996,7 +997,7 @@ class Identification(object):
                 self.estimateRegressorTorques('base')
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
-                rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
+                rho = np.square(la.norm(self.tauEstimated))
                 sigma_rho = rho/(self.num_used_samples-self.num_base_params)
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
@@ -1017,25 +1018,16 @@ class Identification(object):
                 print "min-max ratio of relative stddevs: {},".format(ratio),
 
                 print("cond(YBase):{},".format(la.cond(self.YBase))),
-                #error = error_func(self)
 
-                    #mse = mse_func(error, self)
-                    #allow 5% of mean/median of measured value range
-                    #mse_meas_torq = mse/np.median(torq_range)
-                    #mse_percent = mse_meas_torq
-                    #error_increase = mse_percent - mse_percent_start
-
-                pham_percent = la.norm(self.tauMeasured-self.tauEstimated)*100/la.norm(self.tauMeasured)
+                pham_percent = la.norm(self.tauEstimated)*100/la.norm(self.tauMeasured)
                 error_increase_pham = pham_percent - pham_percent_start
 
-                    #print("% mse of torq limits {},".format(mse_max_torq)),
-                    #print("% mse of measured range {},".format(mse_meas_torq)),
                     print("error increase {}").format(error_increase_pham)
 
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
-                if ratio < 20:
+                if ratio < 25:
                     break
                 if use_error_criterion and error_increase_pham > 3.5:
                     break
@@ -1080,8 +1072,6 @@ class Identification(object):
 
                 # re-estimate parameters with reduced regressor
                 self.identifyBaseParameters()
-                if self.useAPriori:
-                    self.xBase += self.xBaseModel[base_idx]
 
                 b_c += 1
 
@@ -1099,7 +1089,6 @@ class Identification(object):
             self.xBase_essential[self.baseEssentialIdx] = self.prev_xBase
             self.YBase = YBase_orig
             self.xBase = xBase_orig
-            self.xBase -= self.xBaseModel
 
             print "Got {} essential parameters".format(self.num_essential_params)
 
@@ -1189,26 +1178,28 @@ class Identification(object):
                 #        + self.xBaseModel[self.baseEssentialIdx]
                 #else:
                     self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
-                #print self.xStdEssential
-                #self.xStdEssential[self.stdEssentialIdx] = (self.xBase_essential.dot(self.B.T) + self.xStdModel)[self.stdEssentialIdx]
-                #self.xStdEssential = (self.xBase_essential.dot(self.B.T) + self.xStdModel)
-
-
-    def getNonsingularRegressor(self):
-        with identificationHelpers.Timer() as t:
-            U, s, VH = la.svd(self.YStd, full_matrices=False)
-            V = VH.T
-            nb = self.num_base_params
-            st = self.N_PARAMS
-
-            # non-singular YStd, called W_st in Gautier, 2013
-            self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
-        if self.showTiming:
-            print("Getting non-singular regressor took %.03f sec." % t.interval)
 
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
         with identificationHelpers.Timer() as t:
+            U, s, VH = la.svd(self.YStd, full_matrices=False)
+            nb = self.num_base_params
+
+            #identify standard parameters directly
+            V_1 = VH.T[:, 0:nb]
+            U_1 = U[:, 0:nb]
+            s_1_inv = np.linalg.inv(np.diag(s[0:nb]))
+
+            x_est = V_1.dot(s_1_inv).dot(U_1.T).dot(self.tau)
+            if self.useAPriori:
+                self.xStd = self.xStdModel + x_est
+            else:
+                self.xStd = x_est
+
+            """
+            st = self.N_PARAMS
+            # non-singular YStd, called W_st in Gautier, 2013
+            self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
             self.YStdHatInv = la.pinv(self.YStdHat)
             x_tmp = np.dot(self.YStdHatInv, self.tau)
 
@@ -1216,21 +1207,22 @@ class Identification(object):
                 self.xStd = self.xStdModel + x_tmp
             else:
                 self.xStd = x_tmp
+            """
         if self.showTiming:
-            print("Identifying std parameters took %.03f sec." % t.interval)
+            print("Identifying std parameters directly took %.03f sec." % t.interval)
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
         with identificationHelpers.Timer() as t:
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
-            Y = self.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
-            U_, s_, VH_ = la.svd(Y, full_matrices=False)
+            Yst_e = self.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
+            Ue, se, VHe = la.svd(Yst_e, full_matrices=False)
             ne = self.num_essential_params  #nr. of essential params among base params
-            V_1 = VH_.T[:, 0:ne]
-            U_1 = U_[:, 0:ne]
-            s_1_inv = la.inv(np.diag(s_[0:ne]))
-            x_tmp = np.diag(self.xStdEssential).dot(V_1).dot(s_1_inv).dot(U_1.T).dot(self.tau)
+            V_1e = VHe.T[:, 0:ne]
+            U_1e = Ue[:, 0:ne]
+            s_1e_inv = la.inv(np.diag(se[0:ne]))
+            x_tmp = np.diag(self.xStdEssential).dot(V_1e).dot(s_1e_inv).dot(U_1e.T).dot(self.tau)
 
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_tmp
@@ -1252,7 +1244,6 @@ class Identification(object):
             if self.useAPriori:
                 self.getBaseParamsFromParamError()
             self.getStdEssentialParameters()
-            self.getNonsingularRegressor()
             self.identifyStandardEssentialParameters()
         else:
             self.getBaseRegressor()
@@ -1262,7 +1253,6 @@ class Identification(object):
                 if self.useAPriori:
                     self.getBaseParamsFromParamError()
             elif self.estimateWith is 'std_direct':
-                self.getNonsingularRegressor()
                 self.identifyStandardParameters()
 
     def output(self, summary_only=False):

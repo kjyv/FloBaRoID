@@ -67,7 +67,9 @@ class Identification(object):
         self.filterRegressor = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
-        # needs small condition number, otherwise might amplify some parameters too much
+        # needs small condition number, otherwise might amplify some parameters too much as the
+        # covariance estimation can be off (also assumes that error is zero mean and normal
+        # distributed)
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
@@ -788,8 +790,8 @@ class Identification(object):
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             import scipy.sparse as sparse
-            G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
-            #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -947,7 +949,9 @@ class Identification(object):
             YBase_orig = self.YBase.copy()
 
             # add a priori info, xBase includes only parameter diffs
-            self.xBase += self.xBaseModel
+            # TODO: try with absolute params and also corresponding regressors?
+            #if self.useAPriori:
+            #    self.xBase += self.xBaseModel
 
             # count how many params were canceled
             b_c = 0
@@ -1013,7 +1017,7 @@ class Identification(object):
                 prev_p_sigma_x = p_sigma_x
                 p_sigma_x = np.sqrt(sigma_x)
                 for i in range(0, p_sigma_x.size):
-                    if np.abs(self.xBase[i]) != 0:
+                    if self.xBase[i] != 0:
                         p_sigma_x[i] /= np.abs(self.xBase[i])
 
                 print("{} params|".format(self.num_base_params-b_c)),
@@ -1032,14 +1036,14 @@ class Identification(object):
                     #error_increase = mse_percent - mse_percent_start
 
                     pham_percent = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-                    error_increase_pham = pham_percent - pham_percent_start
+                error_increase_pham = np.abs(pham_percent - pham_percent_start)
 
                     #print("% mse of torq limits {},".format(mse_max_torq)),
                     #print("% mse of measured range {},".format(mse_meas_torq)),
                     print("error increase {}").format(error_increase_pham)
 
                 # while loop condition moved to here
-                # TODO: consider to only stop when under ratio
+                # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
                 if ratio < 20:
                     break
@@ -1185,9 +1189,12 @@ class Identification(object):
             else:
                 # weighting using base essential params (like in Gautier, 2013)
                 self.xStdEssential = np.zeros_like(self.xStdModel)
-                self.xStdEssential[self.stdEssentialIdx] = \
-                        self.xBase_essential[self.baseEssentialIdx] \
+                if self.useAPriori:
+                    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
                         + self.xBaseModel[self.baseEssentialIdx]
+                else:
+                    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
+
 
     def getNonsingularRegressor(self):
         with identificationHelpers.Timer() as t:

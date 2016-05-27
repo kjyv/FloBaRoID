@@ -58,6 +58,7 @@ class Identification(object):
         self.useAPriori = 1
 
         # whether only "good" data is being selected or simply all is used
+        # (reduces condition number)
         self.selectBlocksFromMeasurements = 0
         self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
 
@@ -312,8 +313,8 @@ class Identification(object):
         # new_condition_number = self.val_error
 
         # use std dev ratio
-        """
         self.estimateRegressorTorques()
+        """
         # get standard deviation of measurement and modeling error \sigma_{rho}^2
         rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
         sigma_rho = rho/(self.num_used_samples-self.num_base_params)
@@ -732,7 +733,7 @@ class Identification(object):
             if self.filterRegressor:
                 order = 6  #Filter order
                 fs = 200.0   #Sampling freq #TODO: get from measurements
-                fc = fs/2 - 10 #90.0   #Cut-off frequency (Hz)
+                fc = fs/2 - 50 #90.0   #Cut-off frequency (Hz)
                 b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
                     for i in range(0, self.N_DOFS):
@@ -797,7 +798,7 @@ class Identification(object):
 
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(la.norm(self.tauMeasured-self.tauEstimated, axis=0))/ \
+            self.sigma_rho = np.square(la.norm(self.tauEstimated))/ \
                                   (self.num_used_samples-self.num_base_params)
 
             # repeat stddev values for each measurement block (n_joints * num_samples)
@@ -827,7 +828,7 @@ class Identification(object):
         else:
             self.xBase += self.xBaseModel   #both param vecs link relative linearized
 
-        if self.useAPriori:
+        if self.useEssentialParams:
             self.xBase_essential[self.baseEssentialIdx] += self.xBaseModel[self.baseEssentialIdx]
 
     def getStdFromBase(self):
@@ -924,10 +925,10 @@ class Identification(object):
 
         if self.skipSamples > 0:
             self.tauMeasuredValidation = v_data['torques'][::self.skipSamples+1]
-            self.T = v_data['times'][::self.skipSamples+1]
+            self.Tv = v_data['times'][::self.skipSamples+1]
         else:
             self.tauMeasuredValidation = v_data['torques']
-            self.T = v_data['times']
+            self.Tv = v_data['times']
 
         self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation)*100/la.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
@@ -1509,9 +1510,10 @@ class Identification(object):
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(self.xStd)))
 
-        self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
         self.estimateRegressorTorques(estimateWith='urdf')
         self.apriori_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        self.estimateRegressorTorques()
+        self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
 
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
                 format(self.res_error, self.apriori_error))
@@ -1549,10 +1551,12 @@ class Identification(object):
             plt.title(title)
             for d_i in range(0, len(data)):
                 if len(data[d_i].shape) > 1:
+                    #data matrices
                     for i in range(0, data[d_i].shape[1]):
                         l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
                         plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
                 else:
+                    #data vector
                     plt.plot(self.T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
 
             leg = plt.legend(loc='best', fancybox=True, fontsize=10)

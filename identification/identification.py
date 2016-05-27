@@ -63,7 +63,6 @@ class Identification(object):
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
-        # doesn't make any difference though it seems
         self.filterRegressor = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
@@ -314,6 +313,7 @@ class Identification(object):
 
         # use std dev ratio
         """
+        self.estimateRegressorTorques()
         # get standard deviation of measurement and modeling error \sigma_{rho}^2
         rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
         sigma_rho = rho/(self.num_used_samples-self.num_base_params)
@@ -538,6 +538,20 @@ class Identification(object):
 
         if not self.robotranRegressor:
             self.YStd = self.regressor_stack
+
+        self.sample_end = self.samples['positions'].shape[0]
+        if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
+
+        if self.simulate:
+            if self.useAPriori:
+                tau = self.torques_stack    # use original measurements, not delta
+            else:
+                tau = self.tau
+            self.tauMeasured = np.reshape(tau, (self.num_used_samples, self.N_DOFS))
+        else:
+            self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
+
+        self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
 
         if self.showTiming:
             print('Simulation for regressors took %.03f sec.' % simulate_time)
@@ -790,8 +804,8 @@ class Identification(object):
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             import scipy.sparse as sparse
-            #G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
-            G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -809,9 +823,9 @@ class Identification(object):
 
     def getBaseParamsFromParamError(self):
         if self.robotranRegressor:
-            self.xBase = self.xBase + self.xStdModelAsBase   #both param vecs barycentric
+            self.xBase += self.xStdModelAsBase   #both param vecs barycentric
         else:
-            self.xBase = self.xBase + self.xBaseModel   #both param vecs link relative linearized
+            self.xBase += self.xBaseModel   #both param vecs link relative linearized
 
     def getStdFromBase(self):
         # Note: assumes that xBase is still in error form if using a priori
@@ -837,7 +851,7 @@ class Identification(object):
                 if estimateWith is 'base':
                     tauEst = np.dot(self.YBase, self.xBase)
                 elif estimateWith is 'urdf':
-                    tauEst = np.dot(self.YBase, self.xStdModelAsBase)
+                    tauEst = np.dot(self.YBase, self.xBaseModel)
                 elif estimateWith in ['std', 'std_direct']:
                     print("Error: I don't have a standard regressor from symbolic equations.")
                     sys.exit(-1)
@@ -858,20 +872,6 @@ class Identification(object):
 
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
             self.tauEstimated = np.reshape(tauEst, (self.num_used_samples, self.N_DOFS))
-
-            self.sample_end = self.samples['positions'].shape[0]
-            if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
-
-            if self.simulate:
-                if self.useAPriori:
-                    tau = self.torques_stack    # use original measurements, not delta
-                else:
-                    tau = self.tau
-                self.tauMeasured = np.reshape(tau, (self.num_used_samples, self.N_DOFS))
-            else:
-                self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
-
-            self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
 
         #print("torque estimation took %.03f sec." % t.interval)
 
@@ -927,7 +927,7 @@ class Identification(object):
             self.T = v_data['times']
 
         self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation)*100/la.norm(self.tauMeasuredValidation)
-        print("Validation error: {}%".format(self.val_error))
+        print("Validation error (std params): {}%".format(self.val_error))
 
     def getBaseEssentialParameters(self):
         """
@@ -942,16 +942,16 @@ class Identification(object):
         with identificationHelpers.Timer() as t:
             # use mean least squares (actually median least abs) to determine when the error
             # introduced by model reduction gets too large
-            use_error_criterion = 1
+            use_error_criterion = 0
 
             # keep current values
             xBase_orig = self.xBase.copy()
             YBase_orig = self.YBase.copy()
 
             # add a priori info, xBase includes only parameter diffs
-            # TODO: try with absolute params and also corresponding regressors?
-            #if self.useAPriori:
-            #    self.xBase += self.xBaseModel
+            # to calculate proper errors
+            if self.useAPriori:
+                self.xBase += self.xBaseModel
 
             # count how many params were canceled
             b_c = 0
@@ -970,25 +970,7 @@ class Identification(object):
                 #rho = np.square(la.norm(inst.tauMeasured-inst.tauEstimated))
                 return rho
 
-            def mse_func(error, inst):
-                mse = np.sum(np.abs(error)/inst.tauMeasured.shape[0])
-                return mse
-
             error_start = error_func(self)
-
-            if self.showErrorHistogram:
-                h = plt.hist(error_start, 50)
-                plt.title("error probability")
-                plt.draw()
-
-            #range of measured torque
-            #torq_range = np.max(self.tauMeasured, axis=0)+(-1*np.min(self.tauMeasured, axis=0))
-
-            #get starting mean squared error
-            #mse_start = mse_func(error_start, self)
-            #mse_percent_start = mse_start/np.median(torq_range)
-            pham_percent_start = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-            print("starting percentual error {}".format(pham_percent_start))
 
             k2, p = stats.normaltest(error_start, axis=0)
             if np.mean(p) > 0.05:
@@ -996,10 +978,18 @@ class Identification(object):
             else:
                 print("error is not normal distributed (p={})".format(p))
 
+            if self.showErrorHistogram:
+                h = plt.hist(error_start, 50)
+                plt.title("error probability")
+                plt.draw()
+
+            pham_percent_start = la.norm(self.tauMeasured-self.tauEstimated)*100/la.norm(self.tauMeasured)
+            print("starting percentual error {}".format(pham_percent_start))
+
             rho_start = np.square(la.norm(self.tauMeasured-self.tauEstimated))
             p_sigma_x = 0
 
-            run_once = 0
+            has_run_once = 0
             # start removing non-essential parameters
             while 1:
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
@@ -1035,8 +1025,8 @@ class Identification(object):
                     #mse_percent = mse_meas_torq
                     #error_increase = mse_percent - mse_percent_start
 
-                    pham_percent = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-                error_increase_pham = np.abs(pham_percent - pham_percent_start)
+                pham_percent = la.norm(self.tauMeasured-self.tauEstimated)*100/la.norm(self.tauMeasured)
+                error_increase_pham = pham_percent - pham_percent_start
 
                     #print("% mse of torq limits {},".format(mse_max_torq)),
                     #print("% mse of measured range {},".format(mse_meas_torq)),
@@ -1050,18 +1040,21 @@ class Identification(object):
                 if use_error_criterion and error_increase_pham > 3.5:
                     break
 
-                if run_once and self.showEssentialSteps:
-                    # get indices of the essential base params
+                if has_run_once and self.showEssentialSteps:
+                    # put some values into global variable for output
                     self.baseNonEssentialIdx = not_essential_idx
                     self.baseEssentialIdx = [x for x in range(0,self.num_base_params) if x not in not_essential_idx]
                     self.num_essential_params = len(self.baseEssentialIdx)
                     self.xBase_essential = np.zeros_like(xBase_orig)
+
+                    # take current xBase with reduced parameters as essentials to display
                     self.xBase_essential[self.baseEssentialIdx] = self.xBase
+
                     self.p_sigma_x = p_sigma_x
 
                     old_showStd = self.showStandardParams
-                    old_showBase = self.showStandardParams
-                    self.showStandardParams = 1
+                    old_showBase = self.showBaseParams
+                    self.showStandardParams = 0
                     self.showBaseParams = 1
                     self.output()
                     self.showStandardParams = old_showStd
@@ -1079,16 +1072,17 @@ class Identification(object):
                 param_base_idx = base_idx[param_idx]
                 if param_base_idx not in not_essential_idx:
                     not_essential_idx.append(param_base_idx)
-                else:
-                    # if parameter was set to zero and still has the largest std deviation,
-                    # something is weird..? (probably only happens when not deleting columns)
-                    print("param {} already canceled before, stopping".format(param_base_idx))
-                    break
 
                 self.prev_xBase = self.xBase.copy()
                 self.xBase = np.delete(self.xBase, param_idx, 0)
                 base_idx = np.delete(base_idx, param_idx, 0)
                 self.YBase = np.delete(self.YBase, param_idx, 1)
+
+                # re-estimate parameters with reduced regressor
+                self.identifyBaseParameters()
+                if self.useAPriori:
+                    self.xBase += self.xBaseModel[base_idx]
+
                 b_c += 1
 
             not_essential_idx.pop()
@@ -1105,6 +1099,7 @@ class Identification(object):
             self.xBase_essential[self.baseEssentialIdx] = self.prev_xBase
             self.YBase = YBase_orig
             self.xBase = xBase_orig
+            self.xBase -= self.xBaseModel
 
             print "Got {} essential parameters".format(self.num_essential_params)
 
@@ -1189,11 +1184,14 @@ class Identification(object):
             else:
                 # weighting using base essential params (like in Gautier, 2013)
                 self.xStdEssential = np.zeros_like(self.xStdModel)
-                if self.useAPriori:
-                    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
-                        + self.xBaseModel[self.baseEssentialIdx]
-                else:
+                #if self.useAPriori:
+                #    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
+                #        + self.xBaseModel[self.baseEssentialIdx]
+                #else:
                     self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
+                #print self.xStdEssential
+                #self.xStdEssential[self.stdEssentialIdx] = (self.xBase_essential.dot(self.B.T) + self.xStdModel)[self.stdEssentialIdx]
+                #self.xStdEssential = (self.xBase_essential.dot(self.B.T) + self.xStdModel)
 
 
     def getNonsingularRegressor(self):
@@ -1251,11 +1249,11 @@ class Identification(object):
             self.getBaseRegressor()
             self.identifyBaseParameters()
             self.getBaseEssentialParameters()
+            if self.useAPriori:
+                self.getBaseParamsFromParamError()
             self.getStdEssentialParameters()
             self.getNonsingularRegressor()
             self.identifyStandardEssentialParameters()
-            if self.useAPriori:
-                self.getBaseParamsFromParamError()
         else:
             self.getBaseRegressor()
             if self.estimateWith in ['base', 'std']:
@@ -1341,7 +1339,10 @@ class Identification(object):
                     diff_apriori = apriori - real
                     #if apriori == 0: apriori = 0.01
                     if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
-                    else: pc_delta = 0
+                    elif diff_real != 0:
+                        pc_delta = np.abs((100/0.01)*diff_real)
+                    else:
+                        pc_delta = 0
                     sum_pc_delta_all += pc_delta
                     if idx_p in self.stdEssentialIdx:
                         sum_pc_delta_ess += pc_delta
@@ -1612,7 +1613,6 @@ def main():
         # loop over input blocks and select good ones
         while 1:
             idf.estimateParameters()
-            idf.estimateRegressorTorques()
             #if args.validation: idf.estimateValidationTorques(args.validation)
             if(idf.checkBlockImprovement()):
                 idf.output(summary_only=True)

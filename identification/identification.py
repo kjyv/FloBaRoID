@@ -3,17 +3,20 @@
 
 import sys
 import math
-import numpy as np
-import numpy.linalg as la
-#import numexpr as ne
-import scipy as sp
-from scipy import signal
-import scipy.linalg as sla
-import scipy.stats as stats
 
 import matplotlib #; matplotlib.use('qt4agg')
 import matplotlib.pyplot as plt
 from IPython import embed
+
+import numpy as np
+#import numexpr as ne
+import numpy.linalg as la
+import scipy as sp
+from scipy import signal
+import scipy.linalg as sla
+import scipy.stats as stats
+import scipy.optimize as opt
+import scipy.sparse as sparse
 
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
@@ -32,6 +35,8 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # TODO: add/use contact forces
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
+# TODO: use experiment config files, read options and data paths from there
+# TODO: allow visual filtering and data selection (take raw data as input)
 
 class Identification(object):
     def __init__(self, urdf_file, urdf_file_real, measurements_files, regressor_file):
@@ -72,8 +77,11 @@ class Identification(object):
         # distributed)
         self.useWLS = 0
 
+        # use bounds for the estimated parameters
+        self.useBoundedLeastSquares = 0
+
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
+        self.useEssentialParams = 1
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -89,7 +97,7 @@ class Identification(object):
 
         # output options
         self.showStandardParams = 1
-        self.showBaseParams = 0
+        self.showBaseParams = 1
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -717,7 +725,7 @@ class Identification(object):
         # i (independent column) = (value at i,j) * j (dependent column index among the others)
         R1 = R[0:r, 0:r]
         R2 = R[0:r, r:]
-        self.linear_deps = la.inv(R1).dot(R2)
+        self.linear_deps = sla.inv(R1).dot(R2)
 
     def getBaseRegressor(self):
         with identificationHelpers.Timer() as t:
@@ -777,15 +785,38 @@ class Identification(object):
         # jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
         # self.generator.getFrameJacobian('arm', jacobian)
 
-        # invert equation to get parameter vector from measurements and model + system state values
-        #self.YBaseInv = la.pinv(self.YBase)
-        #print("YBaseInv: {}".format(self.YBaseInv.shape))
-        #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
-
-        self.xBase = la.lstsq(YBase, tau)[0]
-        #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
-
         self.xBaseModel = np.dot(self.B.T, self.xStdModel)
+
+        # invert equation to get parameter vector from measurements and model + system state values
+        if self.useBoundedLeastSquares and not self.useEssentialParams:
+            if self.useAPriori:
+                ub = np.abs(self.xBaseModel*0.1)
+                lb = -np.abs(self.xBaseModel*0.1)
+            else:
+                ub = self.xBaseModel + np.abs(self.xBaseModel*0.75)
+                lb = self.xBaseModel - np.abs(self.xBaseModel*0.75)
+            for v in range(0, len(ub)):
+                if ub[v] == 0:
+                    ub = 0.1
+                if lb[v] == 0:
+                    lb = -0.1
+
+            b = (lb,ub)
+            res = opt.lsq_linear(YBase, tau, bounds=b)
+            self.xBase = res.x
+        else:
+            #self.YBaseInv = la.pinv(self.YBase)
+            #print("YBaseInv: {}".format(self.YBaseInv.shape))
+            #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
+
+            #damped least squares
+            #from scipy.sparse.linalg import lsqr
+            #self.xBase = lsqr(YBase, tau, damp=10)[0]
+
+            #ordinary least squares
+            self.xBase = la.lstsq(YBase, tau)[0]
+
+        #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
 
         if self.useWLS:
             """
@@ -798,13 +829,12 @@ class Identification(object):
 
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(la.norm(self.tauEstimated))/ \
-                                  (self.num_used_samples-self.num_base_params)
+            self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
+                                       (self.num_used_samples-self.num_base_params)
 
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
-            import scipy.sparse as sparse
             G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
             #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
@@ -985,10 +1015,10 @@ class Identification(object):
                 plt.title("error probability")
                 plt.draw()
 
-            pham_percent_start = la.norm(self.tauEstimated)*100/la.norm(self.tauMeasured)
+            pham_percent_start = sla.norm(self.tauEstimated)*100/sla.norm(self.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))
 
-            rho_start = np.square(la.norm(self.tauEstimated))
+            rho_start = np.square(sla.norm(self.tauEstimated))
             p_sigma_x = 0
 
             has_run_once = 0
@@ -998,11 +1028,11 @@ class Identification(object):
                 self.estimateRegressorTorques('base')
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
-                rho = np.square(la.norm(self.tauEstimated))
+                rho = np.square(sla.norm(self.tauEstimated))
                 sigma_rho = rho/(self.num_used_samples-self.num_base_params)
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-                C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
+                C_xx = sigma_rho*(sla.inv(np.dot(self.YBase.T, self.YBase)))
                 sigma_x = np.diag(C_xx)
 
                 # get relative standard deviation
@@ -1020,10 +1050,10 @@ class Identification(object):
 
                 print("cond(YBase):{},".format(la.cond(self.YBase))),
 
-                pham_percent = la.norm(self.tauEstimated)*100/la.norm(self.tauMeasured)
+                pham_percent = sla.norm(self.tauEstimated)*100/sla.norm(self.tauMeasured)
+                #TODO: why does this get negative?
                 error_increase_pham = pham_percent - pham_percent_start
-
-                    print("error increase {}").format(error_increase_pham)
+                print("error increase {}").format(error_increase_pham)
 
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
@@ -1057,7 +1087,7 @@ class Identification(object):
                     print self.baseNonEssentialIdx
                     raw_input("Press return...")
                 else:
-                    run_once = 1
+                    has_run_once = 1
 
                 #cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
@@ -1178,7 +1208,7 @@ class Identification(object):
                 #    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
                 #        + self.xBaseModel[self.baseEssentialIdx]
                 #else:
-                    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
+                self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
@@ -1218,11 +1248,11 @@ class Identification(object):
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
             Yst_e = self.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
-            Ue, se, VHe = la.svd(Yst_e, full_matrices=False)
+            Ue, se, VHe = sla.svd(Yst_e, full_matrices=False)
             ne = self.num_essential_params  #nr. of essential params among base params
             V_1e = VHe.T[:, 0:ne]
             U_1e = Ue[:, 0:ne]
-            s_1e_inv = la.inv(np.diag(se[0:ne]))
+            s_1e_inv = sla.inv(np.diag(se[0:ne]))
             x_tmp = np.diag(self.xStdEssential).dot(V_1e).dot(s_1e_inv).dot(U_1e.T).dot(self.tau)
 
             if self.useAPriori:
@@ -1241,6 +1271,7 @@ class Identification(object):
         if self.useEssentialParams:
             self.getBaseRegressor()
             self.identifyBaseParameters()
+            self.getStdFromBase()
             self.getBaseEssentialParameters()
             if self.useAPriori:
                 self.getBaseParamsFromParamError()
@@ -1511,10 +1542,9 @@ class Identification(object):
                         format(sum_pc_delta_all/len(self.xStd)))
 
         self.estimateRegressorTorques(estimateWith='urdf')
-        self.apriori_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
+        self.apriori_error = sla.norm(self.tauEstimated-self.tauMeasured)*100/sla.norm(self.tauMeasured)
         self.estimateRegressorTorques()
-        self.res_error = la.norm(self.tauEstimated-self.tauMeasured)*100/la.norm(self.tauMeasured)
-
+        self.res_error = sla.norm(self.tauEstimated-self.tauMeasured)*100/sla.norm(self.tauMeasured)
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
                 format(self.res_error, self.apriori_error))
 
@@ -1533,7 +1563,8 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
             ([self.tauEstimated], 'Estimated Torques'),
-            ([self.tauMeasured - self.tauEstimated], 'Estimation Error'),
+            ([self.tauMeasured-self.tauEstimated], 'Estimation Error'),
+            #([self.tauEstimatedValidation], 'Validation Error'),
             #([self.samples['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
             #([self.samples['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
             #([self.samples['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),

@@ -29,6 +29,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
 # Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
+# Zag et. al, 1991, Application of the Weighted Least Squares Parameter Estimation Method to the Robot Calibration
 # Jubien, 2014: Dynamic identification of the Kuka LWR robot using motor torques and joint torque
 # sensors data
 
@@ -820,7 +821,7 @@ class Identification(object):
 
         if self.useWLS:
             """
-            additionally do weighted least squares IDIM-WLS, cf. Poignet, Gautier, 2000 and Gautier, 1997.
+            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991 and Gautier, 1997.
             adds weighting with standard dev of estimation error on base regressor and params.
             """
 

@@ -29,7 +29,8 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
 # Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
-# Zag et. al, 1991, Application of the Weighted Least Squares Parameter Estimation Method to the Robot Calibration
+# Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the Robot Calibration
+# Venture et al, 2010: A numerical method for choosing motions with optimal excitation properties for identification of biped dynamics
 # Jubien, 2014: Dynamic identification of the Kuka LWR robot using motor torques and joint torque
 # sensors data
 
@@ -46,7 +47,7 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 4    #how many values to skip before using the next sample
+        self.skipSamples = 2    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -65,12 +66,8 @@ class Identification(object):
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
-        self.selectBlocksFromMeasurements = 0
+        self.selectBlocksFromMeasurements = 1
         self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
-
-        # whether to filter the regressor columns
-        # (cutoff frequency is system dependent)
-        self.filterRegressor = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
@@ -78,11 +75,16 @@ class Identification(object):
         # distributed)
         self.useWLS = 0
 
+        # whether to identify and use direct standard with essential parameters
+        self.useEssentialParams = 0
+
+        # whether to filter the regressor columns
+        # (cutoff frequency is system dependent)
+        # mostly not improving results
+        self.filterRegressor = 0
+
         # use bounds for the estimated parameters
         self.useBoundedLeastSquares = 0
-
-        # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 1
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -174,9 +176,6 @@ class Identification(object):
                     else:
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size, :]
 
-                self.old_condition_number = 1e60
-                self.last_largest_value = 1e60
-
                 self.num_selected_samples = self.samples['positions'].shape[0]
                 self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
             else:
@@ -185,6 +184,7 @@ class Identification(object):
 
             self.usedBlocks = list()
             self.unusedBlocks = list()
+            self.seenBlocks = list()
 
             # create generator instance and load model
             self.generator = iDynTree.DynamicsRegressorGenerator()
@@ -259,7 +259,7 @@ class Identification(object):
         self.updateNumSamples()
         print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
 
-    def nextSampleBlock(self):
+    def getNextSampleBlock(self):
         """ fill samples with next measurements block """
 
         # advance to next block or end of data
@@ -268,22 +268,19 @@ class Identification(object):
         if self.block_pos + self.block_size > self.num_loaded_samples:
             self.block_size = self.num_loaded_samples - self.block_pos
 
-        print "adding next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
+        print "getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
 
         for k in self.measurements.keys():
             if k == 'times':
                 mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size]
-                #fix time offsets
-                mv = mv - mv[0] + (mv[1]-mv[0]) #let values start with first time diff
-                mv = mv + self.samples[k][-1] #add after previous times
-                self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
             else:
                 mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size,:]
-                self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
+            self.samples[k] = mv
+
         self.updateNumSamples()
 
-    def checkBlockImprovement(self):
-        """ check if we want to add a new data block to the already selected ones """
+    def getBlockStats(self):
+        """ check if we want to keep a new data block with the already selected ones """
         # possible criteria for minimization:
         # * condition number of (base) regressor (+variations)
         # * largest per link condition number gets smaller (some are really huge though and are not
@@ -341,19 +338,74 @@ class Identification(object):
         new_condition_number = np.max(p_sigma_x)/np.min(p_sigma_x)
         """
 
-        if new_condition_number > self.old_condition_number:
-            print "not using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
-            self.removeLastSampleBlock()
-            self.unusedBlocks.append(self.block_pos)
-            is_better = False
-        else:
-            print "using block starting at {} (cond {})".format(self.block_pos, new_condition_number)
-            self.usedBlocks.append(self.block_pos)
-            self.old_condition_number = new_condition_number
-            is_better = True
+        self.seenBlocks.append((self.block_pos, self.block_size, new_condition_number, linkConds))
 
-        return is_better
+    def selectBlocks(self):
+        """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""
 
+        # select blocks with best 20% condition numbers
+        perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], 30)
+
+        bs_all = 0
+        for block in self.seenBlocks:
+            (b,bs,cond,linkConds) = block
+            if cond > perc_cond:
+                print "not using block starting at {} (cond {})".format(b, cond)
+                self.unusedBlocks.append(block)
+            else:
+                print "using block starting at {} (cond {})".format(b, cond)
+                self.usedBlocks.append(block)
+            bs_all += bs
+
+        ## look at sub-regressor patterns and throw out some similar blocks
+
+        print("checking for similar sub-regressor patterns")
+        # create variance matrix
+        cond_matrix = np.zeros((bs_all, self.N_LINKS))
+        c = 0
+        for block in self.usedBlocks:
+            (b,bs,cond,linkConds) = block
+            cond_matrix[c, :] = linkConds
+            c+=1
+
+        #check for pairs that are less than e.g. 10% of each other away
+        # if found, delete larger one of the original blocks from usedBlocks (move to unused)
+        variances = np.var(cond_matrix[0:c,:],axis=1)
+        v_idx = np.array(range(0, c))
+        sort_idx = np.argsort(variances)
+
+        to_delete = list()
+        for i in range(1, c):
+            if np.abs(variances[sort_idx][i-1]-variances[sort_idx][i]) < np.abs(variances[sort_idx][i])*0.15:
+                to_delete.append(v_idx[sort_idx][i])
+
+        for d in np.sort(to_delete)[::-1]:
+            print "delete block {}".format(self.usedBlocks[d][0])
+            del self.usedBlocks[d]
+
+    def assembleSelectedBlocks(self):
+        print("assembling selected blocks...\n")
+        for k in self.measurements.keys():
+            if not len(self.usedBlocks):
+                break
+
+            #init with first block
+            (b, bs, cond, linkConds) = self.usedBlocks[0]
+            self.samples[k] = self.measurements[k][b:b+bs]
+
+            #append
+            for i in range(1, len(self.usedBlocks)):
+                (b, bs, cond, linkConds) = self.usedBlocks[i]
+                if k == 'times':
+                    mv = self.measurements[k][b:b + bs]
+                    #fix time offsets
+                    mv = mv - mv[0] + (mv[1]-mv[0]) #let values start with first time diff
+                    mv = mv + self.samples[k][-1]   #add after previous times
+                    self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
+                else:
+                    mv = self.measurements[k][b:b + bs,:]
+                    self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
+        self.updateNumSamples()
 
     def initRegressors(self):
         with identificationHelpers.Timer() as t:
@@ -1434,7 +1486,7 @@ class Identification(object):
                 print "\n"
 
         ### print base params
-        if self.showBaseParams and self.estimateWith not in ['urdf', 'std_direct']:
+        if self.showBaseParams and not summary_only and self.estimateWith not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not self.useEssentialParams:
                 baseEssentialIdx = range(0, self.num_base_params)
@@ -1521,8 +1573,11 @@ class Identification(object):
                     print Style.RESET_ALL
 
         if self.selectBlocksFromMeasurements:
-            print "used blocks: {}".format(self.usedBlocks)
-            print "unused blocks: {}".format(self.unusedBlocks)
+            if len(self.usedBlocks):
+                print "used {} of {} blocks: {}".format(len(self.usedBlocks),
+                                                        len(self.usedBlocks)+len(self.unusedBlocks),
+                                                        [b for (b,bs,cond,linkConds) in self.usedBlocks])
+            #print "unused blocks: {}".format(self.unusedBlocks)
             print "condition number: {}".format(la.cond(self.YBase))
 
         if self.showStandardParams:
@@ -1639,14 +1694,16 @@ def main():
         # loop over input blocks and select good ones
         while 1:
             idf.estimateParameters()
-            #if args.validation: idf.estimateValidationTorques(args.validation)
-            if(idf.checkBlockImprovement()):
-                idf.output(summary_only=True)
+            idf.getBlockStats()
+            idf.output(summary_only=True)
 
             if idf.hasMoreSamples():
-                idf.nextSampleBlock()
+                idf.getNextSampleBlock()
             else:
                 break
+
+        idf.selectBlocks()
+        idf.assembleSelectedBlocks()
         idf.useEssentialParams = old_essential_option
 
     print("estimating output parameters...")

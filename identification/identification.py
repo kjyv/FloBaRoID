@@ -3,9 +3,6 @@
 
 import sys
 import math
-
-import matplotlib #; matplotlib.use('webagg')
-import matplotlib.pyplot as plt
 from IPython import embed
 
 import numpy as np
@@ -18,6 +15,9 @@ import scipy.stats as stats
 import scipy.optimize as opt
 import scipy.sparse as sparse
 
+import matplotlib
+import matplotlib.pyplot as plt
+
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import identificationHelpers
@@ -29,8 +29,10 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
 # Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
-# Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the Robot Calibration
-# Venture et al, 2010: A numerical method for choosing motions with optimal excitation properties for identification of biped dynamics
+# Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the
+# Robot Calibration
+# Venture et al, 2010: A numerical method for choosing motions with optimal excitation properties
+# for identification of biped dynamics
 # Jubien, 2014: Dynamic identification of the Kuka LWR robot using motor torques and joint torque
 # sensors data
 
@@ -90,15 +92,16 @@ class Identification(object):
         # well known or introduce problems
         self.dontIdentifyMasses = 0
 
-        # some investigation output
+        # how to output plots and other stuff ['matplotlib', 'html']
+        self.outputModule = 'html'
+
+        # options for console output
         self.outputBarycentric = 0     #output all values in barycentric (e.g. urdf) form
         self.showMemUsage = 0          #print used memory for different variables
         self.showTiming = 0            #show times various steps have taken
         self.showRandomRegressor = 0   #show 2d plot of random regressor
         self.showErrorHistogram = 0    #show estimation error distribution
         self.showEssentialSteps = 0    #stop after every reduction step and show values
-
-        # output options
         self.showStandardParams = 1
         self.showBaseParams = 1
 
@@ -891,8 +894,10 @@ class Identification(object):
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
-            G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
-            #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0, self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            G = sparse.spdiags(np.repeat(1/self.sigma_rho, self.num_used_samples), 0,
+                               self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #G = sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
+            #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
             # get standard deviation \sigma_{x} (of the estimated parameter vector x)
             #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
@@ -1225,9 +1230,6 @@ class Identification(object):
             if self.dontIdentifyMasses:
                 ps = range(0,self.N_PARAMS, 10)
                 self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
-
-            # add some other params for testing (useCADWeighting and maybe increase change num_essential_params)
-            #self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, [19,22,21,25,26,27,31,33,34,35,38,41,42,44,45,46,48,49,55,56,57,58,63,64,66,68,70,75,76,79]))
 
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
@@ -1631,30 +1633,15 @@ class Identification(object):
             #([self.samples['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
         ]
 
-        # scale all figures to same ranges and add some margin
-        ymin = np.min([self.tauMeasured, self.tauEstimated])
-        ymin += ymin * 0.05
-        ymax = np.max([self.tauMeasured, self.tauEstimated])
-        ymax += ymax * 0.05
-
-        for (data, title) in datasets:
-            plt.figure()
-            plt.ylim([ymin, ymax])
-            plt.title(title)
-            for d_i in range(0, len(data)):
-                if len(data[d_i].shape) > 1:
-                    #data matrices
-                    for i in range(0, data[d_i].shape[1]):
-                        l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
-                else:
-                    #data vector
-                    plt.plot(self.T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
-
-            leg = plt.legend(loc='best', fancybox=True, fontsize=10)
-            leg.draggable()
-        plt.show()
-        #self.samples.close()
+        if self.outputModule is 'matplotlib':
+            from outputMatplotlib import OutputMatplotlib
+            output = OutputMatplotlib(datasets, self.T, colors, self.jointNames)
+            output.render()
+        elif self.outputModule is 'html':
+            from outputHTML import OutputHTML
+            output = OutputHTML(datasets, self.T, colors, self.jointNames)
+            output.render()
+            #output.runServer()
 
     def printMemUsage(self):
         import humanize

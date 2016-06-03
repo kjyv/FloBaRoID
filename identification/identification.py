@@ -4,7 +4,7 @@
 import sys
 import math
 
-import matplotlib #; matplotlib.use('qt4agg')
+import matplotlib #; matplotlib.use('webagg')
 import matplotlib.pyplot as plt
 from IPython import embed
 
@@ -293,21 +293,7 @@ class Identification(object):
         new_condition_number = la.cond(self.YBase)
 
         # get condition number for each of the links
-        linkConds = list()
-        for i in range(0, self.N_LINKS):
-            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
-
-            for j in range(0, self.num_base_params):
-                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
-                    if dep in range(i*10, i*10+9):
-                        base_columns.append(j)
-            if not len(base_columns):
-                linkConds.append(99999)
-            else:
-                linkConds.append(la.cond(self.YBase[:, base_columns]))
-
-            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
-        print("Condition numbers of link sub-regressor: [{}]\n".format(linkConds))
+        linkConds = self.getSubregressorsConditionNumbers()
 
         """
         # use largest link condition number
@@ -343,10 +329,11 @@ class Identification(object):
     def selectBlocks(self):
         """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""
 
-        # select blocks with best 20% condition numbers
+        # select blocks with best 30% condition numbers
         perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], 30)
 
-        bs_all = 0
+        cond_matrix = np.zeros((len(self.seenBlocks), self.N_LINKS))
+        c = 0
         for block in self.seenBlocks:
             (b,bs,cond,linkConds) = block
             if cond > perc_cond:
@@ -355,18 +342,13 @@ class Identification(object):
             else:
                 print "using block starting at {} (cond {})".format(b, cond)
                 self.usedBlocks.append(block)
-            bs_all += bs
+
+                # create variance matrix
+                cond_matrix[c, :] = linkConds
+                c+=1
 
         ## look at sub-regressor patterns and throw out some similar blocks
-
         print("checking for similar sub-regressor patterns")
-        # create variance matrix
-        cond_matrix = np.zeros((bs_all, self.N_LINKS))
-        c = 0
-        for block in self.usedBlocks:
-            (b,bs,cond,linkConds) = block
-            cond_matrix[c, :] = linkConds
-            c+=1
 
         #check for pairs that are less than e.g. 10% of each other away
         # if found, delete larger one of the original blocks from usedBlocks (move to unused)
@@ -376,14 +358,35 @@ class Identification(object):
 
         to_delete = list()
         for i in range(1, c):
+            #TODO: keep two values of three close ones (only remove middle)
             if np.abs(variances[sort_idx][i-1]-variances[sort_idx][i]) < np.abs(variances[sort_idx][i])*0.15:
-                to_delete.append(v_idx[sort_idx][i])
+                to_delete.append(v_idx[sort_idx][i-1])
 
         for d in np.sort(to_delete)[::-1]:
             print "delete block {}".format(self.usedBlocks[d][0])
             del self.usedBlocks[d]
 
+    def getSubregressorsConditionNumbers(self):
+        # get condition number for each of the links
+        linkConds = list()
+        for i in range(0, self.N_LINKS):
+            base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
+
+            for j in range(0, self.num_base_params):
+                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
+                    if dep in range(i*10, i*10+9):
+                        base_columns.append(j)
+            if not len(base_columns):
+                linkConds.append(99999)
+            else:
+                linkConds.append(la.cond(self.YBase[:, base_columns]))
+            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+        print("Condition numbers of link sub-regressors: [{}]".format(linkConds))
+
+        return linkConds
+
     def assembleSelectedBlocks(self):
+        self.getSubregressorsConditionNumbers()
         print("assembling selected blocks...\n")
         for k in self.measurements.keys():
             if not len(self.usedBlocks):
@@ -1577,6 +1580,8 @@ class Identification(object):
                 print "used {} of {} blocks: {}".format(len(self.usedBlocks),
                                                         len(self.usedBlocks)+len(self.unusedBlocks),
                                                         [b for (b,bs,cond,linkConds) in self.usedBlocks])
+            else:
+                print "\ncurrent block: {}".format(self.block_pos)
             #print "unused blocks: {}".format(self.unusedBlocks)
             print "condition number: {}".format(la.cond(self.YBase))
 

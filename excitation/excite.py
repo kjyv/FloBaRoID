@@ -271,9 +271,11 @@ def main():
             # compute inverse dynamics with idyntree (simulate)
             dynComp.inverseDynamics(torques, baseReactionForce)
             data['Tau'][t] = torques.toNumPy()
+            #TODO: optionally add some noise here to have simulated raw data
 
     # write sample arrays to data file
-    # TODO: save frequency (and maybe raw values) as well
+    # TODO: save measured frequency (and raw values) as well
+    # if possible, get motor currents
     np.savez(args.filename, positions=data['Q'], velocities=data['Vself'],
              accelerations=data['Vdot'], torques=data['Tau'],
              target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),

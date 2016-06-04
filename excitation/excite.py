@@ -127,7 +127,6 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
     for j in range(0, config['N_DOFS']):
         accls[:, j] = sp.signal.filtfilt(b, a, accls_orig[:, j])
 
-
     # median filter of torques
     torques_orig = torques.copy()
     for j in range(0, config['N_DOFS']):
@@ -271,15 +270,20 @@ def main():
             # compute inverse dynamics with idyntree (simulate)
             dynComp.inverseDynamics(torques, baseReactionForce)
             data['Tau'][t] = torques.toNumPy()
-            #TODO: optionally add some noise here to have simulated raw data
+
+            #add some noise to torques (simulated 'raw' data)
+            data['TauRaw'][t] = data['Tau'][t] + np.random.randn(config['N_DOFS'])*0.03
 
     # write sample arrays to data file
-    # TODO: save measured frequency (and raw values) as well
-    # if possible, get motor currents
-    np.savez(args.filename, positions=data['Q'], velocities=data['Vself'],
-             accelerations=data['Vdot'], torques=data['Tau'],
+    # TODO: if possible, save motor currents
+    np.savez(args.filename,
+             positions=data['Q'], positions_raw=data['Qraw'],
+             velocities=data['Vself'], velocities_raw=data['Vraw'],
+             accelerations=data['Vdot'],
+             torques=data['Tau'], torques_raw=data['TauRaw'],
              target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),
-             target_accelerations=np.deg2rad(data['QddotSent']), times=data['T'])
+             target_accelerations=np.deg2rad(data['QddotSent']),
+             times=data['T'], frequency=data['measured_frequency'])
     print "saved measurements to {}".format(args.filename)
 
 

@@ -25,6 +25,7 @@ class TrajectoryGenerator(object):
         #a = [[-0.0], [1.0], [-1.2], [-0.7], [0.8], [-1.3], [-1.0], [1.3]]
         #b = [[1.0], [0.0], [1.2], [0.7], [0.8], [1.3], [1.0], [1.3]]
         #q = [-1.0, -1.0, 0, 0, 0, 0, -1, 0]
+        #use random params
         a = [0]*dofs
         b = [0]*dofs
         nf = np.random.randint(1,4,7)

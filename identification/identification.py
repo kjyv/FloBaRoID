@@ -20,7 +20,8 @@ import matplotlib.pyplot as plt
 
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-import identificationHelpers
+import helpers
+from output import OutputConsole
 
 # symbolic regression
 from robotran.left_arm import idinvbar, invdynabar, delidinvbar
@@ -130,7 +131,7 @@ class Identification(object):
 
         ## end options
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             #almost zero threshold for SVD and QR
             self.min_tol = 1e-3
 
@@ -234,7 +235,7 @@ class Identification(object):
             print '({})'.format(self.link_names)
 
             self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
-            self.helpers = identificationHelpers.IdentificationHelpers(self.N_PARAMS)
+            self.helpers = helpers.Helpers(self.N_PARAMS)
 
         if self.showTiming:
             print("Initialization took %.03f sec." % t.interval)
@@ -414,7 +415,7 @@ class Identification(object):
         self.updateNumSamples()
 
     def initRegressors(self):
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             self.gravity_twist = iDynTree.Twist()
             self.gravity_twist.zero()
             self.gravity_twist.setVal(2, -9.81)
@@ -500,7 +501,7 @@ class Identification(object):
         """loop over measurements records (skip some values from the start)
            and get regressors for each system state"""
         for row in range(0, self.num_used_samples):
-            with identificationHelpers.Timer() as t:
+            with helpers.Timer() as t:
                 m_idx = row*(self.skipSamples)+row
                 if self.simulate:
                     pos = self.samples['target_positions'][m_idx]
@@ -566,7 +567,7 @@ class Identification(object):
             start = self.N_DOFS*row
             # use symobolic regressor to get numeric regressor matrix (base)
             if self.robotranRegressor:
-                with identificationHelpers.Timer() as t:
+                with helpers.Timer() as t:
                     YSym = np.zeros((7,45))
                     pad = [0,0]  # symbolic code expects values for two more (static joints)
                     idinvbar.idinvbar(YSym, np.concatenate([[0], pad, pos]),
@@ -576,7 +577,7 @@ class Identification(object):
                 sym_time += t.interval
             else:
                 # get numerical regressor (std)
-                with identificationHelpers.Timer() as t:
+                with helpers.Timer() as t:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
                     #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
@@ -596,7 +597,7 @@ class Identification(object):
             if self.useAPriori:
                 np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             if self.useAPriori:
                 # get torque delta to identify with
                 self.tau = self.torques_stack - self.torquesAP_stack
@@ -632,7 +633,7 @@ class Identification(object):
     def getBaseRegressorSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             # get subspace basis (for projection to base regressor/parameters)
             if False:
                 subspaceBasis = iDynTree.MatrixDynSize()
@@ -787,7 +788,7 @@ class Identification(object):
         self.linear_deps = sla.inv(R1).dot(R2)
 
     def getBaseRegressor(self):
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             #get regressor for base parameters
             if self.robotranRegressor:
                 self.YBase = self.regressor_stack_sym
@@ -938,7 +939,7 @@ class Identification(object):
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             if not estimateWith:
                 #use global parameter choice if none is given specifically
                 estimateWith = self.estimateWith
@@ -1034,7 +1035,7 @@ class Identification(object):
         based on Pham, 1991; Gautier, 2013 and Jubien, 2014
         """
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             # use mean least squares (actually median least abs) to determine when the error
             # introduced by model reduction gets too large
             use_error_criterion = 0
@@ -1140,7 +1141,7 @@ class Identification(object):
                     old_showBase = self.showBaseParams
                     self.showStandardParams = 0
                     self.showBaseParams = 1
-                    self.output()
+                    OutputConsole.render(self)
                     self.showStandardParams = old_showStd
                     self.showBaseParams = old_showBase
 
@@ -1192,7 +1193,7 @@ class Identification(object):
         Find essential standard parameters from previously determined base essential parameters.
         """
 
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             # get the choice of indices into the std params of the independent columns.
             # Of those, only select the std parameters that are essential
             self.stdEssentialIdx = self.independent_cols[self.baseEssentialIdx]
@@ -1270,7 +1271,7 @@ class Identification(object):
 
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             U, s, VH = la.svd(self.YStd, full_matrices=False)
             nb = self.num_base_params
 
@@ -1302,7 +1303,7 @@ class Identification(object):
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
-        with identificationHelpers.Timer() as t:
+        with helpers.Timer() as t:
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
             Yst_e = self.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
@@ -1345,283 +1346,8 @@ class Identification(object):
             elif self.estimateWith is 'std_direct':
                 self.identifyStandardParameters()
 
-    def output(self, summary_only=False):
-        """Do some pretty printing of parameters."""
-
-        import colorama
-        from colorama import Fore, Back, Style
-        colorama.init(autoreset=False)
-
-        if not self.useEssentialParams:
-            self.stdEssentialIdx = range(0, self.N_PARAMS)
-            self.stdNonEssentialIdx = []
-
-        #if requested, load params from other urdf for comparison
-        if self.urdf_file_real:
-            dc = iDynTree.DynamicsComputations()
-            dc.loadRobotModelFromFile(self.urdf_file_real)
-            tmp = iDynTree.VectorDynSize(self.N_PARAMS)
-            dc.getModelDynamicsParameters(tmp)
-            xStdReal = tmp.toNumPy()
-            xBaseReal = np.dot(self.B.T, xStdReal)
-
-        if self.showStandardParams:
-            # convert params to COM-relative instead of frame origin-relative (linearized parameters)
-            if self.outputBarycentric:
-                if not self.robotranRegressor:
-                  xStd = self.helpers.paramsLink2Bary(self.xStd)
-                xStdModel = self.helpers.paramsLink2Bary(self.xStdModel)
-                if not summary_only:
-                    print("Barycentric (relative to COM) Standard Parameters")
-            else:
-                xStd = self.xStd
-                xStdModel = self.xStdModel
-                if not summary_only:
-                    print("Linear (relative to Frame) Standard Parameters")
-
-            # collect values for parameters
-            description = self.generator.getDescriptionOfParameters()
-            idx_p = 0   #count (std) params
-            idx_ep = 0  #count essential params
-            lines = list()
-            sum_diff_r_pc_ess = 0
-            sum_diff_r_pc_all = 0
-            sum_pc_delta_all = 0
-            sum_pc_delta_ess = 0
-            for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
-                #print beginning of each link block in green
-                if idx_p % 10 == 0:
-                    d = Fore.GREEN + d
-
-                #get some error values for each parameter
-                approx = xStd[idx_p]
-                apriori = xStdModel[idx_p]
-
-                if self.urdf_file_real:
-                    real = xStdReal[idx_p]
-                    # set real params that are 0 to some small value
-                    #if real == 0: real = 0.01
-
-                    # get error percentage (new to real)
-                    # so if 100% are the real value, how big is the error
-                    diff_real = approx - real
-                    if real != 0:
-                        diff_r_pc = (100*diff_real)/real
-                    else:
-                        diff_r_pc = (100*diff_real)/0.01
-
-                    #add to final error percent sum
-                    sum_diff_r_pc_all += np.abs(diff_r_pc)
-                    if idx_p in self.stdEssentialIdx:
-                        sum_diff_r_pc_ess += np.abs(diff_r_pc)
-
-                    # get error percentage (new to apriori)
-                    diff_apriori = apriori - real
-                    #if apriori == 0: apriori = 0.01
-                    if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
-                    elif diff_real != 0:
-                        pc_delta = np.abs((100/0.01)*diff_real)
-                    else:
-                        pc_delta = 0
-                    sum_pc_delta_all += pc_delta
-                    if idx_p in self.stdEssentialIdx:
-                        sum_pc_delta_ess += pc_delta
-                else:
-                    # get percentage difference between apriori and identified values
-                    # (shown when real values are not known)
-                    diff = approx - apriori
-                    if apriori != 0:
-                        diff_pc = (100*diff)/apriori
-                    else:
-                        diff_pc = (100*diff)/0.01
-
-                #values for each line
-                if self.useEssentialParams and idx_ep < self.num_essential_params and idx_p in self.stdEssentialIdx:
-                    sigma = self.p_sigma_x[idx_ep]
-                else:
-                    sigma = 0.0
-
-                if self.urdf_file_real:
-                    vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, sigma, d]
-                else:
-                    vals = [apriori, approx, diff, diff_pc, sigma, d]
-                lines.append(vals)
-
-                if self.useEssentialParams and idx_p in self.stdEssentialIdx:
-                    idx_ep+=1
-                idx_p+=1
-                if idx_p == len(xStd):
-                    break
-
-            if self.urdf_file_real:
-                column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
-                precisions = [8, 8, 8, 4, 1, 1, 3, 0]
-            else:
-                column_widths = [13, 13, 7, 7, 6, 45]
-                precisions = [8, 8, 4, 1, 3, 0]
-
-            if not summary_only:
-                # print column header
-                template = ''
-                for w in range(0, len(column_widths)):
-                    template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if self.urdf_file_real:
-                    print template.format("'Real'", "A priori", "Approx", "Change", "%e", u"Δ%e".encode('utf-8'), u"%σ".encode('utf-8'), "Description")
-                else:
-                    print template.format("A priori", "Approx", "Change", "%e", u"%σ".encode('utf-8'), "Description")
-
-                # print values/description
-                template = ''
-                for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) == str):
-                        # strings don't have precision
-                        template += '|{{{}:{}}}'.format(w, column_widths[w])
-                    else:
-                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-                idx_p = 0
-                for l in lines:
-                    t = template.format(*l)
-                    if idx_p in self.stdNonEssentialIdx:
-                        t = Style.DIM + t
-                    if idx_p in self.stdEssentialIdx:
-                        t = Style.BRIGHT + t
-                    print t,
-                    idx_p+=1
-                    print Style.RESET_ALL
-                print "\n"
-
-        ### print base params
-        if self.showBaseParams and not summary_only and self.estimateWith not in ['urdf', 'std_direct']:
-            print("Base Parameters and Corresponding standard columns")
-            if not self.useEssentialParams:
-                baseEssentialIdx = range(0, self.num_base_params)
-                baseNonEssentialIdx = []
-                xBase_essential = self.xBase
-            else:
-                baseEssentialIdx = self.baseEssentialIdx
-                baseNonEssentialIdx = self.baseNonEssentialIdx
-                xBase_essential = self.xBase_essential
-
-            # collect values for parameters
-            idx_ep = 0
-            lines = list()
-            for idx_p in range(0, self.num_base_params):
-                if self.useEssentialParams: # and xBase_essential[idx_p] != 0:
-                    new = xBase_essential[idx_p]
-                else:
-                    new = self.xBase[idx_p]
-                old = self.xBaseModel[idx_p]
-                diff = new - old
-                if self.urdf_file_real:
-                    real = xBaseReal[idx_p]
-                    error = new - real
-
-                # collect linear dependencies for this param
-                deps = np.where(np.abs(self.linear_deps[idx_p, :])>0.1)[0]
-                dep_factors = self.linear_deps[idx_p, deps]
-
-                param_columns = ' |{}|'.format(self.independent_cols[idx_p])
-                if len(deps):
-                    param_columns += " deps:"
-                for p in range(0, len(deps)):
-                    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], self.P[self.num_base_params:][deps[p]])
-
-                if self.useEssentialParams and idx_p in self.baseEssentialIdx:
-                    sigma = self.p_sigma_x[idx_ep]
-                else:
-                    sigma = 0.0
-
-                if self.urdf_file_real:
-                    lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
-                else:
-                    lines.append((old, new, diff, sigma, param_columns))
-
-                if self.useEssentialParams and idx_p in self.baseEssentialIdx:
-                    idx_ep+=1
-
-            if self.urdf_file_real:
-                column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
-                precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
-            else:
-                column_widths = [13, 13, 7, 6, 30]   # widths of the columns
-                precisions = [8, 8, 4, 3, 0]         # numerical precision
-
-            if not summary_only:
-                # print column header
-                template = ''
-                for w in range(0, len(column_widths)):
-                    template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if self.urdf_file_real:
-                    print template.format("\#", "Real", "Model", "Approx", "Change", "Error", u"%σ".encode('utf-8'), "Description")
-                else:
-                    print template.format("Model", "Approx", "Change", u"%σ".encode('utf-8'), "Description")
-
-                # print values/description
-                template = ''
-                for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) == str):
-                        # strings don't have precision
-                        template += '|{{{}:{}}}'.format(w, column_widths[w])
-                    else:
-                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-                idx_p = 0
-                for l in lines:
-                    t = template.format(*l)
-                    if idx_p in baseNonEssentialIdx:
-                        t = Style.DIM + t
-                    elif idx_p in baseEssentialIdx:
-                        t = Style.BRIGHT + t
-                    if self.showEssentialSteps and l[-2] == np.max(self.p_sigma_x):
-                        t = Fore.CYAN + t
-                    print t,
-                    idx_p+=1
-                    print Style.RESET_ALL
-
-        if self.selectBlocksFromMeasurements:
-            if len(self.usedBlocks):
-                print "used {} of {} blocks: {}".format(len(self.usedBlocks),
-                                                        len(self.usedBlocks)+len(self.unusedBlocks),
-                                                        [b for (b,bs,cond,linkConds) in self.usedBlocks])
-            else:
-                print "\ncurrent block: {}".format(self.block_pos)
-            #print "unused blocks: {}".format(self.unusedBlocks)
-            print "condition number: {}".format(la.cond(self.YBase))
-
-        if self.showStandardParams:
-            print("Per-link physical consistency (a priori): {}".format(self.helpers.checkPhysicalConsistency(self.xStdModel)))
-            print("Per-link physical consistency (identified): {}".format(self.helpers.checkPhysicalConsistency(self.xStd)))
-
-        if self.urdf_file_real:
-            if self.showStandardParams:
-                if self.useEssentialParams:
-                    print("Mean relative error of essential std params: {}%".\
-                            format(sum_diff_r_pc_ess/len(self.stdEssentialIdx)))
-                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(self.xStd)))
-
-                if self.useEssentialParams:
-                    print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
-                            format(sum_pc_delta_ess/len(self.stdEssentialIdx)))
-                print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
-                        format(sum_pc_delta_all/len(self.xStd)))
-
-        self.estimateRegressorTorques(estimateWith='urdf')
-        self.apriori_error = sla.norm(self.tauEstimated-self.tauMeasured)*100/sla.norm(self.tauMeasured)
-        self.estimateRegressorTorques()
-        self.res_error = sla.norm(self.tauEstimated-self.tauMeasured)*100/sla.norm(self.tauMeasured)
-        print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
-                format(self.res_error, self.apriori_error))
-
     def plot(self):
         """Display some torque plots."""
-
-        colors = [[ 0.97254902,  0.62745098,  0.40784314],
-                  [ 0.0627451 ,  0.53333333,  0.84705882],
-                  [ 0.15686275,  0.75294118,  0.37647059],
-                  [ 0.90980392,  0.37647059,  0.84705882],
-                  [ 0.84705882,  0.        ,  0.1254902 ],
-                  [ 0.18823529,  0.31372549,  0.09411765],
-                  [ 0.50196078,  0.40784314,  0.15686275]
-                 ]
 
         datasets = [
             ([self.tauMeasured], 'Measured Torques'),
@@ -1634,12 +1360,12 @@ class Identification(object):
         ]
 
         if self.outputModule is 'matplotlib':
-            from outputMatplotlib import OutputMatplotlib
-            output = OutputMatplotlib(datasets, self.T, colors, self.jointNames)
+            from output import OutputMatplotlib
+            output = OutputMatplotlib(datasets, self.T, self.jointNames)
             output.render()
         elif self.outputModule is 'html':
-            from outputHTML import OutputHTML
-            output = OutputHTML(datasets, self.T, colors, self.jointNames)
+            from output import OutputHTML
+            output = OutputHTML(datasets, self.T, self.jointNames)
             output.render()
             #output.runServer()
 
@@ -1687,7 +1413,7 @@ def main():
         while 1:
             idf.estimateParameters()
             idf.getBlockStats()
-            idf.output(summary_only=True)
+            OutputConsole.render(idf, summary_only=True)
 
             if idf.hasMoreSamples():
                 idf.getNextSampleBlock()
@@ -1707,7 +1433,7 @@ def main():
         idf.helpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
                                         new_params=idf.xStd, link_names=idf.link_names)
 
-    if args.explain: idf.output()
+    if args.explain: OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques(args.validation)
     if args.plot: idf.plot()
 

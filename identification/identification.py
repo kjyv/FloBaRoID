@@ -62,7 +62,7 @@ class Identification(object):
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'urdf']
-        self.estimateWith = 'std_direct'
+        self.estimateWith = 'std'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
         self.useAPriori = 1
@@ -86,8 +86,9 @@ class Identification(object):
         # mostly not improving results
         self.filterRegressor = 0
 
-        # use bounds for the estimated parameters
-        self.useBoundedLeastSquares = 1
+        # use bounds for the estimated std parameters
+        # (only works with std_direct or std and essential params enabled)
+        self.useBoundedLeastSquares = 0
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -856,33 +857,38 @@ class Identification(object):
         self.xBaseModel = np.dot(self.B.T, self.xStdModel)
 
         # invert equation to get parameter vector from measurements and model + system state values
+
+        """
         if self.useBoundedLeastSquares and not self.useEssentialParams:
+            # apply boundaries to estimation, probably decreases performance for base params
+            # (might depend on noise on data though)
             if self.useAPriori:
-                ub = np.abs(self.xBaseModel*0.1)
-                lb = -np.abs(self.xBaseModel*0.1)
+                ub = np.abs(self.xBaseModel*1.0)
+                lb = -np.abs(self.xBaseModel*1.0)
             else:
                 ub = self.xBaseModel + np.abs(self.xBaseModel*0.75)
                 lb = self.xBaseModel - np.abs(self.xBaseModel*0.75)
             for v in range(0, len(ub)):
                 if ub[v] == 0:
-                    ub[v] = 0.1
+                    ub[v] = 0.01
                 if lb[v] == 0:
-                    lb[v] = -0.1
+                    lb[v] = -0.01
 
             b = (lb,ub)
             res = opt.lsq_linear(YBase, tau, bounds=b)
             self.xBase = res.x
         else:
-            #self.YBaseInv = la.pinv(self.YBase)
-            #print("YBaseInv: {}".format(self.YBaseInv.shape))
-            #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
+        """
+        #self.YBaseInv = la.pinv(self.YBase)
+        #print("YBaseInv: {}".format(self.YBaseInv.shape))
+        #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
 
-            #damped least squares
-            #from scipy.sparse.linalg import lsqr
-            #self.xBase = lsqr(YBase, tau, damp=10)[0]
+        #damped least squares
+        #from scipy.sparse.linalg import lsqr
+        #self.xBase = lsqr(YBase, tau, damp=10)[0]
 
-            #ordinary least squares
-            self.xBase = la.lstsq(YBase, tau)[0]
+        #ordinary least squares
+        self.xBase = la.lstsq(YBase, tau)[0]
 
         #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
 
@@ -1277,6 +1283,52 @@ class Identification(object):
                 #else:
                 self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
+    def getStdParamConstraints(self, dev=0.5):
+        """ find some physical constraints on params using a priori info.
+            dev: deviation from a priori values (percent up and down)
+        """
+
+        #ub = [np.inf]*len(self.xStdModel)
+        #lb = [-np.inf]*len(self.xStdModel)
+        #return (lb,ub)
+
+        # get absolute bounds around a priori values
+        ub = self.xStdModel + np.abs(self.xStdModel*dev)
+        lb = self.xStdModel - np.abs(self.xStdModel*dev)
+
+        for i in range(0,len(ub)):
+            # positive masses
+            if i % 10 == 0:
+                if ub[i] <= 0:
+                    ub[i] = 0.5
+                if lb[i] <= 0:
+                    lb[i] = 0.01
+                #TODO: optionally constrain each link mass to [0, total_mass/N_LINKS]
+            elif i % 10 in [1,2,3]:   #com value
+                if ub[i] == 0:
+                    ub[i] = 0.01
+                if lb[i] == 0:
+                    lb[i] = -0.01
+                #TODO: check that com values are inside a box that includes link geometry
+            elif i % 10 in [4,5,6,7,8,9]:  #inertia value
+                if ub[i] == 0:
+                    ub[i] = 0.001
+                if lb[i] == 0:
+                    lb[i] = -0.001
+
+        # after checking on absolute constraints, go relative again
+        if self.useAPriori:
+            ub -= self.xStdModel
+            lb -= self.xStdModel
+
+        # set some constraints for remaining initial zeros (it has to hold that ub > lb)
+        for v in range(0, len(ub)):
+            if ub[v] == 0:
+                ub[v] = 0.001
+            if lb[v] == 0:
+                lb[v] = -0.001
+        return (lb,ub)
+
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
         with helpers.Timer() as t:
@@ -1287,24 +1339,13 @@ class Identification(object):
             V_1 = VH.T[:, 0:nb]
             U_1 = U[:, 0:nb]
             s_1 = np.diag(s[0:nb])
-            s_1_inv = np.linalg.inv(s_1)
+            s_1_inv = la.inv(s_1)
             W_st_pinv = V_1.dot(s_1_inv).dot(U_1.T)
+            W_st = la.pinv(W_st_pinv)
 
             if self.useBoundedLeastSquares:
-                if self.useAPriori:
-                    ub = np.abs(self.xStdModel*0.3)
-                    lb = -np.abs(self.xStdModel*0.3)
-                else:
-                    ub = self.xStdModel + np.abs(self.xStdModel*0.75)
-                    lb = self.xStdModel - np.abs(self.xStdModel*0.75)
-                for v in range(0, len(ub)):
-                    if ub[v] == 0:
-                        ub[v] = 0.0001
-                    if lb[v] == 0:
-                        lb[v] = -0.0001
-
-                b = (lb,ub)
-                res = opt.lsq_linear(W_st_pinv.T, self.tau, bounds=b)
+                b = self.getStdParamConstraints(dev=0.3)
+                res = opt.lsq_linear(W_st, self.tau, bounds=b)
                 x_est = res.x
             else:
                 x_est = W_st_pinv.dot(self.tau)
@@ -1341,22 +1382,11 @@ class Identification(object):
             U_1e = Ue[:, 0:ne]
             s_1e_inv = sla.inv(np.diag(se[0:ne]))
             W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
+            W_st_e = la.pinv(W_st_e_pinv)
 
             if self.useBoundedLeastSquares:
-                if self.useAPriori:
-                    ub = np.abs(self.xStdModel*0.5)
-                    lb = -np.abs(self.xStdModel*0.5)
-                else:
-                    ub = self.xStdModel + np.abs(self.xStdModel*0.75)
-                    lb = self.xStdModel - np.abs(self.xStdModel*0.75)
-                for v in range(0, len(ub)):
-                    if ub[v] == 0:
-                        ub[v] = 0.001
-                    if lb[v] == 0:
-                        lb[v] = -0.001
-
-                b = (lb,ub)
-                res = opt.lsq_linear(W_st_e_pinv.T, self.tau, bounds=b)
+                b = self.getStdParamConstraints(dev=0.3)
+                res = opt.lsq_linear(W_st_e, self.tau, bounds=b)
                 x_tmp = res.x
             else:
                 x_tmp = W_st_e_pinv.dot(self.tau)

@@ -354,7 +354,7 @@ class OutputHTML(object):
             leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
             leg.draggable()
             plugins.clear(fig)
-            plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=True),
+            plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
                             plugins.MousePosition(fontsize=14))
             figures.append(mpld3.fig_to_html(fig))
 

@@ -354,17 +354,25 @@ class Identification(object):
         ## look at sub-regressor patterns and throw out some similar blocks
         print("checking for similar sub-regressor patterns")
 
-        #check for pairs that are less than e.g. 10% of each other away
+        #check for pairs that are less than e.g. 15% of each other away
         # if found, delete larger one of the original blocks from usedBlocks (move to unused)
         variances = np.var(cond_matrix[0:c,:],axis=1)
         v_idx = np.array(range(0, c))
         sort_idx = np.argsort(variances)
 
         to_delete = list()
-        for i in range(1, c):
-            #TODO: keep two values of three close ones (only remove middle)
-            if np.abs(variances[sort_idx][i-1]-variances[sort_idx][i]) < np.abs(variances[sort_idx][i])*0.15:
+        dist = 0.15
+        i = 1
+        while i < c:
+            #keep two values of three close ones (only remove middle)
+            if i<c-1 and np.abs(variances[sort_idx][i-1]-variances[sort_idx][i+1]) < np.abs(variances[sort_idx][i+1])*dist:
+                to_delete.append(v_idx[sort_idx][i])
+                i+=1
+            #remove first if two are too close
+            elif np.abs(variances[sort_idx][i-1]-variances[sort_idx][i]) < np.abs(variances[sort_idx][i])*dist:
                 to_delete.append(v_idx[sort_idx][i-1])
+            i+=1
+
 
         for d in np.sort(to_delete)[::-1]:
             print "delete block {}".format(self.usedBlocks[d][0])
@@ -973,8 +981,8 @@ class Identification(object):
 
     def estimateValidationTorques(self, file):
         """ calculate torques of trajectory from validation measurements and identified params """
-        # TODO: get identified params directly into idyntree (new KinDynComputations class does not have
-        # inverse dynamics yet, so we have to go over a new urdf file now)
+        # TODO: get identified params directly into idyntree (new KinDynComputations class does not
+        # have inverse dynamics yet, so we have to go over a new urdf file now)
         import os
 
         v_data = np.load(file)

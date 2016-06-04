@@ -12,7 +12,7 @@ class Timer(object):
         self.end = time.clock()
         self.interval = self.end - self.start
 
-class IdentificationHelpers(object):
+class Helpers(object):
     def __init__(self, n_params):
         self.n_params = n_params
 

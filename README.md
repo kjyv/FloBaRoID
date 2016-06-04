@@ -14,7 +14,7 @@ details:
 
 requirements for identification:
 * python 2.7
-* python modules: numpy, scipy, matplotlib, ipython, ipdb, iDynTree python bindings, colorama, humanize
+* python modules: numpy, scipy, matplotlib, ipython, ipdb, iDynTree python bindings, colorama, humanize, optionally for web output: mpld3, jinja2
 
 requirements for excitation:
 * for yarp/walkman: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module, python modules: yarp

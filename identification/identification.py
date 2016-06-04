@@ -62,14 +62,14 @@ class Identification(object):
 
         # using which parameters to estimate torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'urdf']
-        self.estimateWith = 'std'
+        self.estimateWith = 'std_direct'
 
         # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
         self.useAPriori = 1
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
-        self.selectBlocksFromMeasurements = 1
+        self.selectBlocksFromMeasurements = 0
         self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
 
         # use weighted least squares(WLS) instead of ordinary least squares
@@ -87,7 +87,7 @@ class Identification(object):
         self.filterRegressor = 0
 
         # use bounds for the estimated parameters
-        self.useBoundedLeastSquares = 0
+        self.useBoundedLeastSquares = 1
 
         # whether to take out masses from essential params to be identified because they are e.g.
         # well known or introduce problems
@@ -865,9 +865,9 @@ class Identification(object):
                 lb = self.xBaseModel - np.abs(self.xBaseModel*0.75)
             for v in range(0, len(ub)):
                 if ub[v] == 0:
-                    ub = 0.1
+                    ub[v] = 0.1
                 if lb[v] == 0:
-                    lb = -0.1
+                    lb[v] = -0.1
 
             b = (lb,ub)
             res = opt.lsq_linear(YBase, tau, bounds=b)
@@ -1286,9 +1286,29 @@ class Identification(object):
             #identify standard parameters directly
             V_1 = VH.T[:, 0:nb]
             U_1 = U[:, 0:nb]
-            s_1_inv = np.linalg.inv(np.diag(s[0:nb]))
+            s_1 = np.diag(s[0:nb])
+            s_1_inv = np.linalg.inv(s_1)
+            W_st_pinv = V_1.dot(s_1_inv).dot(U_1.T)
 
-            x_est = V_1.dot(s_1_inv).dot(U_1.T).dot(self.tau)
+            if self.useBoundedLeastSquares:
+                if self.useAPriori:
+                    ub = np.abs(self.xStdModel*0.3)
+                    lb = -np.abs(self.xStdModel*0.3)
+                else:
+                    ub = self.xStdModel + np.abs(self.xStdModel*0.75)
+                    lb = self.xStdModel - np.abs(self.xStdModel*0.75)
+                for v in range(0, len(ub)):
+                    if ub[v] == 0:
+                        ub[v] = 0.0001
+                    if lb[v] == 0:
+                        lb[v] = -0.0001
+
+                b = (lb,ub)
+                res = opt.lsq_linear(W_st_pinv.T, self.tau, bounds=b)
+                x_est = res.x
+            else:
+                x_est = W_st_pinv.dot(self.tau)
+
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_est
             else:
@@ -1320,7 +1340,26 @@ class Identification(object):
             V_1e = VHe.T[:, 0:ne]
             U_1e = Ue[:, 0:ne]
             s_1e_inv = sla.inv(np.diag(se[0:ne]))
-            x_tmp = np.diag(self.xStdEssential).dot(V_1e).dot(s_1e_inv).dot(U_1e.T).dot(self.tau)
+            W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
+
+            if self.useBoundedLeastSquares:
+                if self.useAPriori:
+                    ub = np.abs(self.xStdModel*0.5)
+                    lb = -np.abs(self.xStdModel*0.5)
+                else:
+                    ub = self.xStdModel + np.abs(self.xStdModel*0.75)
+                    lb = self.xStdModel - np.abs(self.xStdModel*0.75)
+                for v in range(0, len(ub)):
+                    if ub[v] == 0:
+                        ub[v] = 0.001
+                    if lb[v] == 0:
+                        lb[v] = -0.001
+
+                b = (lb,ub)
+                res = opt.lsq_linear(W_st_e_pinv.T, self.tau, bounds=b)
+                x_tmp = res.x
+            else:
+                x_tmp = W_st_e_pinv.dot(self.tau)
 
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_tmp

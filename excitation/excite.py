@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+#-*- coding: utf-8 -*-
 
 import sys
 import numpy as np
@@ -151,6 +152,7 @@ def plot(data):
         print colors[0:config['N_DOFS']]
     else:
         # set some nice fixed colors
+        # TODO: use palette with more than 7 values...
         colors = [[ 0.97254902,  0.62745098,  0.40784314],
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
@@ -164,12 +166,15 @@ def plot(data):
     # reload measurements from this or last run (if run dry)
     measurements = np.load('measurements.npz')
     Q = measurements['positions']
+    Qraw = measurements['positions_raw']
     Q_t = measurements['target_positions']
     V = measurements['velocities']
+    Vraw = measurements['velocities_raw']
     V_t = measurements['target_velocities']
     dV = measurements['accelerations']
     dV_t = measurements['target_accelerations']
     Tau = measurements['torques']
+    TauRaw = measurements['torques_raw']
     T = measurements['times']
     num_samples = measurements['positions'].shape[0]
     print 'loaded {} measurement samples'.format(num_samples)
@@ -190,25 +195,18 @@ def plot(data):
     print "\n"
 
     # what to plot (each tuple has a title and one or multiple data arrays)
-    if args.dryrun and not args.plot_targets:    #plot only measurements (from file)
-        datasets = [
-            ([Q,], 'Positions'),
-            ([V,], 'Velocities'),
-            ([dV,], 'Accelerations'),
-            ([Tau,], 'Measured Torques')
-            ]
-    elif args.plot_targets:    #plot target values
+    if args.plot_targets:    #plot target values
         datasets = [
             ([Q_t,], 'Target Positions'),
             ([V_t,], 'Target Velocities'),
             ([dV_t,], 'Target Accelerations')
             ]
-    else:   #plot filtered measurements and raw
+    else:   #plot measurements and raw data (from measurements file)
         datasets = [
-            ([Q, data['Qraw']], 'Positions'),
-            ([V, data['Vraw']],'Velocities'),
+            ([Q, Qraw], 'Positions'),
+            ([V, Vraw],'Velocities'),
             ([dV,], 'Accelerations'),
-            ([Tau, data['TauRaw']],'Measured Torques')
+            ([Tau, TauRaw],'Measured Torques')
             ]
 
     d = 0
@@ -272,7 +270,7 @@ def main():
             data['Tau'][t] = torques.toNumPy()
 
             #add some noise to torques (simulated 'raw' data)
-            data['TauRaw'][t] = data['Tau'][t] + np.random.randn(config['N_DOFS'])*0.03
+            data['TauRaw'][t] = data['Tau'][t] + np.random.randn(config['N_DOFS'])*np.max(data['Tau'])*0.05
 
     # write sample arrays to data file
     # TODO: if possible, save motor currents

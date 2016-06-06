@@ -12,8 +12,8 @@
         <script type="text/javascript" src="http://mpld3.github.io/js/mpld3.v0.2.js"></script>
     </head>
     <body>
-        {{ figures.0 }}
-        {{ figures.1 }}
-        {{ figures.2 }}
+        {% for f in figures %}
+        {{ f }}
+        {% endfor %}
     </body>
 </html>

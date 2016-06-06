@@ -44,13 +44,13 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # TODO: allow visual filtering and data selection (take raw data as input)
 
 class Identification(object):
-    def __init__(self, urdf_file, urdf_file_real, measurements_files, regressor_file):
+    def __init__(self, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
         ## options
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        self.startOffset = 100  #how many samples from the beginning of the (first) measurement are skipped
-        self.skipSamples = 2    #how many values to skip before using the next sample
+        self.start_offset = 100  #how many samples from the beginning of the (first) measurement are skipped
+        self.skip_samples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
         self.robotranRegressor = 0
@@ -79,15 +79,15 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
+        self.useEssentialParams = 1
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
         # mostly not improving results
         self.filterRegressor = 0
 
-        # use bounds for the estimated std parameters
-        # (only works with std_direct or std and essential params enabled)
+        # use bounds for the estimated std parameters (needs scipy >= 0.17)
+        # only works with std_direct or std and essential params enabled
         self.useBoundedLeastSquares = 0
 
         # whether to take out masses from essential params to be identified because they are e.g.
@@ -138,6 +138,7 @@ class Identification(object):
 
             self.URDF_FILE = urdf_file
             self.urdf_file_real = urdf_file_real
+            self.validation_file = validation_file
 
             # load data from multiple files and concatenate, fix timing
             self.measurements = {}
@@ -149,24 +150,29 @@ class Identification(object):
                         mv[k] = m[k]
                         if not self.measurements.has_key(k):
                             #first file
-                            if k == 'times':
-                                self.measurements[k] = m[k][self.startOffset:]
+                            if m[k].ndim == 0:
+                                self.measurements[k] = m[k]
+                            elif m[k].ndim == 1:
+                                self.measurements[k] = m[k][self.start_offset:]
                             else:
-                                self.measurements[k] = m[k][self.startOffset:, :]
+                                self.measurements[k] = m[k][self.start_offset:, :]
                         else:
                             #following files, append data
-                            if k == 'times':
+                            if m[k].ndim == 0:
+                                #TODO: get mean value of scalue values (needs to count how many values then)
+                                self.measurements[k] = m[k]
+                            elif m[k].ndim == 1:
                                 mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0]) #let values start with first time diff
                                 mv[k] = mv[k] + self.measurements[k][-1] #add after previous times
-                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:]),
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.start_offset:]),
                                                                       axis=0)
                             else:
-                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.startOffset:, :]),
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][self.start_offset:, :]),
                                                                       axis=0)
                     m.close()
 
             self.num_loaded_samples = self.measurements['positions'].shape[0]
-            self.num_used_samples = self.num_loaded_samples/(self.skipSamples+1)
+            self.num_used_samples = self.num_loaded_samples/(self.skip_samples+1)
             print 'loaded {} measurement samples (using {})'.format(
                 self.num_loaded_samples, self.num_used_samples)
 
@@ -176,13 +182,15 @@ class Identification(object):
             if self.selectBlocksFromMeasurements:
                 # fill with starting block
                 for k in self.measurements.keys():
-                    if k == 'times':
+                    if self.measurements[k].ndim == 0:
+                        self.samples[k] = self.measurements[k]
+                    elif self.measurements[k].ndim == 1:
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size]
                     else:
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.block_size, :]
 
                 self.num_selected_samples = self.samples['positions'].shape[0]
-                self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
+                self.num_used_samples = self.num_selected_samples/(self.skip_samples+1)
             else:
                 # simply use all data
                 self.samples = self.measurements
@@ -254,7 +262,7 @@ class Identification(object):
 
     def updateNumSamples(self):
         self.num_selected_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_selected_samples/(self.skipSamples+1)
+        self.num_used_samples = self.num_selected_samples/(self.skip_samples+1)
 
     def removeLastSampleBlock(self):
         print "removing block starting at {}".format(self.block_pos)
@@ -276,7 +284,9 @@ class Identification(object):
         print "getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
 
         for k in self.measurements.keys():
-            if k == 'times':
+            if self.measurements[k].ndim == 0:
+                mv = self.measurements[k]
+            elif self.measurements[k].ndim == 1:
                 mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size]
             else:
                 mv = self.measurements[k][self.block_pos:self.block_pos + self.block_size,:]
@@ -356,7 +366,8 @@ class Identification(object):
         print("checking for similar sub-regressor patterns")
 
         #check for pairs that are less than e.g. 15% of each other away
-        # if found, delete larger one of the original blocks from usedBlocks (move to unused)
+        #if found, delete larger one of the original blocks from usedBlocks (move to unused)
+        #TODO: check this again with the same file twice as input, should not use any blocks from the second file
         variances = np.var(cond_matrix[0:c,:],axis=1)
         v_idx = np.array(range(0, c))
         sort_idx = np.argsort(variances)
@@ -366,6 +377,7 @@ class Identification(object):
         i = 1
         while i < c:
             #keep two values of three close ones (only remove middle)
+            #TODO: generalaize to more values with this pattern
             if i<c-1 and np.abs(variances[sort_idx][i-1]-variances[sort_idx][i+1]) < np.abs(variances[sort_idx][i+1])*dist:
                 to_delete.append(v_idx[sort_idx][i])
                 i+=1
@@ -407,12 +419,17 @@ class Identification(object):
 
             #init with first block
             (b, bs, cond, linkConds) = self.usedBlocks[0]
-            self.samples[k] = self.measurements[k][b:b+bs]
+            if self.measurements[k].ndim == 0:
+                self.samples[k] = self.measurements[k]
+            else:
+                self.samples[k] = self.measurements[k][b:b+bs]
 
             #append
             for i in range(1, len(self.usedBlocks)):
                 (b, bs, cond, linkConds) = self.usedBlocks[i]
-                if k == 'times':
+                if self.measurements[k].ndim == 0:
+                    self.samples[k] = self.measurements[k]
+                elif self.measurements[k].ndim == 1:
                     mv = self.measurements[k][b:b + bs]
                     #fix time offsets
                     mv = mv - mv[0] + (mv[1]-mv[0]) #let values start with first time diff
@@ -511,7 +528,7 @@ class Identification(object):
            and get regressors for each system state"""
         for row in range(0, self.num_used_samples):
             with helpers.Timer() as t:
-                m_idx = row*(self.skipSamples)+row
+                m_idx = row*(self.skip_samples)+row
                 if self.simulate:
                     pos = self.samples['target_positions'][m_idx]
                     vel = self.samples['target_velocities'][m_idx]
@@ -618,7 +635,7 @@ class Identification(object):
             self.YStd = self.regressor_stack
 
         self.sample_end = self.samples['positions'].shape[0]
-        if self.skipSamples > 0: self.sample_end -= (self.skipSamples)
+        if self.skip_samples > 0: self.sample_end -= (self.skip_samples)
 
         if self.simulate:
             if self.useAPriori:
@@ -627,9 +644,9 @@ class Identification(object):
                 tau = self.tau
             self.tauMeasured = np.reshape(tau, (self.num_used_samples, self.N_DOFS))
         else:
-            self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skipSamples+1, :]
+            self.tauMeasured = self.samples['torques'][0:self.sample_end:self.skip_samples+1, :]
 
-        self.T = self.samples['times'][0:self.sample_end:self.skipSamples+1]
+        self.T = self.samples['times'][0:self.sample_end:self.skip_samples+1]
 
         if self.showTiming:
             print('Simulation for regressors took %.03f sec.' % simulate_time)
@@ -808,9 +825,9 @@ class Identification(object):
             print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             if self.filterRegressor:
-                order = 6  #Filter order
-                fs = 200.0   #Sampling freq #TODO: get from measurements
-                fc = fs/2 - 50 #90.0   #Cut-off frequency (Hz)
+                order = 6                       #Filter order
+                fs = self.samples['frequency']  #Sampling freq
+                fc = 5                          #Cut-off frequency (Hz)
                 b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
                     for i in range(0, self.N_DOFS):
@@ -985,13 +1002,13 @@ class Identification(object):
 
         #print("torque estimation took %.03f sec." % t.interval)
 
-    def estimateValidationTorques(self, file):
+    def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
         # have inverse dynamics yet, so we have to go over a new urdf file now)
         import os
 
-        v_data = np.load(file)
+        v_data = np.load(self.validation_file)
         dynComp = iDynTree.DynamicsComputations();
 
         self.helpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
@@ -1004,7 +1021,7 @@ class Identification(object):
         gravity.setVal(2, -9.81);
 
         self.tauEstimatedValidation = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.skipSamples+1):
+        for m_idx in range(0, v_data['positions'].shape[0], self.skip_samples+1):
             # read measurements
             pos = v_data['positions'][m_idx]
             vel = v_data['velocities'][m_idx]
@@ -1029,9 +1046,9 @@ class Identification(object):
             else:
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques.toNumPy()))
 
-        if self.skipSamples > 0:
-            self.tauMeasuredValidation = v_data['torques'][::self.skipSamples+1]
-            self.Tv = v_data['times'][::self.skipSamples+1]
+        if self.skip_samples > 0:
+            self.tauMeasuredValidation = v_data['torques'][::self.skip_samples+1]
+            self.Tv = v_data['times'][::self.skip_samples+1]
         else:
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
@@ -1426,23 +1443,32 @@ class Identification(object):
     def plot(self):
         """Display some torque plots."""
 
+        rel_time = self.T-self.T[0]
+        if self.validation_file:
+            rel_vtime = self.Tv-self.Tv[0]
+        #TODO: allow plotting in subplots per joint, include raw values then
         datasets = [
-            ([self.tauMeasured], 'Measured Torques'),
-            ([self.tauEstimated], 'Estimated Torques'),
-            ([self.tauMeasured-self.tauEstimated], 'Estimation Error'),
-            #([self.tauEstimatedValidation], 'Validation Error'),
-            #([self.samples['positions'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Positions'),
-            #([self.samples['velocities'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Vels'),
-            #([self.samples['accelerations'][self.start_offset:self.sample_end:self.skip_samples+1]], 'Accls'),
-        ]
+            ([self.tauMeasured], rel_time, 'Measured Torques'),
+            ([self.tauEstimated], rel_time, 'Estimated Torques'),
+            ([self.tauMeasured-self.tauEstimated], rel_time, 'Estimation Error')]
+
+        if self.validation_file:
+            datasets.append(
+            ([self.tauEstimatedValidation-self.tauMeasuredValidation], rel_vtime, 'Validation Error'),
+            #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
+            )
+
+        #([self.samples['positions'][0:self.sample_end:self.skip_samples+1], self.samples['positions'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Positions'),
+        #([self.samples['velocities'][0:self.sample_end:self.skip_samples+1], self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),
+        #([self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Accelerations'),
 
         if self.outputModule is 'matplotlib':
             from output import OutputMatplotlib
-            output = OutputMatplotlib(datasets, self.T, self.jointNames)
+            output = OutputMatplotlib(datasets, self.jointNames)
             output.render()
         elif self.outputModule is 'html':
             from output import OutputHTML
-            output = OutputHTML(datasets, self.T, self.jointNames)
+            output = OutputHTML(datasets, self.jointNames)
             output.render()
             #output.runServer()
 
@@ -1480,7 +1506,7 @@ def main():
     parser.set_defaults(plot=False, explain=False, regressor=None, model_real=None)
     args = parser.parse_args()
 
-    idf = Identification(args.model, args.model_real, args.measurements, args.regressor)
+    idf = Identification(args.model, args.model_real, args.measurements, args.regressor, args.validation)
     idf.initRegressors()
 
     if idf.selectBlocksFromMeasurements:
@@ -1511,7 +1537,7 @@ def main():
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain: OutputConsole.render(idf)
-    if args.validation: idf.estimateValidationTorques(args.validation)
+    if args.validation: idf.estimateValidationTorques()
     if args.plot: idf.plot()
 
 if __name__ == '__main__':

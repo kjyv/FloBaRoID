@@ -69,6 +69,7 @@ class OutputConsole(object):
                 #get some error values for each parameter
                 approx = xStd[idx_p]
                 apriori = xStdModel[idx_p]
+                diff = approx - apriori
 
                 if idf.urdf_file_real:
                     real = xStdReal[idx_p]
@@ -91,18 +92,19 @@ class OutputConsole(object):
                     # get error percentage (new to apriori)
                     diff_apriori = apriori - real
                     #if apriori == 0: apriori = 0.01
-                    if diff_apriori != 0: pc_delta = np.abs((100/diff_apriori)*diff_real)
-                    elif diff_real != 0:
+                    if diff_apriori != 0:
+                        pc_delta = np.abs((100/diff_apriori)*diff_real)
+                    elif diff_real > 0.0001:
                         pc_delta = np.abs((100/0.01)*diff_real)
                     else:
-                        pc_delta = 0
+                        #both real and a priori are zero, error is still at 100% (of zero error)
+                        pc_delta = 100
                     sum_pc_delta_all += pc_delta
                     if idx_p in idf.stdEssentialIdx:
                         sum_pc_delta_ess += pc_delta
                 else:
                     # get percentage difference between apriori and identified values
                     # (shown when real values are not known)
-                    diff = approx - apriori
                     if apriori != 0:
                         diff_pc = (100*diff)/apriori
                     else:
@@ -115,7 +117,7 @@ class OutputConsole(object):
                     sigma = 0.0
 
                 if idf.urdf_file_real:
-                    vals = [real, apriori, approx, diff_real, np.abs(diff_r_pc), pc_delta, sigma, d]
+                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
                 else:
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
                 lines.append(vals)
@@ -285,22 +287,19 @@ class OutputConsole(object):
                 format(idf.res_error, idf.apriori_error))
 
 class OutputMatplotlib(object):
-    def __init__(self, datasets, time, jointNames):
+    def __init__(self, datasets, jointNames):
         import matplotlib
         import matplotlib.pyplot as plt
 
         self.datasets = datasets
-        self.T = time
         # scale all figures to same ranges and add some margin
-        self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]])
-        self.ymin += self.ymin * 0.05
-        self.ymax = np.max([datasets[0][0][0], datasets[1][0][0]])
-        self.ymax += self.ymax * 0.05
+        self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]]) * 1.05
+        self.ymax = np.max([datasets[0][0][0], datasets[1][0][0]]) * 1.05
         self.jointNames = jointNames
 
     def render(self):
         """show plots in separate matplotlib windows"""
-        for (data, title) in self.datasets:
+        for (data, time, title) in self.datasets:
             fig = plt.figure()
             plt.ylim([self.ymin, self.ymax])
             plt.title(title)
@@ -309,10 +308,10 @@ class OutputMatplotlib(object):
                     #data matrices
                     for i in range(0, data[d_i].shape[1]):
                         l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                        plt.plot(time, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
                 else:
                     #data vector
-                    plt.plot(self.T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+                    plt.plot(time, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
 
             leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
             leg.draggable()
@@ -320,14 +319,11 @@ class OutputMatplotlib(object):
 
 
 class OutputHTML(object):
-    def __init__(self, datasets, time, jointNames):
+    def __init__(self, datasets, jointNames):
         self.datasets = datasets
-        self.T = time
         # scale all figures to same ranges and add some margin
-        self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]])
-        self.ymin += self.ymin * 0.05
-        self.ymax = np.max([datasets[0][0][0], datasets[1][0][0]])
-        self.ymax += self.ymax * 0.05
+        self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]]) * 1.05
+        self.ymax = np.max([datasets[0][0][0], datasets[1][0][0]]) * 1.05
         self.jointNames = jointNames
 
     def render(self, filename='output.html'):
@@ -337,7 +333,7 @@ class OutputHTML(object):
         from jinja2 import Environment, FileSystemLoader
 
         figures = list()
-        for (data, title) in self.datasets:
+        for (data, time, title) in self.datasets:
             fig = plt.figure()
             plt.ylim([self.ymin, self.ymax])
             plt.title(title)
@@ -346,10 +342,10 @@ class OutputHTML(object):
                     #data matrices
                     for i in range(0, data[d_i].shape[1]):
                         l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(self.T, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                        plt.plot(time, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
                 else:
                     #data vector
-                    plt.plot(self.T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+                    plt.plot(time, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
 
             leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
             leg.draggable()

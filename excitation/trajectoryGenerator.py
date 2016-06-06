@@ -29,11 +29,12 @@ class TrajectoryGenerator(object):
         a = [0]*dofs
         b = [0]*dofs
         nf = np.random.randint(1,4,7)
+        q = np.random.rand(7)*2-1
         for i in range(0, self.dofs):
             # TODO: use joint limits here
-            a[i] = np.random.rand(nf[i])*2.5-1.25
-            b[i] = np.random.rand(nf[i])*2.5-1.25
-        q = np.random.rand(7)*2-1
+            max = 2.0-np.abs(q[i])
+            a[i] = np.random.rand(nf[i])*max-max/2
+            b[i] = np.random.rand(nf[i])*max-max/2
         print a
         print b
         print q

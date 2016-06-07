@@ -18,6 +18,8 @@ import scipy.sparse as sparse
 import matplotlib
 import matplotlib.pyplot as plt
 
+from sympy import symbols, relational, solve
+
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import helpers
@@ -79,7 +81,7 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 1
+        self.useEssentialParams = 0
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -397,6 +399,8 @@ class Identification(object):
         for i in range(0, self.N_LINKS):
             base_columns = [j for j in range(0, self.num_base_params) if self.independent_cols[j] in range(i*10, i*10+9)]
 
+            #get base params that have corresponding std params for the current link
+            #TODO: check if this is a valid approach, also use proper new dependents
             for j in range(0, self.num_base_params):
                 for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
                     if dep in range(i*10, i*10+9):
@@ -405,7 +409,7 @@ class Identification(object):
                 linkConds.append(99999)
             else:
                 linkConds.append(la.cond(self.YBase[:, base_columns]))
-            #linkConds[i] = la.cond(self.YStd[:, i*10:i*10+9])
+            #linkConds.append(la.cond(self.YStd[:, i*10:i*10+9]))
         print("Condition numbers of link sub-regressors: [{}]".format(linkConds))
 
         return linkConds
@@ -786,6 +790,9 @@ class Identification(object):
         #using random regressor gives us structural base params, not dependent on excitation
         #QR of transposed gives us basis of column space of original matrix
         Yrand = self.getRandomRegressors(n_samples=5000)
+
+        #TODO: save all this following stuff into regressor file as well
+
         Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
         #get rank
@@ -795,16 +802,17 @@ class Identification(object):
         #get basis projection matrix
         self.B = Qt[:, 0:r]
 
-        # seems we have to do QR again for column space dependencies
+        # seems we have to do QR on not-transposed matrix again for column space dependencies
         Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
         self.Q, self.R, self.P = Q,R,P
 
-        #create permuation matrix out of vector
+        #create permuation matrix from vector
         self.Pp = np.zeros((P.size, P.size))
         for i in P:
             self.Pp[i, P[i]] = 1
 
-        # get the choice of indices of independent columns of the regressor matrix (std params -> base params)
+        # get the choice of indices of independent columns of the regressor matrix
+        # the base params linear combinations are these parameters
         self.independent_cols = P[0:r]
 
         # get column dependency matrix (with what factor are columns of each base parameter dependent)
@@ -812,6 +820,38 @@ class Identification(object):
         R1 = R[0:r, 0:r]
         R2 = R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
+
+        # get the grouping of each base param
+        self.param_syms = symbols('c0:%d' % Yrand.shape[1])
+
+        # collect dependencies expressed from dependent columns (coming like that from QR)
+        print("non-identifiable parameters (dependent columns):")
+        indep_eqs = list()
+        for j in range(0, self.linear_deps.shape[1]):
+            dep_org_col = P[self.independent_cols.size+j]
+            # build linear equation for this dependent column
+            eq = 0
+            #go through all dependencies of this col and collect all grouped params
+            for i in range(0, self.linear_deps.shape[0]):
+                if np.abs(self.linear_deps[i,j]) > 0.01:
+                    indep_org_col = P[i]
+                    eq += round(self.linear_deps[i,j], 4)*self.param_syms[indep_org_col]
+
+            eq = relational.Eq(self.param_syms[dep_org_col], eq)
+            print("{} = {}".format(eq.lhs, eq.rhs))
+            indep_eqs.append(eq)
+
+        # collect grouped columns for each independent column
+        self.indeps_deps = {}
+        for j in self.independent_cols:    # for each of the base params
+            # check for each of the dependent columns how they are grouped and contribute to each base params
+            for i in range(0, self.linear_deps.shape[1]):
+                if (not j in self.indeps_deps or self.indeps_deps[j] == []) and self.param_syms[j] in indep_eqs[i].free_symbols:
+                    self.indeps_deps[j] = solve(indep_eqs[i], self.param_syms[j])
+                    #print "solved: i {}, j {}".format(i,j)
+                elif j in self.indeps_deps and self.indeps_deps[j] != []:
+                    continue
+        #print(self.indeps_deps)
 
     def getBaseRegressor(self):
         with helpers.Timer() as t:
@@ -1238,19 +1278,13 @@ class Identification(object):
                 dependents = []
                 #to_delete = []
                 for i in range(0, self.linear_deps.shape[0]):
-                    for j in range(0,self.linear_deps.shape[1]):
-                        if np.abs(self.linear_deps[i,j]) > 0.1:
-                            dep_org_col = self.P[self.independent_cols.size+j]
-                            indep_org_col = self.P[i]
-                            if dep_org_col not in dependents and indep_org_col in self.stdEssentialIdx:
-                                dependents.append(dep_org_col)
-                            #indep_org_col has dependents, remove from stdEssentialIdx to get fully identifiable
-                            #to_delete.append(indep_org_col)
+                    indep_org_col = self.P[i]
+                    if indep_org_col in self.stdEssentialIdx and indep_org_col in self.indeps_deps:
+                        for s in self.indeps_deps[indep_org_col][0].free_symbols:
+                            idx = self.param_syms.index(s)
+                            if idx not in dependents:
+                                dependents.append(idx)
 
-                            #print(
-                            #    ('''col {} in W2(col {} in a) is a linear combination of col {} in W1''' +\
-                            #    '''(col {} in a) with factor {}''')\
-                            #   .format(i, dep_org_col, j, indep_org_col, self.linear_deps[i,j]))
                 #print self.stdEssentialIdx
                 #print len(dependents)
                 print dependents

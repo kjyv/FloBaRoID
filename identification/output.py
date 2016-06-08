@@ -181,6 +181,7 @@ class OutputConsole(object):
             # collect values for parameters
             idx_ep = 0
             lines = list()
+            sum_error_all_base = 0
             for idx_p in range(0, idf.num_base_params):
                 if idf.useEssentialParams: # and xBase_essential[idx_p] != 0:
                     new = xBase_essential[idx_p]
@@ -191,6 +192,7 @@ class OutputConsole(object):
                 if idf.urdf_file_real:
                     real = xBaseReal[idx_p]
                     error = new - real
+                    sum_error_all_base += np.abs(error)
 
                 # collect linear dependencies for this param
                 #deps = np.where(np.abs(idf.linear_deps[idx_p, :])>0.1)[0]
@@ -283,6 +285,9 @@ class OutputConsole(object):
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.xStd)))
+            if idf.showBaseParams and not summary_only:
+                print("Mean error (apriori - approx) of all base params: {:.5f}".\
+                        format(sum_error_all_base/len(idf.xBase)))
 
         idf.estimateRegressorTorques(estimateWith='urdf')
         idf.apriori_error = sla.norm(idf.tauEstimated-idf.tauMeasured)*100/sla.norm(idf.tauMeasured)
@@ -293,9 +298,6 @@ class OutputConsole(object):
 
 class OutputMatplotlib(object):
     def __init__(self, datasets, jointNames):
-        import matplotlib
-        import matplotlib.pyplot as plt
-
         self.datasets = datasets
         # scale all figures to same ranges and add some margin
         self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]]) * 1.05
@@ -304,6 +306,9 @@ class OutputMatplotlib(object):
 
     def render(self):
         """show plots in separate matplotlib windows"""
+
+        import matplotlib
+        import matplotlib.pyplot as plt
         for (data, time, title) in self.datasets:
             fig = plt.figure()
             plt.ylim([self.ymin, self.ymax])

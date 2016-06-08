@@ -51,7 +51,7 @@ class Identification(object):
 
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
-        self.start_offset = 100  #how many samples from the beginning of the (first) measurement are skipped
+        self.start_offset = 250  #how many samples from the beginning of the (first) measurement are skipped
         self.skip_samples = 4    #how many values to skip before using the next sample
 
         # use robotran symbolic regressor to estimate torques (else iDynTree)
@@ -347,7 +347,7 @@ class Identification(object):
         """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""
 
         # select blocks with best 30% condition numbers
-        perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], 30)
+        perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], 50)
 
         cond_matrix = np.zeros((len(self.seenBlocks), self.N_LINKS))
         c = 0
@@ -850,8 +850,7 @@ class Identification(object):
                     self.indeps_deps[j] = solve(indep_eqs[i], self.param_syms[j])
                     #print "solved: i {}, j {}".format(i,j)
                 elif j in self.indeps_deps and self.indeps_deps[j] != []:
-                    continue
-        #print(self.indeps_deps)
+                    break
 
     def getBaseRegressor(self):
         with helpers.Timer() as t:
@@ -914,7 +913,6 @@ class Identification(object):
         self.xBaseModel = np.dot(self.B.T, self.xStdModel)
 
         # invert equation to get parameter vector from measurements and model + system state values
-
         """
         if self.useBoundedLeastSquares and not self.useEssentialParams:
             # apply boundaries to estimation, probably decreases performance for base params
@@ -941,11 +939,11 @@ class Identification(object):
         #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
 
         #damped least squares
-        #from scipy.sparse.linalg import lsqr
-        #self.xBase = lsqr(YBase, tau, damp=10)[0]
+        from scipy.sparse.linalg import lsqr
+        self.xBase = lsqr(YBase, tau, damp=10)[0]
 
-        #ordinary least squares
-        self.xBase = la.lstsq(YBase, tau)[0]
+        #ordinary least squares with numpy method
+        #self.xBase = la.lstsq(YBase, tau)[0]
 
         #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
 
@@ -1191,7 +1189,7 @@ class Identification(object):
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
-                if ratio < 25:
+                if ratio < 20:
                     break
                 if use_error_criterion and error_increase_pham > 3.5:
                     break
@@ -1484,7 +1482,11 @@ class Identification(object):
         datasets = [
             ([self.tauMeasured], rel_time, 'Measured Torques'),
             ([self.tauEstimated], rel_time, 'Estimated Torques'),
-            ([self.tauMeasured-self.tauEstimated], rel_time, 'Estimation Error')]
+            ([self.tauMeasured-self.tauEstimated], rel_time, 'Estimation Error'),
+            ([self.samples['positions'][0:self.sample_end:self.skip_samples+1], self.samples['positions'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Positions'),
+            ([self.samples['velocities'][0:self.sample_end:self.skip_samples+1], self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),
+            ([self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Accelerations'),
+            ]
 
         if self.validation_file:
             datasets.append(
@@ -1492,9 +1494,6 @@ class Identification(object):
             #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
             )
 
-        #([self.samples['positions'][0:self.sample_end:self.skip_samples+1], self.samples['positions'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Positions'),
-        #([self.samples['velocities'][0:self.sample_end:self.skip_samples+1], self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),
-        #([self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Accelerations'),
 
         if self.outputModule is 'matplotlib':
             from output import OutputMatplotlib

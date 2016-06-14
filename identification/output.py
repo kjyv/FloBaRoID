@@ -198,14 +198,10 @@ class OutputConsole(object):
                 #deps = np.where(np.abs(idf.linear_deps[idx_p, :])>0.1)[0]
                 #dep_factors = idf.linear_deps[idx_p, deps]
 
-                std_column = idf.independent_cols[idx_p]
-                param_columns = ' c{}'.format(std_column)
-                sym_column = idf.param_syms[std_column]
-                if std_column in idf.indeps_deps and len(idf.indeps_deps[std_column]):
-                    param_columns += " = "
-                    param_columns += "{}".format(idf.indeps_deps[std_column][0])
-                    #for p in range(0, len(deps)):
-                    #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
+                param_columns = " = "
+                param_columns += "{}".format(idf.base_deps[idx_p])
+                #for p in range(0, len(deps)):
+                #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
 
 
                 if idf.useEssentialParams and idx_p in idf.baseEssentialIdx:

@@ -824,33 +824,18 @@ class Identification(object):
         # get the grouping of each base param
         self.param_syms = symbols('c0:%d' % Yrand.shape[1])
 
-        # collect dependencies expressed from dependent columns (coming like that from QR)
-        print("non-identifiable parameters (dependent columns):")
-        indep_eqs = list()
-        for j in range(0, self.linear_deps.shape[1]):
-            dep_org_col = P[self.independent_cols.size+j]
-            # build linear equation for this dependent column
-            eq = 0
-            #go through all dependencies of this col and collect all grouped params
-            for i in range(0, self.linear_deps.shape[0]):
-                if np.abs(self.linear_deps[i,j]) > 0.01:
-                    indep_org_col = P[i]
-                    eq += round(self.linear_deps[i,j], 4)*self.param_syms[indep_org_col]
-
-            eq = relational.Eq(self.param_syms[dep_org_col], eq)
-            print("{} = {}".format(eq.lhs, eq.rhs))
-            indep_eqs.append(eq)
-
         # collect grouped columns for each independent column
-        self.indeps_deps = {}
-        for j in self.independent_cols:    # for each of the base params
-            # check for each of the dependent columns how they are grouped and contribute to each base params
+        self.base_deps = {}
+        for j in range(0, self.linear_deps.shape[0]):
+            indep_idx = self.independent_cols[j]
+            sym = self.param_syms[j]
+
+            #build equation from factors in each row
             for i in range(0, self.linear_deps.shape[1]):
-                if (not j in self.indeps_deps or self.indeps_deps[j] == []) and self.param_syms[j] in indep_eqs[i].free_symbols:
-                    self.indeps_deps[j] = solve(indep_eqs[i], self.param_syms[j])
-                    #print "solved: i {}, j {}".format(i,j)
-                elif j in self.indeps_deps and self.indeps_deps[j] != []:
-                    break
+                if j not in self.base_deps:
+                    self.base_deps[j] = self.param_syms[indep_idx]    #start with independent column var
+                    for k in range(r, P.size):        #add for each symbol
+                        self.base_deps[j] += self.param_syms[P[k]]*round(self.linear_deps[j, k-r], 4)
 
     def getBaseRegressor(self):
         with helpers.Timer() as t:
@@ -934,18 +919,15 @@ class Identification(object):
             self.xBase = res.x
         else:
         """
-        #self.YBaseInv = la.pinv(self.YBase)
-        #print("YBaseInv: {}".format(self.YBaseInv.shape))
-        #self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
+        self.YBaseInv = la.pinv(self.YBase)
+        self.xBase = np.dot(self.YBaseInv, self.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
 
         #damped least squares
-        from scipy.sparse.linalg import lsqr
-        self.xBase = lsqr(YBase, tau, damp=10)[0]
+        #from scipy.sparse.linalg import lsqr
+        #self.xBase = lsqr(YBase, tau, damp=10)[0]
 
         #ordinary least squares with numpy method
         #self.xBase = la.lstsq(YBase, tau)[0]
-
-        #print "The base parameter vector {} is \n{}".format(self.xBase.shape, self.xBase)
 
         if self.useWLS:
             """
@@ -1002,8 +984,6 @@ class Identification(object):
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.useAPriori:
             self.xStd = self.xStd + self.xStdModel
-
-        # print "The standard parameter vector {} is \n{}".format(self.xStd.shape, self.xStd)
 
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
@@ -1276,9 +1256,8 @@ class Identification(object):
                 dependents = []
                 #to_delete = []
                 for i in range(0, self.linear_deps.shape[0]):
-                    indep_org_col = self.P[i]
-                    if indep_org_col in self.stdEssentialIdx and indep_org_col in self.indeps_deps:
-                        for s in self.indeps_deps[indep_org_col][0].free_symbols:
+                    if i in self.baseEssentialIdx:
+                        for s in self.base_deps[i].free_symbols:
                             idx = self.param_syms.index(s)
                             if idx not in dependents:
                                 dependents.append(idx)

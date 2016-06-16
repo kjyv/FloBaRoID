@@ -66,8 +66,9 @@ class Identification(object):
         # ['base', 'std', 'std_direct', 'urdf']
         self.estimateWith = 'std'
 
-        # use known CAD parameters as a priori knowledge, generates (more) consistent std parameters
+        # use known CAD parameters and identify parameter error, generates (more) consistent std parameters
         self.useAPriori = 1
+        self.projectToAPriori = 1
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
@@ -81,7 +82,9 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
+        self.useEssentialParams = 1
+        # whether to include linear dependent columns in essential params or not
+        self.useDependents = 1
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -136,7 +139,7 @@ class Identification(object):
 
         with helpers.Timer() as t:
             #almost zero threshold for SVD and QR
-            self.min_tol = 1e-3
+            self.min_tol = 1e-5
 
             self.URDF_FILE = urdf_file
             self.urdf_file_real = urdf_file_real
@@ -826,6 +829,7 @@ class Identification(object):
 
         # collect grouped columns for each independent column
         self.base_deps = {}
+        self.B = np.zeros((self.N_PARAMS, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
             sym = self.param_syms[j]
@@ -833,9 +837,34 @@ class Identification(object):
             #build equation from factors in each row
             for i in range(0, self.linear_deps.shape[1]):
                 if j not in self.base_deps:
-                    self.base_deps[j] = self.param_syms[indep_idx]    #start with independent column var
-                    for k in range(r, P.size):        #add for each symbol
-                        self.base_deps[j] += self.param_syms[P[k]]*round(self.linear_deps[j, k-r], 4)
+                    self.base_deps[j] = self.param_syms[indep_idx]    #start with independent column symbol
+                    for k in range(r, P.size):        #... and for each entry!=0, add dep columns symbols with factor
+                        fact = round(self.linear_deps[j, k-r], 4)  #TODO: maybe remove rounding
+                        if np.abs(fact)>self.min_tol:
+                            self.base_deps[j] += self.param_syms[P[k]]*fact
+                            self.B[P[k],j] = fact
+            self.B[indep_idx,j] = 1
+
+        """
+        # get symbolic relationships from base projection (if using Q-columns from QR)
+        for j in range(0, self.B.shape[1]):
+            eq = 0*self.param_syms[0]
+            for i in range(0, self.B.shape[0]):
+                if np.abs(self.B[i,j]) > self.min_tol:
+                    eq += self.B[i, j]*self.param_syms[i]
+            self.base_deps[j] = eq
+        """
+
+        '''
+        #use reduced row echelon form to get basis for identifiable subspace
+        #(rrf does not get minimal reduced space though)
+        from sympy import Matrix
+        Ew = Matrix(Yrand).rref()
+        Ew_np = np.array(Ew[0].tolist(), dtype=float)
+        # B in Paper:
+        self.R = Ew_np[~np.all(Ew_np==0, axis=1)]    #remove rows that are all zero
+        self.Rpinv = la.pinv(self.R)   # == P in Paper
+        '''
 
     def getBaseRegressor(self):
         with helpers.Timer() as t:
@@ -895,7 +924,10 @@ class Identification(object):
         # jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
         # self.generator.getFrameJacobian('arm', jacobian)
 
-        self.xBaseModel = np.dot(self.B.T, self.xStdModel)
+        # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
+        # (using QR on B yields orthonormal base if necessary)
+        # in general, pinv is always working correctly
+        self.xBaseModel = np.dot(la.pinv(self.B), self.xStdModel)
 
         # invert equation to get parameter vector from measurements and model + system state values
         """
@@ -979,11 +1011,14 @@ class Identification(object):
         # i.e. don't call after getBaseParamsFromParamError
 
         # project back to standard parameters
-        self.xStd = np.dot(self.B, self.xBase)
+        self.xStd = self.B.dot(self.xBase)
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.useAPriori:
-            self.xStd = self.xStd + self.xStdModel
+            self.xStd += self.xStdModel
+        elif self.projectToAPriori:
+            #add a priori parameters projected on non-identifiable subspace
+            self.xStd += (np.eye(self.B.shape[0])-self.B.dot(la.pinv(self.B))).dot(self.xStdModel)
 
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
@@ -1164,12 +1199,12 @@ class Identification(object):
                 pham_percent = sla.norm(self.tauEstimated)*100/sla.norm(self.tauMeasured)
                 #TODO: why does this get negative?
                 error_increase_pham = pham_percent - pham_percent_start
-                print("error increase {}").format(error_increase_pham)
+                print("error delta {}").format(error_increase_pham)
 
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
-                if ratio < 20:
+                if ratio < 25:
                     break
                 if use_error_criterion and error_increase_pham > 3.5:
                     break
@@ -1249,9 +1284,8 @@ class Identification(object):
 
             # intuitively, also the dependent columns should be essential as the linear combination
             # is used to identify and calc the error
-            useDependents = 0
             useCADWeighting = 0   # usually produces exact same result, but might be good for some tests
-            if useDependents:
+            if self.useDependents:
                 # also get the ones that are linearly dependent on them -> base params
                 dependents = []
                 #to_delete = []
@@ -1277,7 +1311,7 @@ class Identification(object):
             self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
 
             ## get \hat{x_e}, set zeros for non-essential params
-            if useDependents or useCADWeighting:
+            if self.useDependents or useCADWeighting:
                 # we don't really know what the weights are if we have more std essential than base
                 # essentials, so use CAD/previous params for weighting
                 self.xStdEssential = self.xStdModel.copy()

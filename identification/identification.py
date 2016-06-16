@@ -68,7 +68,7 @@ class Identification(object):
 
         # use known CAD parameters and identify parameter error, generates (more) consistent std parameters
         self.useAPriori = 1
-        self.projectToAPriori = 1
+        self.projectToAPriori = 0
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
@@ -82,9 +82,9 @@ class Identification(object):
         self.useWLS = 0
 
         # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 1
+        self.useEssentialParams = 0
         # whether to include linear dependent columns in essential params or not
-        self.useDependents = 1
+        self.useDependents = 0
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -796,6 +796,7 @@ class Identification(object):
 
         #TODO: save all this following stuff into regressor file as well
 
+        """
         Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
         #get rank
@@ -804,27 +805,32 @@ class Identification(object):
 
         #get basis projection matrix
         self.B = Qt[:, 0:r]
+        """
 
-        # seems we have to do QR on not-transposed matrix again for column space dependencies
+        # get column space dependencies
         Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
         self.Q, self.R, self.P = Q,R,P
 
-        #create permuation matrix from vector
+        #get rank
+        r = np.where(np.abs(R.diagonal()) > self.min_tol)[0].size
+        self.num_base_params = r
+
+        #create proper permutation matrix from vector
         self.Pp = np.zeros((P.size, P.size))
         for i in P:
             self.Pp[i, P[i]] = 1
 
-        # get the choice of indices of independent columns of the regressor matrix
-        # the base params linear combinations are these parameters
+        # get the choice of indices of "independent" columns of the regressor matrix
+        # (representants chosen from each separate interdependent group of columns)
         self.independent_cols = P[0:r]
 
-        # get column dependency matrix (with what factor are columns of each base parameter dependent)
+        # get column dependency matrix (with what factor are columns of "dependent" columns grouped)
         # i (independent column) = (value at i,j) * j (dependent column index among the others)
         R1 = R[0:r, 0:r]
         R2 = R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
 
-        # get the grouping of each base param
+        # define some sympy symbols for each std column
         self.param_syms = symbols('c0:%d' % Yrand.shape[1])
 
         # collect grouped columns for each independent column
@@ -839,7 +845,7 @@ class Identification(object):
                 if j not in self.base_deps:
                     self.base_deps[j] = self.param_syms[indep_idx]    #start with independent column symbol
                     for k in range(r, P.size):        #... and for each entry!=0, add dep columns symbols with factor
-                        fact = round(self.linear_deps[j, k-r], 4)  #TODO: maybe remove rounding
+                        fact = round(self.linear_deps[j, k-r], 5)  #TODO: maybe remove rounding
                         if np.abs(fact)>self.min_tol:
                             self.base_deps[j] += self.param_syms[P[k]]*fact
                             self.B[P[k],j] = fact
@@ -1204,7 +1210,7 @@ class Identification(object):
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
-                if ratio < 25:
+                if ratio < 21:
                     break
                 if use_error_criterion and error_increase_pham > 3.5:
                     break

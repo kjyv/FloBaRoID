@@ -885,7 +885,10 @@ class Identification(object):
 
             if self.filterRegressor:
                 order = 6                       #Filter order
-                fs = self.samples['frequency']  #Sampling freq
+                try:
+                    fs = self.samples['frequency']  #Sampling freq
+                except:
+                    fs = 200.0
                 fc = 5                          #Cut-off frequency (Hz)
                 b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
@@ -1503,7 +1506,7 @@ class Identification(object):
             ([self.tauEstimated], rel_time, 'Estimated Torques'),
             ([self.tauMeasured-self.tauEstimated], rel_time, 'Estimation Error'),
             ([self.samples['positions'][0:self.sample_end:self.skip_samples+1], self.samples['positions'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Positions'),
-            ([self.samples['velocities'][0:self.sample_end:self.skip_samples+1], self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),
+            ([self.samples['velocities'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),  #self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]
             ([self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Accelerations'),
             ]
 

@@ -18,7 +18,7 @@ import scipy.sparse as sparse
 import matplotlib
 import matplotlib.pyplot as plt
 
-from sympy import symbols, relational, solve
+from sympy import symbols, solve
 
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
@@ -1502,18 +1502,23 @@ class Identification(object):
             rel_vtime = self.Tv-self.Tv[0]
         #TODO: allow plotting in subplots per joint, include raw values then
         datasets = [
-            ([self.tauMeasured], rel_time, 'Measured Torques'),
-            ([self.tauEstimated], rel_time, 'Estimated Torques'),
-            ([self.tauMeasured-self.tauEstimated], rel_time, 'Estimation Error'),
-            ([self.samples['positions'][0:self.sample_end:self.skip_samples+1], self.samples['positions'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Positions'),
-            ([self.samples['velocities'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Velocities'),  #self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1]
-            ([self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], rel_time, 'Accelerations'),
-            ]
+            {'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques', 'unified_scaling': True},
+            {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques', 'unified_scaling': True},
+            {'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error', 'unified_scaling': False},
+            {'data': [self.samples['positions'][0:self.sample_end:self.skip_samples+1]], 'time': rel_time, 'title': 'Positions'},
+            {'data': [self.samples['velocities'][0:self.sample_end:self.skip_samples+1]], 'time': rel_time, 'title': 'Velocities'},
+            {'data': [self.samples['accelerations'][0:self.sample_end:self.skip_samples+1]], 'time': rel_time, 'title': 'Accelerations'},
+        ]
+
+        if self.samples.has_key('positions_raw'):
+            datasets[3]['data'].append(self.samples['positions_raw'][0:self.sample_end:self.skip_samples+1])
+        if self.samples.has_key('velocities_raw'):
+            datasets[4]['data'].append(self.samples['velocities_raw'][0:self.sample_end:self.skip_samples+1])
 
         if self.validation_file:
             datasets.append(
-            ([self.tauEstimatedValidation-self.tauMeasuredValidation], rel_vtime, 'Validation Error'),
-            #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
+                {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation], 'time': rel_vtime, 'title': 'Validation Error'},
+                #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
             )
 
 

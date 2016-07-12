@@ -18,7 +18,7 @@ import scipy.sparse as sparse
 import matplotlib
 import matplotlib.pyplot as plt
 
-from sympy import symbols, solve
+from sympy import symbols, solve, Eq
 
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
@@ -84,7 +84,7 @@ class Identification(object):
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 0
         # whether to include linear dependent columns in essential params or not
-        self.useDependents = 0
+        self.useDependents = 1
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -834,22 +834,25 @@ class Identification(object):
         self.param_syms = symbols('c0:%d' % Yrand.shape[1])
 
         # collect grouped columns for each independent column
+        # build base matrix
         self.base_deps = {}
         self.B = np.zeros((self.N_PARAMS, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
-            sym = self.param_syms[j]
-
-            #build equation from factors in each row
             for i in range(0, self.linear_deps.shape[1]):
-                if j not in self.base_deps:
-                    self.base_deps[j] = self.param_syms[indep_idx]    #start with independent column symbol
-                    for k in range(r, P.size):        #... and for each entry!=0, add dep columns symbols with factor
-                        fact = round(self.linear_deps[j, k-r], 5)  #TODO: maybe remove rounding
-                        if np.abs(fact)>self.min_tol:
-                            self.base_deps[j] += self.param_syms[P[k]]*fact
-                            self.B[P[k],j] = fact
+                for k in range(r, P.size):
+                    fact = round(self.linear_deps[j, k-r], 5)
+                    if np.abs(fact)>self.min_tol: self.B[P[k],j] = fact
             self.B[indep_idx,j] = 1
+        self.base_deps = np.dot(self.param_syms, self.B)
+
+        """
+        #orthogonalize, so linear relationships can be inverted
+        Q_B_qr, R_B_qr = la.qr(self.B)
+        Q_B_qr[np.abs(Q_B_qr) < self.min_tol] = 0
+        self.base_deps = np.dot(self.param_syms, Q_B_qr)
+        self.B = Q_B_qr
+        """
 
         """
         # get symbolic relationships from base projection (if using Q-columns from QR)

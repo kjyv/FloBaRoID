@@ -281,6 +281,10 @@ class OutputConsole(object):
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.xStd)))
+                sq_error_apriori = np.square(la.norm(xStdReal - idf.xStdModel))
+                sq_error_idf = np.square(la.norm(xStdReal - idf.xStd))
+                print( "Squared distance of parameter vectors (apriori, identified) to real: {} vs. {}".\
+                        format(sq_error_apriori, sq_error_idf))
             if idf.showBaseParams and not summary_only:
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.xBase)))
@@ -309,6 +313,7 @@ class OutputMatplotlib(object):
             fig = plt.figure()
             plt.ylim([self.ymin, self.ymax])
             plt.title(title)
+            plt.xlabel("Time (s)")
             for d_i in range(0, len(data)):
                 if len(data[d_i].shape) > 1:
                     #data matrices
@@ -345,6 +350,7 @@ class OutputHTML(object):
             if d.has_key('unified_scaling') and d['unified_scaling']:
                 plt.ylim([self.ymin, self.ymax])
             plt.title(d['title'])
+            plt.xlabel("Time (s)")
             for d_i in range(0, len(d['data'])):
                 if len(d['data'][d_i].shape) > 1:
                     #data matrices

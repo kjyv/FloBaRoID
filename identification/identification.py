@@ -1032,6 +1032,31 @@ class Identification(object):
             #add a priori parameters projected on non-identifiable subspace
             self.xStd += (np.eye(self.B.shape[0])-self.B.dot(la.pinv(self.B))).dot(self.xStdModel)
 
+            #do projection algebraically
+            #for each identified base param,
+            base_deps_vals = []
+            for idx in range(0,self.num_base_params):
+                base_deps_vals.append(Eq(self.base_deps[idx], self.xBase[idx]))
+
+            prev_eq = base_deps_vals[0].lhs - base_deps_vals[0].rhs
+            prev_eq2 = prev_eq.copy()
+            for eq in base_deps_vals[1:]:
+                prev_eq2 -= eq.lhs - eq.rhs
+
+            print "solution space:", prev_eq2
+
+            #get some point in the affine subspace (set all but one var then solve)
+            p_on_eq = []
+            rns = np.random.rand(len(self.param_syms)-1)
+            #rns = np.zeros(len(syms)-1)
+            #rns[0] = 1
+            eq = prev_eq2.subs(list(zip(self.param_syms, rns)))   #replace vars with values
+            p_on_eq[0:len(rns)] = rns   #collect values
+            p_on_eq.append(solve(eq, self.param_syms[len(self.param_syms)-1])[0])   #solve for remaining (last) symbol
+            print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
+            pham_percent = sla.norm(self.YStd.dot(p_on_eq))*100/sla.norm(self.tauMeasured)
+            print(pham_percent)
+
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
 

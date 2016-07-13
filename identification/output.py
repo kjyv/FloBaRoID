@@ -26,7 +26,7 @@ class OutputConsole(object):
         colorama.init(autoreset=False)
 
         if not idf.useEssentialParams:
-            idf.stdEssentialIdx = range(0, idf.N_PARAMS)
+            idf.stdEssentialIdx = range(0, idf.num_params)
             idf.stdNonEssentialIdx = []
 
         import iDynTree
@@ -34,7 +34,7 @@ class OutputConsole(object):
         if idf.urdf_file_real:
             dc = iDynTree.DynamicsComputations()
             dc.loadRobotModelFromFile(idf.urdf_file_real)
-            tmp = iDynTree.VectorDynSize(idf.N_PARAMS)
+            tmp = iDynTree.VectorDynSize(idf.num_params)
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
             xBaseReal = np.dot(idf.B.T, xStdReal)

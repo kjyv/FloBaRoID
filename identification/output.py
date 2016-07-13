@@ -370,11 +370,11 @@ class OutputHTML(object):
 
         path = os.path.dirname(os.path.abspath(__file__))
         template_environment = Environment(autoescape=False,
-                                           loader=FileSystemLoader(os.path.join(path, 'output')),
+                                           loader=FileSystemLoader(os.path.join(path, '../output')),
                                            trim_blocks=False)
 
         context = { 'figures': figures }
-        outfile = os.path.join(path, 'output', 'output.html')
+        outfile = os.path.join(path, '..', 'output', 'output.html')
         with open(outfile, 'w') as f:
             html = template_environment.get_template("templates/index.html").render(context)
             f.write(html)

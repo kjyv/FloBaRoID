@@ -25,6 +25,9 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import helpers
 from output import OutputConsole
 
+import convex
+from convex import solve_sdp
+
 # symbolic regression
 from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 
@@ -66,9 +69,9 @@ class Identification(object):
         # ['base', 'std', 'std_direct', 'urdf']
         self.estimateWith = 'std'
 
-        # use known CAD parameters and identify parameter error, generates (more) consistent std parameters
+        # use known CAD parameters and identify parameter error, estimates parameters closer to
+        # known ones
         self.useAPriori = 1
-        self.projectToAPriori = 0
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
@@ -78,6 +81,7 @@ class Identification(object):
         # constrain to std params to physical consistent space
         # to only achieve parameters in feasible space
         self.useFeasibleConstraints = 1
+        #convex.solve_sdp = convex.cvxopt_dsdp5 #cvxopt_conelp
 
         # constrain parameters for links more than this condtion number to the CAD values
         # (to prevent very big changes for parameters that are not expressed in the data)
@@ -92,7 +96,8 @@ class Identification(object):
         self.limitOverallMass = 1
 
         # if overall mass is set, limit to this value, otherwise to a priori mass + 30%
-        self.limitMassVal = None #16
+        # (might introduce bigger errors if too small, leave some headroom)
+        self.limitMassVal = None #16*1.3
 
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
@@ -123,6 +128,9 @@ class Identification(object):
 
         ## some experiments
 
+        #project a priori to solution subspace
+        self.projectToAPriori = 0
+
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
         # mostly not improving results
@@ -131,7 +139,6 @@ class Identification(object):
         # use bounds for the estimated std parameters (needs scipy >= 0.17)
         # only works with std_direct or std and essential params enabled
         self.useBoundedLeastSquares = 0
-
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -1095,7 +1102,6 @@ class Identification(object):
             return Matrix([ [     0, -v[2],  v[1] ],
                             [  v[2],     0, -v[0] ],
                             [ -v[1],  v[0],   0 ] ])
-
         I = Identity
         S = skew
 
@@ -1103,16 +1109,14 @@ class Identification(object):
         delta = self.param_syms
         n_delta = self.num_params
         beta_ols = self.xBase
-        if self.useAPriori:
-            beta_ols += self.xBaseModel
         n_beta = self.num_base_params
         W = self.YBase
 
         #W - (base) regressor
         Q1, R1 = la.qr(self.YBase)
 
-        #omega - stacked taus from measurement
-        omega = self.torques_stack
+        #omega - stacked torques from measurement (absolute values or error when using apriori)
+        omega = self.tau
         rho1 = Q1.T.dot(omega)
 
         #projection matrix so that beta = K*delta
@@ -1138,42 +1142,50 @@ class Identification(object):
 
         linkConds = self.getSubregressorsConditionNumbers()
         robotmaxmass = 0
+
+        if self.useAPriori:
+            #in order to write no-change constraints, compare to zero (changes)
+            apriori = np.zeros_like(self.xStdModel)
+        else:
+            #or compare values relative to CAD
+            apriori = self.xStdModel
+
         for i in range(0, self.N_LINKS):
             robotmaxmass += self.xStdModel[i*10]  #count a priori link masses
 
             #for links that have too high condition number, don't change params
             if linkConds[i] > self.noChangeThresh:
                 # don't change mass
-                D_other_blocks.append(Matrix([self.xStdModel[i*10]+0.001 - self.mass_syms[i]]))
-                D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - self.xStdModel[i*10]]))
+                D_other_blocks.append(Matrix([apriori[i*10]+0.001 - self.mass_syms[i]]))
+                D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - apriori[i*10]]))
 
                 # don't change COM
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+1]+0.0001 - self.param_syms[i*10+1]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+2]+0.0001 - self.param_syms[i*10+2]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+3]+0.0001 - self.param_syms[i*10+3]]))
+                D_other_blocks.append(Matrix([apriori[i*10+1]+0.0001 - self.param_syms[i*10+1]]))
+                D_other_blocks.append(Matrix([apriori[i*10+2]+0.0001 - self.param_syms[i*10+2]]))
+                D_other_blocks.append(Matrix([apriori[i*10+3]+0.0001 - self.param_syms[i*10+3]]))
 
-                D_other_blocks.append(Matrix([self.param_syms[i*10+1]+0.0001 - self.xStdModel[i*10+1]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+2]+0.0001 - self.xStdModel[i*10+2]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+3]+0.0001 - self.xStdModel[i*10+3]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+1]+0.0001 - apriori[i*10+1]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+2]+0.0001 - apriori[i*10+2]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+3]+0.0001 - apriori[i*10+3]]))
 
                 # don't change inertia
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+4]+0.0001 - self.param_syms[i*10+4]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+5]+0.0001 - self.param_syms[i*10+5]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+6]+0.0001 - self.param_syms[i*10+6]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+7]+0.0001 - self.param_syms[i*10+7]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+8]+0.0001 - self.param_syms[i*10+8]]))
-                D_other_blocks.append(Matrix([self.xStdModel[i*10+9]+0.0001 - self.param_syms[i*10+9]]))
+                D_other_blocks.append(Matrix([apriori[i*10+4]+0.0001 - self.param_syms[i*10+4]]))
+                D_other_blocks.append(Matrix([apriori[i*10+5]+0.0001 - self.param_syms[i*10+5]]))
+                D_other_blocks.append(Matrix([apriori[i*10+6]+0.0001 - self.param_syms[i*10+6]]))
+                D_other_blocks.append(Matrix([apriori[i*10+7]+0.0001 - self.param_syms[i*10+7]]))
+                D_other_blocks.append(Matrix([apriori[i*10+8]+0.0001 - self.param_syms[i*10+8]]))
+                D_other_blocks.append(Matrix([apriori[i*10+9]+0.0001 - self.param_syms[i*10+9]]))
 
-                D_other_blocks.append(Matrix([self.param_syms[i*10+4]+0.0001 - self.xStdModel[i*10+4]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+5]+0.0001 - self.xStdModel[i*10+5]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+6]+0.0001 - self.xStdModel[i*10+6]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+7]+0.0001 - self.xStdModel[i*10+7]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - self.xStdModel[i*10+8]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - self.xStdModel[i*10+9]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+4]+0.0001 - apriori[i*10+4]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+5]+0.0001 - apriori[i*10+5]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+6]+0.0001 - apriori[i*10+6]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+7]+0.0001 - apriori[i*10+7]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - apriori[i*10+8]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - apriori[i*10+9]]))
             else:
                 if self.dontIdentifyMasses:
-                    D_other_blocks.append(Matrix([self.xStdModel[i*10]+0.001 - self.mass_syms[i]]))
-                    D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - self.xStdModel[i*10]]))
+                    D_other_blocks.append(Matrix([apriori[i*10]+0.001 - self.mass_syms[i]]))
+                    D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - apriori[i*10]]))
 
         if self.limitOverallMass:
             if self.limitMassVal:
@@ -1181,8 +1193,15 @@ class Identification(object):
                 robotmaxmass = self.limitOverallMass
             else:
                 #limit to overall mass from CAD params and constrain to a bit more than that
-                robotmaxmass *= 1.3
-            D_other_blocks.append(Matrix([robotmaxmass - sum(self.mass_syms)]))  #limit overall mass
+                robotmaxmass_plus = robotmaxmass * 1.3
+
+            #constrain overall mass to be not larger than known
+            if self.useAPriori:
+                D_other_blocks.append(Matrix([robotmaxmass_plus - (robotmaxmass + sum(self.mass_syms))]))
+            else:
+                D_other_blocks.append(Matrix([robotmaxmass_plus - sum(self.mass_syms)]))
+            #TODO: add minimum mass as well
+
 
 
         """
@@ -1208,7 +1227,6 @@ class Identification(object):
         LMIs_marg = list(map(lambda lm: LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])), D_blocks))
 
         #solve SDP program (constrained OLS)
-        from convex import solve_sdp
 
         #measurement to estimation error square norm
         rho2_norm_sqr = la.norm(omega - W.dot(beta_ols))**2
@@ -1248,22 +1266,14 @@ class Identification(object):
 
         #solve SDP
         objective_func = u
-        primal = None
-        """
-        if self.useAPriori:
-            #use CAD values as initial condition
-            #these MUST be physical consistent
-            ss = list()
-            for n in range(0,len(LMIs_marg)):
-                ss.append()
-            primal = {'x': self.xStdModel, 'sl': np.zeros_like(self.xStdModel), 'ss': ss}
-        """
-        solution = solve_sdp(objective_func, lmis, variables, primal)
+        solution = solve_sdp(objective_func, lmis, variables)
         u_star = solution[0,0]
         if u_star:
             print("found consistent solution with distance {} from OLS solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         self.xStd = np.squeeze(np.asarray(delta_star))
+        if self.useAPriori:
+            self.xStd += self.xStdModel
 
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """

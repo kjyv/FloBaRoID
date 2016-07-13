@@ -14,7 +14,8 @@ details:
 
 requirements for identification:
 * python 2.7
-* python modules: numpy, scipy (>= 0.17), sympy, matplotlib, iDynTree, colorama, humanize, (ipython, ipdb)
+* python modules: numpy, scipy, sympy, matplotlib, iDynTree, colorama, humanize, (ipython, ipdb),
+  pylmi-sdp, cvxopt
 * optionally for output as html: mpld3, jinja2
 
 requirements for excitation:
@@ -22,5 +23,5 @@ requirements for excitation:
 * for ros/kuka: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit_msg, moveit_commander
 
 known issues:
-* excitation is not very generic yet
+* excitation methods could be more generic, generate optimized trajectories
 * using position control over yarp is suboptimal and can expose timing issues

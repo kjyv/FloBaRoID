@@ -1,13 +1,11 @@
 import cvxopt
+from cvxopt import matrix
 from sympy import Basic, BlockDiagMatrix
 import lmi_sdp
+import time
+import numpy as np
 
-try:
-    import cvxopt
-except ImportError:
-    cvxopt = None
-else:
-    from cvxopt import matrix
+epsilon_sdptol = 1e-7
 
 ##copied some methods from lmi_sdp here for compat changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):
@@ -115,22 +113,28 @@ def to_cvxopt(objective_func, lmis, variables, objective_type='minimize',
     return c, Gs, hs
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
+    # using cvxopt conelp (start point must be feasible (?), no structure exploitation,
     import cvxopt.solvers
-    import time
-    import numpy as np
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
-    # TODO: check which solver implementation is best here, performance and memory usage are interesting
-    # consider:
-    # cvxopt conelp (standard, start point must be feasible (?), no structure exploitation,
-    # cvxopt interface to dsdp (might be faster, can use non-feasible starting point (but not from cvxopt?), but can't handle equalities)
-    # sdpa (can do parallel, probably better optimized)
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, primalstart=primalstart)
     toc = time.time()
-    print(sdpout['status'])
+    print(sdpout['status'], '(\'optimal\' does not necessarily mean feasible)')
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
+
+def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
+    # using cvxopt interface to dsdp (might be faster, can use non-feasible starting point (but not from cvxopt?), but can't handle equalities)
+    import cvxopt.solvers
+    c, Gs, hs = to_cvxopt(objf, lmis, variables)
+    cvxopt.solvers.options['DSDP_GapTolerance'] = epsilon_sdptol
+    tic = time.time()
+    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
+    toc = time.time()
+    print(sdpout['status'], '(\'optimal\' does not necessarily mean feasible)')
+    print('Elapsed time: %.2f s'%(toc-tic))
+    return np.matrix(sdpout['x'])
 
 #set a default solver
 solve_sdp = cvxopt_conelp

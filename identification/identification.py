@@ -30,7 +30,7 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 
 # Referenced papers:
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
-# Gautier, 1990: Numerical Calculation of the base Inertial Parameters of Robots
+# Gautier, 1991: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
 # Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the
 # Robot Calibration
@@ -75,6 +75,25 @@ class Identification(object):
         self.selectBlocksFromMeasurements = 0
         self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
 
+        # constrain to std params to physical consistent space
+        # to only achieve parameters in feasible space
+        self.useFeasibleConstraints = 1
+
+        # constrain parameters for links more than this condtion number to the CAD values
+        # (to prevent very big changes for parameters that are not expressed in the data)
+        self.noChangeThresh = 200
+
+        # whether to take out masses to be identified because they are e.g.
+        # well known or introduce problems
+        # (essential params or when using feasability constraints)
+        self.dontIdentifyMasses = 0
+
+        # constrain overall mass
+        self.limitOverallMass = 1
+
+        # if overall mass is set, limit to this value, otherwise to a priori mass + 30%
+        self.limitMassVal = None #16
+
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
         # covariance estimation can be off (also assumes that error is zero mean and normal
@@ -86,22 +105,8 @@ class Identification(object):
         # whether to include linear dependent columns in essential params or not
         self.useDependents = 1
 
-        # whether to filter the regressor columns
-        # (cutoff frequency is system dependent)
-        # mostly not improving results
-        self.filterRegressor = 0
-
-        # constrain to std params to physical consistent space
-        # to only achieve parameters in feasible space
-        self.useFeasibleConstraints = 1
-
-        # use bounds for the estimated std parameters (needs scipy >= 0.17)
-        # only works with std_direct or std and essential params enabled
-        self.useBoundedLeastSquares = 0
-
-        # whether to take out masses from essential params to be identified because they are e.g.
-        # well known or introduce problems
-        self.dontIdentifyMasses = 0
+        # orthogonalize basis matrix (might result in uglier linear realtionships)
+        self.orthogonalizeBasis = 0
 
         # how to output plots and other stuff ['matplotlib', 'html']
         self.outputModule = 'html'
@@ -115,6 +120,18 @@ class Identification(object):
         self.showEssentialSteps = 0    #stop after every reduction step and show values
         self.showStandardParams = 1
         self.showBaseParams = 1
+
+        ## some experiments
+
+        # whether to filter the regressor columns
+        # (cutoff frequency is system dependent)
+        # mostly not improving results
+        self.filterRegressor = 0
+
+        # use bounds for the estimated std parameters (needs scipy >= 0.17)
+        # only works with std_direct or std and essential params enabled
+        self.useBoundedLeastSquares = 0
+
 
         if self.useAPriori:
             print("using a priori parameter data")
@@ -834,12 +851,8 @@ class Identification(object):
         R2 = R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
 
-        # define some sympy symbols for each std column
-        self.param_syms = symbols('c0:%d' % Yrand.shape[1])
-
         # collect grouped columns for each independent column
         # build base matrix
-        self.base_deps = {}
         self.B = np.zeros((self.num_params, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
@@ -848,25 +861,39 @@ class Identification(object):
                     fact = round(self.linear_deps[j, k-r], 5)
                     if np.abs(fact)>self.min_tol: self.B[P[k],j] = fact
             self.B[indep_idx,j] = 1
+
+        if self.orthogonalizeBasis:
+            #orthogonalize, so linear relationships can be inverted
+            Q_B_qr, R_B_qr = la.qr(self.B)
+            Q_B_qr[np.abs(Q_B_qr) < self.min_tol] = 0
+            self.B = Q_B_qr
+            self.Binv = self.B.T
+        else:
+            self.Binv = la.pinv(self.B)   #if basis B is not orthogonal
+
+        # define sympy symbols for each std column
+        self.param_syms = list()
+        self.mass_syms = list()
+        for i in range(0,self.N_LINKS):
+            #mass
+            m = symbols('m_{}'.format(i))
+            self.param_syms.append(m)
+            self.mass_syms.append(m)
+
+            #first moment of inertia
+            p = 'l_{}'.format(i)  #symbol prefix
+            syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
+            self.param_syms.extend(syms)
+            #3x3 inertia tensor about link-frame (for link i)
+            p = 'L_{}'.format(i)
+            syms = [symbols(p+'xx'), symbols(p+'xy'), symbols(p+'xz'),
+                    symbols(p+'xy'), symbols(p+'yy'), symbols(p+'yz'),
+                    symbols(p+'xz'), symbols(p+'yz'), symbols(p+'zz')
+                   ]
+            self.param_syms.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
+
+        #create symbolic equations for base param dependencies
         self.base_deps = np.dot(self.param_syms, self.B)
-
-        """
-        #orthogonalize, so linear relationships can be inverted
-        Q_B_qr, R_B_qr = la.qr(self.B)
-        Q_B_qr[np.abs(Q_B_qr) < self.min_tol] = 0
-        self.base_deps = np.dot(self.param_syms, Q_B_qr)
-        self.B = Q_B_qr
-        """
-
-        """
-        # get symbolic relationships from base projection (if using Q-columns from QR)
-        for j in range(0, self.B.shape[1]):
-            eq = 0*self.param_syms[0]
-            for i in range(0, self.B.shape[0]):
-                if np.abs(self.B[i,j]) > self.min_tol:
-                    eq += self.B[i, j]*self.param_syms[i]
-            self.base_deps[j] = eq
-        """
 
         '''
         #use reduced row echelon form to get basis for identifiable subspace
@@ -943,7 +970,7 @@ class Identification(object):
         # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
         # (using QR on B yields orthonormal base if necessary)
         # in general, pinv is always working correctly
-        self.xBaseModel = np.dot(la.pinv(self.B), self.xStdModel)
+        self.xBaseModel = np.dot(self.Binv, self.xStdModel)
 
         # invert equation to get parameter vector from measurements and model + system state values
         """
@@ -1034,7 +1061,7 @@ class Identification(object):
             self.xStd += self.xStdModel
         elif self.projectToAPriori:
             #add a priori parameters projected on non-identifiable subspace
-            self.xStd += (np.eye(self.B.shape[0])-self.B.dot(la.pinv(self.B))).dot(self.xStdModel)
+            self.xStd += (np.eye(self.B.shape[0])-self.B.dot(self.Binv)).dot(self.xStdModel)
 
             #do projection algebraically
             #for each identified base param,
@@ -1073,7 +1100,7 @@ class Identification(object):
         S = skew
 
         # std parameter variables
-        delta = list()  #filled with vars later
+        delta = self.param_syms
         n_delta = self.num_params
         beta_ols = self.xBase
         if self.useAPriori:
@@ -1089,40 +1116,77 @@ class Identification(object):
         rho1 = Q1.T.dot(omega)
 
         #projection matrix so that beta = K*delta
+        #Kd==self.linear_deps, self.P == [Pb Pd] ?
         #K = Pb.T + Kd * Pd.T
-        K = Matrix(la.pinv(self.B))
+        K = Matrix(self.Binv)
 
         #create LMI matrices (symbols)
         D_inertia_blocks = []
         for i in range(0, self.N_LINKS):
-            #mass
-            m = symbols('m_{}'.format(i))
-            delta.append(m)
-
-            #first moment of inertia
-            p = 'l_{}'.format(i)  #symbol prefix
-            syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
-            delta.extend(syms)
-            l = Matrix( syms )
-            #3x3 inertia tensor about link-frame (for link i)
-            p = 'L_{}'.format(i)
-            syms = [symbols(p+'xx'), symbols(p+'xy'), symbols(p+'xz'),
-                    symbols(p+'xy'), symbols(p+'yy'), symbols(p+'yz'),
-                    symbols(p+'xz'), symbols(p+'yz'), symbols(p+'zz')
-                   ]
-            L = Matrix([ [syms[0], syms[1], syms[2]],
-                         [syms[3], syms[4], syms[5]],
-                         [syms[6], syms[7], syms[8]]
+            m = self.mass_syms[i]
+            l = Matrix( self.param_syms[i*10+1:i*10+4])
+            L = Matrix([ [self.param_syms[i*10+4+0], self.param_syms[i*10+4+1], self.param_syms[i*10+4+2]],
+                         [self.param_syms[i*10+4+1], self.param_syms[i*10+4+3], self.param_syms[i*10+4+4]],
+                         [self.param_syms[i*10+4+2], self.param_syms[i*10+4+4], self.param_syms[i*10+4+5]]
                        ])
-            delta.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
 
             Di = BlockMatrix([[L,    S(l).T],
                               [S(l), I(3)*m]])
             D_inertia_blocks.append(Di.as_explicit().as_mutable())
 
         D_other_blocks = []
+
+        linkConds = self.getSubregressorsConditionNumbers()
+        robotmaxmass = 0
+        for i in range(0, self.N_LINKS):
+            robotmaxmass += self.xStdModel[i*10]  #count a priori link masses
+
+            #for links that have too high condition number, don't change params
+            if linkConds[i] > self.noChangeThresh:
+                # don't change mass
+                D_other_blocks.append(Matrix([self.xStdModel[i*10]+0.001 - self.mass_syms[i]]))
+                D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - self.xStdModel[i*10]]))
+
+                # don't change COM
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+1]+0.0001 - self.param_syms[i*10+1]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+2]+0.0001 - self.param_syms[i*10+2]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+3]+0.0001 - self.param_syms[i*10+3]]))
+
+                D_other_blocks.append(Matrix([self.param_syms[i*10+1]+0.0001 - self.xStdModel[i*10+1]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+2]+0.0001 - self.xStdModel[i*10+2]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+3]+0.0001 - self.xStdModel[i*10+3]]))
+
+                # don't change inertia
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+4]+0.0001 - self.param_syms[i*10+4]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+5]+0.0001 - self.param_syms[i*10+5]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+6]+0.0001 - self.param_syms[i*10+6]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+7]+0.0001 - self.param_syms[i*10+7]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+8]+0.0001 - self.param_syms[i*10+8]]))
+                D_other_blocks.append(Matrix([self.xStdModel[i*10+9]+0.0001 - self.param_syms[i*10+9]]))
+
+                D_other_blocks.append(Matrix([self.param_syms[i*10+4]+0.0001 - self.xStdModel[i*10+4]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+5]+0.0001 - self.xStdModel[i*10+5]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+6]+0.0001 - self.xStdModel[i*10+6]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+7]+0.0001 - self.xStdModel[i*10+7]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - self.xStdModel[i*10+8]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - self.xStdModel[i*10+9]]))
+            else:
+                if self.dontIdentifyMasses:
+                    D_other_blocks.append(Matrix([self.xStdModel[i*10]+0.001 - self.mass_syms[i]]))
+                    D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - self.xStdModel[i*10]]))
+
+        if self.limitOverallMass:
+            if self.limitMassVal:
+                #use given overall mass
+                robotmaxmass = self.limitOverallMass
+            else:
+                #limit to overall mass from CAD params and constrain to a bit more than that
+                robotmaxmass *= 1.3
+            D_other_blocks.append(Matrix([robotmaxmass - sum(self.mass_syms)]))  #limit overall mass
+
+
         """
-        #add other constraints
+        #friction constraints
         for i in range(dof):
             D_other_blocks.append( Matrix([rbt.rbtdef.fv[i]]) )
             D_other_blocks.append( Matrix([rbt.rbtdef.fc[i]]) )
@@ -1149,24 +1213,55 @@ class Identification(object):
         #measurement to estimation error square norm
         rho2_norm_sqr = la.norm(omega - W.dot(beta_ols))**2
 
+        #build OLS matrix
         delta = Matrix(delta)
         R1 = np.matrix(R1)
-
-        u = Symbol('u')
         e_rho1 = rho1 - R1*K*delta
-        #build OLS matrix
+        u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                              [e_rho1,                     I(n_beta)]])
         U_rho = U_rho.as_explicit()
+
         #add constraint LMIs
         lmis = [LMI_PSD(U_rho)] + LMIs_marg
         variables = [u] + list(delta)
 
-        #solve
+        """
+        # BPFC (base parameter feasibility correction)
+
+        # change of variable space (std -> base) for constraint LMIs
+        varchange_dict = dict(zip(Pb.T*delta ,  beta_symbs - ( beta - Pb.T*delta )))
+        DB_blocks = [mrepl(Di, varchange_dict) for Di in D_blocks]
+        DB_LMIs = list(map(LMI_PD, DB_blocks))
+        DB_LMIs_marg = list(map(lambda lm: LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) , DB_blocks))
+
+        delta_d = (rbt.dyn.Pd.T*delta)
+        n_delta_d = len(delta_d)
+
+        u = sympy.Symbol('u')
+        U_beta = BlockMatrix([[Matrix([u]),            (beta_ols - beta_symbs).T],
+                         [beta_ols - beta_symbs,                 I(n_beta)]])
+        U_beta = U_beta.as_explicit()
+        lmis = [LMI_PSD(U_beta)] + DB_LMIs_marg
+        variables = [u] + list(beta_symbs) + list(delta_d)
+        """
+
+        #solve SDP
         objective_func = u
         primal = None
+        """
+        if self.useAPriori:
+            #use CAD values as initial condition
+            #these MUST be physical consistent
+            ss = list()
+            for n in range(0,len(LMIs_marg)):
+                ss.append()
+            primal = {'x': self.xStdModel, 'sl': np.zeros_like(self.xStdModel), 'ss': ss}
+        """
         solution = solve_sdp(objective_func, lmis, variables, primal)
         u_star = solution[0,0]
+        if u_star:
+            print("found consistent solution with distance {} from OLS solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         self.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -1716,6 +1811,9 @@ def main():
     if idf.selectBlocksFromMeasurements:
         old_essential_option = idf.useEssentialParams
         idf.useEssentialParams = 0
+
+        old_feasible_option = idf.useFeasibleConstraints
+        idf.useFeasibleConstraints = 0
         # loop over input blocks and select good ones
         while 1:
             idf.estimateParameters()
@@ -1730,6 +1828,7 @@ def main():
         idf.selectBlocks()
         idf.assembleSelectedBlocks()
         idf.useEssentialParams = old_essential_option
+        idf.useFeasibleConstraints = old_feasible_option
 
     print("estimating output parameters...")
     idf.estimateParameters()

@@ -18,7 +18,7 @@ import scipy.sparse as sparse
 import matplotlib
 import matplotlib.pyplot as plt
 
-from sympy import symbols, solve, Eq
+from sympy import Symbol, symbols, solve, Eq, Matrix
 
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
@@ -90,6 +90,10 @@ class Identification(object):
         # (cutoff frequency is system dependent)
         # mostly not improving results
         self.filterRegressor = 0
+
+        # constrain to std params to physical consistent space
+        # to only achieve parameters in feasible space
+        self.useFeasibleConstraints = 1
 
         # use bounds for the estimated std parameters (needs scipy >= 0.17)
         # only works with std_direct or std and essential params enabled
@@ -236,8 +240,8 @@ class Identification(object):
             print '# outputs: {}'.format(self.N_OUT)
 
             # get initial inertia params (from urdf)
-            self.N_PARAMS = self.generator.getNrOfParameters()
-            print '# params: {}'.format(self.N_PARAMS)
+            self.num_params = self.generator.getNrOfParameters()
+            print '# params: {}'.format(self.num_params)
 
             self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
             print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
@@ -249,7 +253,7 @@ class Identification(object):
             print '({})'.format(self.link_names)
 
             self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
-            self.helpers = helpers.Helpers(self.N_PARAMS)
+            self.helpers = helpers.Helpers(self.num_params)
 
         if self.showTiming:
             print("Initialization took %.03f sec." % t.interval)
@@ -461,7 +465,7 @@ class Identification(object):
                 self.gravity.setVal(2, -9.81);
 
             # get model parameters
-            xStdModel = iDynTree.VectorDynSize(self.N_PARAMS)
+            xStdModel = iDynTree.VectorDynSize(self.num_params)
             self.generator.getModelParameters(xStdModel)
             self.xStdModel = xStdModel.toNumPy()
             if self.estimateWith is 'urdf':
@@ -525,7 +529,7 @@ class Identification(object):
         num_time = 0
         simulate_time = 0
 
-        self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples, self.N_PARAMS))
+        self.regressor_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples, self.num_params))
         if self.robotranRegressor:
             self.regressor_stack_sym = np.zeros(shape=(self.N_DOFS*self.num_used_samples, 45))
         self.torques_stack = np.zeros(shape=(self.N_DOFS*self.num_used_samples))
@@ -615,7 +619,7 @@ class Identification(object):
                     #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
 
                     # get (standard) regressor
-                    regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+                    regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
                     knownTerms = iDynTree.VectorDynSize(self.N_OUT)    # what are known terms useable for?
                     if not self.generator.computeRegressor(regressor, knownTerms):
                         print "Error during numeric computation of regressor"
@@ -677,7 +681,7 @@ class Identification(object):
                 self.B = subspaceBasis.toNumPy()
             else:
                 Yrand = self.getRandomRegressors(5000)
-                #A = iDynTree.MatrixDynSize(self.N_PARAMS, self.N_PARAMS)
+                #A = iDynTree.MatrixDynSize(self.num_params, self.num_params)
                 #self.generator.generate_random_regressors(A, False, True, 2000)
                 #Yrand = A.toNumPy()
                 U, s, Vh = la.svd(Yrand, full_matrices=False)
@@ -726,8 +730,8 @@ class Identification(object):
 
             if not n_samples:
                 n_samples = self.N_DOFS * 1000
-            R = np.array((self.N_OUT, self.N_PARAMS))
-            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.N_PARAMS)
+            R = np.array((self.N_OUT, self.num_params))
+            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             for i in range(0, n_samples):
                 # set random system state
@@ -836,7 +840,7 @@ class Identification(object):
         # collect grouped columns for each independent column
         # build base matrix
         self.base_deps = {}
-        self.B = np.zeros((self.N_PARAMS, self.num_base_params))
+        self.B = np.zeros((self.num_params, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
             for i in range(0, self.linear_deps.shape[1]):
@@ -1057,6 +1061,115 @@ class Identification(object):
             pham_percent = sla.norm(self.YStd.dot(p_on_eq))*100/sla.norm(self.tauMeasured)
             print(pham_percent)
 
+    def getStdFeasible(self):
+        import lmi_sdp
+        from sympy import BlockMatrix, Identity, sympify, eye
+        def skew(v):
+            return Matrix([ [     0, -v[2],  v[1] ],
+                            [  v[2],     0, -v[0] ],
+                            [ -v[1],  v[0],   0 ] ])
+
+        I = Identity
+        S = skew
+
+        # std parameter variables
+        delta = list()  #filled with vars later
+        n_delta = self.num_params
+        beta_ols = self.xBase
+        if self.useAPriori:
+            beta_ols += self.xBaseModel
+        n_beta = self.num_base_params
+        W = self.YBase
+
+        #W - (base) regressor
+        Q1, R1 = la.qr(self.YBase)
+
+        #omega - stacked taus from measurement
+        omega = self.torques_stack
+        rho1 = Q1.T.dot(omega)
+
+        #projection matrix so that beta = K*delta
+        #K = Pb.T + Kd * Pd.T
+        K = Matrix(la.pinv(self.B))
+
+        #create LMI matrices (symbols)
+        D_inertia_blocks = []
+        for i in range(0, self.N_LINKS):
+            #mass
+            m = symbols('m_{}'.format(i))
+            delta.append(m)
+
+            #first moment of inertia
+            p = 'l_{}'.format(i)  #symbol prefix
+            syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
+            delta.extend(syms)
+            l = Matrix( syms )
+            #3x3 inertia tensor about link-frame (for link i)
+            p = 'L_{}'.format(i)
+            syms = [symbols(p+'xx'), symbols(p+'xy'), symbols(p+'xz'),
+                    symbols(p+'xy'), symbols(p+'yy'), symbols(p+'yz'),
+                    symbols(p+'xz'), symbols(p+'yz'), symbols(p+'zz')
+                   ]
+            L = Matrix([ [syms[0], syms[1], syms[2]],
+                         [syms[3], syms[4], syms[5]],
+                         [syms[6], syms[7], syms[8]]
+                       ])
+            delta.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
+
+            Di = BlockMatrix([[L,    S(l).T],
+                              [S(l), I(3)*m]])
+            D_inertia_blocks.append(Di.as_explicit().as_mutable())
+
+        D_other_blocks = []
+        """
+        #add other constraints
+        for i in range(dof):
+            D_other_blocks.append( Matrix([rbt.rbtdef.fv[i]]) )
+            D_other_blocks.append( Matrix([rbt.rbtdef.fc[i]]) )
+
+        """
+        D_blocks = D_inertia_blocks + D_other_blocks
+
+        #create LMI definitions
+        def LMI_PD(lhs, rhs=0):
+            lmi = lhs > sympify(rhs)
+            return lmi
+
+        def LMI_PSD(lhs, rhs=0):
+            lmi = lhs >= sympify(rhs)
+            return lmi
+
+        epsilon_safemargin = 1e-30
+        LMIs = list(map(LMI_PD, D_blocks))
+        LMIs_marg = list(map(lambda lm: LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])), D_blocks))
+
+        #solve SDP program (constrained OLS)
+        from convex import solve_sdp
+
+        #measurement to estimation error square norm
+        rho2_norm_sqr = la.norm(omega - W.dot(beta_ols))**2
+
+        delta = Matrix(delta)
+        R1 = np.matrix(R1)
+
+        u = Symbol('u')
+        e_rho1 = rho1 - R1*K*delta
+        #build OLS matrix
+        U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
+                             [e_rho1,                     I(n_beta)]])
+        U_rho = U_rho.as_explicit()
+        #add constraint LMIs
+        lmis = [LMI_PSD(U_rho)] + LMIs_marg
+        variables = [u] + list(delta)
+
+        #solve
+        objective_func = u
+        primal = None
+        solution = solve_sdp(objective_func, lmis, variables, primal)
+        u_star = solution[0,0]
+        delta_star = np.matrix(solution[1:])
+        self.xStd = np.squeeze(np.asarray(delta_star))
+
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
 
@@ -1169,7 +1282,7 @@ class Identification(object):
             b_c = 0
 
             # list of param indices to keep the original indices when deleting columns
-            base_idx = range(0,self.num_base_params)
+            base_idx = range(0, self.num_base_params)
             not_essential_idx = list()
             ratio = 0
 
@@ -1342,10 +1455,10 @@ class Identification(object):
 
             # remove mass params if present
             if self.dontIdentifyMasses:
-                ps = range(0,self.N_PARAMS, 10)
+                ps = range(0,self.num_params, 10)
                 self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
 
-            self.stdNonEssentialIdx = [x for x in range(0, self.N_PARAMS) if x not in self.stdEssentialIdx]
+            self.stdNonEssentialIdx = [x for x in range(0, self.num_params) if x not in self.stdEssentialIdx]
 
             ## get \hat{x_e}, set zeros for non-essential params
             if self.useDependents or useCADWeighting:
@@ -1455,7 +1568,7 @@ class Identification(object):
                 self.xStd = x_est
 
             """
-            st = self.N_PARAMS
+            st = self.num_params
             # non-singular YStd, called W_st in Gautier, 2013
             self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
             self.YStdHatInv = la.pinv(self.YStdHat)
@@ -1516,7 +1629,10 @@ class Identification(object):
             self.getBaseRegressor()
             if self.estimateWith in ['base', 'std']:
                 self.identifyBaseParameters()
-                self.getStdFromBase()
+                if self.useFeasibleConstraints:
+                    self.getStdFeasible()
+                else:
+                    self.getStdFromBase()
                 if self.useAPriori:
                     self.getBaseParamsFromParamError()
             elif self.estimateWith is 'std_direct':

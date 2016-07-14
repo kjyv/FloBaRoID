@@ -71,7 +71,7 @@ class Identification(object):
 
         # use known CAD parameters and identify parameter error, estimates parameters closer to
         # known ones
-        self.useAPriori = 1
+        self.useAPriori = 0
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
@@ -81,7 +81,6 @@ class Identification(object):
         # constrain to std params to physical consistent space
         # to only achieve parameters in feasible space
         self.useFeasibleConstraints = 1
-        #convex.solve_sdp = convex.cvxopt_dsdp5 #cvxopt_conelp
 
         # constrain parameters for links more than this condtion number to the CAD values
         # (to prevent very big changes for parameters that are not expressed in the data)
@@ -277,7 +276,8 @@ class Identification(object):
             print '({})'.format(self.link_names)
 
             self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
-            self.helpers = helpers.Helpers(self.num_params)
+            self.paramHelpers = helpers.ParamHelpers(self.num_params)
+            self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.link_names)
 
         if self.showTiming:
             print("Initialization took %.03f sec." % t.interval)
@@ -498,7 +498,7 @@ class Identification(object):
             if self.robotranSimulate or self.robotranRegressor:
                 # get urdf model parameters as base parameters (for robotran inverse kinematics)
                 xStdModelBary = self.xStdModel.copy()
-                self.helpers.paramsLink2Bary(xStdModelBary)
+                self.paramHelpers.paramsLink2Bary(xStdModelBary)
                 m = np.zeros(self.N_DOFS+3)   #masses
                 l = np.zeros((4, self.N_DOFS+3))  #com positions
                 inert = np.zeros((10, 10))   #inertias
@@ -1202,7 +1202,25 @@ class Identification(object):
                 D_other_blocks.append(Matrix([robotmaxmass_plus - sum(self.mass_syms)]))
             #TODO: add minimum mass as well
 
+        # restrict COM to cuboid
+        link_cuboid_hulls = []
+        for l in range(self.N_LINKS):
+            link_cuboid_hulls.append(self.urdfHelpers.getBoundingBox(self.URDF_FILE, l))
 
+        link_cuboid_hulls = np.array(link_cuboid_hulls)
+        if self.useAPriori:
+            for l in range(self.N_LINKS):
+                link_cuboid_hulls[l][0] -= self.xStdModel[l*10+1]
+                link_cuboid_hulls[l][1] -= self.xStdModel[l*10+2]
+                link_cuboid_hulls[l][2] -= self.xStdModel[l*10+3]
+
+        for i in range(self.N_LINKS):
+            l = Matrix( self.param_syms[i*10+1:i*10+4])
+            m = self.mass_syms[i]
+            link_cuboid_hull = link_cuboid_hulls[i]
+            for j in range(3):
+                D_other_blocks.append( Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] ) )
+                D_other_blocks.append( Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] ) )
 
         """
         #friction constraints
@@ -1266,10 +1284,16 @@ class Identification(object):
 
         #solve SDP
         objective_func = u
-        solution = solve_sdp(objective_func, lmis, variables)
+
+        # start at CAD data, might increase convergence speed
+        if not self.useAPriori and convex.solve_sdp is convex.dsdp5: prime = self.xStdModel
+        else: prime = None
+
+        solution = solve_sdp(objective_func, lmis, variables, primalstart=prime)
+
         u_star = solution[0,0]
         if u_star:
-            print("found consistent solution with distance {} from OLS solution".format(u_star))
+            print("found constrained solution with distance {} from OLS solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         self.xStd = np.squeeze(np.asarray(delta_star))
         if self.useAPriori:
@@ -1319,7 +1343,7 @@ class Identification(object):
         v_data = np.load(self.validation_file)
         dynComp = iDynTree.DynamicsComputations();
 
-        self.helpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
+        self.urdfHelpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
                                          new_params=self.xStd, link_names=self.link_names)
         dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
         os.remove(self.URDF_FILE + '.tmp')
@@ -1846,7 +1870,7 @@ def main():
 
     if idf.showMemUsage: idf.printMemUsage()
     if args.model_output:
-        idf.helpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
+        idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain: OutputConsole.render(idf)

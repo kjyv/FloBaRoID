@@ -43,8 +43,8 @@ class OutputConsole(object):
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
             if idf.outputBarycentric:
                 if not idf.robotranRegressor:
-                  xStd = idf.helpers.paramsLink2Bary(idf.xStd)
-                xStdModel = idf.helpers.paramsLink2Bary(idf.xStdModel)
+                  xStd = idf.paramHelpers.paramsLink2Bary(idf.xStd)
+                xStdModel = idf.paramHelpers.paramsLink2Bary(idf.xStdModel)
                 if not summary_only:
                     print("Barycentric (relative to COM) Standard Parameters")
             else:
@@ -62,7 +62,10 @@ class OutputConsole(object):
             sum_diff_r_pc_all = 0
             sum_pc_delta_all = 0
             sum_pc_delta_ess = 0
-            for d in description.replace(r'Parameter ', '# ').replace(r'first moment', 'center').split('\n'):
+            for d in description.replace(r'Parameter ', '#').replace(r'first moment', 'center').split('\n'):
+                #add symbol for each parameter
+                d = d.replace(r':', ': {} -'.format(idf.param_syms[idx_p]))
+
                 #print beginning of each link block in green
                 if idx_p % 10 == 0:
                     d = Fore.GREEN + d
@@ -266,8 +269,8 @@ class OutputConsole(object):
             print "condition number: {}".format(la.cond(idf.YBase))
 
         if idf.showStandardParams:
-            print("Per-link physical consistency (a priori): {}".format(idf.helpers.checkPhysicalConsistency(idf.xStdModel)))
-            print("Per-link physical consistency (identified): {}".format(idf.helpers.checkPhysicalConsistency(idf.xStd)))
+            print("Per-link physical consistency (a priori): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStdModel)))
+            print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStd)))
 
         if idf.urdf_file_real:
             if idf.showStandardParams:

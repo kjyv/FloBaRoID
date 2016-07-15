@@ -92,11 +92,13 @@ class Identification(object):
         self.dontIdentifyMasses = 0
 
         # constrain overall mass
-        self.limitOverallMass = 1
+        self.limitOverallMass = 0
 
-        # if overall mass is set, limit to this value, otherwise to a priori mass + 30%
-        # (might introduce bigger errors if too small, leave some headroom)
-        self.limitMassVal = None #16*1.3
+        # if overall mass is set, limit to this value, otherwise to a priori mass +- 30%
+        self.limitMassVal = None #16
+
+        # restrict COM to smallest enclosing box of STL Mesh (from <visual> in URDF)
+        self.restrictCOMtoHull = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
@@ -887,7 +889,7 @@ class Identification(object):
             self.param_syms.append(m)
             self.mass_syms.append(m)
 
-            #first moment of inertia
+            #first moment of mass
             p = 'l_{}'.format(i)  #symbol prefix
             syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
             self.param_syms.extend(syms)
@@ -1124,14 +1126,30 @@ class Identification(object):
         #K = Pb.T + Kd * Pd.T
         K = Matrix(self.Binv)
 
+        #correct LMIs if estimating error instead of absolute values
+        if self.useAPriori:
+            #in order to write no-change constraints, compare to zero (changes)
+            apriori = np.zeros_like(self.xStdModel)
+        else:
+            #or compare values relative to CAD
+            apriori = self.xStdModel
+
         #create LMI matrices (symbols)
         D_inertia_blocks = []
         for i in range(0, self.N_LINKS):
-            m = self.mass_syms[i]
-            l = Matrix( self.param_syms[i*10+1:i*10+4])
-            L = Matrix([ [self.param_syms[i*10+4+0], self.param_syms[i*10+4+1], self.param_syms[i*10+4+2]],
-                         [self.param_syms[i*10+4+1], self.param_syms[i*10+4+3], self.param_syms[i*10+4+4]],
-                         [self.param_syms[i*10+4+2], self.param_syms[i*10+4+4], self.param_syms[i*10+4+5]]
+            m = self.mass_syms[i] + apriori[i*10]
+            l = Matrix([ self.param_syms[i*10+1] + apriori[i*10+1],
+                         self.param_syms[i*10+2] + apriori[i*10+2],
+                         self.param_syms[i*10+3] + apriori[i*10+3] ] )
+            L = Matrix([ [self.param_syms[i*10+4+0] + apriori[i*10+4+0],
+                          self.param_syms[i*10+4+1] + apriori[i*10+4+1],
+                          self.param_syms[i*10+4+2] + apriori[i*10+4+2]],
+                         [self.param_syms[i*10+4+1] + apriori[i*10+4+1],
+                          self.param_syms[i*10+4+3] + apriori[i*10+4+3],
+                          self.param_syms[i*10+4+4] + apriori[i*10+4+4]],
+                         [self.param_syms[i*10+4+2] + apriori[i*10+4+2],
+                          self.param_syms[i*10+4+4] + apriori[i*10+4+4],
+                          self.param_syms[i*10+4+5] + apriori[i*10+4+5]]
                        ])
 
             Di = BlockMatrix([[L,    S(l).T],
@@ -1142,14 +1160,6 @@ class Identification(object):
 
         linkConds = self.getSubregressorsConditionNumbers()
         robotmaxmass = 0
-
-        if self.useAPriori:
-            #in order to write no-change constraints, compare to zero (changes)
-            apriori = np.zeros_like(self.xStdModel)
-        else:
-            #or compare values relative to CAD
-            apriori = self.xStdModel
-
         for i in range(0, self.N_LINKS):
             robotmaxmass += self.xStdModel[i*10]  #count a priori link masses
 
@@ -1183,44 +1193,46 @@ class Identification(object):
                 D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - apriori[i*10+8]]))
                 D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - apriori[i*10+9]]))
             else:
+                # all other links
                 if self.dontIdentifyMasses:
                     D_other_blocks.append(Matrix([apriori[i*10]+0.001 - self.mass_syms[i]]))
                     D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - apriori[i*10]]))
 
         if self.limitOverallMass:
-            if self.limitMassVal:
-                #use given overall mass
-                robotmaxmass = self.limitOverallMass
-            else:
-                #limit to overall mass from CAD params and constrain to a bit more than that
-                robotmaxmass_plus = robotmaxmass * 1.3
+            #use given overall mass else use overall mass from CAD
+            if self.limitMassVal: robotmaxmass = self.limitOverallMass
+
+            # constrain with a bit of space around
+            robotmaxmass_plus = robotmaxmass * 1.3
+            robotmaxmass_minus = robotmaxmass * 0.769
 
             #constrain overall mass to be not larger than known
             if self.useAPriori:
                 D_other_blocks.append(Matrix([robotmaxmass_plus - (robotmaxmass + sum(self.mass_syms))]))
+                D_other_blocks.append(Matrix([(robotmaxmass + sum(self.mass_syms)) - robotmaxmass_minus]))
             else:
-                D_other_blocks.append(Matrix([robotmaxmass_plus - sum(self.mass_syms)]))
-            #TODO: add minimum mass as well
+                D_other_blocks.append(Matrix([robotmaxmass_plus - sum(self.mass_syms)])) #maximum mass
+                D_other_blocks.append(Matrix([sum(self.mass_syms) - robotmaxmass_minus])) #minimum mass
 
-        # restrict COM to cuboid
-        link_cuboid_hulls = []
-        for l in range(self.N_LINKS):
-            link_cuboid_hulls.append(self.urdfHelpers.getBoundingBox(self.URDF_FILE, l))
+        if self.restrictCOMtoHull:
+            link_cuboid_hulls = np.zeros((self.N_LINKS, 3, 2))
+            for i in range(self.N_LINKS):
+                link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i))
 
-        link_cuboid_hulls = np.array(link_cuboid_hulls)
-        if self.useAPriori:
-            for l in range(self.N_LINKS):
-                link_cuboid_hulls[l][0] -= self.xStdModel[l*10+1]
-                link_cuboid_hulls[l][1] -= self.xStdModel[l*10+2]
-                link_cuboid_hulls[l][2] -= self.xStdModel[l*10+3]
+            if self.useAPriori:
+                for i in range(self.N_LINKS):
+                    #subtract a priori COM position (vector has first moment)
+                    link_cuboid_hulls[i][0] -= self.xStdModel[i*10+1] * self.xStdModel[i*10]  # should be / not * to correct with COM
+                    link_cuboid_hulls[i][1] -= self.xStdModel[i*10+2] * self.xStdModel[i*10]
+                    link_cuboid_hulls[i][2] -= self.xStdModel[i*10+3] * self.xStdModel[i*10]
 
-        for i in range(self.N_LINKS):
-            l = Matrix( self.param_syms[i*10+1:i*10+4])
-            m = self.mass_syms[i]
-            link_cuboid_hull = link_cuboid_hulls[i]
-            for j in range(3):
-                D_other_blocks.append( Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] ) )
-                D_other_blocks.append( Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] ) )
+            for i in range(self.N_LINKS):
+                l = Matrix( self.param_syms[i*10+1:i*10+4])
+                m = self.mass_syms[i]
+                link_cuboid_hull = link_cuboid_hulls[i]
+                for j in range(3):
+                    D_other_blocks.append( Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] ) )
+                    D_other_blocks.append( Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] ) )
 
         """
         #friction constraints
@@ -1344,7 +1356,7 @@ class Identification(object):
         dynComp = iDynTree.DynamicsComputations();
 
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.URDF_FILE, output_urdf=self.URDF_FILE + '.tmp',
-                                         new_params=self.xStd, link_names=self.link_names)
+                                             new_params=self.xStd, link_names=self.link_names)
         dynComp.loadRobotModelFromFile(self.URDF_FILE + '.tmp')
         os.remove(self.URDF_FILE + '.tmp')
 
@@ -1385,7 +1397,8 @@ class Identification(object):
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
 
-        self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation)*100/la.norm(self.tauMeasuredValidation)
+        self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
+                            *100/la.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
 
     def getBaseEssentialParameters(self):

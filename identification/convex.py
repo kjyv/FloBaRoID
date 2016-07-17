@@ -123,7 +123,11 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     tic = time.time()
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, primalstart=primalstart)
     toc = time.time()
-    print(sdpout['status'], '(\'optimal\' does not necessarily mean feasible)')
+    if sdpout['status'] == 'optimal':
+        print('{}'.format(sdpout['status']))
+        print "(\'optimal\' does not necessarily mean feasible)"
+    else:
+        print Fore.LIGHTRED_EX + '{}'.format(sdpout['status']) + Fore.RESET
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
@@ -137,7 +141,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
     tic = time.time()
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
     toc = time.time()
-    print(sdpout['status'], '(\'optimal\' does not necessarily mean feasible)')
+    print('{} \(\'optimal\' does not necessarily mean feasible)'.format(sdpout['status']))
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 

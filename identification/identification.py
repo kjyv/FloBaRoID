@@ -18,15 +18,17 @@ import scipy.sparse as sparse
 import matplotlib
 import matplotlib.pyplot as plt
 
-from sympy import Symbol, symbols, solve, Eq, Matrix
-
 # numeric regression
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import helpers
 from output import OutputConsole
+import colorama
+from colorama import Fore, Back, Style
 
 import convex
 from convex import solve_sdp
+
+from sympy import Symbol, symbols, solve, Eq, Matrix
 
 # symbolic regression
 from robotran.left_arm import idinvbar, invdynabar, delidinvbar
@@ -63,20 +65,27 @@ class Identification(object):
         # simulate torques from target values, don't use both
         self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
         self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
-        self.addNoise = 0   #add some artificial zero-mean white noise to the 'measured' torques
+        self.addNoise = 0   #add some artificial zero-mean white noise to the simulated torques
 
-        # using which parameters to estimate torques for validation. Set to one of
+        # which parameters to use when estimating torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'urdf']
         self.estimateWith = 'std'
 
-        # use known CAD parameters and identify parameter error, estimates parameters closer to
-        # known ones
+        # use previously known CAD parameters to identify parameter error, estimates parameters closer to
+        # known ones (taken from URDF file) when using classic OLS
         self.useAPriori = 0
+
+        # orthogonalize basis matrix (uglier linear relationships)
+        self.orthogonalizeBasis = 0
+
+        ####
 
         # whether only "good" data is being selected or simply all is used
         # (reduces condition number)
         self.selectBlocksFromMeasurements = 0
         self.block_size = 250  # needs to be at least as much as parameters so regressor is square or higher
+
+        ####
 
         # constrain to std params to physical consistent space
         # to only achieve parameters in feasible space
@@ -84,21 +93,30 @@ class Identification(object):
 
         # constrain parameters for links more than this condtion number to the CAD values
         # (to prevent very big changes for parameters that are not expressed in the data)
+        self.noChange = 1
         self.noChangeThresh = 200
+
+        # constrain overall mass
+        self.limitOverallMass = 1
+
+        # if overall mass is set, limit to this value, otherwise to a priori mass +- 30%
+        self.limitMassVal = 16
+
+        # enforce an upper limit for each link mass separately
+        self.limitMassValPerLink = None #3
 
         # whether to take out masses to be identified because they are e.g.
         # well known or introduce problems
         # (essential params or when using feasability constraints)
         self.dontIdentifyMasses = 0
 
-        # constrain overall mass
-        self.limitOverallMass = 0
+        # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
+        self.restrictCOMtoHull = 1
 
-        # if overall mass is set, limit to this value, otherwise to a priori mass +- 30%
-        self.limitMassVal = None #16
+        ####
 
-        # restrict COM to smallest enclosing box of STL Mesh (from <visual> in URDF)
-        self.restrictCOMtoHull = 0
+        # whether to identify and use direct standard with essential parameters
+        self.useEssentialParams = 0
 
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
@@ -106,13 +124,15 @@ class Identification(object):
         # distributed)
         self.useWLS = 0
 
-        # whether to identify and use direct standard with essential parameters
-        self.useEssentialParams = 0
         # whether to include linear dependent columns in essential params or not
         self.useDependents = 1
 
-        # orthogonalize basis matrix (might result in uglier linear realtionships)
-        self.orthogonalizeBasis = 0
+        # whether to filter the regressor columns
+        # (cutoff frequency is system dependent)
+        # mostly not improving results
+        self.filterRegressor = 0
+
+        ####
 
         # how to output plots and other stuff ['matplotlib', 'html']
         self.outputModule = 'html'
@@ -127,15 +147,12 @@ class Identification(object):
         self.showStandardParams = 1
         self.showBaseParams = 1
 
-        ## some experiments
+        ####
+
+        #some experiments
 
         #project a priori to solution subspace
         self.projectToAPriori = 0
-
-        # whether to filter the regressor columns
-        # (cutoff frequency is system dependent)
-        # mostly not improving results
-        self.filterRegressor = 0
 
         # use bounds for the estimated std parameters (needs scipy >= 0.17)
         # only works with std_direct or std and essential params enabled
@@ -1128,11 +1145,15 @@ class Identification(object):
 
         #correct LMIs if estimating error instead of absolute values
         if self.useAPriori:
-            #in order to write no-change constraints, compare to zero (changes)
-            apriori = np.zeros_like(self.xStdModel)
-        else:
-            #or compare values relative to CAD
+            #LMI contraints need be corrected with a priori knowledge
             apriori = self.xStdModel
+            #in order to write no-change constraints, compare to zero (changes)
+            compare = np.zeros_like(self.xStdModel)
+        else:
+            #dont correct as we're estimating absolute values
+            apriori = np.zeros_like(self.xStdModel)
+            #compare values relative to CAD
+            compare = self.xStdModel
 
         #create LMI matrices (symbols)
         D_inertia_blocks = []
@@ -1159,80 +1180,86 @@ class Identification(object):
         D_other_blocks = []
 
         linkConds = self.getSubregressorsConditionNumbers()
-        robotmaxmass = 0
+        robotmass_apriori = 0
         for i in range(0, self.N_LINKS):
-            robotmaxmass += self.xStdModel[i*10]  #count a priori link masses
+            robotmass_apriori+= self.xStdModel[i*10]  #count a priori link masses
 
             #for links that have too high condition number, don't change params
-            if linkConds[i] > self.noChangeThresh:
+            if self.noChange and linkConds[i] > self.noChangeThresh:
+                print Fore.LIGHTYELLOW_EX + 'skipping identification of link {}!'.format(i) + Fore.RESET
                 # don't change mass
-                D_other_blocks.append(Matrix([apriori[i*10]+0.001 - self.mass_syms[i]]))
-                D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - apriori[i*10]]))
+                D_other_blocks.append(Matrix([compare[i*10]+0.001 - self.mass_syms[i]]))
+                D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - compare[i*10]]))
 
                 # don't change COM
-                D_other_blocks.append(Matrix([apriori[i*10+1]+0.0001 - self.param_syms[i*10+1]]))
-                D_other_blocks.append(Matrix([apriori[i*10+2]+0.0001 - self.param_syms[i*10+2]]))
-                D_other_blocks.append(Matrix([apriori[i*10+3]+0.0001 - self.param_syms[i*10+3]]))
+                D_other_blocks.append(Matrix([compare[i*10+1]+0.0001 - self.param_syms[i*10+1]]))
+                D_other_blocks.append(Matrix([compare[i*10+2]+0.0001 - self.param_syms[i*10+2]]))
+                D_other_blocks.append(Matrix([compare[i*10+3]+0.0001 - self.param_syms[i*10+3]]))
 
-                D_other_blocks.append(Matrix([self.param_syms[i*10+1]+0.0001 - apriori[i*10+1]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+2]+0.0001 - apriori[i*10+2]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+3]+0.0001 - apriori[i*10+3]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+1]+0.0001 - compare[i*10+1]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+2]+0.0001 - compare[i*10+2]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+3]+0.0001 - compare[i*10+3]]))
 
                 # don't change inertia
-                D_other_blocks.append(Matrix([apriori[i*10+4]+0.0001 - self.param_syms[i*10+4]]))
-                D_other_blocks.append(Matrix([apriori[i*10+5]+0.0001 - self.param_syms[i*10+5]]))
-                D_other_blocks.append(Matrix([apriori[i*10+6]+0.0001 - self.param_syms[i*10+6]]))
-                D_other_blocks.append(Matrix([apriori[i*10+7]+0.0001 - self.param_syms[i*10+7]]))
-                D_other_blocks.append(Matrix([apriori[i*10+8]+0.0001 - self.param_syms[i*10+8]]))
-                D_other_blocks.append(Matrix([apriori[i*10+9]+0.0001 - self.param_syms[i*10+9]]))
+                D_other_blocks.append(Matrix([compare[i*10+4]+0.0001 - self.param_syms[i*10+4]]))
+                D_other_blocks.append(Matrix([compare[i*10+5]+0.0001 - self.param_syms[i*10+5]]))
+                D_other_blocks.append(Matrix([compare[i*10+6]+0.0001 - self.param_syms[i*10+6]]))
+                D_other_blocks.append(Matrix([compare[i*10+7]+0.0001 - self.param_syms[i*10+7]]))
+                D_other_blocks.append(Matrix([compare[i*10+8]+0.0001 - self.param_syms[i*10+8]]))
+                D_other_blocks.append(Matrix([compare[i*10+9]+0.0001 - self.param_syms[i*10+9]]))
 
-                D_other_blocks.append(Matrix([self.param_syms[i*10+4]+0.0001 - apriori[i*10+4]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+5]+0.0001 - apriori[i*10+5]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+6]+0.0001 - apriori[i*10+6]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+7]+0.0001 - apriori[i*10+7]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - apriori[i*10+8]]))
-                D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - apriori[i*10+9]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+4]+0.0001 - compare[i*10+4]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+5]+0.0001 - compare[i*10+5]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+6]+0.0001 - compare[i*10+6]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+7]+0.0001 - compare[i*10+7]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+8]+0.0001 - compare[i*10+8]]))
+                D_other_blocks.append(Matrix([self.param_syms[i*10+9]+0.0001 - compare[i*10+9]]))
             else:
                 # all other links
                 if self.dontIdentifyMasses:
-                    D_other_blocks.append(Matrix([apriori[i*10]+0.001 - self.mass_syms[i]]))
-                    D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - apriori[i*10]]))
+                    D_other_blocks.append(Matrix([compare[i*10]+0.001 - self.mass_syms[i]]))
+                    D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - compare[i*10]]))
 
+
+        # constrain overall mass within bound
         if self.limitOverallMass:
             #use given overall mass else use overall mass from CAD
-            if self.limitMassVal: robotmaxmass = self.limitOverallMass
-
-            # constrain with a bit of space around
-            robotmaxmass_plus = robotmaxmass * 1.3
-            robotmaxmass_minus = robotmaxmass * 0.769
-
-            #constrain overall mass to be not larger than known
-            if self.useAPriori:
-                D_other_blocks.append(Matrix([robotmaxmass_plus - (robotmaxmass + sum(self.mass_syms))]))
-                D_other_blocks.append(Matrix([(robotmaxmass + sum(self.mass_syms)) - robotmaxmass_minus]))
+            if self.limitMassVal:
+                robotmaxmass = self.limitMassVal
+                robotmaxmass_ub = robotmaxmass * 1.05
+                robotmaxmass_lb = robotmaxmass * 0.95
             else:
-                D_other_blocks.append(Matrix([robotmaxmass_plus - sum(self.mass_syms)])) #maximum mass
-                D_other_blocks.append(Matrix([sum(self.mass_syms) - robotmaxmass_minus])) #minimum mass
+                robotmaxmass = robotmass_apriori
+                # constrain with a bit of space around
+                robotmaxmass_ub = robotmaxmass * 1.3
+                robotmaxmass_lb = robotmaxmass * 0.8
+
+            if self.useAPriori:
+                D_other_blocks.append(Matrix([robotmaxmass_ub - (robotmass_apriori + sum(self.mass_syms))]))
+                D_other_blocks.append(Matrix([(robotmass_apriori + sum(self.mass_syms)) - robotmaxmass_lb]))
+            else:
+                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.mass_syms)])) #maximum mass
+                D_other_blocks.append(Matrix([sum(self.mass_syms) - robotmaxmass_lb])) #minimum mass
+
+        # constrain for each link separately
+        if self.limitMassValPerLink:
+            for i in range(self.N_LINKS):
+                c = Matrix([self.limitMassValPerLink - (apriori[i*10] + self.mass_syms[i])])
+                D_other_blocks.append(c)
+
 
         if self.restrictCOMtoHull:
             link_cuboid_hulls = np.zeros((self.N_LINKS, 3, 2))
             for i in range(self.N_LINKS):
                 link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i))
-
-            if self.useAPriori:
-                for i in range(self.N_LINKS):
-                    #subtract a priori COM position (vector has first moment)
-                    link_cuboid_hulls[i][0] -= self.xStdModel[i*10+1] * self.xStdModel[i*10]  # should be / not * to correct with COM
-                    link_cuboid_hulls[i][1] -= self.xStdModel[i*10+2] * self.xStdModel[i*10]
-                    link_cuboid_hulls[i][2] -= self.xStdModel[i*10+3] * self.xStdModel[i*10]
-
-            for i in range(self.N_LINKS):
                 l = Matrix( self.param_syms[i*10+1:i*10+4])
-                m = self.mass_syms[i]
+                m = self.mass_syms[i] + apriori[i*10]
                 link_cuboid_hull = link_cuboid_hulls[i]
                 for j in range(3):
-                    D_other_blocks.append( Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] ) )
-                    D_other_blocks.append( Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] ) )
+                    ub = Matrix( [[  l[j]+apriori[i*10+1+j] - m*link_cuboid_hull[j][0] ]] )
+                    lb = Matrix( [[ -l[j]-apriori[i*10+1+j] + m*link_cuboid_hull[j][1] ]] )
+                    D_other_blocks.append( ub )
+                    D_other_blocks.append( lb )
 
         """
         #friction constraints

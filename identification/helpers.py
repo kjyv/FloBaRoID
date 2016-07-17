@@ -192,7 +192,7 @@ class URDFHelpers(object):
         #gazebo and urdf use 1m for 1 stl unit, so should be ok
         #TODO: urdf supports scaling argument to mesh, scale with x y z
         if self.mesh_scaling: scale = self.mesh_scaling.split()[0]
-        else: scale = 1
+        else: scale=1
         return [[stl_mesh.x.min()*scale, stl_mesh.x.max()*scale],
                 [stl_mesh.y.min()*scale, stl_mesh.y.max()*scale],
                 [stl_mesh.z.min()*scale, stl_mesh.z.max()*scale]]

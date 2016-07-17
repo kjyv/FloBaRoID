@@ -43,6 +43,8 @@ from robotran.left_arm import idinvbar, invdynabar, delidinvbar
 # for identification of biped dynamics
 # Jubien, 2014: Dynamic identification of the Kuka LWR robot using motor torques and joint torque
 # sensors data
+# Sousa, 2014: Physical feasibility of robot base inertial parameter identification: A linear matrix
+# inequality approach
 
 # TODO: add/use contact forces
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
@@ -91,41 +93,45 @@ class Identification(object):
         # to only achieve parameters in feasible space
         self.useFeasibleConstraints = 1
 
-        # constrain parameters for links more than this condtion number to the CAD values
+        # constrain parameters for links more than a certain condition number to the a priori values
         # (to prevent very big changes for parameters that are not expressed in the data)
         self.noChange = 1
         self.noChangeThresh = 200
 
-        # constrain overall mass
-        self.limitOverallMass = 1
+        # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
+        self.restrictCOMtoHull = 1
 
+        # constrain overall mass
+        self.limitOverallMass = 0
         # if overall mass is set, limit to this value, otherwise to a priori mass +- 30%
-        self.limitMassVal = 16
+        self.limitMassVal = None #16
 
         # enforce an upper limit for each link mass separately
         self.limitMassValPerLink = None #3
+
+        # or enforce staying around the a priori masses (only set this or a combination of the other
+        # two mass limiting options to prevent constraint conflicts!)
+        self.limitMassToApriori = 1
+        self.limitMassAprioriBoundary = 1.0
 
         # whether to take out masses to be identified because they are e.g.
         # well known or introduce problems
         # (essential params or when using feasability constraints)
         self.dontIdentifyMasses = 0
 
-        # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-        self.restrictCOMtoHull = 1
-
         ####
 
         # whether to identify and use direct standard with essential parameters
         self.useEssentialParams = 0
+
+        # whether to include linear dependent columns in essential params or not
+        self.useDependents = 1
 
         # use weighted least squares(WLS) instead of ordinary least squares
         # needs small condition number, otherwise might amplify some parameters too much as the
         # covariance estimation can be off (also assumes that error is zero mean and normal
         # distributed)
         self.useWLS = 0
-
-        # whether to include linear dependent columns in essential params or not
-        self.useDependents = 1
 
         # whether to filter the regressor columns
         # (cutoff frequency is system dependent)
@@ -1232,7 +1238,7 @@ class Identification(object):
                 robotmaxmass = robotmass_apriori
                 # constrain with a bit of space around
                 robotmaxmass_ub = robotmaxmass * 1.3
-                robotmaxmass_lb = robotmaxmass * 0.8
+                robotmaxmass_lb = robotmaxmass * 0.7
 
             if self.useAPriori:
                 D_other_blocks.append(Matrix([robotmaxmass_ub - (robotmass_apriori + sum(self.mass_syms))]))
@@ -1244,22 +1250,31 @@ class Identification(object):
         # constrain for each link separately
         if self.limitMassValPerLink:
             for i in range(self.N_LINKS):
-                c = Matrix([self.limitMassValPerLink - (apriori[i*10] + self.mass_syms[i])])
-                D_other_blocks.append(c)
-
+                if not (self.noChange and linkConds[i] > self.noChangeThresh):
+                    c = Matrix([self.limitMassValPerLink - (apriori[i*10] + self.mass_syms[i])])
+                    D_other_blocks.append(c)
+        elif self.limitMassToApriori:
+            # constrain each mass to env of a priori value
+            for i in range(self.N_LINKS):
+                if not (self.noChange and linkConds[i] > self.noChangeThresh):
+                    ub = Matrix([self.xStdModel[i*10]*(1+self.limitMassAprioriBoundary) - (apriori[i*10] + self.mass_syms[i])])
+                    lb = Matrix([(apriori[i*10] + self.mass_syms[i]) - self.xStdModel[i*10]*(1-self.limitMassAprioriBoundary)])
+                    D_other_blocks.append(ub)
+                    D_other_blocks.append(lb)
 
         if self.restrictCOMtoHull:
             link_cuboid_hulls = np.zeros((self.N_LINKS, 3, 2))
             for i in range(self.N_LINKS):
-                link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i))
-                l = Matrix( self.param_syms[i*10+1:i*10+4])
-                m = self.mass_syms[i] + apriori[i*10]
-                link_cuboid_hull = link_cuboid_hulls[i]
-                for j in range(3):
-                    ub = Matrix( [[  l[j]+apriori[i*10+1+j] - m*link_cuboid_hull[j][0] ]] )
-                    lb = Matrix( [[ -l[j]-apriori[i*10+1+j] + m*link_cuboid_hull[j][1] ]] )
-                    D_other_blocks.append( ub )
-                    D_other_blocks.append( lb )
+                if not (self.noChange and linkConds[i] > self.noChangeThresh):
+                    link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i))
+                    l = Matrix( self.param_syms[i*10+1:i*10+4])
+                    m = self.mass_syms[i] + apriori[i*10]
+                    link_cuboid_hull = link_cuboid_hulls[i]
+                    for j in range(3):
+                        ub = Matrix( [[  l[j]+apriori[i*10+1+j] - m*link_cuboid_hull[j][0] ]] )
+                        lb = Matrix( [[ -l[j]-apriori[i*10+1+j] + m*link_cuboid_hull[j][1] ]] )
+                        D_other_blocks.append( ub )
+                        D_other_blocks.append( lb )
 
         """
         #friction constraints

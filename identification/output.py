@@ -37,7 +37,7 @@ class OutputConsole(object):
             tmp = iDynTree.VectorDynSize(idf.num_params)
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
-            xBaseReal = np.dot(idf.B.T, xStdReal)
+            xBaseReal = np.dot(idf.Binv, xStdReal)
 
         if idf.showStandardParams:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
@@ -62,7 +62,9 @@ class OutputConsole(object):
             sum_diff_r_pc_all = 0
             sum_pc_delta_all = 0
             sum_pc_delta_ess = 0
-            for d in description.replace(r'Parameter ', '#').replace(r'first moment', 'center').split('\n'):
+            for d in description.replace(r'Parameter ', '#').split('\n'):
+                if idf.outputBarycentric:
+                    d = d.replace(r'first moment', 'center')
                 #add symbol for each parameter
                 d = d.replace(r':', ': {} -'.format(idf.param_syms[idx_p]))
 
@@ -271,6 +273,8 @@ class OutputConsole(object):
         if idf.showStandardParams:
             print("Per-link physical consistency (a priori): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStdModel)))
             print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStd)))
+
+        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.xStd[0::10]), np.sum(idf.xStdModel[0::10])))
 
         if idf.urdf_file_real:
             if idf.showStandardParams:

@@ -1,5 +1,5 @@
 import time
-from sympy import Basic, BlockDiagMatrix
+from sympy import Basic, BlockDiagMatrix, sympify
 import numpy as np
 
 import cvxopt
@@ -10,6 +10,15 @@ epsilon_sdptol = 1e-7
 
 import colorama
 from colorama import Fore, Back, Style
+
+#simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
+def LMI_PD(lhs, rhs=0):
+    lmi = lhs > sympify(rhs)
+    return lmi
+
+def LMI_PSD(lhs, rhs=0):
+    lmi = lhs >= sympify(rhs)
+    return lmi
 
 ##copied some methods from lmi_sdp here for compat changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):

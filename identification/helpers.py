@@ -3,6 +3,9 @@ from IPython import embed
 import iDynTree
 import numpy as np
 
+import colorama
+from colorama import Fore, Back, Style
+
 class Timer(object):
     def __enter__(self):
         self.start = time.clock()
@@ -155,22 +158,29 @@ class URDFHelpers(object):
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
 
-        # TODO: test if xpath and attribute exists
+        link_found = False
+        filepath = None
         for l in tree.findall('link'):
             if l.attrib['name'] == link_name:
+                link_found = True
                 m = l.find('visual/geometry/mesh')
-                filepath = m.attrib['filename']
-                try:
-                    self.mesh_scaling = m.attrib['scale']
-                except KeyError:
-                    self.mesh_scaling = None
+                if m != None:
+                    filepath = m.attrib['filename']
+                    try:
+                        self.mesh_scaling = m.attrib['scale']
+                    except KeyError:
+                        self.mesh_scaling = '1 1 1'
 
-        if not filepath.lower().endswith('stl'):
-            raise ValueError("Can't open other than STL files.")
-            # TODO: could use pycollada for dae
+        if not link_found or m is None:
+            print Fore.LIGHTRED_EX + "No mesh information specified for {} in URDF! Using approximation.".format(link_name) + Fore.RESET
+            filepath = None
+        else:
+            if not filepath.lower().endswith('stl'):
+                raise ValueError("Can't open other than STL files.")
+                # TODO: could use pycollada for *.dae
 
         #if path is ros package path, get absolute system path
-        if filepath.startswith('package') or filepath.startswith('model'):
+        if filepath and (filepath.startswith('package') or filepath.startswith('model')):
             try:
                 import resource_retriever    #ros package
                 r = resource_retriever.get(filepath)
@@ -187,17 +197,20 @@ class URDFHelpers(object):
         from stl import mesh   #using numpy-stl
 
         filename = self.getMeshPath(input_urdf, self.link_names[link_nr])
-        stl_mesh = mesh.Mesh.from_file(filename)
+        if filename:
+            stl_mesh = mesh.Mesh.from_file(filename)
 
-        #gazebo and urdf use 1m for 1 stl unit, so should be ok
-        #TODO: urdf supports scaling argument to mesh, scale with x y z
-        if self.mesh_scaling: scale = self.mesh_scaling.split()[0]
-        else: scale=1
-        return [[stl_mesh.x.min()*scale, stl_mesh.x.max()*scale],
-                [stl_mesh.y.min()*scale, stl_mesh.y.max()*scale],
-                [stl_mesh.z.min()*scale, stl_mesh.z.max()*scale]]
+            #gazebo and urdf use 1m for 1 stl unit
+            scale_x = float(self.mesh_scaling.split()[0])
+            scale_y = float(self.mesh_scaling.split()[1])
+            scale_z = float(self.mesh_scaling.split()[2])
+            return [[stl_mesh.x.min()*scale_x, stl_mesh.x.max()*scale_x],
+                    [stl_mesh.y.min()*scale_y, stl_mesh.y.max()*scale_y],
+                    [stl_mesh.z.min()*scale_z, stl_mesh.z.max()*scale_z]]
+        else:
+            return [[100,100], [100,100], [100,100]]
 
-        #TODO: in case we have no stl files:
-        # take length of link (distance to next link, last one?) and assume width and height from it (proper
-        # geometry is not known without CAD geometry)
-        # w = h = l/2 ?
+            #TODO: in case we have no stl files:
+            # take length of link (distance to next link, last one?) and assume width and height from it (proper
+            # geometry is not known without CAD geometry)
+            # w = h = l/2 ?

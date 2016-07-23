@@ -193,7 +193,7 @@ class URDFHelpers(object):
 
         return filepath
 
-    def getBoundingBox(self, input_urdf, link_nr):
+    def getBoundingBox(self, input_urdf, link_nr, scale=1):
         from stl import mesh   #using numpy-stl
 
         filename = self.getMeshPath(input_urdf, self.link_names[link_nr])
@@ -204,9 +204,9 @@ class URDFHelpers(object):
             scale_x = float(self.mesh_scaling.split()[0])
             scale_y = float(self.mesh_scaling.split()[1])
             scale_z = float(self.mesh_scaling.split()[2])
-            return [[stl_mesh.x.min()*scale_x, stl_mesh.x.max()*scale_x],
-                    [stl_mesh.y.min()*scale_y, stl_mesh.y.max()*scale_y],
-                    [stl_mesh.z.min()*scale_z, stl_mesh.z.max()*scale_z]]
+            return [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
+                    [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
+                    [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
         else:
             return [[100,100], [100,100], [100,100]]
 
@@ -214,3 +214,5 @@ class URDFHelpers(object):
             # take length of link (distance to next link, last one?) and assume width and height from it (proper
             # geometry is not known without CAD geometry)
             # w = h = l/2 ?
+            # length: go through all links, getFrameIndex for each (dynamicsComputations) and then
+            # of its parent, get position from Model::getFrameTransform

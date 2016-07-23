@@ -103,6 +103,9 @@ class Identification(object):
 
         # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
         self.restrictCOMtoHull = 1
+        # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
+        # geometry or that initial CAD data is too large)
+        self.meshScaling = 1.0
 
         # constrain overall mass
         self.limitOverallMass = 0
@@ -1693,7 +1696,7 @@ class Identification(object):
             link_cuboid_hulls = np.zeros((self.N_LINKS, 3, 2))
             for i in range(self.N_LINKS):
                 if not (self.noChange and linkConds[i] > self.noChangeThresh):
-                    link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i))
+                    link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i, self.meshScaling))
                     l = Matrix( self.param_syms[i*10+1:i*10+4])
                     m = self.mass_syms[i] + apriori[i*10]
                     link_cuboid_hull = link_cuboid_hulls[i]

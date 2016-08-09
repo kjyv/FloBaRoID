@@ -2,15 +2,19 @@
 
 * excite a robot with fourier series trajectories and record state and torque measurements (using [Yarp](https://github.com/robotology/yarp) or ROS/MoveIt! at the moment)
 * identify mass, com, and inertia parameters using a URDF model description of the robot and from the measurements
+* at the same time, constrain parameters to physical consistent standard solution space, regardless if input data is highly well-conditioned or not
 
 details:
-* excitation can be parameterized to get ideal trajectories (finding these parameters by optimization not yet
-  implemented)
-* acceleration and velocity values can be derived from position readings, all are low-pass filtered without time shift
-* implements reduction of standard parameters to base parameters and further to essential parameters, estimating only those that are relevant for the measurement data and leaving the others untouched
-* allows weighted least squares instead of ordinary least squares
-* allows estimation of parameter error in addition to absolute parameters using previously known CAD values
-* save identified values back to URDF
+* excitation trajectories are parameterized fourier-series to get periodic trajectories (finding optimal parameters by optimization not yet implemented)
+* acceleration and velocity values are derived from position readings, both are zero-phase low-pass filtered
+* from supplied measurements, it is optionally possible to only select a percentage of well-conditioned data blocks to decrease the overall condition number of the input data
+* implemented estimation methods:
+  * weighted least squares instead of ordinary least squares (Zak)
+  * estimation of parameter error in addition to absolute parameters using previously known CAD values (Gautier)
+  * determine essential parameters (Gautier), estimating only those that are most relevant for the measurement data and leaving the others unchanged
+  * formulating identification and constraints as linear SDP optimization problem (Sousa)
+* verification with other measurement data
+* save identified values back to URDF file
 
 requirements for identification:
 * python 2.7
@@ -21,10 +25,12 @@ requirements for identification:
 requirements for excitation:
 * for yarp/walkman: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild) module, python modules: yarp
 * for ros/kuka: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit_msg, moveit_commander
+* for other robots, new modules might have to be written
 
 known issues:
-* excitation methods could be more generic, generate optimized trajectories
+* excitation methods are not really generic, does not generate optimized trajectories
 * using position control over yarp is suboptimal and can expose timing issues
+* ros timing might also lead to missed data packages
 
 usage:
 

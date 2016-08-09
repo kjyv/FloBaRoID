@@ -126,15 +126,15 @@ def to_cvxopt(objective_func, lmis, variables, objective_type='minimize',
     return c, Gs, hs
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # using cvxopt conelp (start point must be feasible (?), no structure exploitation,
+    # using cvxopt conelp (start point must be feasible (?), no structure exploitation)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, primalstart=primalstart)
     toc = time.time()
     if sdpout['status'] == 'optimal':
-        print('{}'.format(sdpout['status']))
-        print "(\'optimal\' does not necessarily mean feasible)"
+        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+        print "('optimal' does not necessarily mean feasible)"
     else:
         print Fore.LIGHTRED_EX + '{}'.format(sdpout['status']) + Fore.RESET
     print('Elapsed time: %.2f s'%(toc-tic))
@@ -150,7 +150,10 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
     tic = time.time()
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
     toc = time.time()
-    print('{} \(\'optimal\' does not necessarily mean feasible)'.format(sdpout['status']))
+    if sdpout['status'] == 'optimal':
+        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+    else:
+        print Fore.LIGHTRED_EX + '{}'.format(sdpout['status']) + Fore.RESET
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 

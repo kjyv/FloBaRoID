@@ -57,7 +57,7 @@ class ParamHelpers(object):
                 try:
                     np.linalg.cholesky(tensors[i / 10])
                     cons[i / 10] = True
-                except:
+                except numpy.linalg.linalg.LinAlgError:
                     cons[i / 10] = False
         return cons
 

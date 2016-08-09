@@ -25,3 +25,16 @@ requirements for excitation:
 known issues:
 * excitation methods could be more generic, generate optimized trajectories
 * using position control over yarp is suboptimal and can expose timing issues
+
+usage:
+
+* get joint torque measurements from a robotic link structure
+
+   possible e.g. by using the excite.py script which filters the measurements as well (containts no generic trajectory generation yet)
+   if using some other means of movement and data recording, the data files of the numpy data files need to have the expected data fields and data needs to be filtered
+
+* run identification.py, at least supplying the measurement data file and the corresponding kinematic model .urdf file with some physically consistent CAD parameters
+
+   optionally an output .urdf file path, separate measurements for validation, some display options
+   possibly it's necessary to set some options for identification methods in the beginning of identification.py
+

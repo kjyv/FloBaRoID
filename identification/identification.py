@@ -62,14 +62,10 @@ class Identification(object):
         # determine number of samples to use
         # (Khalil recommends about 500 times number of parameters to identify...)
         self.start_offset = 400  #how many samples from the beginning of the (first) measurement are skipped
-        self.skip_samples = 4    #how many values to skip before using the next sample
-
-        # use robotran symbolic regressor to estimate torques (else iDynTree)
-        self.robotranRegressor = 0
+        self.skip_samples = 2    #how many values to skip before using the next sample
 
         # simulate torques from target values, don't use both
         self.iDynSimulate = 0 # simulate torque using idyntree (instead of reading measurements)
-        self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
         self.addNoise = 0   #add some artificial zero-mean white noise to the simulated torques
 
         # which parameters to use when estimating torques for validation. Set to one of
@@ -81,9 +77,6 @@ class Identification(object):
         # for some methods, this gives parameters that are more likely to be consistent
         # (no effect for SDP constrained solutions)
         self.useAPriori = 1
-
-        # orthogonalize basis matrix (uglier linear relationships, should not change results)
-        self.orthogonalizeBasis = 0
 
         ####
 
@@ -116,7 +109,7 @@ class Identification(object):
         # if overall mass is set, limit to this value. If None, limit to overall a priori mass +- 30%
         self.limitMassVal = None #16
 
-        # enforce an upper limit for each link mass separately
+        # enforce the same upper limit for each link mass
         self.limitMassValPerLink = None #3
 
         # or enforce staying around the a priori masses (only set this or a combination of the other
@@ -166,6 +159,13 @@ class Identification(object):
         ####
 
         #some experiments
+
+        # use robotran symbolic regressor to estimate torques (else iDynTree)
+        self.robotranRegressor = 0
+        self.robotranSimulate = 0 # simulate torque using robotran (instead of reading measurements)
+
+        # orthogonalize basis matrix (uglier linear relationships, should not change results)
+        self.orthogonalizeBasis = 0
 
         #project a priori to solution subspace
         self.projectToAPriori = 0
@@ -1446,7 +1446,7 @@ class Identification(object):
             W_st_pinv = V_1.dot(s_1_inv).dot(U_1.T)
             W_st = la.pinv(W_st_pinv)
 
-                x_est = W_st_pinv.dot(self.tau)
+            x_est = W_st_pinv.dot(self.tau)
 
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_est
@@ -1482,7 +1482,7 @@ class Identification(object):
             W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
             W_st_e = la.pinv(W_st_e_pinv)
 
-                x_tmp = W_st_e_pinv.dot(self.tau)
+            x_tmp = W_st_e_pinv.dot(self.tau)
 
             if self.useAPriori:
                 self.xStd = self.xStdModel + x_tmp

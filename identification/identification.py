@@ -27,7 +27,7 @@ from colorama import Fore, Back, Style
 
 import lmi_sdp
 import convex
-from convex import solve_sdp, LMI_PSD, LMI_PD
+from convex import LMI_PSD, LMI_PD
 from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye
 
 import helpers
@@ -77,10 +77,12 @@ class Identification(object):
         self.estimateWith = 'std'
 
         # use previously known CAD parameters to identify parameter error, estimates parameters closer to
-        # known ones (taken from URDF file) when using classic OLS
+        # known ones (taken from URDF file)
+        # for some methods, this gives parameters that are more likely to be consistent
+        # (no effect for SDP constrained solutions)
         self.useAPriori = 1
 
-        # orthogonalize basis matrix (uglier linear relationships)
+        # orthogonalize basis matrix (uglier linear relationships, should not change results)
         self.orthogonalizeBasis = 0
 
         ####
@@ -92,8 +94,10 @@ class Identification(object):
 
         ####
 
-        # constrain to std params to physical consistent space
-        # to only achieve parameters in feasible space
+        # constrain std params to physical consistent space to only achieve physical consistent parameters
+        # (currently this also does the estimation, so previously selecting another method has no effect)
+        # if only torque estimation is desired, not using this option might give a better model
+        # accuracy with approriate parameters
         self.useFeasibleConstraints = 1
 
         # constrain parameters for links more than a certain condition number to the a priori values
@@ -105,11 +109,11 @@ class Identification(object):
         self.restrictCOMtoHull = 1
         # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
         # geometry or that initial CAD data is too large)
-        self.meshScaling = 1.0
+        self.hullScaling = 1.0
 
         # constrain overall mass
         self.limitOverallMass = 0
-        # if overall mass is set, limit to this value, otherwise to a priori mass +- 30%
+        # if overall mass is set, limit to this value. If None, limit to overall a priori mass +- 30%
         self.limitMassVal = None #16
 
         # enforce an upper limit for each link mass separately
@@ -118,7 +122,7 @@ class Identification(object):
         # or enforce staying around the a priori masses (only set this or a combination of the other
         # two mass limiting options to prevent constraint conflicts!)
         self.limitMassToApriori = 1
-        self.limitMassAprioriBoundary = 1.0
+        self.limitMassAprioriBoundary = 1.0     #percentage of CAD value in both +- directions
 
         # whether to take out masses to be identified because they are e.g.
         # well known or introduce problems
@@ -1569,9 +1573,10 @@ class Identification(object):
         if self.showTiming:
             print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
-
-
     def initSDP_LMIs(self):
+        # initialize LMI matrices to set physical consistency constraints for SDP solver
+        # based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
+
         def skew(v):
             return Matrix([ [     0, -v[2],  v[1] ],
                             [  v[2],     0, -v[0] ],
@@ -1591,7 +1596,9 @@ class Identification(object):
             #compare values relative to CAD
             compare = self.xStdModel
 
-        #create LMI matrices (symbols)
+        # create LMI matrices (symbols) for each link
+        # so that mass is positive, inertia matrix is positive definite
+        # (each matrix is later on used to be either >0 or >=0)
         D_inertia_blocks = []
         for i in range(0, self.N_LINKS):
             m = self.mass_syms[i] + apriori[i*10]
@@ -1612,6 +1619,17 @@ class Identification(object):
             Di = BlockMatrix([[L,    S(l).T],
                               [S(l), I(3)*m]])
             D_inertia_blocks.append(Di.as_explicit().as_mutable())
+
+        # add conditions for triangle inequality of inertia tensor diagonal
+        # TODO: these need to be valid for parameters expressed about COM, not link frame
+        # (possibly also have to be the eigenvalues of inertia tensor)
+        for i in range(0, self.N_LINKS):
+            ixx = self.param_syms[i*10+4]
+            iyy = self.param_syms[i*10+7]
+            izz = self.param_syms[i*10+9]
+            D_inertia_blocks.append(Matrix([ixx+iyy-izz]))
+            D_inertia_blocks.append(Matrix([ixx+izz-iyy]))
+            D_inertia_blocks.append(Matrix([iyy+izz-ixx]))
 
         D_other_blocks = []
 
@@ -1696,7 +1714,7 @@ class Identification(object):
             link_cuboid_hulls = np.zeros((self.N_LINKS, 3, 2))
             for i in range(self.N_LINKS):
                 if not (self.noChange and linkConds[i] > self.noChangeThresh):
-                    link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i, self.meshScaling))
+                    link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.URDF_FILE, i, self.hullScaling))
                     l = Matrix( self.param_syms[i*10+1:i*10+4])
                     m = self.mass_syms[i] + apriori[i*10]
                     link_cuboid_hull = link_cuboid_hulls[i]
@@ -1721,6 +1739,9 @@ class Identification(object):
 
 
     def identifyStandardFeasibleParameters(self):
+        # use SDP program to do OLS and constrain to physically feasible
+        # space at the same time. Based on Sousa, 2014
+
         #build OLS matrix
         I = Identity
         delta = Matrix(self.param_syms)
@@ -1749,12 +1770,18 @@ class Identification(object):
         #solve SDP
         objective_func = u
 
+        # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
+        # it's probable still a bad solution
+        if not self.paramHelpers.isPhysicalConsistent(self.xStdModel):
+            print(Fore.LIGHTRED_EX+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
+            convex.solve_sdp = convex.cvxopt_dsdp5
+
         # start at CAD data, might increase convergence speed
-        if not self.useAPriori and convex.solve_sdp is convex.dsdp5: prime = self.xStdModel
-        else: prime = None
+        #if not self.useAPriori and convex.solve_sdp is convex.dsdp5: prime = self.xStdModel
+        #else: prime = None
 
         #solve SDP program (constrained OLS)
-        solution = solve_sdp(objective_func, lmis, variables, primalstart=prime)
+        solution = convex.solve_sdp(objective_func, lmis, variables)
 
         u_star = solution[0,0]
         if u_star:
@@ -1764,9 +1791,10 @@ class Identification(object):
         if self.useAPriori:
             self.xStd += self.xStdModel
 
-    def getFeasibleStdFromStd(self):
+    def getFeasibleStdFromStd(self, xStd):
+        # correct any std solution to feasible std parameters
         if self.useAPriori:
-            self.xStd -= self.xStdModel
+            xStd -= self.xStdModel
 
         delta = Matrix(self.param_syms)
         I = Identity
@@ -1777,22 +1805,23 @@ class Identification(object):
         n_delta_d = len(delta_d)
 
         u = Symbol('u')
-        U_delta = BlockMatrix([[Matrix([u]),       (self.xStd - delta).T],
-                               [self.xStd - delta,    I(self.num_params)]])
+        U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
+                               [xStd - delta,    I(self.num_params)]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
         variables = [u] + list(delta) # + list(delta_d)
         objective_func = u
-        solution = solve_sdp(objective_func, lmis, variables)
+        solution = convex.solve_sdp(objective_func, lmis, variables)
 
         u_star = solution[0,0]
         if u_star:
             print("found constrained solution with distance {} from OLS solution".format(u_star))
         delta_star = np.matrix(solution[1:])
-        self.xStd = np.squeeze(np.asarray(delta_star))
+        xStd = np.squeeze(np.asarray(delta_star))
 
         if self.useAPriori:
-            self.xStd += self.xStdModel
+            xStd += self.xStdModel
+        return xStd
 
     def estimateParameters(self):
         print("doing identification on {} samples".format(self.num_used_samples)),
@@ -1924,7 +1953,10 @@ def main():
 
     if idf.showMemUsage: idf.printMemUsage()
     if args.model_output:
-        idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
+        if idf.paramHelpers.isPhysicalConsistent(idf.xStd):
+            print("can't create urdf file with estimated parameters since they are not physical consistent.")
+        else:
+            idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
                                         new_params=idf.xStd, link_names=idf.link_names)
 
     if args.explain: OutputConsole.render(idf)

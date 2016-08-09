@@ -20,18 +20,80 @@ class ParamHelpers(object):
         self.n_params = n_params
 
     def checkPhysicalConsistency(self, params):
-        """check params for physical consistency, expect params relative to link frame"""
+        """
+        check params for physical consistency
+        (mass positive, inertia tensor positive definite, triangle inequaltiy for eigenvalues of inertia tensor expressed at COM)
 
+        expect params relative to link frame
+        returns dictionary of link ids and boolean consistency for each link
+        """
         cons = {}
         for i in range(0, self.n_params):
             if (i % 10 == 0):   #for each link
                 p_vec = iDynTree.Vector10()
                 for j in range(0, 10):
                     p_vec.setVal(j, params[i+j])
-                rbi = iDynTree.RigidBodyInertiaNonLinearParametrization()
-                iDynTree.RigidBodyInertiaNonLinearParametrization.fromInertialParameters(rbi, p_vec)
-                cons[i / 10] = rbi.isPhysicallyConsistent()
+                si = iDynTree.SpatialInertia()
+                si.fromVector(p_vec)
+                cons[i / 10] = si.isPhysicallyConsistent()
         return cons
+
+    def checkPhysicalConsistencyNoTriangle(self, params):
+        """
+        check params for physical consistency
+        (mass positive, inertia tensor positive definite)
+
+        expect params relative to link frame
+        returns dictionary of link ids and boolean consistency for each link
+        """
+        cons = {}
+        tensors = self.inertiaTensorFromParams(params)
+        for i in range(0, self.n_params):
+            if (i % 10 == 0):
+                if params[i] <= 0:  #masses need to be positive
+                    cons[i / 10] = False
+                    continue
+                #check if inertia tensor is positive definite (only then cholesky decomp exists)
+                try:
+                    np.linalg.cholesky(tensors[i / 10])
+                    cons[i / 10] = True
+                except:
+                    cons[i / 10] = False
+        return cons
+
+    def isPhysicalConsistent(self, params):
+        """give boolean consistency statement for a set of parameters"""
+        return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
+
+    def inertiaTensorFromParams(self, params):
+        """take a parameter vector and return list of full inertia tensors (one for each link)"""
+        tensors = list()
+        for i in range(self.n_params):
+            if (i % 10 == 0):
+                inertia = np.zeros((3,3))
+                #xx of inertia matrix
+                value = params[i+4]
+                inertia[0, 0] = value
+                #xy
+                value = params[i+5]
+                inertia[0, 1] = value
+                inertia[1, 0] = value
+                #xz
+                value = params[i+6]
+                inertia[0, 2] = value
+                inertia[2, 0] = value
+                #yy
+                value = params[i+7]
+                inertia[1, 1] = value
+                #yz
+                value = params[i+8]
+                inertia[1, 2] = value
+                inertia[2, 1] = value
+                #zz
+                value = params[i+9]
+                inertia[2, 2] = value
+                tensors.append(inertia)
+        return tensors
 
     def inertiaParams2RotationalInertiaRaw(self, params):
         #take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix

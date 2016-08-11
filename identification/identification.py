@@ -19,7 +19,10 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import lmi_sdp
 import convex
 from convex import LMI_PSD, LMI_PD
+import sympy
 from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye
+version = int(sympy.__version__.replace('.','')[:3])
+old_sympy = (version <= 74 and not sympy.__version__.startswith('1'))
 
 from output import OutputConsole
 import helpers
@@ -1542,7 +1545,11 @@ class Identification(object):
         #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.linear_deps, self.P == [Pb Pd] ?)
         K = Matrix(self.Binv)
 
-        e_rho1 = Matrix(rho1).T - R1*K*delta
+        if old_sympy:
+            e_rho1 = Matrix(rho1).T - R1*K*delta
+        else:
+            e_rho1 = Matrix(rho1) - R1*K*delta
+
         rho2_norm_sqr = la.norm(self.tau - self.YBase.dot(self.xBase))**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],

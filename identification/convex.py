@@ -1,6 +1,8 @@
 import time
 import sympy
 from sympy import Basic, BlockDiagMatrix, sympify
+version = int(sympy.__version__.replace('.','')[:3])
+old_sympy = (version <= 74 and not sympy.__version__.startswith('1'))
 import numpy as np
 
 import cvxopt
@@ -14,8 +16,7 @@ from colorama import Fore, Back, Style
 
 #simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
 def LMI_PD(lhs, rhs=0):
-    version = int(sympy.__version__.replace('.','')[:3])
-    if version <= 74:
+    if old_sympy:
         lmi = lmi_sdp.LMI_PD(lhs, rhs)
     else:
         lmi = lhs > sympify(rhs)
@@ -23,8 +24,7 @@ def LMI_PD(lhs, rhs=0):
     return lmi
 
 def LMI_PSD(lhs, rhs=0):
-    version = int(sympy.__version__.replace('.','')[:3])
-    if version <= 74:
+    if old_sympy:
         lmi = lmi_sdp.LMI_PSD(lhs, rhs)
     else:
         lmi = lhs >= sympify(rhs)
@@ -32,8 +32,7 @@ def LMI_PSD(lhs, rhs=0):
 
 ##copied some methods from lmi_sdp here for compat changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):
-    version = int(sympy.__version__.replace('.','')[:3])
-    if version <= 74:
+    if old_sympy:
         return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
 
     """Transforms LMIs from symbolic to numerical.

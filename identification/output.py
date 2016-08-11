@@ -1,8 +1,13 @@
 #-*- coding: utf-8 -*-
 
 import os
-import numpy as np
 from IPython import embed
+import numpy as np
+import numpy.linalg as la
+import scipy.linalg as sla
+import colorama
+from colorama import Fore, Back, Style
+
 
 colors = [[ 0.97254902,  0.62745098,  0.40784314],
           [ 0.0627451 ,  0.53333333,  0.84705882],
@@ -18,11 +23,6 @@ class OutputConsole(object):
     def render(idf, summary_only=False):
         """Do some pretty printing."""
 
-        import numpy.linalg as la
-        import scipy.linalg as sla
-
-        import colorama
-        from colorama import Fore, Back, Style
         colorama.init(autoreset=False)
 
         if not idf.useEssentialParams:

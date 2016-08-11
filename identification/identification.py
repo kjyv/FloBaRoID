@@ -3,34 +3,27 @@
 
 import sys
 import math
-from IPython import embed
+from colorama import Fore, Back, Style
 
 import numpy as np
-#import numexpr as ne
 import numpy.linalg as la
-import scipy as sp
-from scipy import signal
+import scipy
 import scipy.linalg as sla
 import scipy.stats as stats
-import scipy.optimize as opt
-import scipy.sparse as sparse
 
 import matplotlib
 import matplotlib.pyplot as plt
 
-# model and numeric regressors
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-
-from output import OutputConsole
-import colorama
-from colorama import Fore, Back, Style
 
 import lmi_sdp
 import convex
 from convex import LMI_PSD, LMI_PD
 from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye
 
+from output import OutputConsole
 import helpers
+from IPython import embed
 
 # Referenced papers:
 # Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
@@ -163,20 +156,7 @@ class Identification(object):
         #project a priori to solution subspace
         self.projectToAPriori = 0
 
-        if self.useAPriori:
-            print("using a priori parameter data")
-        if self.iDynSimulate:
-            print("using iDynTree to simulate robot dynamics")
-        self.simulate = self.iDynSimulate
-        if not self.simulate:
-            print("using torque measurement data")
-        print("estimating torques using {} parameters".format(self.estimateWith))
-        if self.useWLS:
-            print("using weighted least squares")
-        if self.useEssentialParams:
-            print("identifying essential parameters")
-
-        ## end options
+        #### end options
 
         with helpers.Timer() as t:
             #almost zero threshold for SVD and QR
@@ -495,7 +475,7 @@ class Identification(object):
             self.gravity_twist.zero()
             self.gravity_twist.setVal(2, -9.81)
 
-            if self.simulate or self.useAPriori:
+            if self.iDynSimulate or self.useAPriori:
                 self.dynComp = iDynTree.DynamicsComputations();
                 self.dynComp.loadRobotModelFromFile(self.URDF_FILE);
                 self.gravity = iDynTree.SpatialAcc();
@@ -536,7 +516,7 @@ class Identification(object):
         for row in range(0, self.num_used_samples):
             with helpers.Timer() as t:
                 m_idx = row*(self.skip_samples)+row
-                if self.simulate:
+                if self.iDynSimulate:
                     pos = self.samples['target_positions'][m_idx]
                     vel = self.samples['target_velocities'][m_idx]
                     acc = self.samples['target_accelerations'][m_idx]
@@ -613,7 +593,7 @@ class Identification(object):
         self.sample_end = self.samples['positions'].shape[0]
         if self.skip_samples > 0: self.sample_end -= (self.skip_samples)
 
-        if self.simulate:
+        if self.iDynSimulate:
             if self.useAPriori:
                 tau = self.torques_stack    # use original measurements, not delta
             else:
@@ -862,14 +842,14 @@ class Identification(object):
                 except:
                     fs = 200.0
                 fc = 5                          #Cut-off frequency (Hz)
-                b, a = sp.signal.butter(order, fc / (fs/2), btype='low', analog=False)
+                b, a = scipy.signal.butter(order, fc / (fs/2), btype='low', analog=False)
                 for j in range(0, self.num_base_params):
                     for i in range(0, self.N_DOFS):
-                        self.YBase[i::self.N_DOFS, j] = sp.signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
+                        self.YBase[i::self.N_DOFS, j] = scipy.signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
 
                 """
                 # Plot the frequency and phase response of the filter
-                w, h = sp.signal.freqz(b, a, worN=8000)
+                w, h = scipy.signal.freqz(b, a, worN=8000)
                 plt.subplot(2, 1, 1)
                 plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
                 plt.plot(fc, 0.5*np.sqrt(2), 'ko')
@@ -1427,7 +1407,8 @@ class Identification(object):
 
         # add conditions for triangle inequality of inertia tensor diagonal
         # TODO: these need to be valid for parameters expressed about COM, not link frame
-        # (possibly also have to be the eigenvalues of inertia tensor)
+        # also they have to be the eigenvalues of the inertia tensor instead of diagonal elements
+        '''
         for i in range(0, self.N_LINKS):
             ixx = self.param_syms[i*10+4]
             iyy = self.param_syms[i*10+7]
@@ -1435,7 +1416,7 @@ class Identification(object):
             D_inertia_blocks.append(Matrix([ixx+iyy-izz]))
             D_inertia_blocks.append(Matrix([ixx+izz-iyy]))
             D_inertia_blocks.append(Matrix([iyy+izz-ixx]))
-
+        '''
         D_other_blocks = []
 
         linkConds = self.getSubregressorsConditionNumbers()

@@ -274,7 +274,7 @@ class OutputConsole(object):
             cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.xStdModel)
             print("Per-link physical consistency (a priori): {}".format(cons_apriori))
             if False in cons_apriori.values():
-                print Fore.LIGHTRED_EX + "a priori parameters not consistent!" + Fore.RESET
+                print Fore.RED + "a priori parameters not consistent!" + Fore.RESET
             print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.xStd)))
             print("Per-link physical consistency (identified) (\\w tri ineq): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStd)))
 

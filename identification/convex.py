@@ -1,4 +1,5 @@
 import time
+import sympy
 from sympy import Basic, BlockDiagMatrix, sympify
 import numpy as np
 
@@ -13,15 +14,28 @@ from colorama import Fore, Back, Style
 
 #simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
 def LMI_PD(lhs, rhs=0):
-    lmi = lhs > sympify(rhs)
+    version = int(sympy.__version__.replace('.','')[:3])
+    if version <= 74:
+        lmi = lmi_sdp.LMI_PD(lhs, rhs)
+    else:
+        lmi = lhs > sympify(rhs)
+
     return lmi
 
 def LMI_PSD(lhs, rhs=0):
-    lmi = lhs >= sympify(rhs)
+    version = int(sympy.__version__.replace('.','')[:3])
+    if version <= 74:
+        lmi = lmi_sdp.LMI_PSD(lhs, rhs)
+    else:
+        lmi = lhs >= sympify(rhs)
     return lmi
 
 ##copied some methods from lmi_sdp here for compat changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):
+    version = int(sympy.__version__.replace('.','')[:3])
+    if version <= 74:
+        return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
+
     """Transforms LMIs from symbolic to numerical.
 
     Parameters
@@ -136,7 +150,7 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
         print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
         print "('optimal' does not necessarily mean feasible)"
     else:
-        print Fore.LIGHTRED_EX + '{}'.format(sdpout['status']) + Fore.RESET
+        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
@@ -153,7 +167,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
     if sdpout['status'] == 'optimal':
         print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
     else:
-        print Fore.LIGHTRED_EX + '{}'.format(sdpout['status']) + Fore.RESET
+        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
@@ -214,7 +228,7 @@ def dsdp5(objf, lmis, variables, primalstart=None):
         result = e.output
 
     error = [s for s in result.split('\n') if 'DSDP Terminated Due to' in s]
-    if error: print Fore.LIGHTRED_EX + error[0] + Fore.RESET
+    if error: print Fore.RED + error[0] + Fore.RESET
 
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]

@@ -246,7 +246,7 @@ class URDFHelpers(object):
             try:
                 import resource_retriever    #ros package
                 r = resource_retriever.get(filepath)
-                filepath = r.url()
+                filepath = r.url.replace('file://', '')
                 #r.read() #get file into memory
             except ImportError:
                 #if no ros installed, try to get stl files from 'meshes' dir relative to urdf files

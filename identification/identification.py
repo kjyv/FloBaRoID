@@ -1445,7 +1445,7 @@ class Identification(object):
 
             #for links that have too high condition number, don't change params
             if self.noChange and linkConds[i] > self.noChangeThresh:
-                print Fore.LIGHTYELLOW_EX + 'skipping identification of link {}!'.format(i) + Fore.RESET
+                print Fore.YELLOW + 'skipping identification of link {}!'.format(i) + Fore.RESET
                 # don't change mass
                 D_other_blocks.append(Matrix([compare[i*10]+0.001 - self.mass_syms[i]]))
                 D_other_blocks.append(Matrix([self.mass_syms[i]+0.001 - compare[i*10]]))
@@ -1561,7 +1561,7 @@ class Identification(object):
         #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.linear_deps, self.P == [Pb Pd] ?)
         K = Matrix(self.Binv)
 
-        e_rho1 = rho1 - R1*K*delta
+        e_rho1 = Matrix(rho1).T - R1*K*delta
         rho2_norm_sqr = la.norm(self.tau - self.YBase.dot(self.xBase))**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
@@ -1578,7 +1578,7 @@ class Identification(object):
         # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
         # it's probable still a bad solution
         if not self.paramHelpers.isPhysicalConsistent(self.xStdModel):
-            print(Fore.LIGHTRED_EX+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
+            print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
             convex.solve_sdp = convex.cvxopt_dsdp5
 
         # start at CAD data, might increase convergence speed

@@ -91,6 +91,8 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
 
     # calc velocity instead of taking measurements (uses filtered positions,
     # seems better than filtering noisy velocity measurements)
+    # TODO: Khalil, p.299 suggests a "central difference" method to avoid phase shift:
+    # dq(k) = [q(k+1)-q(k-1)]/2T
     for i in range(1, posis.shape[0]):
         dT = times[i] - times[i-1]
         if dT != 0:

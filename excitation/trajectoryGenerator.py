@@ -33,7 +33,8 @@ class TrajectoryGenerator(object):
         nf = np.random.randint(1,4,7)
         q = np.random.rand(7)*2-1
         for i in range(0, self.dofs):
-            # TODO: use joint limits here
+            # TODO: use joint limits here (read them from urdf directly, iDynTree can't do it. Or
+            # add there)
             max = 2.0-np.abs(q[i])
             a[i] = np.random.rand(nf[i])*max-max/2
             b[i] = np.random.rand(nf[i])*max-max/2
@@ -76,7 +77,7 @@ class TrajectoryGenerator(object):
 class OscillationGenerator(object):
     def __init__(self, w_f, a, b, q0, nf, use_deg):
         '''
-        generate periodic oscillation from fourier series
+        generate periodic oscillation from fourier series (Swevers, 1997)
 
         - w_f is the global pulsation (frequency is w_f / 2pi)
         - a and b are (arrays of) amplitudes of the sine/cosine

@@ -25,8 +25,8 @@ class OutputConsole(object):
 
         colorama.init(autoreset=False)
 
-        if not idf.useEssentialParams:
-            idf.stdEssentialIdx = range(0, idf.num_params)
+        if not idf.opt['useEssentialParams']:
+            idf.stdEssentialIdx = range(0, idf.model.num_params)
             idf.stdNonEssentialIdx = []
 
         import iDynTree
@@ -34,27 +34,26 @@ class OutputConsole(object):
         if idf.urdf_file_real:
             dc = iDynTree.DynamicsComputations()
             dc.loadRobotModelFromFile(idf.urdf_file_real)
-            tmp = iDynTree.VectorDynSize(idf.num_params)
+            tmp = iDynTree.VectorDynSize(idf.model.num_params)
             dc.getModelDynamicsParameters(tmp)
             xStdReal = tmp.toNumPy()
-            xBaseReal = np.dot(idf.Binv, xStdReal)
+            xBaseReal = np.dot(idf.model.Binv, xStdReal)
 
-        if idf.showStandardParams:
+        if idf.opt['showStandardParams']:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
-            if idf.outputBarycentric:
-                if not idf.robotranRegressor:
-                  xStd = idf.paramHelpers.paramsLink2Bary(idf.xStd)
-                xStdModel = idf.paramHelpers.paramsLink2Bary(idf.xStdModel)
+            if idf.opt['outputBarycentric']:
+                xStd = idf.paramHelpers.paramsLink2Bary(idf.model.xStd)
+                xStdModel = idf.paramHelpers.paramsLink2Bary(idf.model.xStdModel)
                 if not summary_only:
                     print("Barycentric (relative to COM) Standard Parameters")
             else:
-                xStd = idf.xStd
-                xStdModel = idf.xStdModel
+                xStd = idf.model.xStd
+                xStdModel = idf.model.xStdModel
                 if not summary_only:
                     print("Linear (relative to Frame) Standard Parameters")
 
             # collect values for parameters
-            description = idf.generator.getDescriptionOfParameters()
+            description = idf.model.generator.getDescriptionOfParameters()
             idx_p = 0   #count (std) params
             idx_ep = 0  #count essential params
             lines = list()
@@ -63,10 +62,10 @@ class OutputConsole(object):
             sum_pc_delta_all = 0
             sum_pc_delta_ess = 0
             for d in description.replace(r'Parameter ', '#').split('\n'):
-                if idf.outputBarycentric:
+                if idf.opt['outputBarycentric']:
                     d = d.replace(r'first moment', 'center')
                 #add symbol for each parameter
-                d = d.replace(r':', ': {} -'.format(idf.param_syms[idx_p]))
+                d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p]))
 
                 #print beginning of each link block in green
                 if idx_p % 10 == 0:
@@ -117,7 +116,7 @@ class OutputConsole(object):
                         diff_pc = (100*diff)/0.01
 
                 #values for each line
-                if idf.useEssentialParams and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
+                if idf.opt['useEssentialParams'] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
                     sigma = idf.p_sigma_x[idx_ep]
                 else:
                     sigma = 0.0
@@ -128,7 +127,7 @@ class OutputConsole(object):
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
                 lines.append(vals)
 
-                if idf.useEssentialParams and idx_p in idf.stdEssentialIdx:
+                if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
                     idx_ep+=1
                 idx_p+=1
                 if idx_p == len(xStd):
@@ -172,12 +171,12 @@ class OutputConsole(object):
                 print "\n"
 
         ### print base params
-        if idf.showBaseParams and not summary_only and idf.estimateWith not in ['urdf', 'std_direct']:
+        if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
-            if not idf.useEssentialParams:
-                baseEssentialIdx = range(0, idf.num_base_params)
+            if not idf.opt['useEssentialParams']:
+                baseEssentialIdx = range(0, idf.model.num_base_params)
                 baseNonEssentialIdx = []
-                xBase_essential = idf.xBase
+                xBase_essential = idf.model.xBase
             else:
                 baseEssentialIdx = idf.baseEssentialIdx
                 baseNonEssentialIdx = idf.baseNonEssentialIdx
@@ -187,12 +186,12 @@ class OutputConsole(object):
             idx_ep = 0
             lines = list()
             sum_error_all_base = 0
-            for idx_p in range(0, idf.num_base_params):
-                if idf.useEssentialParams: # and xBase_essential[idx_p] != 0:
+            for idx_p in range(0, idf.model.num_base_params):
+                if idf.opt['useEssentialParams']: # and xBase_essential[idx_p] != 0:
                     new = xBase_essential[idx_p]
                 else:
-                    new = idf.xBase[idx_p]
-                old = idf.xBaseModel[idx_p]
+                    new = idf.model.xBase[idx_p]
+                old = idf.model.xBaseModel[idx_p]
                 diff = new - old
                 if idf.urdf_file_real:
                     real = xBaseReal[idx_p]
@@ -204,12 +203,12 @@ class OutputConsole(object):
                 #dep_factors = idf.linear_deps[idx_p, deps]
 
                 param_columns = " = "
-                param_columns += "{}".format(idf.base_deps[idx_p])
+                param_columns += "{}".format(idf.model.base_deps[idx_p])
                 #for p in range(0, len(deps)):
                 #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
 
 
-                if idf.useEssentialParams and idx_p in idf.baseEssentialIdx:
+                if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     sigma = idf.p_sigma_x[idx_ep]
                 else:
                     sigma = 0.0
@@ -219,7 +218,7 @@ class OutputConsole(object):
                 else:
                     lines.append((old, new, diff, sigma, param_columns))
 
-                if idf.useEssentialParams and idx_p in idf.baseEssentialIdx:
+                if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     idx_ep+=1
 
             if idf.urdf_file_real:
@@ -254,51 +253,51 @@ class OutputConsole(object):
                         t = Style.DIM + t
                     elif idx_p in baseEssentialIdx:
                         t = Style.BRIGHT + t
-                    if idf.showEssentialSteps and l[-2] == np.max(idf.p_sigma_x):
+                    if idf.opt['showEssentialSteps'] and l[-2] == np.max(idf.p_sigma_x):
                         t = Fore.CYAN + t
                     print t,
                     idx_p+=1
                     print Style.RESET_ALL
 
-        if idf.selectBlocksFromMeasurements:
-            if len(idf.usedBlocks):
-                print "used {} of {} blocks: {}".format(len(idf.usedBlocks),
-                                                        len(idf.usedBlocks)+len(idf.unusedBlocks),
-                                                        [b for (b,bs,cond,linkConds) in idf.usedBlocks])
+        if idf.opt['selectBlocksFromMeasurements']:
+            if len(idf.data.usedBlocks):
+                print "used {} of {} blocks: {}".format(len(idf.data.usedBlocks),
+                                                        len(idf.data.usedBlocks)+len(idf.data.unusedBlocks),
+                                                        [b for (b,bs,cond,linkConds) in idf.data.usedBlocks])
             else:
-                print "\ncurrent block: {}".format(idf.block_pos)
+                print "\ncurrent block: {}".format(idf.data.block_pos)
             #print "unused blocks: {}".format(idf.unusedBlocks)
-            print "condition number: {}".format(la.cond(idf.YBase))
+            print "condition number: {}".format(la.cond(idf.model.YBase))
 
-        if idf.showStandardParams:
-            cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.xStdModel)
+        if idf.opt['showStandardParams']:
+            cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
             print("Per-link physical consistency (a priori): {}".format(cons_apriori))
             if False in cons_apriori.values():
                 print Fore.RED + "a priori parameters not consistent!" + Fore.RESET
-            print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.xStd)))
-            print("Per-link physical consistency (identified) (\\w tri ineq): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.xStd)))
+            print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)))
+            print("Per-link physical consistency (identified) (\\w tri ineq): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)))
 
-        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.xStd[0::10]), np.sum(idf.xStdModel[0::10])))
+        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
 
         if idf.urdf_file_real:
-            if idf.showStandardParams:
-                if idf.useEssentialParams:
+            if idf.opt['showStandardParams']:
+                if idf.opt['useEssentialParams']:
                     print("Mean relative error of essential std params: {}%".\
                             format(sum_diff_r_pc_ess/len(idf.stdEssentialIdx)))
-                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.xStd)))
+                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.model.xStd)))
 
-                if idf.useEssentialParams:
+                if idf.opt['useEssentialParams']:
                     print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
-                        format(sum_pc_delta_all/len(idf.xStd)))
-                sq_error_apriori = np.square(la.norm(xStdReal - idf.xStdModel))
-                sq_error_idf = np.square(la.norm(xStdReal - idf.xStd))
+                        format(sum_pc_delta_all/len(idf.model.xStd)))
+                sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
+                sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
                 print( "Squared distance of parameter vectors (apriori, identified) to real: {} vs. {}".\
                         format(sq_error_apriori, sq_error_idf))
-            if idf.showBaseParams and not summary_only:
+            if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
-                        format(sum_error_all_base/len(idf.xBase)))
+                        format(sum_error_all_base/len(idf.model.xBase)))
 
         idf.estimateRegressorTorques(estimateWith='urdf')
         idf.apriori_error = sla.norm(idf.tauEstimated-idf.tauMeasured)*100/sla.norm(idf.tauMeasured)

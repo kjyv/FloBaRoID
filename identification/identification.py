@@ -59,7 +59,7 @@ class Identification(object):
 
         # simulate torques from target values, don't use both
         self.iDynSimulate = 0 # simulate torque for measured angles etc using idyntree (instead of reading data)
-        self.addNoise = 0   #add some artificial zero-mean white noise to the simulated torques
+        self.addNoise = 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
         # which parameters to use when estimating torques for validation. Set to one of
         # ['base', 'std', 'std_direct', 'urdf']
@@ -549,8 +549,9 @@ class Identification(object):
                     if self.iDynSimulate:
                         torq = torques.toNumPy()
 
-                if self.addNoise:
-                    torq += np.random.randn(self.N_DOFS)*0.03
+                if self.addNoise != 0:
+                    torq += np.random.randn(self.N_DOFS)*self.addNoise
+
             simulate_time += t.interval
 
             #...still in sample loop

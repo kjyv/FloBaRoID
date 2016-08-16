@@ -1,7 +1,6 @@
 import sys
 import yarp
 import numpy as np
-from trajectoryGenerator import TrajectoryGenerator
 
 def gen_position_msg(msg_port, angles, velocities):
     bottle = msg_port.prepare()
@@ -15,7 +14,7 @@ def gen_command(msg_port, command):
     bottle.fromString("({}) 0".format(command))
     return bottle
 
-def main(config, data):
+def main(config, trajectory, data_out):
     # connect to yarp and open output port
     yarp.Network.init()
     yarp.Time.useNetworkClock("/clock")
@@ -33,12 +32,9 @@ def main(config, data):
     data_port.open(portName+"i")
     yarp.Network.connect(portName+'o', portName+'i')
 
-    # init trajectory generator for all the joints
-    trajectories = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
-
     t_init = yarp.Time.now()
     t_elapsed = 0.0
-    duration = config['args'].periods*trajectories.getPeriodLength()   #init overall run duration to a periodic length
+    duration = config['args'].periods*trajectory.getPeriodLength()   #init overall run duration to a periodic length
 
     measured_positions = list()
     measured_velocities = list()
@@ -94,12 +90,12 @@ def main(config, data):
         sent_time.append(yarp.Time.now())
 
         # get and wait for next value, so sync to GYM loop
-        data = data_port.read(shouldWait=True)
+        data_out = data_port.read(shouldWait=True)
 
-        b_positions = data.get(0).asList()
-        b_velocities = data.get(1).asList()
-        b_torques = data.get(2).asList()
-        d_time = data.get(3).asDouble()
+        b_positions = data_out.get(0).asList()
+        b_velocities = data_out.get(1).asList()
+        b_torques = data_out.get(2).asList()
+        d_time = data_out.get(3).asDouble()
 
         positions = np.zeros(config['N_DOFS'])
         velocities = np.zeros(config['N_DOFS'])
@@ -130,16 +126,16 @@ def main(config, data):
     # clean up
     command_port.close()
     data_port.close()
-    data['Q'] = np.array(measured_positions); del measured_positions
-    data['Qsent'] = np.array(sent_positions);
-    data['QdotSent'] = np.array(sent_velocities);
-    data['QddotSent'] = np.array(sent_accelerations);
-    data['V'] = np.array(measured_velocities); del measured_velocities
-    data['Tau'] = np.array(measured_torques); del measured_torques
-    data['T'] = np.array(measured_time); del measured_time
+    data_out['Q'] = np.array(measured_positions); del measured_positions
+    data_out['Qsent'] = np.array(sent_positions);
+    data_out['QdotSent'] = np.array(sent_velocities);
+    data_out['QddotSent'] = np.array(sent_accelerations);
+    data_out['V'] = np.array(measured_velocities); del measured_velocities
+    data_out['Tau'] = np.array(measured_torques); del measured_torques
+    data_out['T'] = np.array(measured_time); del measured_time
 
-    data['measured_frequency'] = len(sent_positions)/duration
+    data_out['measured_frequency'] = len(sent_positions)/duration
 
     # some stats
-    print "got {} samples in {}s.".format(data['Q'].shape[0], duration),
-    print "(about {} Hz)".format(data['measured_frequency'])
+    print "got {} samples in {}s.".format(data_out['Q'].shape[0], duration),
+    print "(about {} Hz)".format(data_out['measured_frequency'])

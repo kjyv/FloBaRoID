@@ -70,10 +70,6 @@ class Identification(object):
         self.opt['iDynSimulate'] = 0 # simulate torque for measured angles etc using idyntree (instead of reading data)
         self.opt['addNoise'] = 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
-        # which parameters to use when estimating torques for validation. Set to one of
-        # ['base', 'std', 'std_direct', 'urdf']
-        self.opt['estimateWith'] = 'std'
-
         # use previously known CAD parameters to identify parameter error, estimates parameters closer to
         # known ones (taken from URDF file)
         # for some methods, this gives parameters that are more likely to be consistent
@@ -83,7 +79,6 @@ class Identification(object):
         ####
 
         # whether only "good" data is being selected or simply all is used
-        # (reduces condition number)
         self.opt['selectBlocksFromMeasurements'] = 0
         self.opt['block_size'] = 250  # needs to be at least as much as parameters so regressor is square or higher
 
@@ -93,7 +88,7 @@ class Identification(object):
         # (currently this also does the estimation, so previously selecting another method has no effect)
         # if only torque estimation is desired, not using this self.option might give a better model
         # accuracy with approriate parameters
-        self.opt['useFeasibleConstraints'] = 1
+        self.opt['useConsistencyConstraints'] = 1
 
         # constrain parameters for links more than a certain condition number to the a priori values
         # (to prevent very big changes for parameters that are not expressed in the data)
@@ -168,15 +163,20 @@ class Identification(object):
         #project a priori to solution subspace
         self.opt['projectToAPriori'] = 0
 
+        # which parameters to use when estimating torques for validation. Set to one of
+        # ['base', 'std', 'std_direct', 'urdf']
+        self.opt['estimateWith'] = 'std'
+
         #### end self.options
 
         self.opt['min_tol'] = 1e-5    # almost zero threshold for SVD and QR
 
         # load model description and initialize
-        self.model = Model(urdf_file, regressor_file, self.opt)
+        self.model = Model(self.opt, urdf_file, regressor_file)
 
         # load measurements
-        self.data = Data(measurements_files, self.opt)
+        self.data = Data(self.opt)
+        self.data.init_from_files(measurements_files)
 
         self.tauEstimated = list()
         self.tauMeasured = list()
@@ -956,7 +956,7 @@ class Identification(object):
         else:
             if self.opt['estimateWith'] in ['base', 'std']:
                 self.identifyBaseParameters()
-                if self.opt['useFeasibleConstraints']:
+                if self.opt['useConsistencyConstraints']:
                     self.initSDP_LMIs()
                     self.identifyStandardFeasibleParameters()
                 else:
@@ -1052,8 +1052,8 @@ def main():
         old_essential_option = idf.opt['useEssentialParams']
         idf.opt['useEssentialParams'] = 0
 
-        old_feasible_option = idf.opt['useFeasibleConstraints']
-        idf.opt['useFeasibleConstraints'] = 0
+        old_feasible_option = idf.opt['useConsistencyConstraints']
+        idf.opt['useConsistencyConstraints'] = 0
         # loop over input blocks and select good ones
         while 1:
             idf.estimateParameters()
@@ -1069,7 +1069,7 @@ def main():
         idf.data.selectBlocks()
         idf.data.assembleSelectedBlocks()
         idf.opt['useEssentialParams'] = old_essential_option
-        idf.opt['useFeasibleConstraints'] = old_feasible_option
+        idf.opt['useConsistencyConstraints'] = old_feasible_option
 
     print("estimating output parameters...")
     idf.estimateParameters()

@@ -275,7 +275,7 @@ class OutputConsole(object):
             if False in cons_apriori.values():
                 print Fore.RED + "a priori parameters not consistent!" + Fore.RESET
             print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)))
-            print("Per-link physical consistency (identified) (\\w tri ineq): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)))
+            print("Per-link full physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)))
 
         print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
 

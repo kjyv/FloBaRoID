@@ -1,15 +1,15 @@
 import numpy as np
 
 class TrajectoryGenerator(object):
-    '''
-        pulsating trajectory generator for one joint using fourier series from Swers, Gansemann (1997)
-        gives values for one time instant at the current time
+    ''' pulsating trajectory generator for one joint using fourier series from
+        Swevers, Gansemann (1997). Gives values for one time instant (at the current
+        internal time value)
     '''
     def __init__(self, dofs, use_deg=False):
         self.dofs = dofs
         self.oscillators = list()
+        self.use_deg = use_deg
 
-        #TODO: these are just some values, get them from optimization or outside
         self.w_f_global = 1.0
         #walkman left arm
         #a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8], [-0.8]]
@@ -27,41 +27,44 @@ class TrajectoryGenerator(object):
         #b = [[1.0], [0.0], [1.2], [0.7], [0.8], [1.3], [1.0], [1.3]]
         #q = [-1.0, -1.0, 0, 0, 0, 0, -1, 0]
 
+        self.setRandomParams()
+
+    def setRandomParams(self):
         #use random params
-        a = [0]*dofs
-        b = [0]*dofs
-        nf = np.random.randint(1,4,7)
-        q = np.random.rand(7)*2-1
+        a = [0]*self.dofs
+        b = [0]*self.dofs
+        nf = np.random.randint(1,4, self.dofs)
+        q = np.random.rand(self.dofs)*2-1
         for i in range(0, self.dofs):
-            # TODO: use joint limits here (read them from urdf directly, iDynTree can't do it. Or
-            # add there)
             max = 2.0-np.abs(q[i])
             a[i] = np.random.rand(nf[i])*max-max/2
             b[i] = np.random.rand(nf[i])*max-max/2
-        print a
-        print b
-        print q
+        #print a
+        #print b
+        #print q
 
-        self.use_deg = use_deg
         if not self.use_deg:
             q = np.deg2rad(q)
 
-        for i in range(0, dofs):
+        for i in range(0, self.dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
-                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = use_deg
+                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = self.use_deg
                                                         ))
 
     def getAngle(self, dof):
+        """ get angle at current time for joint dof """
         return self.oscillators[dof].getAngle(self.time)
 
     def getVelocity(self, dof):
+        """ get velocity at current time for joint dof """
         return self.oscillators[dof].getVelocity(self.time)
 
     def getAcceleration(self, dof):
+        """ get acceleration at current time for joint dof """
         return self.oscillators[dof].getAcceleration(self.time)
 
     def getPeriodLength(self):
-        '''return period length of oscillation in seconds'''
+        ''' get the period length of the oscillation in seconds '''
         return 2*np.pi/self.w_f_global
 
     def setTime(self, time):

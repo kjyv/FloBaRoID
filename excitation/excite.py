@@ -9,7 +9,6 @@ from scipy import signal
 from IPython import embed
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from robotCommunication import yarp_gym, ros_moveit
 
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
@@ -28,12 +27,28 @@ args = parser.parse_args()
 
 data = {}   #hold some global data vars in here
 config = {}
-config['args'] = args
-
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+config['model'] = args.model
+config['iDynSimulate'] = args.simulate
+config['useAPriori'] = True
+config['estimateWith'] = 'std'
+config['min_tol'] = 1e-5
+config['skip_samples'] = 0
+config['addNoise'] = 0
+config['filterRegressor'] = 0
+config['showTiming'] = 0
 config['jointNames'] = iDynTree.StringVector([])
 iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
+
+#append parent dir for relative import
+import os
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+from identification.identification import Identification
+from identification.model import Model
+from identification.data import Data
+from identification.helpers import URDFHelpers
+
+from trajectoryGenerator import TrajectoryGenerator
 
 def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
                 accls, torques, torques_unfiltered, times, fs):
@@ -231,14 +246,80 @@ def plot(data):
 
     plt.show()
 
+def optimizeTrajectory(config):
+    trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
+
+    # generate data arrays for simulation and regressor building
+    model = Model(config, config['model'])
+    data = Data(config)
+    trajectory_data = {}
+    trajectory_data['target_positions'] = []
+    trajectory_data['target_velocities'] = []
+    trajectory_data['target_accelerations'] = []
+    trajectory_data['times'] = []
+    freq = 200.0
+    for t in range(0, int(trajectory.getPeriodLength()*freq)):
+        trajectory.setTime(t/freq)
+        q = [trajectory.getAngle(d) for d in range(config['N_DOFS'])]
+        q = np.array(q)
+        trajectory_data['target_positions'].append(q)
+
+        qdot = [trajectory.getVelocity(d) for d in range(config['N_DOFS'])]
+        qdot = np.array(qdot)
+        trajectory_data['target_velocities'].append(qdot)
+
+        qddot = [trajectory.getAcceleration(d) for d in range(config['N_DOFS'])]
+        qddot = np.array(qddot)
+        trajectory_data['target_accelerations'].append(qddot)
+
+        trajectory_data['times'].append(t)
+    trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
+    trajectory_data['positions'] = trajectory_data['target_positions']
+    trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
+    trajectory_data['velocities'] = trajectory_data['target_velocities']
+    trajectory_data['target_accelerations'] = np.array(trajectory_data['target_accelerations'])
+    trajectory_data['accelerations'] = trajectory_data['target_accelerations']
+    trajectory_data['torques'] = np.empty(0)
+    trajectory_data['times'] = np.array(trajectory_data['times'])
+
+    data.init_from_data(trajectory_data)
+
+    print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples, trajectory_data['times'][-1]/freq))
+
+    # get condition number for regressor of trajectory
+    old_sim = config['iDynSimulate']
+    config['iDynSimulate'] = True
+    model.computeRegressors(data)
+    config['iDynSimulate'] = old_sim
+    print("condition number: {}".format(np.linalg.cond(model.YStd)))
+
+    # check for joint limits
+    print ("Within limits?")
+    limits = URDFHelpers.getJointLimits(config['model'], use_deg=True)
+    for n in range(config['N_DOFS']):
+        print n,
+        print ((trajectory_data['positions'][:, n] > limits[config['jointNames'][n]]['lower']).all() and
+        (trajectory_data['positions'][:, n] < limits[config['jointNames'][n]]['upper']).all() and
+        (trajectory_data['velocities'][:, n] < limits[config['jointNames'][n]]['velocity']).all())
+
+    return trajectory
+
 def main():
+    trajectory = optimizeTrajectory(config)
+
     if args.yarp:
-        yarp_gym.main(config, data)
+        from robotCommunication import yarp_gym
+        yarp_gym.main(config, trajectory, data)
     elif args.ros:
-        ros_moveit.main(config, data)
+        from robotCommunication import ros_moveit
+        ros_moveit.main(config, trajectory, data, move_group="full_lwr")
+    else:
+        print("No excitation method given! Stopping.")
+        sys.exit(1)
 
     # generate some empty arrays, will be calculated in preprocess()
-    data['Vdot'] = np.zeros_like(data['V'])
+    if not data.has_key('Vdot'):
+        data['Vdot'] = np.zeros_like(data['V'])
     data['Vraw'] = np.zeros_like(data['V'])
     data['Vself'] = np.zeros_like(data['V'])
     data['Qraw'] = np.zeros_like(data['Q'])
@@ -248,7 +329,8 @@ def main():
     postprocess(data['Q'], data['Qraw'], data['V'], data['Vraw'], data['Vself'], data['Vdot'],
                 data['Tau'], data['TauRaw'], data['T'], data['measured_frequency'])
 
-    if args.simulate:
+    #TODO: get this from identification module
+    if config['iDynSimulate']:
         dynComp = iDynTree.DynamicsComputations();
         dynComp.loadRobotModelFromFile(args.model);
         gravity = iDynTree.SpatialAcc();
@@ -288,11 +370,12 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        if not args.dryrun:
-            main()
-        if(args.plot):
-            plot(data)
+    #try:
+    if not args.dryrun:
+        main()
+    if(args.plot):
+        plot(data)
+    """
     except Exception as e:
         if type(e) is not KeyboardInterrupt:
             # open ipdb when an exception happens
@@ -300,4 +383,4 @@ if __name__ == '__main__':
             type, value, tb = sys.exc_info()
             traceback.print_exc()
             ipdb.post_mortem(tb)
-
+    """

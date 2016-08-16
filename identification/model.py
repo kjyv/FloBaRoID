@@ -9,7 +9,7 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import helpers
 
 class Model(object):
-    def __init__(self, urdf_file, regressor_file, opt):
+    def __init__(self, opt, urdf_file, regressor_file=None):
         self.urdf_file = urdf_file
         self.opt = opt
 
@@ -128,6 +128,7 @@ class Model(object):
 
                     # compute inverse dynamics with idyntree (simulate)
                     self.dynComp.inverseDynamics(torques, baseReactionForce)
+
                     if self.opt['useAPriori']:
                         torqAP = torques.toNumPy()
                     if self.opt['iDynSimulate']:
@@ -176,7 +177,7 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        print("YStd: {}".format(self.YStd.shape)),
+        print("YStd: {}, cond: {}".format(self.YStd.shape, la.cond(self.YStd))),
         # project regressor to base regressor, Y_base = Y_std*B
         self.YBase = np.dot(self.YStd, self.B)
         print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
@@ -313,7 +314,7 @@ class Model(object):
 
             np.savez(regr_filename, R=R, n=n_samples)
 
-        if self.opt['showRandomRegressor']:
+        if self.opt.has_key('showRandomRegressor') and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
             plt.imshow(R, interpolation='nearest')
             plt.show()
@@ -378,7 +379,7 @@ class Model(object):
                     if np.abs(fact)>self.opt['min_tol']: self.B[P[k],j] = fact
             self.B[indep_idx,j] = 1
 
-        if self.opt['orthogonalizeBasis']:
+        if self.opt.has_key('orthogonalizeBasis') and self.opt['orthogonalizeBasis']:
             #orthogonalize, so linear relationships can be inverted
             Q_B_qr, R_B_qr = la.qr(self.B)
             Q_B_qr[np.abs(Q_B_qr) < self.opt['min_tol']] = 0

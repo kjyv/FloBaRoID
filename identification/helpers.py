@@ -278,3 +278,35 @@ class URDFHelpers(object):
             # w = h = l/2 ?
             # length: go through all links, getFrameIndex for each (dynamicsComputations) and then
             # of its parent, get position from Model::getFrameTransform
+
+    @classmethod
+    def getJointLimits(self, input_urdf, use_deg=True):
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(input_urdf)
+        limits = {}
+        for j in tree.findall('joint'):
+            name = j.attrib['name']
+            torque = 0
+            lower = 0
+            upper = 0
+            velocity = 0
+            if j.attrib['type'] == 'revolute':
+                l = j.find('limit')
+                if l != None:
+                    torque = l.attrib['effort']  #TODO: effort directly equals torque?
+                    lower = l.attrib['lower']
+                    upper = l.attrib['upper']
+                    velocity = l.attrib['velocity']
+
+                    limits[name] = {}
+                    limits[name]['torque'] = float(torque)
+                    if use_deg:
+                        limits[name]['lower'] = np.rad2deg(float(lower))
+                        limits[name]['upper'] = np.rad2deg(float(upper))
+                        limits[name]['velocity'] = np.rad2deg(float(velocity))
+                    else:
+                        limits[name]['lower'] = float(lower)
+                        limits[name]['upper'] = float(upper)
+                        limits[name]['velocity'] = float(velocity)
+        return limits
+

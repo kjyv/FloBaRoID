@@ -35,11 +35,11 @@ class RecordJointStates(object):
         self.torques.append(msg.effort)   #ros "effort" is force for linear or torque for rotational joints
         self.times.append(msg.header.stamp.secs + msg.header.stamp.nsecs / 1.0e9)
 
-def main(config, data):
+def main(config, trajectory, data, move_group):
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node('excitation_move_group', anonymous=False)
     robot = moveit_commander.RobotCommander()
-    group = moveit_commander.MoveGroupCommander("full_lwr")
+    group = moveit_commander.MoveGroupCommander(move_group)
 
     # in case there are previous executions still running
     group.stop()
@@ -52,15 +52,14 @@ def main(config, data):
     #group.set_goal_joint_tolerance(0.1)
     #group.set_goal_position_tolerance(0.1)
 
-    config['N_DOFS'] = len(group.get_current_joint_values())
-    trajectories = TrajectoryGenerator(config['N_DOFS'])
+    #config['N_DOFS'] = len(group.get_current_joint_values())
 
     # create some plan and clear its trajectory
     plan = group.plan()
     plan.joint_trajectory.points = []
 
     # generate trajectory and send in one message to moveit
-    duration = config['args'].periods*trajectories.getPeriodLength()
+    duration = config['args'].periods*trajectory.getPeriodLength()
     sent_positions = list()
     sent_time = list()
     sent_velocities = list()
@@ -68,20 +67,20 @@ def main(config, data):
 
     step = 1.0/200   # data rate of 200 Hz
     start_t = 0
-    while not trajectories.wait_for_zero_vel(start_t):
+    while not trajectory.wait_for_zero_vel(start_t):
         start_t+=step
     t = start_t
 
     # add trajectory points to plan
     while t < start_t+duration:
-        trajectories.setTime(t)
+        trajectory.setTime(t)
         point = JointTrajectoryPoint()
         for i in range(0, config['N_DOFS']):
-            q = trajectories.getAngle(i)
+            q = trajectory.getAngle(i)
             point.positions.append(q)
-            dq = trajectories.getVelocity(i)
+            dq = trajectory.getVelocity(i)
             point.velocities.append(dq)
-            ddq = trajectories.getAcceleration(i)
+            ddq = trajectory.getAcceleration(i)
             point.accelerations.append(ddq)
 
         point.time_from_start = rospy.Duration(t)

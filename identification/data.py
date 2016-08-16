@@ -3,13 +3,29 @@ import numpy.linalg as la
 import helpers
 
 class Data(object):
-    def __init__(self, measurements_files, opt):
-        '''load data from measurements_files, optionally skipping some values'''
+    def __init__(self, opt):
         self.opt = opt
+        self.measurements = {}
+        self.num_loaded_samples = 0
+        self.num_used_samples = 0
+        self.samples = {}
 
+        self.usedBlocks = list()
+        self.unusedBlocks = list()
+        self.seenBlocks = list()
+
+    def init_from_data(self, data):
+        '''load data from numpy array'''
+        self.samples = self.measurements = data
+        self.num_loaded_samples = self.samples['positions'].shape[0]
+        self.num_used_samples = self.num_loaded_samples  #self.num_loaded_samples/(self.opt['skip_samples']+1)
+        print 'loaded {} data samples (using {})'.format(
+            self.num_loaded_samples, self.num_used_samples)
+
+    def init_from_files(self, measurements_files):
+        '''load data from measurements_files, optionally skipping some values'''
         with helpers.Timer() as t:
             # load data from multiple files and concatenate, fix timing
-            self.measurements = {}
             for fa in measurements_files:
                 for fn in fa:
                     m = np.load(fn)
@@ -67,10 +83,6 @@ class Data(object):
                 self.samples = self.measurements
             # rest of data selection is done from identification.py ATM, selected data will then be
             # in samples dict
-
-        self.usedBlocks = list()
-        self.unusedBlocks = list()
-        self.seenBlocks = list()
 
         if self.opt['showTiming']:
             print("Loading samples took %.03f sec." % t.interval)

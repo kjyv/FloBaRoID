@@ -39,6 +39,7 @@ config['showTiming'] = 0
 config['jointNames'] = iDynTree.StringVector([])
 iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
+config['useDeg'] = True
 
 #append parent dir for relative import
 import os
@@ -156,7 +157,7 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
         torques[:, j] = sp.signal.filtfilt(b, a, torques_orig[:, j])
     np.copyto(torques_unfiltered, torques_orig)
 
-def plot(data):
+def plot(data=None):
     if args.random_colors:
         from random import sample
         from itertools import permutations
@@ -179,21 +180,36 @@ def plot(data):
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
 
-    # python measurements
-    # reload measurements from this or last run (if run dry)
-    measurements = np.load('measurements.npz')
-    Q = measurements['positions']
-    Qraw = measurements['positions_raw']
-    Q_t = measurements['target_positions']
-    V = measurements['velocities']
-    Vraw = measurements['velocities_raw']
-    V_t = measurements['target_velocities']
-    dV = measurements['accelerations']
-    dV_t = measurements['target_accelerations']
-    Tau = measurements['torques']
-    TauRaw = measurements['torques_raw']
-    T = measurements['times']
-    num_samples = measurements['positions'].shape[0]
+    if not data:
+        # python measurements
+        # reload measurements from this or last run (if run dry)
+        measurements = np.load('measurements.npz')
+        Q = measurements['positions']
+        Qraw = measurements['positions_raw']
+        Q_t = measurements['target_positions']
+        V = measurements['velocities']
+        Vraw = measurements['velocities_raw']
+        V_t = measurements['target_velocities']
+        dV = measurements['accelerations']
+        dV_t = measurements['target_accelerations']
+        Tau = measurements['torques']
+        TauRaw = measurements['torques_raw']
+        T = measurements['times']
+        num_samples = measurements['positions'].shape[0]
+    else:
+        Q = data['positions']
+        Qraw = data['positions']
+        Q_t = data['target_positions']
+        V = data['velocities']
+        Vraw = data['velocities']
+        V_t = data['target_velocities']
+        dV = data['accelerations']
+        dV_t = data['target_accelerations']
+        Tau = data['torques']
+        TauRaw = data['torques']
+        T = data['times']
+        num_samples = data['positions'].shape[0]
+
     print 'loaded {} measurement samples'.format(num_samples)
 
     print "tracking error per joint:"
@@ -235,11 +251,15 @@ def plot(data):
         lines = list()
         labels = list()
         for d_i in range(0, len(data)):
-            for i in range(0, config['N_DOFS']):
-                l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
-                labels.append(l)
-                line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/3.0))
-                lines.append(line[0])
+            if len(data[d_i].shape) > 1:
+                for i in range(0, config['N_DOFS']):
+                    l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
+                    labels.append(l)
+                    line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
+                    lines.append(line[0])
+            else:
+                #data vector
+                plt.plot(T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
         d+=1
     leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
     leg.draggable()
@@ -247,7 +267,124 @@ def plot(data):
     plt.show()
 
 def optimizeTrajectory(config):
-    trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
+    # use non-linear optimization to find parameters for minimal
+    # condition number trajectory
+    # TODO: compare with using scipy.optimize.minimize
+
+    limits = URDFHelpers.getJointLimits(config['model'], use_deg = config['useDeg'])
+    dofs = config['N_DOFS']
+    trajectory = TrajectoryGenerator(dofs, use_deg = config['useDeg'])
+    nf = [2]*dofs
+
+    def objfunc(x):
+        wf = x[0]
+        q = x[1:dofs+1]
+        ab_len = dofs*nf[0]
+        a = np.split(x[dofs+1:dofs+1+ab_len], dofs)
+        b = np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs)
+
+        trajectory.initWithParams(a,b,q, nf, wf)
+        trajectory_data, model = simulateTrajectory(config, trajectory)
+
+        f = np.linalg.cond(model.YBase)
+
+        #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
+
+        #xBaseModel = np.dot(model.Binv, model.xStdModel)
+        #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
+        print "objective function value: {}".format(f)
+
+        # add constraints  (for all: g(n) <= 0)
+        g = [0.0]*dofs*3
+        # check for joint limits
+        jn = config['jointNames']
+        for n in range(dofs):
+            # joint pos lower
+            g[n] = limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
+            # joint pos upper
+            g[dofs+n] = np.min(trajectory_data['positions'][:, n]) - limits[jn[n]]['upper']
+            # joint vel
+            g[2*dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - limits[jn[n]]['velocity']
+
+        #g = []  #no constraints
+
+        fail = 0
+        return f, g, fail
+
+    from pyOpt import Optimization
+    from pyOpt import SLSQP, CONMIN # global, but slow: MIDACO, ALPSO
+
+    # Instanciate Optimization Problem
+    opt_prob = Optimization('Trajectory optimization', objfunc)
+    opt_prob.addObj('f')
+
+    # add variables to be found
+    # pulsation
+    opt_prob.addVar('wf', 'c', value=1, lower=0.1, upper=5.0)
+    # q - offsets
+    for i in range(config['N_DOFS']):
+        if config['useDeg']:
+            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-90.0, upper=90.0)
+        else:
+            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-1.57, upper=1.57)
+
+    # a, b - sin/cos params
+    for i in range(config['N_DOFS']):
+        for j in range(nf[0]):
+            opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
+    for i in range(config['N_DOFS']):
+        for j in range(nf[0]):
+            opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
+
+    # add constraint vars
+    opt_prob.addConGroup('g', config['N_DOFS']*3, 'i')
+
+    print opt_prob
+
+    # init optimizer (local)
+    #opt = CONMIN()
+    opt = SLSQP()
+    #opt.setOption('ACC', 1e-3)
+
+    #try:
+    #    opt(opt_prob, store_hst=True, hot_start=True)
+    #except NameError:
+    opt(opt_prob, store_hst=True)
+    print opt_prob.solution(0)
+
+    # TODO: try global optimzation with e.g. MIDACO or ALPSO first, then get
+    # more exact solution with gradient based method
+    #SLSQP(opt_prob.solution(0))
+    #opt_prob.solution(1)
+
+    # take solution and simulate once again
+    sol_wf = opt_prob.solution(0).getVar(0).value
+
+    sol_q = list()
+    for i in range(dofs):
+        sol_q.append(opt_prob.solution(0).getVar(1+i).value)
+
+    sol_a = list()
+    sol_b = list()
+    for i in range(dofs):
+        a_series = list()
+        for j in range(nf[0]):
+            a_series.append(opt_prob.solution(0).getVar(1+dofs+i+j).value)
+        sol_a.append(a_series)
+    for i in range(dofs):
+        b_series = list()
+        for j in range(nf[0]):
+            b_series.append(opt_prob.solution(0).getVar(1+dofs+nf[0]*dofs+i+j).value)
+        sol_b.append(b_series)
+
+    trajectory.initWithParams(sol_a, sol_b, sol_q, nf, sol_wf)
+
+    return trajectory
+
+
+def simulateTrajectory(config, trajectory):
+    #trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
+    #trajectory.initWithRandomParams()
 
     # generate data arrays for simulation and regressor building
     model = Model(config, config['model'])
@@ -256,6 +393,7 @@ def optimizeTrajectory(config):
     trajectory_data['target_positions'] = []
     trajectory_data['target_velocities'] = []
     trajectory_data['target_accelerations'] = []
+    trajectory_data['torques'] = []
     trajectory_data['times'] = []
     freq = 200.0
     for t in range(0, int(trajectory.getPeriodLength()*freq)):
@@ -273,38 +411,29 @@ def optimizeTrajectory(config):
         trajectory_data['target_accelerations'].append(qddot)
 
         trajectory_data['times'].append(t)
+        trajectory_data['torques'].append(np.zeros(config['N_DOFS']))
+
     trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
     trajectory_data['positions'] = trajectory_data['target_positions']
     trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
     trajectory_data['velocities'] = trajectory_data['target_velocities']
     trajectory_data['target_accelerations'] = np.array(trajectory_data['target_accelerations'])
     trajectory_data['accelerations'] = trajectory_data['target_accelerations']
-    trajectory_data['torques'] = np.empty(0)
+    trajectory_data['torques'] = np.array(trajectory_data['torques'])
     trajectory_data['times'] = np.array(trajectory_data['times'])
 
     data.init_from_data(trajectory_data)
-    data.removeZeroSamples()
 
-    print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
-        trajectory_data['times'][-1]/freq))
+        print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
+            trajectory_data['times'][-1]/freq))
 
     # get condition number for regressor of trajectory
     old_sim = config['iDynSimulate']
     config['iDynSimulate'] = True
     model.computeRegressors(data)
     config['iDynSimulate'] = old_sim
-    print("condition number: {}".format(np.linalg.cond(model.YBase)))
 
-    # check for joint limits
-    print ("Within limits?")
-    limits = URDFHelpers.getJointLimits(config['model'], use_deg=True)
-    for n in range(config['N_DOFS']):
-        print n,
-        print ((trajectory_data['positions'][:, n] > limits[config['jointNames'][n]]['lower']).all() and
-        (trajectory_data['positions'][:, n] < limits[config['jointNames'][n]]['upper']).all() and
-        (trajectory_data['velocities'][:, n] < limits[config['jointNames'][n]]['velocity']).all())
-
-    return trajectory
+    return trajectory_data, model
 
 def main():
     trajectory = optimizeTrajectory(config)
@@ -316,8 +445,10 @@ def main():
         from robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:
-        print("No excitation method given! Stopping.")
-        sys.exit(1)
+        print("No excitation method given!")
+        data, model, cond = simulateTrajectory(config, trajectory)
+        plot(data)
+        return
 
     # generate some empty arrays, will be calculated in preprocess()
     if not data.has_key('Vdot'):
@@ -376,7 +507,7 @@ if __name__ == '__main__':
     if not args.dryrun:
         main()
     if(args.plot):
-        plot(data)
+        plot()
     """
     except Exception as e:
         if type(e) is not KeyboardInterrupt:

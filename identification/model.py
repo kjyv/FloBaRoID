@@ -20,6 +20,7 @@ class Model(object):
         # load also with new model class for some functions
         self.idyn_model = iDynTree.Model()
         iDynTree.modelFromURDF(urdf_file, self.idyn_model)
+        if self.opt['verbose']:
         print 'loaded model {}'.format(urdf_file)
 
         # define what regressor type
@@ -39,25 +40,30 @@ class Model(object):
         # TODO: this and the following are not dependent on joints specified in regressor (but
         # uses all from model file)!
         self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+        if self.opt['verbose']:
         print '# DOFs: {}'.format(self.N_DOFS)
 
         # Get the number of outputs of the regressor
         # (should be #links - #fakeLinks)
         self.N_OUT = self.generator.getNrOfOutputs()
-        #print '# outputs: {}'.format(self.N_OUT)
+        if self.opt['verbose']:
+            print '# outputs: {}'.format(self.N_OUT)
 
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
-        #print '# params: {}'.format(self.num_params)
+        if self.opt['verbose']:
+            print '# params: {}'.format(self.num_params)
 
         self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+        if self.opt['verbose']:
         print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
                                              self.generator.getNrOfFakeLinks())
 
         self.link_names = []
         for i in range(0, self.N_LINKS):
             self.link_names.append(self.idyn_model.getLinkName(i))
-        #print '({})'.format(self.link_names)
+        if self.opt['verbose']:
+            print '({})'.format(self.link_names)
 
         self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
@@ -178,9 +184,10 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        print("YStd: {}".format(self.YStd.shape)),
         # project regressor to base regressor, Y_base = Y_std*B
         self.YBase = np.dot(self.YStd, self.B)
+        if self.opt['verbose']:
+            print("YStd: {}".format(self.YStd.shape)),
         print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
         if self.opt['filterRegressor']:
@@ -250,6 +257,7 @@ class Model(object):
             regr_file = np.load(regr_filename)
             R = regr_file['R']
             n = regr_file['n']
+            if self.opt['verbose']:
             print("loaded random regressor from {}".format(regr_filename))
             if n != n_samples:
                 generate_new = True
@@ -258,6 +266,7 @@ class Model(object):
             generate_new = True
 
         if generate_new:
+            if self.opt['verbose']:
             print("generating random regressor")
             import random
 
@@ -452,6 +461,7 @@ class Model(object):
             print("YStd: {}".format(self.YStd.shape)),
             # project regressor to base regressor, Y_base = Y_std*B
             self.YBase = np.dot(self.YStd, self.B)
+            if self.opt['verbose']:
             print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             self.num_base_params = self.YBase.shape[1]

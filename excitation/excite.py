@@ -14,9 +14,11 @@ import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
 parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
 parser.add_argument('--filename', type=str, help='the filename to save the measurements to')
+parser.add_argument('--config', required=True, type=str, help="use options from given config file")
+parser.add_argument('--dryrun', help="don't send the trajectory", action='store_true')
+
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
-parser.add_argument('--dryrun', help="don't send the trajectory", action='store_true')
 parser.add_argument('--simulate', help="simulate torques for measured values (e.g. for gazebo)", action='store_true')
 parser.add_argument('--yarp', help="use yarp for robot communication", action='store_true')
 parser.add_argument('--ros', help="use ros for robot communication", action='store_true')
@@ -25,21 +27,23 @@ parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets in
 parser.set_defaults(plot=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
-data = {}   #hold some global data vars in here
-config = {}
+import yaml
+with open(args.config, 'r') as stream:
+    try:
+        config = yaml.load(stream)
+    except yaml.YAMLError as exc:
+        print(exc)
+
 config['model'] = args.model
 config['iDynSimulate'] = args.simulate
-config['useAPriori'] = True
-config['estimateWith'] = 'std'
-config['min_tol'] = 1e-5
-config['skip_samples'] = 0
-config['addNoise'] = 0
-config['filterRegressor'] = 0
-config['showTiming'] = 0
 config['jointNames'] = iDynTree.StringVector([])
 iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
-config['useDeg'] = True
+config['useAPriori'] = 0
+config['skip_samples'] = 0
+config['verbose'] = 0
+
+data = {}   #hold some global data vars in here
 
 #append parent dir for relative import
 import os
@@ -283,6 +287,11 @@ def optimizeTrajectory(config):
         a = np.split(x[dofs+1:dofs+1+ab_len], dofs)
         b = np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs)
 
+        print 'wf {}'.format(wf)
+        print 'a {}'.format(a)
+        print 'b {}'.format(b)
+        print 'q {}'.format(q)
+
         trajectory.initWithParams(a,b,q, nf, wf)
         trajectory_data, model = simulateTrajectory(config, trajectory)
 
@@ -342,14 +351,14 @@ def optimizeTrajectory(config):
     print opt_prob
 
     # init optimizer (local)
-    #opt = CONMIN()
-    opt = SLSQP()
+    opt = CONMIN()
+    #opt = SLSQP()
     #opt.setOption('ACC', 1e-3)
 
-    #try:
-    #    opt(opt_prob, store_hst=True, hot_start=True)
-    #except NameError:
-    opt(opt_prob, store_hst=True)
+    try:
+        opt(opt_prob, store_hst=True, hot_start=True)
+    except NameError:
+        opt(opt_prob, store_hst=True)
     print opt_prob.solution(0)
 
     # TODO: try global optimzation with e.g. MIDACO or ALPSO first, then get
@@ -424,8 +433,11 @@ def simulateTrajectory(config, trajectory):
 
     data.init_from_data(trajectory_data)
 
+    try:
         print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
             trajectory_data['times'][-1]/freq))
+    except:
+        embed()
 
     # get condition number for regressor of trajectory
     old_sim = config['iDynSimulate']
@@ -446,7 +458,7 @@ def main():
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:
         print("No excitation method given!")
-        data, model, cond = simulateTrajectory(config, trajectory)
+        data, model = simulateTrajectory(config, trajectory)
         plot(data)
         return
 

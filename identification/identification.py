@@ -50,112 +50,15 @@ from IPython import embed
 # inequality approach
 
 # TODO: add/use contact forces / floating base
-# TODO: add friction identification
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
-# TODO: use experiment config files, read options and data paths from there
 # TODO: allow visual filtering and data selection (take raw data as input)
 
 class Identification(object):
-    def __init__(self, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
-        ## options
-        self.opt = {}
+    def __init__(self, opt, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
+        self.opt = opt
 
-        # determine number of samples to use
-        # (Khalil recommends about 500 times number of parameters to identify...)
-        self.opt['start_offset'] = 400  #how many samples from the beginning of the (first) measurement are skipped
-        self.opt['skip_samples'] = 2    #how many values to skip before using the next sample
-
-        # simulate torques from target values, don't use both
-        self.opt['iDynSimulate'] = 0 # simulate torque for measured angles etc using idyntree (instead of reading data)
-        self.opt['addNoise'] = 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
-
-        # use previously known CAD parameters to identify parameter error, estimates parameters closer to
-        # known ones (taken from URDF file)
-        # for some methods, this gives parameters that are more likely to be consistent
-        # (no effect for SDP constrained solutions)
-        self.opt['useAPriori'] = 1
-
-        ####
-
-        # whether only "good" data is being selected or simply all is used
-        self.opt['selectBlocksFromMeasurements'] = 0
-        self.opt['block_size'] = 250  # needs to be at least as much as parameters so regressor is square or higher
-
-        ####
-
-        # constrain std params to physical consistent space to only achieve physical consistent parameters
-        # (currently this also does the estimation, so previously selecting another method has no effect)
-        # if only torque estimation is desired, not using this self.option might give a better model
-        # accuracy with approriate parameters
-        self.opt['useConsistencyConstraints'] = 1
-
-        # constrain parameters for links more than a certain condition number to the a priori values
-        # (to prevent very big changes for parameters that are not expressed in the data)
-        self.opt['noChange'] = 1
-        self.opt['noChangeThresh'] = 200
-
-        # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-        self.opt['restrictCOMtoHull'] = 1
-        # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
-        # geometry or that initial CAD data is too large)
-        self.opt['hullScaling'] = 1.0
-
-        # constrain overall mass
-        self.opt['limitOverallMass'] = 0
-        # if overall mass is set, limit to this value. If None, limit to overall a priori mass +- 30%
-        self.opt['limitMassVal'] = None #16
-
-        # enforce the same upper limit for each link mass
-        self.opt['limitMassValPerLink'] = None #3
-
-        # or enforce staying around the a priori masses (only set this or a combination of the other
-        # two mass limiting self.options to prevent constraint conflicts!)
-        self.opt['limitMassToApriori'] = 1
-        self.opt['limitMassAprioriBoundary'] = 1.0     #percentage of CAD value in both +- directions
-
-        # whether to take out masses to be identified because they are e.g.
-        # well known or introduce problems
-        # (essential params or when using feasability constraints)
-        self.opt['dontIdentifyMasses'] = 0
-
-        ####
-
-        # whether to identify and use direct standard with essential parameters
-        self.opt['useEssentialParams'] = 0
-
-        # whether to include linear dependent columns in essential params or not
-        self.opt['useDependents'] = 1
-
-        # use weighted least squares(WLS) instead of ordinary least squares
-        # needs small condition number, otherwise might amplify some parameters too much as the
-        # covariance estimation can be off (also assumes that error is zero mean and normal
-        # distributed)
-        self.opt['useWLS'] = 0
-
-        # whether to filter the regressor columns
-        # (cutoff frequency is system dependent)
-        # mostly not improving results
-        self.opt['filterRegressor'] = 0
-
-        ####
-
-        # how to output plots and other stuff ['matplotlib', 'html']
-        self.opt['outputModule'] = 'html'
-
-        # self.options for console output
-        self.opt['showMemUsage'] = 0          #print used memory for different variables
-        self.opt['showTiming'] = 0            #show times various steps have taken
-        self.opt['showRandomRegressor'] = 0   #show 2d plot of random regressor
-        self.opt['showErrorHistogram'] = 0    #show estimation error distribution
-        self.opt['showEssentialSteps'] = 0    #stop after every reduction step and show values
-        self.opt['outputBarycentric'] = 0     #output all values in barycentric (e.g. urdf) form
-        self.opt['showStandardParams'] = 1
-        self.opt['showBaseParams'] = 1
-
-        ####
-
-        #some experiments
+        ## some additional options (experiments)
 
         # orthogonalize basis matrix (uglier linear relationships, should not change results)
         self.opt['orthogonalizeBasis'] = 0
@@ -163,13 +66,7 @@ class Identification(object):
         #project a priori to solution subspace
         self.opt['projectToAPriori'] = 0
 
-        # which parameters to use when estimating torques for validation. Set to one of
-        # ['base', 'std', 'std_direct', 'urdf']
-        self.opt['estimateWith'] = 'std'
-
-        #### end self.options
-
-        self.opt['min_tol'] = 1e-5    # almost zero threshold for SVD and QR
+        #### end additional config flags
 
         # load model description and initialize
         self.model = Model(self.opt, urdf_file, regressor_file)
@@ -249,7 +146,8 @@ class Identification(object):
             # weight Y and tau with deviations, identify params
             YBase = G.dot(self.model.YBase)
             tau = G.dot(self.model.tau)
-            print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
+            if self.opt['verbose']:
+                print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
 
             # get identified values using weighted matrices without weighing them again
             self.opt['useWLS'] = 0
@@ -426,10 +324,11 @@ class Identification(object):
             error_start = error_func(tauDiff)
 
             k2, p = stats.normaltest(error_start, axis=0)
-            if np.mean(p) > 0.05:
-                print("error is normal distributed")
-            else:
-                print("error is not normal distributed (p={})".format(p))
+            if self.opt['verbose']:
+                if np.mean(p) > 0.05:
+                    print("error is normal distributed")
+                else:
+                    print("error is not normal distributed (p={})".format(p))
 
             if self.opt['showErrorHistogram']:
                 h = plt.hist(error_start, 50)
@@ -942,7 +841,8 @@ class Identification(object):
         return xStd
 
     def estimateParameters(self):
-        print("doing identification on {} samples".format(self.data.num_used_samples)),
+        if self.opt['verbose']:
+            print("doing identification on {} samples".format(self.data.num_used_samples)),
 
         self.model.computeRegressors(self.data)
         self.tauMeasured = self.model.tauMeasured
@@ -1027,6 +927,7 @@ class Identification(object):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
+    parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--model_real', required=False, type=str, help='the file to load the model params for\
                         comparison from')
@@ -1047,7 +948,14 @@ def main():
     parser.set_defaults(plot=False, explain=False, regressor=None, model_real=None)
     args = parser.parse_args()
 
-    idf = Identification(args.model, args.model_real, args.measurements, args.regressor, args.validation)
+    import yaml
+    with open(args.config, 'r') as stream:
+        try:
+            config = yaml.load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+    idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 
     if idf.opt['selectBlocksFromMeasurements']:
         old_essential_option = idf.opt['useEssentialParams']
@@ -1072,7 +980,8 @@ def main():
         idf.opt['useEssentialParams'] = old_essential_option
         idf.opt['useConsistencyConstraints'] = old_feasible_option
 
-    print("estimating output parameters...")
+    if self.opt['verbose']:
+        print("estimating output parameters...")
     idf.estimateParameters()
     idf.estimateRegressorTorques()
 

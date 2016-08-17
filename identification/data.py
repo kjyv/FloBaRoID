@@ -6,24 +6,30 @@ class Data(object):
     def __init__(self, opt):
         self.opt = opt
         self.measurements = {}
-        self.num_loaded_samples = 0
-        self.num_used_samples = 0
+        self.num_loaded_samples = 0    # no of samples from file
+        self.num_used_samples = 0      # no of samples after skipping
         self.samples = {}
 
         self.usedBlocks = list()
         self.unusedBlocks = list()
         self.seenBlocks = list()
 
+        # has some data been loaded?
+        self.inited = False
+
     def init_from_data(self, data):
         '''load data from numpy array'''
+
         self.samples = self.measurements = data
         self.num_loaded_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_loaded_samples  #self.num_loaded_samples/(self.opt['skip_samples']+1)
+        self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
         print 'loaded {} data samples (using {})'.format(
             self.num_loaded_samples, self.num_used_samples)
+        self.inited = True
 
     def init_from_files(self, measurements_files):
         '''load data from measurements_files, optionally skipping some values'''
+
         with helpers.Timer() as t:
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
@@ -51,11 +57,11 @@ class Data(object):
                                 mv[k] = mv[k] + self.measurements[k][-1]   # add after previous times
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
                                                                         mv[k][self.opt['start_offset']:]),
-                                                                       axis=0)
+                                                                        axis=0)
                             else:
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
                                                                         mv[k][self.opt['start_offset']:, :]),
-                                                                      axis=0)
+                                                                        axis=0)
                     m.close()
 
             self.num_loaded_samples = self.measurements['positions'].shape[0]
@@ -85,8 +91,9 @@ class Data(object):
             # in samples dict
 
         if self.opt['showTiming']:
-            print("Loading samples took %.03f sec." % t.interval)
+            print("Loading samples from file took %.03f sec." % t.interval)
 
+        self.inited = True
 
     def hasMoreSamples(self):
         """ tell if there are more samples to be added to the data used for identification """
@@ -208,7 +215,7 @@ class Data(object):
 
         #check for pairs that are less than e.g. 15% of each other away
         #if found, delete larger one of the original blocks from usedBlocks (move to unused)
-        #TODO: check this again with the same file twice as input, should not use any blocks from the second file
+        #TODO: check this with the same file twice as input, should not use any blocks from the second file
         variances = np.var(cond_matrix[0:c,:],axis=1)
         v_idx = np.array(range(0, c))
         sort_idx = np.argsort(variances)
@@ -218,7 +225,7 @@ class Data(object):
         i = 1
         while i < c:
             #keep two values of three close ones (only remove middle)
-            #TODO: generalaize to more values with this pattern
+            #TODO: generalize to more values with this pattern
             if i<c-1 and np.abs(variances[sort_idx][i-1]-variances[sort_idx][i+1]) < np.abs(variances[sort_idx][i+1])*dist:
                 to_delete.append(v_idx[sort_idx][i])
                 i+=1
@@ -263,3 +270,17 @@ class Data(object):
                     self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
         self.updateNumSamples()
 
+    def removeZeroSamples(self):
+        '''remove samples that have near zero velocity'''
+
+        print ("removing near zero samples..."),
+        min_vel = 0.05   # rad per sec
+        to_delete = list()
+        for t in range(self.num_used_samples):
+            if np.min(np.abs(self.samples['velocities'][t])) < min_vel:
+                to_delete.append(t)
+
+        for k in self.samples.keys():
+            self.samples[k] = np.delete(self.samples[k], to_delete, 0)
+        self.updateNumSamples()
+        print ("remaining samples: {}".format(self.num_used_samples))

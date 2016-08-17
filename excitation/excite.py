@@ -283,15 +283,17 @@ def optimizeTrajectory(config):
     trajectory_data['times'] = np.array(trajectory_data['times'])
 
     data.init_from_data(trajectory_data)
+    data.removeZeroSamples()
 
-    print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples, trajectory_data['times'][-1]/freq))
+    print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
+        trajectory_data['times'][-1]/freq))
 
     # get condition number for regressor of trajectory
     old_sim = config['iDynSimulate']
     config['iDynSimulate'] = True
     model.computeRegressors(data)
     config['iDynSimulate'] = old_sim
-    print("condition number: {}".format(np.linalg.cond(model.YStd)))
+    print("condition number: {}".format(np.linalg.cond(model.YBase)))
 
     # check for joint limits
     print ("Within limits?")

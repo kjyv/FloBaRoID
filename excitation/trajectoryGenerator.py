@@ -11,6 +11,7 @@ class TrajectoryGenerator(object):
         self.use_deg = use_deg
 
         self.w_f_global = 1.0
+
         #walkman left arm
         #a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8], [-0.8]]
         #b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8], [0.8]]
@@ -27,10 +28,9 @@ class TrajectoryGenerator(object):
         #b = [[1.0], [0.0], [1.2], [0.7], [0.8], [1.3], [1.0], [1.3]]
         #q = [-1.0, -1.0, 0, 0, 0, 0, -1, 0]
 
-        self.setRandomParams()
 
-    def setRandomParams(self):
-        #use random params
+    def initWithRandomParams(self):
+        # init with random params
         a = [0]*self.dofs
         b = [0]*self.dofs
         nf = np.random.randint(1,4, self.dofs)
@@ -46,6 +46,32 @@ class TrajectoryGenerator(object):
         if not self.use_deg:
             q = np.deg2rad(q)
 
+        self.oscillators = list()
+        for i in range(0, self.dofs):
+            self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
+                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = self.use_deg
+                                                        ))
+
+    def initWithParams(self, a, b, q, nf, wf=None):
+        ''' init with given params
+            a - list of dof coefficients a
+            b - list of dof coefficients b
+            q - list of dof coefficients q_0
+            nf - list of dof coefficients n_f
+            (also see docstring of OscillationGenerator)
+        '''
+
+        if len(nf) != self.dofs or len(q) != self.dofs:
+            raise Exception("Need DOFs many values for nf and q!")
+
+        if wf:
+            self.w_f_global = wf
+
+        #for i in nf:
+        #    if not ( len(a) == i and len(b) == i):
+        #        raise Exception("Need nf many values in each parameter array value!")
+
+        self.oscillators = list()
         for i in range(0, self.dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
                                                          b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = self.use_deg

@@ -44,11 +44,11 @@ class Model(object):
         # Get the number of outputs of the regressor
         # (should be #links - #fakeLinks)
         self.N_OUT = self.generator.getNrOfOutputs()
-        print '# outputs: {}'.format(self.N_OUT)
+        #print '# outputs: {}'.format(self.N_OUT)
 
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
-        print '# params: {}'.format(self.num_params)
+        #print '# params: {}'.format(self.num_params)
 
         self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
@@ -57,7 +57,7 @@ class Model(object):
         self.link_names = []
         for i in range(0, self.N_LINKS):
             self.link_names.append(self.idyn_model.getLinkName(i))
-        print '({})'.format(self.link_names)
+        #print '({})'.format(self.link_names)
 
         self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
@@ -133,6 +133,7 @@ class Model(object):
                         torqAP = torques.toNumPy()
                     if self.opt['iDynSimulate']:
                         torq = torques.toNumPy()
+                        data.samples['torques'][m_idx] = torq
 
                 if self.opt['addNoise'] != 0:
                     torq += np.random.randn(self.N_DOFS)*self.opt['addNoise']

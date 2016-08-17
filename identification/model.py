@@ -177,7 +177,7 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        print("YStd: {}, cond: {}".format(self.YStd.shape, la.cond(self.YStd))),
+        print("YStd: {}".format(self.YStd.shape)),
         # project regressor to base regressor, Y_base = Y_std*B
         self.YBase = np.dot(self.YStd, self.B)
         print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))

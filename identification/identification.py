@@ -177,6 +177,7 @@ class Identification(object):
         # load measurements
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
+        self.data.removeZeroSamples()
 
         self.tauEstimated = list()
         self.tauMeasured = list()
@@ -790,7 +791,7 @@ class Identification(object):
         if self.opt['limitOverallMass']:
             #use given overall mass else use overall mass from CAD
             if self.opt['limitMassVal']:
-                robotmaxmass = self.limitMassVal
+                robotmaxmass = self.opt['limitMassVal']
                 robotmaxmass_ub = robotmaxmass * 1.05
                 robotmaxmass_lb = robotmaxmass * 0.95
             else:
@@ -809,8 +810,8 @@ class Identification(object):
         # constrain for each link separately
         if self.opt['limitMassValPerLink']:
             for i in range(self.model.N_LINKS):
-                if not (self.noChange and linkConds[i] > self.noChangeThresh):
-                    c = Matrix([self.limitMassValPerLink - (apriori[i*10] + self.model.mass_syms[i])])
+                if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
+                    c = Matrix([self.opt['limitMassValPerLink'] - (apriori[i*10] + self.model.mass_syms[i])])
                     D_other_blocks.append(c)
         elif self.opt['limitMassToApriori']:
             # constrain each mass to env of a priori value

@@ -2,10 +2,10 @@
 
 * excite a robot with fourier series trajectories and record state and torque measurements (using [Yarp](https://github.com/robotology/yarp) or ROS/MoveIt! at the moment)
 * identify mass, com, and inertia parameters using a URDF model description of the robot and from the measurements
-* at the same time, constrain parameters to physical consistent standard solution space, regardless if input data is highly well-conditioned or not
+* at the same time, constrain parameters to physical consistent standard solution space, regardless if input data is well-conditioned or not
 
 details:
-* excitation trajectories are parameterized fourier-series to get periodic trajectories (finding optimal parameters by optimization not yet implemented)
+* optimzied excitation trajectories (parameterized fourier-series to get periodic trajectories) 
 * acceleration and velocity values are derived from position readings, both are zero-phase low-pass filtered
 * from supplied measurements, it is optionally possible to only select a percentage of well-conditioned data blocks to decrease the overall condition number of the input data
 * implemented estimation methods:
@@ -18,8 +18,8 @@ details:
 
 requirements for identification:
 * python 2.7
-* python modules: numpy, scipy, sympy, matplotlib, iDynTree, colorama, humanize, (ipython, ipdb),
-  pylmi-sdp, cvxopt
+* python modules: numpy, scipy, sympy, matplotlib, iDynTree, pyyaml, colorama, humanize,
+  pylmi-sdp, cvxopt, pyOpt, (optional: mpi4py < 2.0.0)
 * optionally for output as html: mpld3, jinja2
 
 requirements for excitation:
@@ -28,7 +28,7 @@ requirements for excitation:
 * for other robots, new modules might have to be written
 
 known issues:
-* excitation methods are not really generic, does not generate optimized trajectories
+* excitation methods are not really generic 
 * using position control over yarp is suboptimal and can expose timing issues
 * ros timing might also lead to missed data packages
 

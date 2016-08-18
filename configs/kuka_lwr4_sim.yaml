@@ -81,15 +81,15 @@ filterRegressor: 0
 outputModule: 'html'
 
 # self.options for console output
-showMemUsage: 0          #print used memory for different variables
-showTiming: 0            #show times various steps have taken
-showRandomRegressor: 0   #show 2d plot of random regressor
-showErrorHistogram: 0    #show estimation error distribution
-showEssentialSteps: 0    #stop after every reduction step and show values
-outputBarycentric: 0     #output all values in barycentric (e.g. urdf) form
-showStandardParams: 1    #display a list of identified standard params
-showBaseParams: 1        #display a list of identified base params (if appliable)
-verbose: 1               #show more messages
+showMemUsage: 0              #print used memory for different variables
+showTiming: 0                #show times various steps have taken
+showRandomRegressor: 0       #show 2d plot of random regressor
+showErrorHistogram: 0        #show estimation error distribution
+showEssentialSteps: 0        #stop after every reduction step and show values
+outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
+showStandardParams: 1        #display a list of identified standard params
+showBaseParams: 1            #display a list of identified base params (if appliable)
+verbose: 1                   #show more messages
 
 # which parameters to use when estimating torques for validation. Set to one of
 # ['base', 'std', 'std_direct', 'urdf
@@ -98,5 +98,9 @@ estimateWith: 'std'
 # almost zero threshold for QR, SVD and other things
 min_tol: 0.00001
 
+#### excitation
+
 # encode angles in degrees for excitation (internal and data is always rad)
 useDeg: True
+showOptimizationGraph: 1     #display updating graph during trajectory optimization
+useGlobalOptimization: 0     #do global optimization before using local refinement. otherwise just do local from initial

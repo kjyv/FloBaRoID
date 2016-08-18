@@ -293,7 +293,7 @@ class URDFHelpers(object):
             if j.attrib['type'] == 'revolute':
                 l = j.find('limit')
                 if l != None:
-                    torque = l.attrib['effort']  #TODO: effort directly equals torque?
+                    torque = l.attrib['effort']   #this is not really the physical limit but controller limit, but well
                     lower = l.attrib['lower']
                     upper = l.attrib['upper']
                     velocity = l.attrib['velocity']

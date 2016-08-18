@@ -23,8 +23,9 @@ class Data(object):
         self.samples = self.measurements = data
         self.num_loaded_samples = self.samples['positions'].shape[0]
         self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
-        print 'loaded {} data samples (using {})'.format(
-            self.num_loaded_samples, self.num_used_samples)
+        if self.opt['verbose']:
+            print 'loaded {} data samples (using {})'.format(
+                self.num_loaded_samples, self.num_used_samples)
         self.inited = True
 
     def init_from_files(self, measurements_files):
@@ -66,8 +67,9 @@ class Data(object):
 
             self.num_loaded_samples = self.measurements['positions'].shape[0]
             self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
-            print 'loaded {} measurement samples (using {})'.format(
-                self.num_loaded_samples, self.num_used_samples)
+            if self.opt['verbose']:
+                print 'loaded {} measurement samples (using {})'.format(
+                    self.num_loaded_samples, self.num_used_samples)
 
             # create data that identification is working on (subset of all measurements)
             self.samples = {}
@@ -111,12 +113,14 @@ class Data(object):
         self.num_used_samples = self.num_selected_samples/(self.opt['skip_samples']+1)
 
     def removeLastSampleBlock(self):
-        print "removing block starting at {}".format(self.block_pos)
+        if self.opt['verbose']:
+            print "removing block starting at {}".format(self.block_pos)
         for k in self.measurements.keys():
             self.samples[k] = np.delete(self.samples[k], range(self.num_selected_samples - self.opt['block_size'],
                                                                self.num_selected_samples), axis=0)
         self.updateNumSamples()
-        print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
+        if self.opt['verbose']:
+            print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
 
     def getNextSampleBlock(self):
         """ fill samples with next measurements block """
@@ -127,7 +131,8 @@ class Data(object):
         if self.block_pos + self.opt['block_size'] > self.num_loaded_samples:
             self.opt['block_size'] = self.num_loaded_samples - self.block_pos
 
-        print "getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
+        if self.opt['verbose']:
+            print "getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
 
         for k in self.measurements.keys():
             if self.measurements[k].ndim == 0:
@@ -200,10 +205,12 @@ class Data(object):
         for block in self.seenBlocks:
             (b,bs,cond,linkConds) = block
             if cond > perc_cond:
-                print "not using block starting at {} (cond {})".format(b, cond)
+                if self.opt['verbose']:
+                    print "not using block starting at {} (cond {})".format(b, cond)
                 self.unusedBlocks.append(block)
             else:
-                print "using block starting at {} (cond {})".format(b, cond)
+                if self.opt['verbose']:
+                    print "using block starting at {} (cond {})".format(b, cond)
                 self.usedBlocks.append(block)
 
                 # create variance matrix
@@ -211,7 +218,8 @@ class Data(object):
                 c+=1
 
         ## look at sub-regressor patterns and throw out some similar blocks
-        print("checking for similar sub-regressor patterns")
+        if self.opt['verbose']:
+            print("checking for similar sub-regressor patterns")
 
         #check for pairs that are less than e.g. 15% of each other away
         #if found, delete larger one of the original blocks from usedBlocks (move to unused)
@@ -236,13 +244,15 @@ class Data(object):
 
 
         for d in np.sort(to_delete)[::-1]:
-            print "delete block {}".format(self.usedBlocks[d][0])
+            if self.opt['verbose']:
+                print "delete block {}".format(self.usedBlocks[d][0])
             del self.usedBlocks[d]
 
 
     def assembleSelectedBlocks(self):
         self.model.getSubregressorsConditionNumbers()
-        print("assembling selected blocks...\n")
+        if self.opt['verbose']:
+            print("assembling selected blocks...\n")
         for k in self.measurements.keys():
             if not len(self.usedBlocks):
                 break
@@ -273,7 +283,8 @@ class Data(object):
     def removeZeroSamples(self):
         '''remove samples that have near zero velocity'''
 
-        print ("removing near zero samples..."),
+        if self.opt['verbose']:
+            print ("removing near zero samples..."),
         min_vel = 0.05   # rad per sec
         to_delete = list()
         for t in range(self.num_used_samples):
@@ -283,4 +294,5 @@ class Data(object):
         for k in self.samples.keys():
             self.samples[k] = np.delete(self.samples[k], to_delete, 0)
         self.updateNumSamples()
-        print ("remaining samples: {}".format(self.num_used_samples))
+        if self.opt['verbose']:
+            print ("remaining samples: {}".format(self.num_used_samples))

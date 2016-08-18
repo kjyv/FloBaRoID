@@ -184,8 +184,8 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        # project regressor to base regressor, Y_base = Y_std*B
-        self.YBase = np.dot(self.YStd, self.B)
+        self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
+
         if self.opt['verbose']:
             print("YStd: {}".format(self.YStd.shape)),
         print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))

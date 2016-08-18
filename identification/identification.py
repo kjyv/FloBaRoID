@@ -103,8 +103,10 @@ class Identification(object):
 
         # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
         # (using QR on B yields orthonormal base if necessary)
-        # in general, pinv is always working correctly
+        # in general, pinv is always working
         self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
+
+        # note: using pinv is only ok if low condition number
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)

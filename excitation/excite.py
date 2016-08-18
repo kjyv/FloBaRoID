@@ -278,19 +278,38 @@ def optimizeTrajectory(config):
     limits = URDFHelpers.getJointLimits(config['model'], use_deg = config['useDeg'])
     dofs = config['N_DOFS']
     trajectory = TrajectoryGenerator(dofs, use_deg = config['useDeg'])
-    nf = [2]*dofs
+    nf = [3]*dofs
+    config['iter'] = 0
+
+    if config['showOptimizationGraph']:
+        # init graphing of optimization
+        import matplotlib.pyplot as plt
+        plt.style.use('seaborn-pastel')
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(1,1,1)
+        plt.ion()
+        xar = []
+        yar = []
+        ax1.plot(xar,yar)
+        plt.show(block=False)
+
+        def updateGraph():
+            ax1.plot(xar, yar, color='g')
+            plt.pause(0.02)
 
     def objfunc(x):
+        config['iter'] += 1
         wf = x[0]
         q = x[1:dofs+1]
         ab_len = dofs*nf[0]
-        a = np.split(x[dofs+1:dofs+1+ab_len], dofs)
-        b = np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs)
+        a = np.array(np.split(x[dofs+1:dofs+1+ab_len], dofs))
+        b = np.array(np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs))
 
         print 'wf {}'.format(wf)
-        print 'a {}'.format(a)
-        print 'b {}'.format(b)
-        print 'q {}'.format(q)
+        print 'a {}'.format(np.round(a,5).tolist())
+        print 'b {}'.format(np.round(b,5).tolist())
+        print 'q {}'.format(np.round(q,5).tolist())
 
         trajectory.initWithParams(a,b,q, nf, wf)
         trajectory_data, model = simulateTrajectory(config, trajectory)
@@ -301,7 +320,11 @@ def optimizeTrajectory(config):
 
         #xBaseModel = np.dot(model.Binv, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
-        print "objective function value: {}".format(f)
+        print "iter #{}: objective function value: {}".format(config['iter'], f)
+        if config['showOptimizationGraph']:
+            xar.append(config['iter'])
+            yar.append(f)
+            updateGraph()
 
         # add constraints  (for all: g(n) <= 0)
         g = [0.0]*dofs*3
@@ -321,7 +344,7 @@ def optimizeTrajectory(config):
         return f, g, fail
 
     from pyOpt import Optimization
-    from pyOpt import SLSQP, CONMIN # global, but slow: MIDACO, ALPSO
+    from pyOpt import SLSQP, CONMIN, ALHSO #ALGENCAN, ALPSO, NSGA2
 
     # Instanciate Optimization Problem
     opt_prob = Optimization('Trajectory optimization', objfunc)
@@ -329,13 +352,13 @@ def optimizeTrajectory(config):
 
     # add variables to be found
     # pulsation
-    opt_prob.addVar('wf', 'c', value=1, lower=0.1, upper=5.0)
+    opt_prob.addVar('wf', 'c', value=2, lower=0.5, upper=2.5)
     # q - offsets
     for i in range(config['N_DOFS']):
         if config['useDeg']:
-            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-90.0, upper=90.0)
+            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-45.0, upper=45.0)
         else:
-            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-1.57, upper=1.57)
+            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-0.7854, upper=0.7854)
 
     # a, b - sin/cos params
     for i in range(config['N_DOFS']):
@@ -343,28 +366,47 @@ def optimizeTrajectory(config):
             opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
     for i in range(config['N_DOFS']):
         for j in range(nf[0]):
-            opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
+            opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=-0.1, lower=-1.0, upper=1.0)
 
     # add constraint vars
     opt_prob.addConGroup('g', config['N_DOFS']*3, 'i')
 
     print opt_prob
 
-    # init optimizer (local)
-    opt = CONMIN()
-    #opt = SLSQP()
-    #opt.setOption('ACC', 1e-3)
+    # init optimizer (global)
+    #opt = ALPSO()  #particle swarm
+    #opt.setOption('stopCriteria', 0)
+    #opt.setOption('maxOuterIter', 50)  #limit amount of iters to small number
+
+    '''
+    opt = ALHSO(pll_type='POA')   #harmony search
+    opt.setOption('maxoutiter', 100)
+    opt.setOption('maxinniter', 50)
+    opt.setOption('stopcriteria', 1)
+    opt.setOption('stopiters', 3)
+    opt.setOption('atol', 0.10)
 
     try:
         opt(opt_prob, store_hst=True, hot_start=True)
     except NameError:
         opt(opt_prob, store_hst=True)
     print opt_prob.solution(0)
+    '''
 
-    # TODO: try global optimzation with e.g. MIDACO or ALPSO first, then get
-    # more exact solution with gradient based method
-    #SLSQP(opt_prob.solution(0))
-    #opt_prob.solution(1)
+    # after using global optimization, get more exact solution with
+    # gradient based method init optimizer (only local)
+    #opt2 = CONMIN()  #constrained function minimization
+    opt2 = SLSQP(pll_type='POA')   #sequential least squares
+    opt2.setOption('ACC', 1e-3)
+    opt2.setOption('MAXIT', 30)
+    #opt2.setOption('IPRINT', 0)
+    #opt2(opt_prob.solution(0), store_hst=True)
+    #print opt_prob.solution(1)
+
+    try:
+        opt2(opt_prob, store_hst=True, hot_start=True)
+    except NameError:
+        opt2(opt_prob, store_hst=True)
 
     # take solution and simulate once again
     sol_wf = opt_prob.solution(0).getVar(0).value
@@ -388,6 +430,8 @@ def optimizeTrajectory(config):
 
     trajectory.initWithParams(sol_a, sol_b, sol_q, nf, sol_wf)
 
+    plt.ioff()
+
     return trajectory
 
 
@@ -396,6 +440,9 @@ def simulateTrajectory(config, trajectory):
     #trajectory.initWithRandomParams()
 
     # generate data arrays for simulation and regressor building
+    old_sim = config['iDynSimulate']
+    config['iDynSimulate'] = True
+
     model = Model(config, config['model'])
     data = Data(config)
     trajectory_data = {}
@@ -433,16 +480,9 @@ def simulateTrajectory(config, trajectory):
 
     data.init_from_data(trajectory_data)
 
-    try:
-        print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
-            trajectory_data['times'][-1]/freq))
-    except:
-        embed()
-
     # get condition number for regressor of trajectory
-    old_sim = config['iDynSimulate']
-    config['iDynSimulate'] = True
     model.computeRegressors(data)
+
     config['iDynSimulate'] = old_sim
 
     return trajectory_data, model

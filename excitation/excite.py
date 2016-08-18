@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 from scipy import signal
+from scipy import sparse
 from IPython import embed
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
@@ -275,36 +276,80 @@ def optimizeTrajectory(config):
     # condition number trajectory
     # TODO: compare with using scipy.optimize.minimize
 
-    limits = URDFHelpers.getJointLimits(config['model'], use_deg = config['useDeg'])
+    # init some classes
     dofs = config['N_DOFS']
+    limits = URDFHelpers.getJointLimits(config['model'], use_deg = config['useDeg'])
     trajectory = TrajectoryGenerator(dofs, use_deg = config['useDeg'])
-    nf = [2]*dofs
+    nf = [3]*dofs   #number of fourier partial sums for each joint (same for all joints atm)
 
-    def objfunc(x):
+    if config['showOptimizationGraph']:
+        # init graphing of optimization
+        import matplotlib.pyplot as plt
+        plt.style.use('seaborn-pastel')
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(1,1,1)
+        plt.ion()
+        xar = []
+        yar = []
+        ax1.plot(xar,yar)
+        plt.show(block=False)
+
+        updateEveryVals = 5
+        def updateGraph():
+            if config['iter'] % updateEveryVals == 0:
+                ax1.plot(xar, yar, color='g')
+                plt.pause(0.01)
+
+    def vecToParams(x):
         wf = x[0]
         q = x[1:dofs+1]
         ab_len = dofs*nf[0]
-        a = np.split(x[dofs+1:dofs+1+ab_len], dofs)
-        b = np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs)
+        a = np.array(np.split(x[dofs+1:dofs+1+ab_len], dofs))
+        b = np.array(np.split(x[dofs+1+ab_len:dofs+1+ab_len*2], dofs))
+        return wf, q, a, b
+
+    config['iter'] = 0   #iteration counter
+    last_g = None
+    constr = []
+
+    def objfunc(x):
+        config['iter'] += 1
+        wf, q, a, b = vecToParams(x)
 
         print 'wf {}'.format(wf)
-        print 'a {}'.format(a)
-        print 'b {}'.format(b)
-        print 'q {}'.format(q)
+        print 'a {}'.format(np.round(a,5).tolist())
+        print 'b {}'.format(np.round(b,5).tolist())
+        print 'q {}'.format(np.round(q,5).tolist())
+
+        #wf out of bounds, skip call
+        if not testBounds(x):
+            print "bounds violated"
+            fail = 1
+            return 10e10, [1.0]*dofs*5, fail
 
         trajectory.initWithParams(a,b,q, nf, wf)
-        trajectory_data, model = simulateTrajectory(config, trajectory)
+
+        if 'model' in locals():
+            trajectory_data, model = simulateTrajectory(config, trajectory, model)
+        else:
+            trajectory_data, model = simulateTrajectory(config, trajectory)
+        last_trajectory_data = trajectory_data
 
         f = np.linalg.cond(model.YBase)
-
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
 
         #xBaseModel = np.dot(model.Binv, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
-        print "objective function value: {}".format(f)
 
-        # add constraints  (for all: g(n) <= 0)
-        g = [0.0]*dofs*3
+        print "\niter #{}: objective function value: {}".format(config['iter'], f)
+        if config['showOptimizationGraph']:
+            xar.append(config['iter'])
+            yar.append(f)
+            updateGraph()
+
+        # add constraints  (later tested for all: g(n) <= 0)
+        g = [0.0]*dofs*5
         # check for joint limits
         jn = config['jointNames']
         for n in range(dofs):
@@ -312,91 +357,204 @@ def optimizeTrajectory(config):
             g[n] = limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
             # joint pos upper
             g[dofs+n] = np.min(trajectory_data['positions'][:, n]) - limits[jn[n]]['upper']
-            # joint vel
+            # max joint vel
             g[2*dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - limits[jn[n]]['velocity']
+            # max torques
+            g[3*dofs+n] = np.max(np.abs(trajectory_data['torques'][:, n])) - limits[jn[n]]['torque']
+            # max joint vel of trajectory should at least be 30% of joint limit
+            g[4*dofs+n] = limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
+        last_g = g
+        #constr = [{'type':'ineq', 'fun': last_g[i]} for i in range(config['N_DOFS'])]
 
-        #g = []  #no constraints
+        if not testConstraints(g):
+            print "constraints violated"
+
+        #TODO: add minimum max torque
+        #TODO: limit accelerations (probably not necessary since torques are limited)
+        #TODO: allow some manual constraints for angles (from config)
+        #TODO: add cartesian/collision constraints, e.g. using fcl
 
         fail = 0
         return f, g, fail
 
+    def testBounds(x):
+        #variable bounds
+        wf, q, a, b = vecToParams(x)
+        wf_t = wf >= wf_min and wf <= wf_max
+        q_t = np.all(q <= qmax) and np.all(q >= qmin)
+        a_t = np.all(a <= amax) and np.all(a >= amin)
+        b_t = np.all(b <= bmax) and np.all(b >= bmin)
+        return wf_t and q_t
+
+    def testConstraints(g):
+        return np.all(np.array(g) <= 0)
+
+    def testParams(**kwargs):
+        x = kwargs['x_new']
+        return testBounds(x) and testConstraints(last_g)
+
+    ## pyOpt
+
     from pyOpt import Optimization
-    from pyOpt import SLSQP, CONMIN # global, but slow: MIDACO, ALPSO
+    from pyOpt import SLSQP, CONMIN, ALHSO, ALPSO
 
     # Instanciate Optimization Problem
     opt_prob = Optimization('Trajectory optimization', objfunc)
     opt_prob.addObj('f')
 
     # add variables to be found
-    # pulsation
-    opt_prob.addVar('wf', 'c', value=1, lower=0.1, upper=5.0)
+    # w_f - pulsation
+    wf_min = 0.5
+    wf_max = 1.5
+    opt_prob.addVar('wf', 'c', value=1, lower=wf_min, upper=wf_max)
+
     # q - offsets
+    qmin = -45.0
+    qmax = 45.0
+    if not config['useDeg']:
+        qmin = np.deg2rad(qmin)
+        qmax = np.deg2rad(qmax)
     for i in range(config['N_DOFS']):
-        if config['useDeg']:
-            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-90.0, upper=90.0)
-        else:
-            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=-1.57, upper=1.57)
+        opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=qmin, upper=qmax)
 
     # a, b - sin/cos params
+    amin = bmin = -1.0
+    amax = bmax = 1.0
     for i in range(config['N_DOFS']):
         for j in range(nf[0]):
-            opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
+            opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=-0.2/(j+1), lower=amin, upper=amax)
     for i in range(config['N_DOFS']):
         for j in range(nf[0]):
-            opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=0.1, lower=-1.0, upper=1.0)
+            opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=0.2/(j+1), lower=bmin, upper=bmax)
 
     # add constraint vars
-    opt_prob.addConGroup('g', config['N_DOFS']*3, 'i')
-
+    opt_prob.addConGroup('g', config['N_DOFS']*5, 'i')
     print opt_prob
 
-    # init optimizer (local)
-    opt = CONMIN()
-    #opt = SLSQP()
-    #opt.setOption('ACC', 1e-3)
+    # using pyOpt (global)
+    initial = [v.value for v in opt_prob._variables.values()]
 
-    try:
-        opt(opt_prob, store_hst=True, hot_start=True)
-    except NameError:
-        opt(opt_prob, store_hst=True)
-    print opt_prob.solution(0)
+    if config['useGlobalOptimization']:
+        opt = ALPSO()  #particle swarm
+        opt.setOption('stopCriteria', 0)
+        opt.setOption('maxInnerIter', 5)  #limit amount of iters to small number
+        opt.setOption('maxOuterIter', 10)  #limit amount of iters to small number
+        opt.setOption('printInnerIters', 0)
+        opt.setOption('printOuterIters', 1)
+        opt.setOption('SwarmSize', 20)
 
-    # TODO: try global optimzation with e.g. MIDACO or ALPSO first, then get
-    # more exact solution with gradient based method
-    #SLSQP(opt_prob.solution(0))
-    #opt_prob.solution(1)
+        '''
+        opt = ALHSO()   #harmony search
+        opt.setOption('maxoutiter', 10)
+        opt.setOption('maxinniter', 5)
+        opt.setOption('stopcriteria', 1)
+        opt.setOption('stopiters', 3)
+        opt.setOption('atol', 0.01)
+        opt.setOption('prtinniter', 0)
+        opt.setOption('prtoutiter', 1)
+        '''
+
+        # run fist (global) optimization
+        try:
+            #reuse history
+            opt(opt_prob, store_hst=True, hot_start=True, xstart=initial)
+        except NameError:
+            opt(opt_prob, store_hst=True, xstart=initial)
+        print opt_prob.solution(0)
+
+        ### using scipy (global-local optimization)
+        '''
+        def printMinima(x, f, accept):
+            print("found local minimum with cond {}. accepted: ".format(f, accept))
+        bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
+        np.random.seed(1)
+        global_sol = sp.optimize.basinhopping(objfunc, initial, disp=True,
+                                              accept_test=testParams,
+                                              callback=printMinima,
+                                              niter=50, #niter_success=10,
+                                              T=1000,
+                                              minimizer_kwargs={
+                                                  'bounds': bounds,
+                                                  'constraints': constr,
+                                                  #'method':'SLSQP',  #only for smooth functions
+                                                  #'options':{'maxiter': 10, 'disp':True}  #doesn't stop after maxiter
+
+                                                  'method':'COBYLA',
+                                                  'options':{'maxiter': 20, 'disp':True}
+                                              }
+                                             )
+        print("basin-hopping solution found:")
+        print global_sol.message
+        print global_sol.x
+        '''
+
+    ### pyOpt local
+
+    # after using global optimization, get more exact solution with
+    # gradient based method init optimizer (only local)
+    use_parallel = 0
+    if use_parallel:
+        #SLSQP possibly not thread safe? (there is https://github.com/jacobwilliams/slsqp because of that)
+        opt2 = SLSQP(pll_type='POA')   #sequential least squares
+    else:
+        opt2 = SLSQP()   #sequential least squares
+    #opt2.setOption('ACC', 1e-1)
+    opt2.setOption('MAXIT', 1)
+    opt2.setOption('IPRINT', 0)
+
+    if config['useGlobalOptimization']:
+        opt2(opt_prob.solution(0), store_hst=True, sens_step=1e-2)
+        print opt_prob.solution(0).solution(0)
+    else:
+        try:
+            #reuse history
+            opt2(opt_prob, store_hst=True, hot_start=True)
+        except NameError:
+            opt2(opt_prob, store_hst=True)
 
     # take solution and simulate once again
-    sol_wf = opt_prob.solution(0).getVar(0).value
+    if config['useGlobalOptimization']:
+        local_sol = opt_prob.solution(0).solution(0)
+    else:
+        local_sol = opt_prob.solution(0)
+    sol_wf = local_sol.getVar(0).value
 
     sol_q = list()
     for i in range(dofs):
-        sol_q.append(opt_prob.solution(0).getVar(1+i).value)
+        sol_q.append(local_sol.getVar(1+i).value)
 
     sol_a = list()
     sol_b = list()
     for i in range(dofs):
         a_series = list()
         for j in range(nf[0]):
-            a_series.append(opt_prob.solution(0).getVar(1+dofs+i+j).value)
+            a_series.append(local_sol.getVar(1+dofs+i+j).value)
         sol_a.append(a_series)
     for i in range(dofs):
         b_series = list()
         for j in range(nf[0]):
-            b_series.append(opt_prob.solution(0).getVar(1+dofs+nf[0]*dofs+i+j).value)
+            b_series.append(local_sol.getVar(1+dofs+nf[0]*dofs+i+j).value)
         sol_b.append(b_series)
 
     trajectory.initWithParams(sol_a, sol_b, sol_q, nf, sol_wf)
 
+    if config['showOptimizationGraph']:
+        plt.ioff()
+
     return trajectory
 
 
-def simulateTrajectory(config, trajectory):
+def simulateTrajectory(config, trajectory, model=None):
     #trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
     #trajectory.initWithRandomParams()
 
     # generate data arrays for simulation and regressor building
-    model = Model(config, config['model'])
+    old_sim = config['iDynSimulate']
+    config['iDynSimulate'] = True
+
+    if not model:
+        model = Model(config, config['model'])
+
     data = Data(config)
     trajectory_data = {}
     trajectory_data['target_positions'] = []
@@ -433,16 +591,9 @@ def simulateTrajectory(config, trajectory):
 
     data.init_from_data(trajectory_data)
 
-    try:
-        print("generated trajectory data with {} samples ({} s)".format(data.num_used_samples,
-            trajectory_data['times'][-1]/freq))
-    except:
-        embed()
-
     # get condition number for regressor of trajectory
-    old_sim = config['iDynSimulate']
-    config['iDynSimulate'] = True
     model.computeRegressors(data)
+
     config['iDynSimulate'] = old_sim
 
     return trajectory_data, model

@@ -97,10 +97,15 @@ estimateWith: 'std'
 
 # almost zero threshold for QR, SVD and other things
 min_tol: 0.00001
+# threshold for being within constraints (only used for display)
+min_tol_constr: 0.01
 
 #### excitation
+# initial values
+useDeg: 0                    #encode angles in degrees for excitation (internal and data is always in rad)
+trajectorySpeed: 0.4         #set this as high as possible without violating constraints
+trajectoryPulsation: 1.0
 
-# encode angles in degrees for excitation (internal and data is always rad)
-useDeg: True
 showOptimizationGraph: 1     #display updating graph during trajectory optimization
-useGlobalOptimization: 0     #do global optimization before using local refinement. otherwise just do local from initial
+useGlobalOptimization: 0     #do global optimization before using local refinement (does not use initial values)
+localOptIterations: 5       #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)

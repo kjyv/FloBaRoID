@@ -42,7 +42,6 @@ iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
 config['useAPriori'] = 0
 config['skip_samples'] = 0
-config['verbose'] = 0
 
 data = {}   #hold some global data vars in here
 
@@ -293,14 +292,20 @@ def simulateTrajectory(config, trajectory, model=None):
         trajectory.setTime(t/freq)
         q = [trajectory.getAngle(d) for d in range(config['N_DOFS'])]
         q = np.array(q)
+        if config['useDeg']:
+            q = np.deg2rad(q)
         trajectory_data['target_positions'].append(q)
 
         qdot = [trajectory.getVelocity(d) for d in range(config['N_DOFS'])]
         qdot = np.array(qdot)
+        if config['useDeg']:
+            qdot = np.deg2rad(qdot)
         trajectory_data['target_velocities'].append(qdot)
 
         qddot = [trajectory.getAcceleration(d) for d in range(config['N_DOFS'])]
         qddot = np.array(qddot)
+        if config['useDeg']:
+            qddot = np.deg2rad(qddot)
         trajectory_data['target_accelerations'].append(qddot)
 
         trajectory_data['times'].append(t)
@@ -316,8 +321,6 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['times'] = np.array(trajectory_data['times'])
 
     data.init_from_data(trajectory_data)
-
-    # get condition number for regressor of trajectory
     model.computeRegressors(data)
 
     config['iDynSimulate'] = old_sim
@@ -325,7 +328,7 @@ def simulateTrajectory(config, trajectory, model=None):
     return trajectory_data, model
 
 def main():
-    trajectoryOptimizer = TrajectoryOptimizer(config, simulateTrajectory)
+    trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
     trajectory = trajectoryOptimizer.optimizeTrajectory()
 
     if args.yarp:
@@ -335,7 +338,7 @@ def main():
         from robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:
-        print("No excitation method given!")
+        print("No excitation method given! Only doing simulation")
         data, model = simulateTrajectory(config, trajectory)
         plot(data)
         return

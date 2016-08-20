@@ -195,6 +195,9 @@ class TrajectoryOptimizer(object):
             #self.binit[j] = 0.9/ (j+1) * ((1-j%2)*2-1)
             self.ainit[j] = self.binit[j] = self.config['trajectorySpeed']
 
+        self.useScipy = 1
+        self.useNLopt = 0
+
     def initGraph(self):
         # init graphing of optimization
         self.fig = plt.figure()
@@ -202,14 +205,15 @@ class TrajectoryOptimizer(object):
         plt.ion()
         self.xar = []
         self.yar = []
-        #self.ax1.plot(self.xar,self.yar)
+        self.ax1.plot(self.xar,self.yar)
 
         self.updateGraphEveryVals = 5
 
         # 'globals' for objfunc
         self.iter_cnt = 0   #iteration counter
         self.last_g = None
-        #self.constr = [{'type':'ineq', 'fun': lambda x: 0} for i in range(self.dofs*5)]
+        if self.useScipy or self.useNLopt:
+            self.constr = [{'type':'ineq', 'fun': lambda x: -1} for i in range(self.dofs*5)]
 
     def updateGraph(self, const):
         if self.iter_cnt % self.updateGraphEveryVals == 0:
@@ -228,7 +232,35 @@ class TrajectoryOptimizer(object):
         b = np.array(np.split(x[self.dofs+1+ab_len:self.dofs+1+ab_len*2], self.dofs))
         return wf, q, a, b
 
-    def objfunc(self, x):
+    def approx_jacobian(self, f, x, epsilon, *args):
+        """Approximate the Jacobian matrix of callable function func
+
+           * Parameters
+             x       - The state vector at which the Jacobian matrix is
+    desired
+             func    - A vector-valued function of the form f(x,*args)
+             epsilon - The peturbation used to determine the partial derivatives
+             *args   - Additional arguments passed to func
+
+           * Returns
+             An array of dimensions (lenf, lenx) where lenf is the length
+             of the outputs of func, and lenx is the number of
+
+           * Notes
+             The approximation is done using forward differences
+        """
+
+        x0 = np.asfarray(x)
+        f0 = f(*((x0,)+args))
+        jac = np.zeros([x0.size,f0.size])
+        dx = np.zeros(x0.size)
+        for i in range(x0.size):
+           dx[i] = epsilon
+           jac[i] = (f(*((x0+dx,)+args)) - f0)/epsilon
+           dx[i] = 0.0
+        return jac.transpose()
+
+    def objfunc(self, x, constr=None):
         self.iter_cnt += 1
         wf, q, a, b = self.vecToParams(x)
 
@@ -240,9 +272,14 @@ class TrajectoryOptimizer(object):
 
         #wf out of bounds, skip call
         if not self.testBounds(x):
-            fail = 1.0
             #TODO: could use Augmented Lagrangian here to give higher error dependent on how far out of bounds
-            return 10000.0, [10.0]*self.dofs*5, fail
+            f = 10000.0
+            g = [10.0]*self.dofs*5
+            fail = 1.0
+            if self.useScipy or self.useNLopt:
+                return f
+            else:
+                return f, g, fail
 
         self.trajectory.initWithParams(a,b,q, self.nf, wf)
 
@@ -279,8 +316,6 @@ class TrajectoryOptimizer(object):
             # max joint vel of trajectory should at least be 10% of joint limit
             g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
         self.last_g = g
-        #for i in range(len(g)):
-        #    self.constr[i]['fun'] = lambda x: self.last_g[i]
 
         c = self.testConstraints(g)
         if self.config['showOptimizationGraph']:
@@ -288,12 +323,23 @@ class TrajectoryOptimizer(object):
             self.yar.append(f)
             self.updateGraph(const=c)
 
+        if self.useScipy or self.useNLopt:
+            for i in range(len(g)):
+                #update the constraint function static value (last evaluation)
+                self.constr[i]['fun'] = lambda x: self.last_g[i]
+                if constr:
+                    #return the constraint functions to get the constraint gradient
+                    return self.constr
+
         #TODO: add minimum max torque
         #TODO: allow some manual constraints for angles (from config)
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
         fail = 0.0
-        return f, g, fail
+        if self.useScipy or self.useNLopt:
+            return f
+        else:
+            return f, g, fail
 
     def testBounds(self, x):
         #test variable bounds
@@ -310,7 +356,7 @@ class TrajectoryOptimizer(object):
         return res
 
     def testConstraints(self, g):
-        res = np.all(np.array(g) <= 0)
+        res = np.all(np.array(g) <= self.config['min_tol_constr'])
         if not res:
             print "constraints violated:"
             if True in np.in1d(range(1,2*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
@@ -335,10 +381,10 @@ class TrajectoryOptimizer(object):
         if self.config['showOptimizationGraph']:
             self.initGraph()
 
-        ## pyOpt
+        ## describe optimization problem with pyOpt classes
 
         from pyOpt import Optimization
-        from pyOpt import SLSQP, COBYLA, CONMIN, PSQP, ALHSO, ALPSO
+        from pyOpt import SLSQP #, COBYLA, CONMIN, PSQP, ALHSO, ALPSO
 
         # Instanciate Optimization Problem
         opt_prob = Optimization('Trajectory optimization', self.objfunc)
@@ -363,11 +409,10 @@ class TrajectoryOptimizer(object):
         opt_prob.addConGroup('g', self.dofs*5, 'i')
         #print opt_prob
 
-        ### optimize using pyOpt (global)
-
         initial = [v.value for v in opt_prob._variables.values()]
 
         if self.config['useGlobalOptimization']:
+            ### optimize using pyOpt (global)
             opt = ALPSO()  #particle swarm
             opt.setOption('stopCriteria', 0)
             opt.setOption('maxInnerIter', 3)
@@ -406,18 +451,14 @@ class TrajectoryOptimizer(object):
 #                                                      'bounds': bounds,
 #                                                      'constraints': self.constr,
 #                                                      #'method':'SLSQP',  #only for smooth functions
-#                                                      #'options':{'maxiter': 1, 'disp':True}
-#
-#                                                      'method':'COBYLA',
-#                                                      'options':{'maxiter': 20, 'disp':True}
+#                                                      #'options':{'eps': 0.1, 'maxiter': 1, 'disp':True}
 #                                                  }
 #                                                 )
 #            print("basin-hopping solution found:")
 #            print global_sol.message
 #            print global_sol.x
 
-        useScipy = 0
-        if useScipy:
+        if self.useScipy:
             def printIter(x):
                 print("iteration: found sol {}: ".format(x))
             bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
@@ -426,7 +467,7 @@ class TrajectoryOptimizer(object):
                                                   constraints = self.constr,
                                                   callback = printIter,
                                                   method= 'SLSQP',
-                                                  options = {'eps': 0.05, 'maxiter': 5, 'disp':True }
+                                                  options = {'eps': 0.1, 'maxiter': 4, 'disp':True }
                                                   #method = 'COBYLA',
                                                   #options = {'rhobeg': 0.05, 'maxiter': 100, 'disp':True }
                                                  )
@@ -453,6 +494,49 @@ class TrajectoryOptimizer(object):
                     b_series.append(local_sol.x[1+self.dofs+self.nf[0]*self.dofs+i+j])
                 sol_b.append(b_series)
             local_sol_vec = local_sol.x
+
+        elif self.useNLopt:
+            def objfunc_nlopt(x, grad):
+                if grad.size > 0:
+                    print('getting gradient of obj func')
+                    grad[:] = self.approx_jacobian(self.objfunc, x, 0.1)
+                return self.objfunc(x)
+            import nlopt
+            n_var = len(opt_prob._variables.values())
+            #opt = nlopt.opt(nlopt.GN_ISRES, n_var)
+            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)   ## +
+            #opt = nlopt.opt(nlopt.LD_MMA, n_var)   ## ++
+            #opt = nlopt.opt(nlopt.LD_CCSAQ, n_var)
+            #opt = nlopt.opt(nlopt.LN_COBYLA, n_var)  ## +
+
+            #allow constraints for methods that don't support it
+            opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
+            local_opt = nlopt.opt(nlopt.LN_SBPLX, n_var)
+            opt.set_local_optimizer(local_opt)
+            opt.set_min_objective(objfunc_nlopt)
+
+            opt.set_lower_bounds([v.lower for v in opt_prob._variables.values()])
+            opt.set_upper_bounds([v.upper for v in opt_prob._variables.values()])
+
+            for i in range(len(self.constr)):
+                def func(x, grad):
+                    if grad.size > 0:
+                        # TODO:
+                        # approx_jacobian is already doing all the steps for the gradient in
+                        # objfunc_nlopt, so doing here again (for each constraint!) is not necessary
+                        # instead, both cond and const should be returned, the solution gradient calculated
+                        # and the constr's for each x+perturbation cached. the approx here should only need the
+                        # cached values to generate the constraint gradients.
+                        # the points (x) need to be an index for the dicts, when to throw away?
+                        print('getting gradient of constr')
+                        grad[:] = self.approx_jacobian(lambda xx: self.objfunc(xx, constr=True)[i]['fun'](xx), x, 0.1)
+                    return self.constr[i]['fun'](x)
+                opt.add_inequality_constraint(func)
+
+            opt.set_stopval(20)
+            opt.set_maxeval(50)
+            local_sol_vec = opt.optimize(initial)
+            print("finished with objective function value {}".format(opt.last_optimum_value()))
         else:
             ### pyOpt local
 
@@ -467,12 +551,12 @@ class TrajectoryOptimizer(object):
             if self.config['verbose']:
                 opt2.setOption('IPRINT', 0)
 
-    #        opt2 = COBYLA()
-    #        opt2.setOption('MAXFUN', self.config['localOptIterations'])
-    #        opt2.setOption('RHOBEG', 0.05)
+            #opt2 = PSQP()
+            #opt2.setOption('MIT', 2)
 
-    #        opt2 = PSQP()
-    #        opt2.setOption('MIT', 1)
+            #opt2 = COBYLA()
+            #opt2.setOption('MAXFUN', 150)
+            #opt2.setOption('RHOBEG', 0.05)
 
             if self.config['useGlobalOptimization']:
                 #reuse previous solution
@@ -487,25 +571,24 @@ class TrajectoryOptimizer(object):
                 opt2(problem, store_hst=True, sens_step=0.1)
             local_sol = problem.solution(0)
             print local_sol
-            sol_wf = local_sol.getVar(0).value
-
-            sol_q = list()
-            for i in range(self.dofs):
-                sol_q.append(local_sol.getVar(1+i).value)
-
-            sol_a = list()
-            sol_b = list()
-            for i in range(self.dofs):
-                a_series = list()
-                for j in range(self.nf[0]):
-                    a_series.append(local_sol.getVar(1+self.dofs+i+j).value)
-                sol_a.append(a_series)
-            for i in range(self.dofs):
-                b_series = list()
-                for j in range(self.nf[0]):
-                    b_series.append(local_sol.getVar(1+self.dofs+self.nf[0]*self.dofs+i+j).value)
-                sol_b.append(b_series)
             local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
+
+        sol_wf = local_sol_vec[0]
+        sol_q = list()
+        for i in range(self.dofs):
+            sol_q.append(local_sol_vec[(1+i)])
+        sol_a = list()
+        sol_b = list()
+        for i in range(self.dofs):
+            a_series = list()
+            for j in range(self.nf[0]):
+                a_series.append(local_sol_vec[1+self.dofs+i+j])
+            sol_a.append(a_series)
+        for i in range(self.dofs):
+            b_series = list()
+            for j in range(self.nf[0]):
+                b_series.append(local_sol_vec[1+self.dofs+self.nf[0]*self.dofs+i+j])
+            sol_b.append(b_series)
 
         print("testing final solution")
         self.iter_cnt = 0

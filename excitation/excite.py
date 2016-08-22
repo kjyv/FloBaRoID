@@ -20,9 +20,6 @@ parser.add_argument('--dryrun', help="don't send the trajectory", action='store_
 
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
-parser.add_argument('--simulate', help="simulate torques for measured values (e.g. for gazebo)", action='store_true')
-parser.add_argument('--yarp', help="use yarp for robot communication", action='store_true')
-parser.add_argument('--ros', help="use ros for robot communication", action='store_true')
 parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
 parser.set_defaults(plot=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
@@ -35,8 +32,8 @@ with open(args.config, 'r') as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
+config['args'] = args
 config['model'] = args.model
-config['iDynSimulate'] = args.simulate
 config['jointNames'] = iDynTree.StringVector([])
 iDynTree.dofsListFromURDF(args.model, config['jointNames'])
 config['N_DOFS'] = len(config['jointNames'])
@@ -330,16 +327,16 @@ def simulateTrajectory(config, trajectory, model=None):
 def main():
     trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
     trajectory = trajectoryOptimizer.optimizeTrajectory()
+    data, model = simulateTrajectory(config, trajectory)
 
-    if args.yarp:
+    if config['exciteMethod'] == 'yarp':
         from robotCommunication import yarp_gym
         yarp_gym.main(config, trajectory, data)
-    elif args.ros:
+    elif config['exciteMethod'] == 'ros':
         from robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:
         print("No excitation method given! Only doing simulation")
-        data, model = simulateTrajectory(config, trajectory)
         plot(data)
         return
 
@@ -351,36 +348,22 @@ def main():
     data['Qraw'] = np.zeros_like(data['Q'])
     data['TauRaw'] = np.zeros_like(data['Tau'])
 
-    # filter, differentiate, convert, etc.
-    postprocess(data['Q'], data['Qraw'], data['V'], data['Vraw'], data['Vself'], data['Vdot'],
-                data['Tau'], data['TauRaw'], data['T'], data['measured_frequency'])
-
-    #TODO: get this from identification module
-    if config['iDynSimulate']:
-        dynComp = iDynTree.DynamicsComputations();
-        dynComp.loadRobotModelFromFile(args.model);
-        gravity = iDynTree.SpatialAcc();
-        gravity.zero()
-        gravity.setVal(2, -9.81);
-        torques = iDynTree.VectorDynSize(config['N_DOFS'])
-
-        for t in range(0, len(data['T'])):
-            pos = data['Q'][t]
-            vel = data['Vself'][t]
-            acc = data['Vdot'][t]
-            q = iDynTree.VectorDynSize.fromPyList(pos)
-            dq = iDynTree.VectorDynSize.fromPyList(vel)
-            ddq = iDynTree.VectorDynSize.fromPyList(acc)
-
-            dynComp.setRobotState(q, dq, ddq, gravity)
-            baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
-
-            # compute inverse dynamics with idyntree (simulate)
-            dynComp.inverseDynamics(torques, baseReactionForce)
-            data['Tau'][t] = torques.toNumPy()
-
-            #add some noise to torques (simulated 'raw' data)
-            data['TauRaw'][t] = data['Tau'][t] + np.random.randn(config['N_DOFS'])*np.max(data['Tau'])*0.05
+    #simulate torque for measured data (since e.g. Gazebo produces unusable torque values)
+    if config['excitationSimulate']:
+        tau_len = data['Tau'].shape[0]   # get length of measured (zero) taus
+        if tau_len < data['torques'].shape[0]:
+            data['Tau'][:,:]  = data['torques'][0:tau_len,:]
+            data['Vself'][:,:] = data['velocities'][0:tau_len,:]
+            data['Vdot'][:,:] = data['accelerations'][0:tau_len,:]
+        else:
+            torques_len = data['torques'].shape[0]
+            data['Tau'][0:torques_len,:]  = data['torques'][:,:]
+            data['Vself'][0:torques_len,:] = data['velocities'][:,:]
+            data['Vdot'][0:torques_len,:] = data['accelerations'][:,:]
+    else:
+        # filter, differentiate, convert, etc.
+        postprocess(data['Q'], data['Qraw'], data['V'], data['Vraw'], data['Vself'], data['Vdot'],
+                    data['Tau'], data['TauRaw'], data['T'], data['measured_frequency'])
 
     # write sample arrays to data file
     # TODO: if possible, save motor currents
@@ -393,7 +376,6 @@ def main():
              target_accelerations=np.deg2rad(data['QddotSent']),
              times=data['T'], frequency=data['measured_frequency'])
     print "saved measurements to {}".format(args.filename)
-
 
 if __name__ == '__main__':
     #try:

@@ -202,6 +202,9 @@ class TrajectoryOptimizer(object):
         self.useScipy = 1
         self.useNLopt = 0
 
+        self.last_best_f = 10e10
+        self.last_best_sol = None
+
     def initGraph(self):
         # init graphing of optimization
         self.fig = plt.figure()
@@ -209,6 +212,7 @@ class TrajectoryOptimizer(object):
         plt.ion()
         self.xar = []
         self.yar = []
+        self.x_constr = []
         self.ax1.plot(self.xar,self.yar)
 
         self.updateGraphEveryVals = 5
@@ -219,14 +223,35 @@ class TrajectoryOptimizer(object):
         if self.useScipy or self.useNLopt:
             self.constr = [{'type':'ineq', 'fun': lambda x: -1} for i in range(self.dofs*5)]
 
-    def updateGraph(self, const):
+    def updateGraph(self):
         if self.iter_cnt % self.updateGraphEveryVals == 0:
-            if const: color = 'g'
-            else: color = 'r'
-            self.ax1.plot(self.xar, self.yar, color=color)
+            # go through list of constraint states and draw next line with other color if changed
+            i = last_i = 0
+            last_state = self.x_constr[0]
+            while (i < len(self.x_constr)):
+                if self.x_constr[i] == last_state:
+                    if i-last_i +1 >= self.updateGraphEveryVals:
+                        # draw intermedieate and at end of data
+                        if self.x_constr[i]: color = 'g'
+                        else: color = 'r'
+                        #need to draw one point more to properly connect to next segment
+                        if last_i == 0: end = i+1
+                        else: end = i+2
+                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], color=color)
+                        last_i = i
+                else:
+                    #draw line when state has changed
+                    last_state = not last_state
+                    if self.x_constr[i]: color = 'g'
+                    else: color = 'r'
+                    if last_i == 0: end = i+1
+                    else: end = i+2
+                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], color=color)
+                    last_i = i
+                i+=1
 
-            if self.iter_cnt == 1: plt.show(block=False)
-            plt.pause(0.01)
+        if self.iter_cnt == 1: plt.show(block=False)
+        plt.pause(0.01)
 
     def vecToParams(self, x):
         wf = x[0]
@@ -276,7 +301,9 @@ class TrajectoryOptimizer(object):
 
         #wf out of bounds, skip call
         if not self.testBounds(x):
-            #TODO: could use Augmented Lagrangian here to give higher error dependent on how far out of bounds
+            # give penalty obj value for out of bounds (because we shouldn't get here)
+            # TODO: for some algorithms (with augemented lagrangian added bounds) this should
+            # not be very high as it is added again anyway)
             f = 10000.0
             g = [10.0]*self.dofs*5
             fail = 1.0
@@ -316,7 +343,7 @@ class TrajectoryOptimizer(object):
             # max joint vel
             g[2*self.dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - self.limits[jn[n]]['velocity']
             # max torques
-            g[3*self.dofs+n] = np.max(np.abs(trajectory_data['torques'][:, n])) - self.limits[jn[n]]['torque']
+            g[3*self.dofs+n] = np.nanmax(np.abs(trajectory_data['torques'][:, n])) - self.limits[jn[n]]['torque']
             # max joint vel of trajectory should at least be 10% of joint limit
             g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
         self.last_g = g
@@ -325,7 +352,8 @@ class TrajectoryOptimizer(object):
         if self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
-            self.updateGraph(const=c)
+            self.x_constr.append(c)
+            self.updateGraph()
 
         if self.useScipy or self.useNLopt:
             for i in range(len(g)):
@@ -339,11 +367,14 @@ class TrajectoryOptimizer(object):
         #TODO: allow some manual constraints for angles (from config)
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
+        #keep last best solution (some solvers don't keep it)
+        if c and f < self.last_best_f:
+            self.last_best_f = f
+            self.last_best_sol = x
+
         fail = 0.0
-        if self.useScipy or self.useNLopt:
-            return f
-        else:
-            return f, g, fail
+        if self.useScipy or self.useNLopt: return f
+        else: return f, g, fail
 
     def testBounds(self, x):
         #test variable bounds
@@ -416,51 +447,53 @@ class TrajectoryOptimizer(object):
         initial = [v.value for v in opt_prob._variables.values()]
 
         if self.config['useGlobalOptimization']:
-            ### optimize using pyOpt (global)
-            opt = ALPSO()  #particle swarm
-            opt.setOption('stopCriteria', 0)
-            opt.setOption('maxInnerIter', 3)
-            opt.setOption('maxOuterIter', 5)
-            opt.setOption('printInnerIters', 0)
-            opt.setOption('printOuterIters', 1)
-            opt.setOption('SwarmSize', 30)
-
- #           opt = ALHSO()   #harmony search
- #           opt.setOption('maxoutiter', 5)
- #           opt.setOption('maxinniter', 3)
- #           opt.setOption('stopcriteria', 1)
- #           opt.setOption('stopiters', 3)
- #           opt.setOption('prtinniter', 0)
- #           opt.setOption('prtoutiter', 1)
-
-            # run fist (global) optimization
-            try:
-                #reuse history
-                opt(opt_prob, store_hst=True, hot_start=True, xstart=initial)
-            except NameError:
-                opt(opt_prob, store_hst=True, xstart=initial)
-            print opt_prob.solution(0)
-
             ### using scipy (global-local optimization)
-#            def printMinima(x, f, accept):
-#                print("found local minimum with cond {}. accepted: ".format(f, accept))
-#            bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
-#            np.random.seed(1)
-#            global_sol = sp.optimize.basinhopping(self.objfunc, initial, disp=True,
-#                                                  accept_test=self.testParams,
-#                                                  callback=printMinima,
-#                                                  niter=100, #niter_success=10,
-#                                                  T=1.0,
-#                                                  minimizer_kwargs={
-#                                                      'bounds': bounds,
-#                                                      'constraints': self.constr,
-#                                                      #'method':'SLSQP',  #only for smooth functions
-#                                                      #'options':{'eps': 0.1, 'maxiter': 1, 'disp':True}
-#                                                  }
-#                                                 )
-#            print("basin-hopping solution found:")
-#            print global_sol.message
-#            print global_sol.x
+            if useScipy:
+                def printMinima(x, f, accept):
+                    print("found local minimum with cond {}. accepted: ".format(f, accept))
+                bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
+                np.random.seed(1)
+                global_sol = sp.optimize.basinhopping(self.objfunc, initial, disp=True,
+                                                      accept_test=self.testParams,
+                                                      callback=printMinima,
+                                                      niter=100, #niter_success=10,
+                                                      T=1.0,
+                                                      minimizer_kwargs={
+                                                          'bounds': bounds,
+                                                          'constraints': self.constr,
+                                                          'method': 'COBYLA',
+                                                          'options': {'rhobeg': 0.1, 'maxiter': 50,
+                                                                      'disp':True }
+                                                      }
+                                                     )
+                print("basin-hopping solution found:")
+                print global_sol.message
+                print global_sol.x
+            else:
+                ### optimize using pyOpt (global)
+                opt = ALPSO()  #particle swarm
+                opt.setOption('stopCriteria', 0)
+                opt.setOption('maxInnerIter', 3)
+                opt.setOption('maxOuterIter', 5)
+                opt.setOption('printInnerIters', 0)
+                opt.setOption('printOuterIters', 1)
+                opt.setOption('SwarmSize', 30)
+
+     #           opt = ALHSO()   #harmony search
+     #           opt.setOption('maxoutiter', 5)
+     #           opt.setOption('maxinniter', 3)
+     #           opt.setOption('stopcriteria', 1)
+     #           opt.setOption('stopiters', 3)
+     #           opt.setOption('prtinniter', 0)
+     #           opt.setOption('prtoutiter', 1)
+
+                # run fist (global) optimization
+                try:
+                    #reuse history
+                    opt(opt_prob, store_hst=True, hot_start=True, xstart=initial)
+                except NameError:
+                    opt(opt_prob, store_hst=True, xstart=initial)
+                print opt_prob.solution(0)
 
         if self.useScipy:
             def printIter(x):
@@ -470,12 +503,10 @@ class TrajectoryOptimizer(object):
                                                   bounds = bounds,
                                                   constraints = self.constr,
                                                   callback = printIter,
-                                                  method= 'SLSQP',
-                                                  options = {'eps': 0.1, 'maxiter': 4, 'disp':True }
-                                                  #method = 'COBYLA',
-                                                  #options = {'rhobeg': 0.05, 'maxiter': 100, 'disp':True }
+                                                  method = 'COBYLA',
+                                                  options = {'rhobeg': 0.1, 'maxiter': self.config['maxFun'], 'disp':True }
                                                  )
-            print("SLSQP solution found:")
+            print("COBYLA solution found:")
             print local_sol.message
             print local_sol.x
 
@@ -508,15 +539,16 @@ class TrajectoryOptimizer(object):
             import nlopt
             n_var = len(opt_prob._variables.values())
             #opt = nlopt.opt(nlopt.GN_ISRES, n_var)
-            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)   ## +
-            #opt = nlopt.opt(nlopt.LD_MMA, n_var)   ## ++
-            #opt = nlopt.opt(nlopt.LD_CCSAQ, n_var)
-            #opt = nlopt.opt(nlopt.LN_COBYLA, n_var)  ## +
+            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)  #needs explicit gradient approximation
+            #opt = nlopt.opt(nlopt.LD_MMA, n_var)
+            #opt = nlopt.opt(nlopt.LN_COBYLA, n_var)
+            opt = nlopt.opt(nlopt.LN_BOBYQA, n_var)
 
             #allow constraints for methods that don't support it
-            opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
-            local_opt = nlopt.opt(nlopt.LN_SBPLX, n_var)
-            opt.set_local_optimizer(local_opt)
+            #opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
+            #local_opt = nlopt.opt(nlopt.LN_SBPLX, n_var)
+            #opt.set_local_optimizer(local_opt)
+
             opt.set_min_objective(objfunc_nlopt)
 
             opt.set_lower_bounds([v.lower for v in opt_prob._variables.values()])
@@ -538,7 +570,7 @@ class TrajectoryOptimizer(object):
                 opt.add_inequality_constraint(func)
 
             opt.set_stopval(20)
-            opt.set_maxeval(50)
+            opt.set_maxeval(self.config['maxFun'])
             local_sol_vec = opt.optimize(initial)
             print("finished with objective function value {}".format(opt.last_optimum_value()))
         else:
@@ -559,8 +591,8 @@ class TrajectoryOptimizer(object):
             #opt2.setOption('MIT', 2)
 
             #opt2 = COBYLA()
-            #opt2.setOption('MAXFUN', 150)
-            #opt2.setOption('RHOBEG', 0.05)
+            #opt2.setOption('MAXFUN', self.config['maxFun'])
+            #opt2.setOption('RHOBEG', 0.1)
 
             if self.config['useGlobalOptimization']:
                 #reuse previous solution
@@ -576,6 +608,10 @@ class TrajectoryOptimizer(object):
             local_sol = problem.solution(0)
             print local_sol
             local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
+
+        if self.last_best_sol is not None and np.array_equal(local_sol_vec, self.last_best_sol):
+            local_sol_vec = self.last_best_sol
+            print "using last best solution instead of given solver solution."
 
         sol_wf = local_sol_vec[0]
         sol_q = list()

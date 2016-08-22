@@ -82,7 +82,7 @@ class Model(object):
             xStdModel = iDynTree.VectorDynSize(self.num_params)
             self.generator.getModelParameters(xStdModel)
             self.xStdModel = xStdModel.toNumPy()
-            if opt['estimateWith'] is 'urdf':
+            if opt['estimateWith'] == 'urdf':
                 self.xStd = self.xStdModel
 
             # get model dependent projection matrix and linear column dependencies (i.e. base
@@ -139,6 +139,7 @@ class Model(object):
                         torqAP = torques.toNumPy()
                     if self.opt['iDynSimulate']:
                         torq = torques.toNumPy()
+                        torq = np.nan_to_num(torq)
                         data.samples['torques'][m_idx] = torq
 
                 if self.opt['addNoise'] != 0:

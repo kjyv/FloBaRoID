@@ -177,20 +177,20 @@ class TrajectoryOptimizer(object):
         # (needs to be larger larger dofs? means a lot more variables)
         self.nf = [3]*self.dofs
         #pulsation
-        self.wf_min = 0.5
-        self.wf_max = 1.5
-        self.wf_init = self.config['trajectoryPulsation']
+        self.wf_min = self.config['trajectoryPulseMin']
+        self.wf_max = self.config['trajectoryPulseMax']
+        self.wf_init = self.config['trajectoryPulseInit']
         #angle offsets
-        self.qmin = -45.0
-        self.qmax = 45.0
+        self.qmin = self.config['trajectoryAngleMin']
+        self.qmax = self.config['trajectoryAngleMin']
         self.qinit = 0.0
         if not self.config['useDeg']:
             self.qmin = np.deg2rad(self.qmin)
             self.qmax = np.deg2rad(self.qmax)
             self.qinit = np.deg2rad(self.qinit)
         #sin/cos coefficients
-        self.amin = self.bmin = -2.0
-        self.amax = self.bmax = 2.0
+        self.amin = self.bmin = self.config['trajectoryCoeffMin']
+        self.amax = self.bmax = self.config['trajectoryCoeffMax']
         self.ainit = np.empty(self.nf[0])
         self.binit = np.empty(self.nf[0])
         for j in range(0, self.nf[0]):
@@ -237,7 +237,7 @@ class TrajectoryOptimizer(object):
                         #need to draw one point more to properly connect to next segment
                         if last_i == 0: end = i+1
                         else: end = i+2
-                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], color=color)
+                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color)
                         last_i = i
                 else:
                     #draw line when state has changed
@@ -246,7 +246,7 @@ class TrajectoryOptimizer(object):
                     else: color = 'r'
                     if last_i == 0: end = i+1
                     else: end = i+2
-                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], color=color)
+                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color)
                     last_i = i
                 i+=1
 
@@ -307,6 +307,7 @@ class TrajectoryOptimizer(object):
             f = 10000.0
             g = [10.0]*self.dofs*5
             fail = 1.0
+            self.iter_cnt-=1
             if self.useScipy or self.useNLopt:
                 return f
             else:
@@ -419,7 +420,7 @@ class TrajectoryOptimizer(object):
         ## describe optimization problem with pyOpt classes
 
         from pyOpt import Optimization
-        from pyOpt import ALPSO, SLSQP #COBYLA, CONMIN, PSQP, ALHSO
+        from pyOpt import ALPSO, SLSQP, NSGA2 #COBYLA, CONMIN, PSQP, ALHSO
 
         # Instanciate Optimization Problem
         opt_prob = Optimization('Trajectory optimization', self.objfunc)
@@ -474,25 +475,29 @@ class TrajectoryOptimizer(object):
                 opt = ALPSO()  #particle swarm
                 opt.setOption('stopCriteria', 0)
                 opt.setOption('maxInnerIter', 3)
-                opt.setOption('maxOuterIter', 5)
+                opt.setOption('maxOuterIter', 3)
                 opt.setOption('printInnerIters', 0)
                 opt.setOption('printOuterIters', 1)
                 opt.setOption('SwarmSize', 30)
+                opt.setOption('xinit', 1)
 
-     #           opt = ALHSO()   #harmony search
-     #           opt.setOption('maxoutiter', 5)
-     #           opt.setOption('maxinniter', 3)
-     #           opt.setOption('stopcriteria', 1)
-     #           opt.setOption('stopiters', 3)
-     #           opt.setOption('prtinniter', 0)
-     #           opt.setOption('prtoutiter', 1)
+#                opt = ALHSO()   #harmony search
+#                opt.setOption('maxoutiter', 5)
+#                opt.setOption('maxinniter', 3)
+#                opt.setOption('stopcriteria', 1)
+#                opt.setOption('stopiters', 3)
+#                opt.setOption('prtinniter', 0)
+#                opt.setOption('prtoutiter', 1)
+#                opt.setOption('xinit', 1)
+
+#                 opt = NSGA2()
 
                 # run fist (global) optimization
                 try:
                     #reuse history
-                    opt(opt_prob, store_hst=True, hot_start=True, xstart=initial)
+                    opt(opt_prob, store_hst=False, hot_start=True, xstart=initial)
                 except NameError:
-                    opt(opt_prob, store_hst=True, xstart=initial)
+                    opt(opt_prob, store_hst=False, xstart=initial)
                 print opt_prob.solution(0)
 
         if self.useScipy:
@@ -595,40 +600,29 @@ class TrajectoryOptimizer(object):
             #opt2.setOption('RHOBEG', 0.1)
 
             if self.config['useGlobalOptimization']:
-                #reuse previous solution
-                problem = opt_prob.solution(0)
-            else:
-                problem = opt_prob
+                if self.last_best_sol is not None:
+                    #use best constrained solution
+                    for i in range(len(opt_prob._variables)):
+                        opt_prob._variables[i].value = self.last_best_sol[i]
+                else:
+                    #reuse previous solution
+                    for i in range(len(opt_prob._variables)):
+                        opt_prob._variables[i].value = opt_prob.solution(0).getVar(i).value
 
             try:
                 #reuse history
-                opt2(problem, store_hst=True, hot_start=True, sens_step=0.1)
+                opt2(opt_prob, store_hst=False, hot_start=True, sens_step=0.1)
             except NameError:
-                opt2(problem, store_hst=True, sens_step=0.1)
-            local_sol = problem.solution(0)
+                opt2(opt_prob, store_hst=False, sens_step=0.1)
+            local_sol = opt_prob.solution(0)
             print local_sol
             local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
 
-        if self.last_best_sol is not None and np.array_equal(local_sol_vec, self.last_best_sol):
+        if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol
-            print "using last best solution instead of given solver solution."
+            print "using last best constrained solution instead of given solver solution."
 
-        sol_wf = local_sol_vec[0]
-        sol_q = list()
-        for i in range(self.dofs):
-            sol_q.append(local_sol_vec[(1+i)])
-        sol_a = list()
-        sol_b = list()
-        for i in range(self.dofs):
-            a_series = list()
-            for j in range(self.nf[0]):
-                a_series.append(local_sol_vec[1+self.dofs+i+j])
-            sol_a.append(a_series)
-        for i in range(self.dofs):
-            b_series = list()
-            for j in range(self.nf[0]):
-                b_series.append(local_sol_vec[1+self.dofs+self.nf[0]*self.dofs+i+j])
-            sol_b.append(b_series)
+        sol_wf, sol_q, sol_a, sol_b = self.vecToParams(local_sol_vec)
 
         print("testing final solution")
         self.iter_cnt = 0

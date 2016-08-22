@@ -139,6 +139,7 @@ class Model(object):
                         torqAP = torques.toNumPy()
                     if self.opt['iDynSimulate']:
                         torq = torques.toNumPy()
+                        torq = np.nan_to_num(torq)
                         data.samples['torques'][m_idx] = torq
 
                 if self.opt['addNoise'] != 0:

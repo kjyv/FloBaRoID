@@ -20,8 +20,6 @@ parser.add_argument('--dryrun', help="don't send the trajectory", action='store_
 
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
-parser.add_argument('--yarp', help="use yarp for robot communication", action='store_true')
-parser.add_argument('--ros', help="use ros for robot communication", action='store_true')
 parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
 parser.set_defaults(plot=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
@@ -331,10 +329,10 @@ def main():
     trajectory = trajectoryOptimizer.optimizeTrajectory()
     data, model = simulateTrajectory(config, trajectory)
 
-    if args.yarp:
+    if config['exciteMethod'] == 'yarp':
         from robotCommunication import yarp_gym
         yarp_gym.main(config, trajectory, data)
-    elif args.ros:
+    elif config['exciteMethod'] == 'ros':
         from robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:

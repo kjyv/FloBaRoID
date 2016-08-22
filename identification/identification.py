@@ -210,11 +210,11 @@ class Identification(object):
                 #use global parameter choice if none is given specifically
                 estimateWith = self.opt['estimateWith']
             # estimate torques with idyntree regressor and different params
-            if estimateWith is 'urdf':
+            if estimateWith == 'urdf':
                 tauEst = np.dot(self.model.YStd, self.model.xStdModel)
-            elif estimateWith is 'base_essential':
+            elif estimateWith == 'base_essential':
                 tauEst = np.dot(self.model.YBase, self.xBase_essential)
-            elif estimateWith is 'base':
+            elif estimateWith == 'base':
                 tauEst = np.dot(self.model.YBase, self.model.xBase)
             elif estimateWith in ['std', 'std_direct']:
                 tauEst = np.dot(self.model.YStd, self.model.xStd)
@@ -867,7 +867,7 @@ class Identification(object):
                 if self.opt['useAPriori']:
                     self.getBaseParamsFromParamError()
 
-            elif self.opt['estimateWith'] is 'std_direct':
+            elif self.opt['estimateWith'] == 'std_direct':
                 self.identifyStandardParameters()
 
     def plot(self):
@@ -904,16 +904,17 @@ class Identification(object):
                 #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
             )
 
-
-        if self.opt['outputModule'] is 'matplotlib':
+        if self.opt['outputModule'] == 'matplotlib':
             from output import OutputMatplotlib
             output = OutputMatplotlib(datasets, self.model.jointNames)
             output.render()
-        elif self.opt['outputModule'] is 'html':
+        elif self.opt['outputModule'] == 'html':
             from output import OutputHTML
             output = OutputHTML(datasets, self.model.jointNames)
             output.render()
             #output.runServer()
+        else:
+            print('No known output module given. Not creating plots!')
 
     def printMemUsage(self):
         import humanize
@@ -982,7 +983,7 @@ def main():
         idf.opt['useEssentialParams'] = old_essential_option
         idf.opt['useConsistencyConstraints'] = old_feasible_option
 
-    if self.opt['verbose']:
+    if idf.opt['verbose']:
         print("estimating output parameters...")
     idf.estimateParameters()
     idf.estimateRegressorTorques()

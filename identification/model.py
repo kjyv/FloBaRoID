@@ -21,7 +21,7 @@ class Model(object):
         self.idyn_model = iDynTree.Model()
         iDynTree.modelFromURDF(urdf_file, self.idyn_model)
         if self.opt['verbose']:
-        print 'loaded model {}'.format(urdf_file)
+            print 'loaded model {}'.format(urdf_file)
 
         # define what regressor type
         if regressor_file:
@@ -35,65 +35,65 @@ class Model(object):
                 <allJoints/>
               </jointTorqueDynamics>
             </regressor>'''
-        self.generator.loadRegressorStructureFromString(regrXml)
+            self.generator.loadRegressorStructureFromString(regrXml)
 
-        # TODO: this and the following are not dependent on joints specified in regressor (but
-        # uses all from model file)!
-        self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
-        if self.opt['verbose']:
-        print '# DOFs: {}'.format(self.N_DOFS)
+            # TODO: this and the following are not dependent on joints specified in regressor (but
+            # uses all from model file)!
+            self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+            if self.opt['verbose']:
+                print '# DOFs: {}'.format(self.N_DOFS)
 
-        # Get the number of outputs of the regressor
-        # (should be #links - #fakeLinks)
-        self.N_OUT = self.generator.getNrOfOutputs()
-        if self.opt['verbose']:
-            print '# outputs: {}'.format(self.N_OUT)
+            # Get the number of outputs of the regressor
+            # (should be #links - #fakeLinks)
+            self.N_OUT = self.generator.getNrOfOutputs()
+            if self.opt['verbose']:
+                print '# outputs: {}'.format(self.N_OUT)
 
-        # get initial inertia params (from urdf)
-        self.num_params = self.generator.getNrOfParameters()
-        if self.opt['verbose']:
-            print '# params: {}'.format(self.num_params)
+            # get initial inertia params (from urdf)
+            self.num_params = self.generator.getNrOfParameters()
+            if self.opt['verbose']:
+                print '# params: {}'.format(self.num_params)
 
-        self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
-        if self.opt['verbose']:
-        print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
-                                             self.generator.getNrOfFakeLinks())
+            self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+            if self.opt['verbose']:
+                print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
+                                                 self.generator.getNrOfFakeLinks())
 
-        self.link_names = []
-        for i in range(0, self.N_LINKS):
-            self.link_names.append(self.idyn_model.getLinkName(i))
-        if self.opt['verbose']:
-            print '({})'.format(self.link_names)
+            self.link_names = []
+            for i in range(0, self.N_LINKS):
+                self.link_names.append(self.idyn_model.getLinkName(i))
+            if self.opt['verbose']:
+                print '({})'.format(self.link_names)
 
-        self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
+            self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
-        self.gravity_twist = iDynTree.Twist()
-        self.gravity_twist.zero()
-        self.gravity_twist.setVal(2, -9.81)
+            self.gravity_twist = iDynTree.Twist()
+            self.gravity_twist.zero()
+            self.gravity_twist.setVal(2, -9.81)
 
-        if opt['iDynSimulate'] or opt['useAPriori']:
-            self.dynComp = iDynTree.DynamicsComputations();
-            self.dynComp.loadRobotModelFromFile(self.urdf_file);
-            self.gravity = iDynTree.SpatialAcc();
-            self.gravity.zero()
-            self.gravity.setVal(2, -9.81);
+            if opt['iDynSimulate'] or opt['useAPriori']:
+                self.dynComp = iDynTree.DynamicsComputations();
+                self.dynComp.loadRobotModelFromFile(self.urdf_file);
+                self.gravity = iDynTree.SpatialAcc();
+                self.gravity.zero()
+                self.gravity.setVal(2, -9.81);
 
-        # get model parameters
-        xStdModel = iDynTree.VectorDynSize(self.num_params)
-        self.generator.getModelParameters(xStdModel)
-        self.xStdModel = xStdModel.toNumPy()
-        if opt['estimateWith'] is 'urdf':
-            self.xStd = self.xStdModel
+            # get model parameters
+            xStdModel = iDynTree.VectorDynSize(self.num_params)
+            self.generator.getModelParameters(xStdModel)
+            self.xStdModel = xStdModel.toNumPy()
+            if opt['estimateWith'] is 'urdf':
+                self.xStd = self.xStdModel
 
-        # get model dependent projection matrix and linear column dependencies (i.e. base
-        # groupings)
-        # (put here so it's only done once for the loaded model)
-        self.computeRegressorLinDepsQR()
+            # get model dependent projection matrix and linear column dependencies (i.e. base
+            # groupings)
+            # (put here so it's only done once for the loaded model)
+            self.computeRegressorLinDepsQR()
 
-    def computeRegressors(self, data):
-        """ compute regressors for each time step of the measurement data and stack them vertically,
-            also compute torques for these measurements with the a priori parameters (from URDF)
-        """
+        def computeRegressors(self, data):
+            """ compute regressors for each time step of the measurement data and stack them vertically,
+                also compute torques for these measurements with the a priori parameters (from URDF)
+            """
 
         self.data = data
 
@@ -258,7 +258,7 @@ class Model(object):
             R = regr_file['R']
             n = regr_file['n']
             if self.opt['verbose']:
-            print("loaded random regressor from {}".format(regr_filename))
+                print("loaded random regressor from {}".format(regr_filename))
             if n != n_samples:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
@@ -267,7 +267,7 @@ class Model(object):
 
         if generate_new:
             if self.opt['verbose']:
-            print("generating random regressor")
+                print("generating random regressor")
             import random
 
             if not n_samples:
@@ -462,7 +462,7 @@ class Model(object):
             # project regressor to base regressor, Y_base = Y_std*B
             self.YBase = np.dot(self.YStd, self.B)
             if self.opt['verbose']:
-            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
+                print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
             self.num_base_params = self.YBase.shape[1]
         if self.showTiming:

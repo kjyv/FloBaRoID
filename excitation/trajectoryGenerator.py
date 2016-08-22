@@ -330,7 +330,7 @@ class TrajectoryOptimizer(object):
         if self.useScipy or self.useNLopt:
             for i in range(len(g)):
                 #update the constraint function static value (last evaluation)
-                self.constr[i]['fun'] = lambda x: self.last_g[i]
+                self.constr[i]['fun'] = lambda x: self.objfunc(x, constr=True)[i]['fun'](x)
                 if constr:
                     #return the constraint functions to get the constraint gradient
                     return self.constr
@@ -534,7 +534,7 @@ class TrajectoryOptimizer(object):
                         # the points (x) need to be an index for the dicts, when to throw away?
                         print('getting gradient of constr')
                         grad[:] = self.approx_jacobian(lambda xx: self.objfunc(xx, constr=True)[i]['fun'](xx), x, 0.1)
-                    return self.constr[i]['fun'](x)
+                    return self.objfunc(x, constr=True)[i]['fun'](x)
                 opt.add_inequality_constraint(func)
 
             opt.set_stopval(20)

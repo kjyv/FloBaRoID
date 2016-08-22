@@ -2,8 +2,12 @@ import numpy as np
 import scipy as sp
 from identification.helpers import URDFHelpers
 
+import matplotlib
 import matplotlib.pyplot as plt
-plt.style.use('seaborn-pastel')
+
+from distutils.version import LooseVersion, StrictVersion
+if LooseVersion(matplotlib.__version__) >= StrictVersion('1.5'):
+    plt.style.use('seaborn-pastel')
 
 
 class TrajectoryGenerator(object):

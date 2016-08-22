@@ -1,26 +1,41 @@
 
+#### excitation
+
+excitationSimulate: 1
+exciteMethod: 'ros'          #currently 'yarp', 'ros' or null
+useDeg: 0                    #encode angles in degrees for excitation (internal and data is always in rad)
+min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
+
+# initial values to start optimization from
+trajectorySpeed: 0.4         #set this as high as possible without violating constraints (see output after start)
+trajectoryPulsation: 0.75    #determines length of one period of trajectory (smaller=longer)
+
+showOptimizationGraph: 1     #display updating graph during trajectory optimization
+useGlobalOptimization: 0     #do global optimization before using local refinement (does not use initial values)
+localOptIterations: 5        #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)
+maxFun: 250                  #limit objective function evaluations to this value
+
+#### identification
+
+# simulate torques from target values, don't use both
+iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
+
+# almost zero threshold for QR, SVD and other things
+min_tol: 0.00001
+
+#### data selection
+
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
 start_offset: 200  #how many samples from the beginning of the (first) measurement are skipped
-skip_samples: 0    #how many values to skip before using the next sample
-
-# simulate torques from target values, don't use both
-iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading data)
-addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
-
-# use previously known CAD parameters to identify parameter error, estimates parameters closer to
-# known ones (taken from URDF file)
-# for some methods, this gives parameters that are more likely to be consistent
-# (no effect for SDP constrained solutions)
-useAPriori: 1
-
-####
+skip_samples: 2    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0
 block_size: 250  # needs to be at least as much as parameters so regressor is square or higher
 
-####
+#### use constrained SDP to solve OLS
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters
 # (currently this also does the estimation, so previously selecting another method has no effect)
@@ -57,9 +72,15 @@ limitMassAprioriBoundary: 1.0     #percentage of CAD value in both +- directions
 # (essential params or when using feasability constraints)
 dontIdentifyMasses: 0
 
-####
+#### other forms of OLS
 
-# whether to identify and use direct standard with essential parameters
+# use previously known CAD parameters to identify parameter error, estimates parameters closer to
+# known ones (taken from URDF file)
+# for some methods, this gives parameters that are more likely to be consistent
+# (no effect for SDP constrained solutions)
+useAPriori: 1
+
+# identify and use direct standard with essential parameters
 useEssentialParams: 0
 
 # whether to include linear dependent columns in essential params or not
@@ -75,7 +96,7 @@ useWLS: 0
 # mostly not improving results
 filterRegressor: 0
 
-####
+#### output and debugging
 
 # how to output plots and other stuff ['matplotlib', 'html]
 outputModule: 'html'
@@ -94,19 +115,3 @@ verbose: 1                   #show more messages
 # which parameters to use when estimating torques for validation. Set to one of
 # ['base', 'std', 'std_direct', 'urdf
 estimateWith: 'std'
-
-# almost zero threshold for QR, SVD and other things
-min_tol: 0.00001
-# threshold for being within constraints (only used for display)
-min_tol_constr: 0.01
-
-#### excitation
-# initial values
-excitationSimulate: 1
-useDeg: 0                    #encode angles in degrees for excitation (internal and data is always in rad)
-trajectorySpeed: 0.4         #set this as high as possible without violating constraints
-trajectoryPulsation: 1.0
-
-showOptimizationGraph: 1     #display updating graph during trajectory optimization
-useGlobalOptimization: 0     #do global optimization before using local refinement (does not use initial values)
-localOptIterations: 5       #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)

@@ -199,7 +199,7 @@ class TrajectoryOptimizer(object):
             #self.binit[j] = 0.9/ (j+1) * ((1-j%2)*2-1)
             self.ainit[j] = self.binit[j] = self.config['trajectorySpeed']
 
-        self.useScipy = 1
+        self.useScipy = 0
         self.useNLopt = 0
 
     def initGraph(self):
@@ -340,10 +340,8 @@ class TrajectoryOptimizer(object):
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
         fail = 0.0
-        if self.useScipy or self.useNLopt:
-            return f
-        else:
-            return f, g, fail
+        if self.useScipy or self.useNLopt: return f
+        else: return f, g, fail
 
     def testBounds(self, x):
         #test variable bounds

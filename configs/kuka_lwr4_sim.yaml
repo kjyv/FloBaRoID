@@ -1,8 +1,8 @@
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
-start_offset: 400  #how many samples from the beginning of the (first) measurement are skipped
-skip_samples: 2    #how many values to skip before using the next sample
+start_offset: 200  #how many samples from the beginning of the (first) measurement are skipped
+skip_samples: 0    #how many values to skip before using the next sample
 
 # simulate torques from target values, don't use both
 iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading data)
@@ -102,6 +102,7 @@ min_tol_constr: 0.01
 
 #### excitation
 # initial values
+excitationSimulate: 1
 useDeg: 0                    #encode angles in degrees for excitation (internal and data is always in rad)
 trajectorySpeed: 0.4         #set this as high as possible without violating constraints
 trajectoryPulsation: 1.0

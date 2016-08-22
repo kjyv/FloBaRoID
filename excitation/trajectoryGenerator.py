@@ -199,7 +199,7 @@ class TrajectoryOptimizer(object):
             #self.binit[j] = 0.9/ (j+1) * ((1-j%2)*2-1)
             self.ainit[j] = self.binit[j] = self.config['trajectorySpeed']
 
-        self.useScipy = 1
+        self.useScipy = 0
         self.useNLopt = 0
 
         self.last_best_f = 10e10
@@ -419,7 +419,7 @@ class TrajectoryOptimizer(object):
         ## describe optimization problem with pyOpt classes
 
         from pyOpt import Optimization
-        from pyOpt import SLSQP #, COBYLA, CONMIN, PSQP, ALHSO, ALPSO
+        from pyOpt import ALPSO, SLSQP #COBYLA, CONMIN, PSQP, ALHSO
 
         # Instanciate Optimization Problem
         opt_prob = Optimization('Trajectory optimization', self.objfunc)
@@ -448,7 +448,7 @@ class TrajectoryOptimizer(object):
 
         if self.config['useGlobalOptimization']:
             ### using scipy (global-local optimization)
-            if useScipy:
+            if self.useScipy:
                 def printMinima(x, f, accept):
                     print("found local minimum with cond {}. accepted: ".format(f, accept))
                 bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
@@ -539,15 +539,15 @@ class TrajectoryOptimizer(object):
             import nlopt
             n_var = len(opt_prob._variables.values())
             #opt = nlopt.opt(nlopt.GN_ISRES, n_var)
-            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)  #needs explicit gradient approximation
+            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)  #in NLopt, needs explicit gradient approximation
             #opt = nlopt.opt(nlopt.LD_MMA, n_var)
             #opt = nlopt.opt(nlopt.LN_COBYLA, n_var)
-            opt = nlopt.opt(nlopt.LN_BOBYQA, n_var)
 
             #allow constraints for methods that don't support it
-            #opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
+            opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
             #local_opt = nlopt.opt(nlopt.LN_SBPLX, n_var)
-            #opt.set_local_optimizer(local_opt)
+            local_opt = nlopt.opt(nlopt.LN_BOBYQA, n_var)
+            opt.set_local_optimizer(local_opt)
 
             opt.set_min_objective(objfunc_nlopt)
 
@@ -569,7 +569,7 @@ class TrajectoryOptimizer(object):
                     return self.constr[i]['fun'](x)
                 opt.add_inequality_constraint(func)
 
-            opt.set_stopval(20)
+            #opt.set_stopval(20)
             opt.set_maxeval(self.config['maxFun'])
             local_sol_vec = opt.optimize(initial)
             print("finished with objective function value {}".format(opt.last_optimum_value()))

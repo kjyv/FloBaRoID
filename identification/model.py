@@ -90,10 +90,10 @@ class Model(object):
             # (put here so it's only done once for the loaded model)
             self.computeRegressorLinDepsQR()
 
-        def computeRegressors(self, data):
-            """ compute regressors for each time step of the measurement data and stack them vertically,
-                also compute torques for these measurements with the a priori parameters (from URDF)
-            """
+    def computeRegressors(self, data):
+        """ compute regressors for each time step of the measurement data and stack them vertically,
+            also compute torques for these measurements with the a priori parameters (from URDF)
+        """
 
         self.data = data
 

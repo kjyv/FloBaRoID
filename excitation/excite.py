@@ -158,6 +158,7 @@ def postprocess(posis, posis_unfiltered, vels, vels_unfiltered, vels_self,
     np.copyto(torques_unfiltered, torques_orig)
 
 def plot(data=None):
+    fig = plt.figure(1)
     if args.random_colors:
         from random import sample
         from itertools import permutations
@@ -316,6 +317,7 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['accelerations'] = trajectory_data['target_accelerations']
     trajectory_data['torques'] = np.array(trajectory_data['torques'])
     trajectory_data['times'] = np.array(trajectory_data['times'])
+    trajectory_data['measured_frequency'] = freq
 
     data.init_from_data(trajectory_data)
     model.computeRegressors(data)
@@ -338,6 +340,7 @@ def main():
     else:
         print("No excitation method given! Only doing simulation")
         plot(data)
+        saveMeasurements(args.filename, data)
         return
 
     # generate some empty arrays, will be calculated in preprocess()
@@ -365,16 +368,30 @@ def main():
         postprocess(data['Q'], data['Qraw'], data['V'], data['Vraw'], data['Vself'], data['Vdot'],
                     data['Tau'], data['TauRaw'], data['T'], data['measured_frequency'])
 
+    saveMeasurements(args.filename, data)
+
+def saveMeasurements(filename, data):
     # write sample arrays to data file
     # TODO: if possible, save motor currents
-    np.savez(args.filename,
-             positions=data['Q'], positions_raw=data['Qraw'],
-             velocities=data['Vself'], velocities_raw=data['Vraw'],
-             accelerations=data['Vdot'],
-             torques=data['Tau'], torques_raw=data['TauRaw'],
-             target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),
-             target_accelerations=np.deg2rad(data['QddotSent']),
-             times=data['T'], frequency=data['measured_frequency'])
+    if config['exciteMethod']:
+        np.savez(filename,
+                 positions=data['Q'], positions_raw=data['Qraw'],
+                 velocities=data['Vself'], velocities_raw=data['Vraw'],
+                 accelerations=data['Vdot'],
+                 torques=data['Tau'], torques_raw=data['TauRaw'],
+                 target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),
+                 target_accelerations=np.deg2rad(data['QddotSent']),
+                 times=data['T'], frequency=data['measured_frequency'])
+    else:
+        np.savez(filename,
+                 positions=data['positions'], positions_raw=data['positions'],
+                 velocities=data['velocities'], velocities_raw=data['velocities'],
+                 accelerations=data['accelerations'],
+                 torques=data['torques'], torques_raw=data['torques'],
+                 target_positions=np.deg2rad(data['target_positions']), target_velocities=np.deg2rad(data['target_velocities']),
+                 target_accelerations=np.deg2rad(data['target_accelerations']),
+                 times=data['times'], frequency=data['measured_frequency'])
+
     print "saved measurements to {}".format(args.filename)
 
 if __name__ == '__main__':

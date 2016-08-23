@@ -158,14 +158,14 @@ class TrajectoryOptimizer(object):
         ## bounds for parameters
         # number of fourier partial sums (same for all joints atm)
         # (needs to be larger larger dofs? means a lot more variables)
-        self.nf = [3]*self.dofs
+        self.nf = [4]*self.dofs
         #pulsation
         self.wf_min = self.config['trajectoryPulseMin']
         self.wf_max = self.config['trajectoryPulseMax']
         self.wf_init = self.config['trajectoryPulseInit']
         #angle offsets
         self.qmin = self.config['trajectoryAngleMin']
-        self.qmax = self.config['trajectoryAngleMin']
+        self.qmax = self.config['trajectoryAngleMax']
         self.qinit = 0.0
         if not self.config['useDeg']:
             self.qmin = np.deg2rad(self.qmin)
@@ -174,13 +174,15 @@ class TrajectoryOptimizer(object):
         #sin/cos coefficients
         self.amin = self.bmin = self.config['trajectoryCoeffMin']
         self.amax = self.bmax = self.config['trajectoryCoeffMax']
-        self.ainit = np.empty(self.nf[0])
-        self.binit = np.empty(self.nf[0])
-        for j in range(0, self.nf[0]):
-            #fade out and alternate sign
-            #self.ainit[j] = 0.9/ (j+1) * ((j%2)*2-1)
-            #self.binit[j] = 0.9/ (j+1) * ((1-j%2)*2-1)
-            self.ainit[j] = self.binit[j] = self.config['trajectorySpeed']
+        self.ainit = np.empty((self.dofs, self.nf[0]))
+        self.binit = np.empty((self.dofs, self.nf[0]))
+        for i in range(0, self.dofs):
+            for j in range(0, self.nf[0]):
+                #fade out and alternate sign
+                #self.ainit[j] = self.config['trajectorySpeed']/ (j+1) * ((j%2)*2-1)
+                #self.binit[j] = self.config['trajectorySpeed']/ (j+1) * ((1-j%2)*2-1)
+                #self.ainit[i,j] = self.binit[i,j] = self.config['trajectorySpeed']+((self.amax-self.config['trajectorySpeed'])/(self.dofs-i))
+                self.ainit[i,j] = self.binit[i,j] = self.config['trajectorySpeed']
 
         self.useScipy = 0
         self.useNLopt = 0
@@ -315,6 +317,7 @@ class TrajectoryOptimizer(object):
 
         print "\niter #{}: objective function value: {}".format(self.iter_cnt, f)
 
+        f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
         g = [0.0]*self.dofs*5
         # check for joint limits
@@ -330,7 +333,18 @@ class TrajectoryOptimizer(object):
             g[3*self.dofs+n] = np.nanmax(np.abs(trajectory_data['torques'][:, n])) - self.limits[jn[n]]['torque']
             # max joint vel of trajectory should at least be 10% of joint limit
             g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
+
+            # max joint torque should at least be 10% of joint limit
+            #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.05 - np.max(np.abs(trajectory_data['torques'][:, n]))
+            f_tmp = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
+            if f_tmp > 0:
+                f1+=f_tmp
         self.last_g = g
+
+        #add min join torques as second objective
+        if f1 > 0:
+            f+= f1
+            print("added f1: {}".format(f1))
 
         c = self.testConstraints(g)
         if self.config['showOptimizationGraph']:
@@ -347,7 +361,6 @@ class TrajectoryOptimizer(object):
                     #return the constraint functions to get the constraint gradient
                     return self.constr
 
-        #TODO: add minimum max torque
         #TODO: allow some manual constraints for angles (from config)
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
@@ -382,11 +395,14 @@ class TrajectoryOptimizer(object):
                 print "angle limits"
             if True in np.in1d(range(2*self.dofs,3*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "max velocity limits"
-                print np.array(g)[range(2*self.dofs,3*self.dofs)]
+                #print np.array(g)[range(2*self.dofs,3*self.dofs)]
             if True in np.in1d(range(3*self.dofs,4*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "max torque limits"
             if True in np.in1d(range(4*self.dofs,5*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "min velocity limits"
+            #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
+            #    print "min torque limits"
+            #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
         return res
 
     def testParams(self, **kwargs):
@@ -403,7 +419,7 @@ class TrajectoryOptimizer(object):
         ## describe optimization problem with pyOpt classes
 
         from pyOpt import Optimization
-        from pyOpt import ALPSO, SLSQP, NSGA2 #COBYLA, CONMIN, PSQP, ALHSO
+        from pyOpt import ALPSO, SLSQP
 
         # Instanciate Optimization Problem
         opt_prob = Optimization('Trajectory optimization', self.objfunc)
@@ -419,10 +435,10 @@ class TrajectoryOptimizer(object):
         # a, b - sin/cos params
         for i in range(self.dofs):
             for j in range(self.nf[0]):
-                opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=self.ainit[j], lower=self.amin, upper=self.amax)
+                opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=self.ainit[i][j], lower=self.amin, upper=self.amax)
         for i in range(self.dofs):
             for j in range(self.nf[0]):
-                opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=self.binit[j], lower=self.bmin, upper=self.bmax)
+                opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=self.binit[i][j], lower=self.bmin, upper=self.bmax)
 
         # add constraint vars (constraint functions are in obfunc)
         opt_prob.addConGroup('g', self.dofs*5, 'i')
@@ -431,57 +447,24 @@ class TrajectoryOptimizer(object):
         initial = [v.value for v in opt_prob._variables.values()]
 
         if self.config['useGlobalOptimization']:
-            ### using scipy (global-local optimization)
-            if self.useScipy:
-                def printMinima(x, f, accept):
-                    print("found local minimum with cond {}. accepted: ".format(f, accept))
-                bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
-                np.random.seed(1)
-                global_sol = sp.optimize.basinhopping(self.objfunc, initial, disp=True,
-                                                      accept_test=self.testParams,
-                                                      callback=printMinima,
-                                                      niter=100, #niter_success=10,
-                                                      T=1.0,
-                                                      minimizer_kwargs={
-                                                          'bounds': bounds,
-                                                          'constraints': self.constr,
-                                                          'method': 'COBYLA',
-                                                          'options': {'rhobeg': 0.1, 'maxiter': 50,
-                                                                      'disp':True }
-                                                      }
-                                                     )
-                print("basin-hopping solution found:")
-                print global_sol.message
-                print global_sol.x
-            else:
-                ### optimize using pyOpt (global)
-                opt = ALPSO()  #particle swarm
-                opt.setOption('stopCriteria', 0)
-                opt.setOption('maxInnerIter', 3)
-                opt.setOption('maxOuterIter', 3)
-                opt.setOption('printInnerIters', 0)
-                opt.setOption('printOuterIters', 1)
-                opt.setOption('SwarmSize', 40)
-                opt.setOption('xinit', 1)
+            ### optimize using pyOpt (global)
+            opt = ALPSO()  #particle swarm
+            opt.setOption('stopCriteria', 0)
+            opt.setOption('maxInnerIter', 3)
+            opt.setOption('maxOuterIter', 3)
+            opt.setOption('printInnerIters', 0)
+            opt.setOption('printOuterIters', 1)
+            opt.setOption('SwarmSize', 50)
+            opt.setOption('xinit', 1)
+            #TODO: how to set absolute max number of iterations?
 
-#                opt = ALHSO()   #harmony search
-#                opt.setOption('maxoutiter', 5)
-#                opt.setOption('maxinniter', 3)
-#                opt.setOption('stopcriteria', 1)
-#                opt.setOption('stopiters', 3)
-#                opt.setOption('prtinniter', 0)
-#                opt.setOption('prtoutiter', 1)
-#                opt.setOption('xinit', 1)
-
-#                 opt = NSGA2()
-
-                # run fist (global) optimization
-                try:
-                    #reuse history
-                    opt(opt_prob, store_hst=False, hot_start=True, xstart=initial)
-                except NameError:
-                    opt(opt_prob, store_hst=False, xstart=initial)
-                print opt_prob.solution(0)
+            # run fist (global) optimization
+            try:
+                #reuse history
+                opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
+            except NameError:
+                opt(opt_prob, store_hst=False) #, xstart=initial)
+            print opt_prob.solution(0)
 
         if self.useScipy:
             def printIter(x):
@@ -498,26 +481,7 @@ class TrajectoryOptimizer(object):
             print local_sol.message
             print local_sol.x
 
-            sol_wf = local_sol.x[0]
-
-            sol_q = list()
-            for i in range(self.dofs):
-                sol_q.append(local_sol.x[1+i])
-
-            sol_a = list()
-            sol_b = list()
-            for i in range(self.dofs):
-                a_series = list()
-                for j in range(self.nf[0]):
-                    a_series.append(local_sol.x[1+self.dofs+i+j])
-                sol_a.append(a_series)
-            for i in range(self.dofs):
-                b_series = list()
-                for j in range(self.nf[0]):
-                    b_series.append(local_sol.x[1+self.dofs+self.nf[0]*self.dofs+i+j])
-                sol_b.append(b_series)
             local_sol_vec = local_sol.x
-
         elif self.useNLopt:
             def objfunc_nlopt(x, grad):
                 if grad.size > 0:
@@ -566,11 +530,7 @@ class TrajectoryOptimizer(object):
 
             # after using global optimization, get more exact solution with
             # gradient based method init optimizer (only local)
-            use_parallel = 0
-            if use_parallel:
-                opt2 = SLSQP(pll_type='POA')   #sequential least squares
-            else:
-                opt2 = SLSQP()   #sequential least squares
+            opt2 = SLSQP()   #sequential least squares
             opt2.setOption('MAXIT', self.config['localOptIterations'])
             if self.config['verbose']:
                 opt2.setOption('IPRINT', 0)
@@ -592,11 +552,14 @@ class TrajectoryOptimizer(object):
                     for i in range(len(opt_prob._variables)):
                         opt_prob._variables[i].value = opt_prob.solution(0).getVar(i).value
 
-            try:
-                #reuse history
-                opt2(opt_prob, store_hst=False, hot_start=True, sens_step=0.1)
-            except NameError:
                 opt2(opt_prob, store_hst=False, sens_step=0.1)
+            else:
+                try:
+                    #reuse history
+                    opt2(opt_prob, store_hst=True, hot_start=True, sens_step=0.1)
+                except NameError:
+                    opt2(opt_prob, store_hst=True, sens_step=0.1)
+
             local_sol = opt_prob.solution(0)
             print local_sol
             local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])

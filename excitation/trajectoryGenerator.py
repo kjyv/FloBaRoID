@@ -21,23 +21,6 @@ class TrajectoryGenerator(object):
         self.use_deg = use_deg
         self.w_f_global = 1.0
 
-        #walkman left arm
-        #a = [[-0.2], [0.5], [-0.8], [0.5], [1], [-0.7], [-0.8], [-0.8]]
-        #b = [[0.9], [0.9], [1.5], [0.8], [1], [1.3], [0.8], [0.8]]
-        #q = [10, 50, -80, -25, 50, 0, -15, -15]
-        #kuka lwr4+
-        #nf = [1,1,1,1,1,1,1]
-        #a = [[-0.7], [0.4], [-1.2], [-0.7], [0.8], [-1.3], [-0.9], [1.3]]
-        #b = [[0.7], [0.4], [1.2], [0.7], [0.8], [1.3], [0.9], [0.3]]
-        #q = [0, 0, 0, 0, 0, 0, 0, 0]
-        #a = [[-0.7], [0.8], [-1.2], [-0.7], [0.8], [1.0], [-0.9], [1.3]]
-        #b = [[0.7], [0.8], [1.2], [0.7], [0.8], [-1.0], [0.9], [0.3]]
-        #q = [0, 0, 1, 1, 0, 0, 0, 0]
-        #a = [[-0.0], [1.0], [-1.2], [-0.7], [0.8], [-1.3], [-1.0], [1.3]]
-        #b = [[1.0], [0.0], [1.2], [0.7], [0.8], [1.3], [1.0], [1.3]]
-        #q = [-1.0, -1.0, 0, 0, 0, 0, -1, 0]
-
-
     def initWithRandomParams(self):
         # init with random params
         a = [0]*self.dofs
@@ -207,7 +190,7 @@ class TrajectoryOptimizer(object):
 
     def initGraph(self):
         # init graphing of optimization
-        self.fig = plt.figure()
+        self.fig = plt.figure(0)
         self.ax1 = self.fig.add_subplot(1,1,1)
         plt.ion()
         self.xar = []
@@ -237,7 +220,7 @@ class TrajectoryOptimizer(object):
                         #need to draw one point more to properly connect to next segment
                         if last_i == 0: end = i+1
                         else: end = i+2
-                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color)
+                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color, color='0.75')
                         last_i = i
                 else:
                     #draw line when state has changed
@@ -246,7 +229,7 @@ class TrajectoryOptimizer(object):
                     else: color = 'r'
                     if last_i == 0: end = i+1
                     else: end = i+2
-                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color)
+                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color, color='0.75')
                     last_i = i
                 i+=1
 
@@ -478,7 +461,7 @@ class TrajectoryOptimizer(object):
                 opt.setOption('maxOuterIter', 3)
                 opt.setOption('printInnerIters', 0)
                 opt.setOption('printOuterIters', 1)
-                opt.setOption('SwarmSize', 30)
+                opt.setOption('SwarmSize', 40)
                 opt.setOption('xinit', 1)
 
 #                opt = ALHSO()   #harmony search

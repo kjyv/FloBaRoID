@@ -339,8 +339,8 @@ def main():
         ros_moveit.main(config, trajectory, data, move_group="full_lwr")
     else:
         print("No excitation method given! Only doing simulation")
-        plot(data)
         saveMeasurements(args.filename, data)
+        plot(data)
         return
 
     # generate some empty arrays, will be calculated in preprocess()

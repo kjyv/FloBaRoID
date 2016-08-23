@@ -7,18 +7,18 @@ useDeg: 0                    #encode angles in degrees for excitation (internal 
 min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
 
 # initial values to start optimization from
-trajectorySpeed: 0.4           #set this as high as possible without violating constraints (see output after start)
+trajectorySpeed: 0.3           #set this as high as possible without violating constraints (see output after start)
 trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.5
-trajectoryCoeffMin: -1.0       #determines in which range the chosen params have to be (smaller=lower vel)
-trajectoryCoeffMax:  1.0
-trajectoryAngleMin: -45.0      #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMin:  45.0
+trajectoryCoeffMin: -0.5       #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMax:  0.5
+trajectoryAngleMin: -25.0      #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMax:  25.0
 
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
-localOptIterations: 4          #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)
+localOptIterations: 5          #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)
 maxFun: 250                    #limit objective function evaluations to this value
 
 #### identification

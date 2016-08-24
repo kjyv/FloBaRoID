@@ -272,33 +272,28 @@ class Model(object):
             import random
 
             if not n_samples:
-                n_samples = self.N_DOFS * 1000
+                n_samples = self.N_DOFS * 5000
             R = np.array((self.N_OUT, self.num_params))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
+            limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
+            if len(limits) > 0:
+                jn = self.jointNames
+                q_lim_pos = [limits[jn[n]]['upper'] for n in range(self.N_DOFS)]
+                q_lim_neg = [limits[jn[n]]['lower'] for n in range(self.N_DOFS)]
+                dq_lim = [limits[jn[n]]['velocity'] for n in range(self.N_DOFS)]
+                q_range = (np.array(q_lim_pos) - np.array(q_lim_neg)).tolist()
             for i in range(0, n_samples):
                 # set random system state
-
-                # TODO: restrict to joint limits from urdf (these are kuka lwr4)
-                """
-                q_lim_pos = np.array([ 2.96705972839,  2.09439510239,  2.96705972839,  2.09439510239,
-                                       2.96705972839,  2.09439510239,  2.96705972839])
-                #q_lim_pos.fill(np.pi)
-                q_lim_neg = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239,
-                                      -2.96705972839, -2.09439510239, -2.96705972839])
-                #q_lim_neg.fill(np.pi)
-                dq_lim = np.array([1.91986217719, 1.91986217719, 2.23402144255, 2.23402144255,
-                                   3.56047167407, 3.21140582367, 3.21140582367])
-                #dq_lim.fill(np.pi)
-
-                q = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*q_lim_pos).tolist())
-                dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
-                ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
-                """
-
-                q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                if len(limits) > 0:
+                    rnd = np.random.rand(self.N_DOFS) #0..1
+                    q = iDynTree.VectorDynSize.fromPyList((q_lim_neg+q_range*rnd).tolist())
+                    dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
+                    ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
+                else:
+                    q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
                 # TODO: handle for fixed dofs (set vel and acc to zero)
 

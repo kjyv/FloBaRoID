@@ -2,7 +2,7 @@
 #### excitation
 
 excitationSimulate: 1        # simulate torques instead of using measurements (use e.g. with Gazebo)
-exciteMethod: 'ros'          # currently 'yarp', 'ros' or null
+exciteMethod: null 'ros'          # currently 'yarp', 'ros' or null
 useDeg: 0                    # encode angles in degrees for excitation (internal and data is always in rad)
 min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
 
@@ -34,6 +34,9 @@ localOptIterations: 1          #how many optimizer iterations to use. this is no
 maxFun: 250                    #limit objective function evaluations to this value (not used currently)
 
 #### identification
+
+# fixed or floating-base dynamics
+fixed_base: 1
 
 # simulate torques from target values, don't use both
 iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)

@@ -458,11 +458,11 @@ class TrajectoryOptimizer(object):
             ### optimize using pyOpt (global)
             opt = ALPSO()  #augmented lagrange particle swarm optimization
             opt.setOption('stopCriteria', 0)
-            opt.setOption('maxInnerIter', 2)
-            opt.setOption('maxOuterIter', 2)
+            opt.setOption('maxInnerIter', 3)
+            opt.setOption('maxOuterIter', self.config['globalOptIterations'])
             opt.setOption('printInnerIters', 1)
             opt.setOption('printOuterIters', 1)
-            opt.setOption('SwarmSize', 10)
+            opt.setOption('SwarmSize', 30)
             opt.setOption('xinit', 1)
             #TODO: how to set max number of function calls?
             # no. func calls = (SwarmSize * inner) * outer + SwarmSize
@@ -543,15 +543,8 @@ class TrajectoryOptimizer(object):
             opt2.setOption('MAXIT', self.config['localOptIterations'])
             if self.config['verbose']:
                 opt2.setOption('IPRINT', 0)
-            # amount of function calls depends on amount of variables and iterations to approximate gradient
-            # iterations are probably steps along the gradient
-
-            #opt2 = PSQP()
-            #opt2.setOption('MIT', 2)
-
-            #opt2 = COBYLA()
-            #opt2.setOption('MAXFUN', self.config['maxFun'])
-            #opt2.setOption('RHOBEG', 0.1)
+            # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
+            # iterations are probably steps along the gradient. How to get proper no. of func calls?
 
             if self.config['useGlobalOptimization']:
                 if self.last_best_sol is not None:

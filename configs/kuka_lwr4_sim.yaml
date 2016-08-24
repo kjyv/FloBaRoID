@@ -6,8 +6,8 @@ exciteMethod: 'ros'          # currently 'yarp', 'ros' or null
 useDeg: 0                    # encode angles in degrees for excitation (internal and data is always in rad)
 min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
 
-# initial values to start optimization from
-trajectorySpeed: 0.3           #set this as high as possible without violating constraints (see output after start)
+# initial values to start optimization from (if using global opt not really important)
+trajectorySpeed: 0.4           #set this as high as possible without violating constraints (see output after start)
 trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.5
@@ -20,7 +20,7 @@ trajectoryAngleMax:  25.0
 # should be used (or leave completely empty)
 ovr_pos_limit:
     - null
-    - [-45.0, 45.0]
+    - [-60.0, 60.0]
     - null
     - null
     - null
@@ -29,7 +29,8 @@ ovr_pos_limit:
 
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
-localOptIterations: 5          #how many optimizer iterations to use. this is not necessarily equal to function calls (~20-50 times of this)
+globalOptIterations: 5
+localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                    #limit objective function evaluations to this value (not used currently)
 
 #### identification
@@ -45,8 +46,8 @@ min_tol: 0.00001
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
-start_offset: 200  #how many samples from the beginning of the (first) measurement are skipped
-skip_samples: 2    #how many values to skip before using the next sample
+start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
+skip_samples: 0    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0

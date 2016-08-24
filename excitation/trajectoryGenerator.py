@@ -191,7 +191,7 @@ class TrajectoryOptimizer(object):
         self.last_best_sol = None
 
     def initGraph(self):
-        # init graphing of optimization
+        # init graphing of objective function value
         self.fig = plt.figure(0)
         self.ax1 = self.fig.add_subplot(1,1,1)
         plt.ion()
@@ -209,6 +209,7 @@ class TrajectoryOptimizer(object):
             self.constr = [{'type':'ineq', 'fun': lambda x: -1} for i in range(self.dofs*5)]
 
     def updateGraph(self):
+        # draw all optimization steps so far (yes, no updating)
         if self.iter_cnt % self.updateGraphEveryVals == 0:
             # go through list of constraint states and draw next line with other color if changed
             i = last_i = 0
@@ -239,6 +240,7 @@ class TrajectoryOptimizer(object):
         plt.pause(0.01)
 
     def vecToParams(self, x):
+        # convert vector of all solution variables to separate parameter variables
         wf = x[0]
         q = x[1:self.dofs+1]
         ab_len = self.dofs*self.nf[0]
@@ -250,8 +252,7 @@ class TrajectoryOptimizer(object):
         """Approximate the Jacobian matrix of callable function func
 
            * Parameters
-             x       - The state vector at which the Jacobian matrix is
-    desired
+             x       - The state vector at which the Jacobian matrix is desired
              func    - A vector-valued function of the form f(x,*args)
              epsilon - The peturbation used to determine the partial derivatives
              *args   - Additional arguments passed to func
@@ -274,7 +275,7 @@ class TrajectoryOptimizer(object):
            dx[i] = 0.0
         return jac.transpose()
 
-    def objfunc(self, x, constr=None):
+    def objective_func(self, x, constr=None):
         self.iter_cnt += 1
         wf, q, a, b = self.vecToParams(x)
 
@@ -284,7 +285,7 @@ class TrajectoryOptimizer(object):
             print 'b {}'.format(np.round(b,5).tolist())
             print 'q {}'.format(np.round(q,5).tolist())
 
-        #wf out of bounds, skip call
+        #input vars out of bounds, skip call
         if not self.testBounds(x):
             # give penalty obj value for out of bounds (because we shouldn't get here)
             # TODO: for some algorithms (with augemented lagrangian added bounds) this should
@@ -326,7 +327,7 @@ class TrajectoryOptimizer(object):
             # joint pos lower
             g[n] = self.limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
             # joint pos upper
-            g[self.dofs+n] = np.min(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']
+            g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']
             # max joint vel
             g[2*self.dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - self.limits[jn[n]]['velocity']
             # max torques
@@ -334,8 +335,8 @@ class TrajectoryOptimizer(object):
             # max joint vel of trajectory should at least be 10% of joint limit
             g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
 
-            # max joint torque should at least be 10% of joint limit
-            #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.05 - np.max(np.abs(trajectory_data['torques'][:, n]))
+            # highest joint torque should at least be 10% of joint limit
+            #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
             f_tmp = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
             if f_tmp > 0:
                 f1+=f_tmp
@@ -356,7 +357,7 @@ class TrajectoryOptimizer(object):
         if self.useScipy or self.useNLopt:
             for i in range(len(g)):
                 #update the constraint function static value (last evaluation)
-                self.constr[i]['fun'] = lambda x: self.objfunc(x, constr=True)[i]['fun'](x)
+                self.constr[i]['fun'] = lambda x: self.objective_func(x, constr=True)[i]['fun'](x)
                 if constr:
                     #return the constraint functions to get the constraint gradient
                     return self.constr
@@ -422,7 +423,7 @@ class TrajectoryOptimizer(object):
         from pyOpt import ALPSO, SLSQP
 
         # Instanciate Optimization Problem
-        opt_prob = Optimization('Trajectory optimization', self.objfunc)
+        opt_prob = Optimization('Trajectory optimization', self.objective_func)
         opt_prob.addObj('f')
 
         # add variables, define bounds
@@ -470,7 +471,7 @@ class TrajectoryOptimizer(object):
             def printIter(x):
                 print("iteration: found sol {}: ".format(x))
             bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
-            local_sol = sp.optimize.minimize(self.objfunc, initial,
+            local_sol = sp.optimize.minimize(self.objective_func, initial,
                                                   bounds = bounds,
                                                   constraints = self.constr,
                                                   callback = printIter,
@@ -486,8 +487,8 @@ class TrajectoryOptimizer(object):
             def objfunc_nlopt(x, grad):
                 if grad.size > 0:
                     print('getting gradient of obj func')
-                    grad[:] = self.approx_jacobian(self.objfunc, x, 0.1)
-                return self.objfunc(x)
+                    grad[:] = self.approx_jacobian(self.objective_func, x, 0.1)
+                return self.objective_func(x)
             import nlopt
             n_var = len(opt_prob._variables.values())
             #opt = nlopt.opt(nlopt.GN_ISRES, n_var)
@@ -517,8 +518,8 @@ class TrajectoryOptimizer(object):
                         # cached values to generate the constraint gradients.
                         # the points (x) need to be an index for the dicts, when to throw away?
                         print('getting gradient of constr')
-                        grad[:] = self.approx_jacobian(lambda xx: self.objfunc(xx, constr=True)[i]['fun'](xx), x, 0.1)
-                    return self.objfunc(x, constr=True)[i]['fun'](x)
+                        grad[:] = self.approx_jacobian(lambda xx: self.objective_func(xx, constr=True)[i]['fun'](xx), x, 0.1)
+                    return self.objective_func(x, constr=True)[i]['fun'](x)
                 opt.add_inequality_constraint(func)
 
             #opt.set_stopval(20)
@@ -572,7 +573,7 @@ class TrajectoryOptimizer(object):
 
         print("testing final solution")
         self.iter_cnt = 0
-        self.objfunc(local_sol_vec)
+        self.objective_func(local_sol_vec)
         print("\n")
 
         self.trajectory.initWithParams(sol_a, sol_b, sol_q, self.nf, sol_wf)

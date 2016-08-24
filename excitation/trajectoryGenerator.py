@@ -9,6 +9,7 @@ from distutils.version import LooseVersion, StrictVersion
 if LooseVersion(matplotlib.__version__) >= StrictVersion('1.5'):
     plt.style.use('seaborn-pastel')
 
+from IPython import embed
 
 class TrajectoryGenerator(object):
     ''' pulsating trajectory generator for one joint using fourier series from
@@ -325,9 +326,15 @@ class TrajectoryOptimizer(object):
         jn = self.config['jointNames']
         for n in range(self.dofs):
             # joint pos lower
-            g[n] = self.limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
+            if len(self.config['ovr_pos_limit'])>=n and self.config['ovr_pos_limit'][n]:
+                g[n] = np.deg2rad(self.config['ovr_pos_limit'][n][0]) - np.min(trajectory_data['positions'][:, n])
+            else:
+                g[n] = self.limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
             # joint pos upper
-            g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']
+            if len(self.config['ovr_pos_limit'])>=n and self.config['ovr_pos_limit'][n]:
+                g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - np.deg2rad(self.config['ovr_pos_limit'][n][1])
+            else:
+                g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']
             # max joint vel
             g[2*self.dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - self.limits[jn[n]]['velocity']
             # max torques
@@ -449,22 +456,23 @@ class TrajectoryOptimizer(object):
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
-            opt = ALPSO()  #particle swarm
+            opt = ALPSO()  #augmented lagrange particle swarm optimization
             opt.setOption('stopCriteria', 0)
-            opt.setOption('maxInnerIter', 3)
-            opt.setOption('maxOuterIter', 3)
-            opt.setOption('printInnerIters', 0)
+            opt.setOption('maxInnerIter', 2)
+            opt.setOption('maxOuterIter', 2)
+            opt.setOption('printInnerIters', 1)
             opt.setOption('printOuterIters', 1)
-            opt.setOption('SwarmSize', 50)
+            opt.setOption('SwarmSize', 10)
             opt.setOption('xinit', 1)
-            #TODO: how to set absolute max number of iterations?
+            #TODO: how to set max number of function calls?
+            # no. func calls = (SwarmSize * inner) * outer + SwarmSize
 
             # run fist (global) optimization
             try:
                 #reuse history
-                opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
+                opt(opt_prob, store_hst=False, hot_start=True, xstart=initial)
             except NameError:
-                opt(opt_prob, store_hst=False) #, xstart=initial)
+                opt(opt_prob, store_hst=False, xstart=initial)
             print opt_prob.solution(0)
 
         if self.useScipy:
@@ -535,6 +543,8 @@ class TrajectoryOptimizer(object):
             opt2.setOption('MAXIT', self.config['localOptIterations'])
             if self.config['verbose']:
                 opt2.setOption('IPRINT', 0)
+            # amount of function calls depends on amount of variables and iterations to approximate gradient
+            # iterations are probably steps along the gradient
 
             #opt2 = PSQP()
             #opt2.setOption('MIT', 2)
@@ -562,12 +572,14 @@ class TrajectoryOptimizer(object):
                     opt2(opt_prob, store_hst=True, sens_step=0.1)
 
             local_sol = opt_prob.solution(0)
-            print local_sol
+            if not self.config['useGlobalOptimization']:
+                print local_sol
             local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
 
         if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol
             print "using last best constrained solution instead of given solver solution."
+            embed()
 
         sol_wf, sol_q, sol_a, sol_b = self.vecToParams(local_sol_vec)
 

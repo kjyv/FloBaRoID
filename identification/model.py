@@ -74,9 +74,9 @@ class Model(object):
             if opt['iDynSimulate'] or opt['useAPriori']:
                 self.dynComp = iDynTree.DynamicsComputations();
                 self.dynComp.loadRobotModelFromFile(self.urdf_file);
-                self.gravity = iDynTree.SpatialAcc();
-                self.gravity.zero()
-                self.gravity.setVal(2, -9.81);
+                self.world_gravity = iDynTree.SpatialAcc();
+                self.world_gravity.zero()
+                self.world_gravity.setVal(2, -9.81);
 
             # get model parameters
             xStdModel = iDynTree.VectorDynSize(self.num_params)
@@ -127,12 +127,31 @@ class Model(object):
 
                 if self.opt['iDynSimulate'] or self.opt['useAPriori']:
                     # calc torques with iDynTree dynamicsComputation class
-                    self.dynComp.setRobotState(q, dq, ddq, self.gravity)
+                    if self.opt['fixed_base']:
+                        self.dynComp.setRobotState(q, dq, ddq, self.world_gravity)
+                        baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base
+                    else:
+                        # the homogeneous transformation that transforms position vectors expressed
+                        # in the base reference frame in position frames expressed in the world
+                        # reference frame, i.e. pos_world = world_T_base*pos_base
+                        world_T_base = self.dynComp.getWorldTransform(0)  #TODO: check this is right
 
-                    torques = iDynTree.VectorDynSize(self.N_DOFS)
-                    baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
+                        #TODO: fill in these values
+                        # The twist (linear/angular velocity) of the base, expressed in the world
+                        # orientation frame and with respect to the base origin
+                        base_velocity = iDynTree.Twist()
+
+                        # The 6d classical acceleration (linear/angular acceleration) of the base
+                        # expressed in the world orientation frame and with respect to the base
+                        # origin (not spatial acc)
+                        base_acceleration = iDynTree.ClassicalAcc()
+                        self.dynComp.setRobotState(q, dq, ddq, world_T_base,
+                                                   base_velocity, base_acceleration,
+                                                   self.world_gravity)
+                        baseReactionForce = iDynTree.Wrench()   # TODO: use e.g. imu data
 
                     # compute inverse dynamics with idyntree (simulate)
+                    torques = iDynTree.VectorDynSize(self.N_DOFS)
                     self.dynComp.inverseDynamics(torques, baseReactionForce)
 
                     if self.opt['useAPriori']:
@@ -157,8 +176,12 @@ class Model(object):
             start = self.N_DOFS*row
             # get numerical regressor (std)
             with helpers.Timer() as t:
-                self.generator.setRobotState(q,dq,ddq, self.gravity_twist)  # fixed base
-                #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+                if self.opt['fixed_base']:
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
+                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+                else:
+                    #TODO: get base_acceleration
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
 
                 # get (standard) regressor
                 regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
@@ -243,7 +266,7 @@ class Model(object):
             print('Getting regressors took %.03f sec.' % num_time)
 
 
-    def getRandomRegressor(self, fixed_base = True, n_samples=None):
+    def getRandomRegressor(self, n_samples=None):
         """
         Utility function for generating a random regressor for numerical base parameter calculation
         Given n_samples, the Y (n_samples*getNrOfOutputs() X getNrOfParameters() ) regressor is
@@ -296,13 +319,19 @@ class Model(object):
                     ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
                 # TODO: handle for fixed dofs (set vel and acc to zero)
-
-                if fixed_base:
+                if self.opt['fixed_base']:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
                 else:
                     base_acceleration = iDynTree.Twist()
                     base_acceleration.zero()
-                    #TODO: base_acceleration = random values...
+                    av = base_acceleration.getAngularVec3()
+                    av.setVal(0, np.pi*np.random.rand())
+                    av.setVal(1, np.pi*np.random.rand())
+                    av.setVal(2, np.pi*np.random.rand())
+                    lv = base_acceleration.getLinearVec3()
+                    lv.setVal(0, np.pi*np.random.rand())
+                    lv.setVal(1, np.pi*np.random.rand())
+                    lv.setVal(2, np.pi*np.random.rand())
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
 
                 # get regressor
@@ -436,6 +465,7 @@ class Model(object):
         with helpers.Timer() as t:
             # get subspace basis (for projection to base regressor/parameters)
             if False:
+                # using iDynTree
                 subspaceBasis = iDynTree.MatrixDynSize()
                 if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
                 # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):

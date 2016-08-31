@@ -40,10 +40,17 @@ class TrajectoryGenerator(object):
         #print b
         #print q
 
+        self.a = a
+        self.b = b
+        self.q = q
+        self.nf = nf
+        self.wf = wf
+
         self.oscillators = list()
         for i in range(0, self.dofs):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
-                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = self.use_deg
+                                                         b = np.array(b[i]), q0 = q[i], nf = nf[i],
+                                                         use_deg = self.use_deg
                                                         ))
 
     def initWithParams(self, a, b, q, nf, wf=None):
@@ -58,12 +65,16 @@ class TrajectoryGenerator(object):
         if len(nf) != self.dofs or len(q) != self.dofs:
             raise Exception("Need DOFs many values for nf and q!")
 
-        if wf:
-            self.w_f_global = wf
-
         #for i in nf:
         #    if not ( len(a) == i and len(b) == i):
         #        raise Exception("Need nf many values in each parameter array value!")
+
+        self.a = a
+        self.b = b
+        self.q = q
+        self.nf = nf
+        if wf:
+            self.w_f_global = wf
 
         self.oscillators = list()
         for i in range(0, self.dofs):
@@ -189,6 +200,7 @@ class TrajectoryOptimizer(object):
         self.useNLopt = 0
 
         self.last_best_f = 10e10
+        self.last_best_f_f1 = 0
         self.last_best_sol = None
 
     def initGraph(self):
@@ -317,7 +329,9 @@ class TrajectoryOptimizer(object):
         #xBaseModel = np.dot(model.Binv, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
 
-        print "\niter #{}: objective function value: {}".format(self.iter_cnt, f)
+        print "\niter #{}/{}: objective function value: {} (last best: {} + {})".format(self.iter_cnt,
+                                                                                   self.iter_max,
+                                                                                   f, self.last_best_f-self.last_best_f_f1, self.last_best_f_f1)
 
         f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
@@ -352,7 +366,7 @@ class TrajectoryOptimizer(object):
         #add min join torques as second objective
         if f1 > 0:
             f+= f1
-            print("added f1: {}".format(f1))
+            print("added cost: {}".format(f1))
 
         c = self.testConstraints(g)
         if self.config['showOptimizationGraph']:
@@ -375,6 +389,7 @@ class TrajectoryOptimizer(object):
         #keep last best solution (some solvers don't keep it)
         if c and f < self.last_best_f:
             self.last_best_f = f
+            self.last_best_f_f1 = f1
             self.last_best_sol = x
 
         fail = 0.0
@@ -464,8 +479,9 @@ class TrajectoryOptimizer(object):
             opt.setOption('printOuterIters', 1)
             opt.setOption('SwarmSize', 30)
             opt.setOption('xinit', 1)
-            #TODO: how to set max number of function calls?
+            #TODO: how to properly limit max number of function calls?
             # no. func calls = (SwarmSize * inner) * outer + SwarmSize
+            self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
 
             # run fist (global) optimization
             try:
@@ -545,6 +561,7 @@ class TrajectoryOptimizer(object):
                 opt2.setOption('IPRINT', 0)
             # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
             # iterations are probably steps along the gradient. How to get proper no. of func calls?
+            self.iter_max = "(unknown)"
 
             if self.config['useGlobalOptimization']:
                 if self.last_best_sol is not None:
@@ -572,7 +589,6 @@ class TrajectoryOptimizer(object):
         if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol
             print "using last best constrained solution instead of given solver solution."
-            embed()
 
         sol_wf, sol_q, sol_a, sol_b = self.vecToParams(local_sol_vec)
 

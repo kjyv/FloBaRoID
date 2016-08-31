@@ -5,6 +5,7 @@ excitationSimulate: 1        # simulate torques instead of using measurements (u
 exciteMethod: null 'ros'          # currently 'yarp', 'ros' or null
 useDeg: 0                    # encode angles in degrees for excitation (internal and data is always in rad)
 min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
+optimizeTrajectory: 1        # find new parameters with optimization or load previous params from file (if no file exists, use random)
 
 # initial values to start optimization from (if using global opt not really important)
 trajectorySpeed: 0.4           #set this as high as possible without violating constraints (see output after start)

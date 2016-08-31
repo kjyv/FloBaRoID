@@ -327,8 +327,20 @@ def simulateTrajectory(config, trajectory, model=None):
     return trajectory_data, model
 
 def main():
-    trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
-    trajectory = trajectoryOptimizer.optimizeTrajectory()
+    traj_file = config['model'] + '.trajectory.npz'
+    if config['optimizeTrajectory']:
+        trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
+        trajectory = trajectoryOptimizer.optimizeTrajectory()
+        np.savez(traj_file, use_deg=trajectory.use_deg, a=trajectory.a, b=trajectory.b,
+                 q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
+    else:
+        try:
+            tf = np.load(traj_file)
+            trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=tf['use_deg'])
+            trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
+        except IOError:
+            trajectory = TrajectoryGenerator(config['N_DOFS']).initWithRandomParams()
+
     data, model = simulateTrajectory(config, trajectory)
 
     if config['exciteMethod'] == 'yarp':
@@ -340,7 +352,6 @@ def main():
     else:
         print("No excitation method given! Only doing simulation")
         saveMeasurements(args.filename, data)
-        plot(data)
         return
 
     # generate some empty arrays, will be calculated in preprocess()

@@ -2,25 +2,25 @@
 #### excitation
 
 excitationSimulate: 1        # simulate torques instead of using measurements (use e.g. with Gazebo)
-exciteMethod: null #'ros'          # currently 'yarp', 'ros' or null
-useDeg: 0                    # encode angles in degrees for excitation (internal and data is always in rad)
+exciteMethod: null #'yarp'         # currently 'yarp', 'ros' or null
+useDeg: 1                    # encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 1        # find new parameters with optimization or load previous params from file (if no file exists, use random)
-showOptimizationGraph: 1       #display updating graph during trajectory optimization
-useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
+optimizeTrajectory: 0        # find new parameters with optimization or load previous params from file (if no file exists, use random)
+showOptimizationGraph: 1     #display updating graph during trajectory optimization
+useGlobalOptimization: 1     #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 5
-localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
-maxFun: 250                    #limit objective function evaluations to this value (not used currently)
+localOptIterations: 1        #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+maxFun: 250                  #limit objective function evaluations to this value (not used currently)
 min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
-trajectorySpeed: 0.4           #set this as high as possible without violating constraints (see output after start)
-trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
+trajectorySpeed: 0.4         #set this as high as possible without violating constraints (see output after start)
+trajectoryPulseInit: 0.75    #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.5
-trajectoryCoeffMin: -0.5       #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMin: -0.5     #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
-trajectoryAngleMin: -25.0      #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMin: -25.0    #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax:  25.0
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
@@ -40,7 +40,7 @@ ovr_pos_limit:
 fixed_base: 1
 
 # simulate torques from target values, don't use both
-iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+iDynSimulate: 1 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things

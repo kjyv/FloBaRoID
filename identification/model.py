@@ -1,3 +1,4 @@
+import sys
 import math
 import numpy as np
 import numpy.linalg as la
@@ -15,7 +16,9 @@ class Model(object):
 
         # create generator instance and load model
         self.generator = iDynTree.DynamicsRegressorGenerator()
-        self.generator.loadRobotAndSensorsModelFromFile(urdf_file)
+        ret = self.generator.loadRobotAndSensorsModelFromFile(urdf_file)
+        if not ret:
+            sys.exit()
 
         # load also with new model class for some functions
         self.idyn_model = iDynTree.Model()
@@ -74,6 +77,7 @@ class Model(object):
             if opt['iDynSimulate'] or opt['useAPriori']:
                 self.dynComp = iDynTree.DynamicsComputations();
                 self.dynComp.loadRobotModelFromFile(self.urdf_file);
+
                 self.world_gravity = iDynTree.SpatialAcc();
                 self.world_gravity.zero()
                 self.world_gravity.setVal(2, -9.81);
@@ -139,6 +143,7 @@ class Model(object):
                         #TODO: fill in these values
                         # The twist (linear/angular velocity) of the base, expressed in the world
                         # orientation frame and with respect to the base origin
+                        base_vel = data.samples['base_velocity']
                         base_velocity = iDynTree.Twist()
 
                         # The 6d classical acceleration (linear/angular acceleration) of the base
@@ -148,6 +153,7 @@ class Model(object):
                         self.dynComp.setRobotState(q, dq, ddq, world_T_base,
                                                    base_velocity, base_acceleration,
                                                    self.world_gravity)
+                        base_acc = data.samples['base_acceleration']
                         baseReactionForce = iDynTree.Wrench()   # TODO: use e.g. imu data
 
                     # compute inverse dynamics with idyntree (simulate)

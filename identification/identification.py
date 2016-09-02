@@ -96,21 +96,23 @@ class Identification(object):
             tau = self.model.tau
 
         # TODO: get jacobian and contact force for each contact frame (when added to iDynTree)
-        # in order to also use FT sensors in hands and feet
-        # assuming zero external forces for fixed base on trunk
+        # in order to also use FT sensors in hands and feet (floating base)
+        # otherwise aassuming zero external forces for fixed base on trunk
+        #
         # jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
-        # self.generator.getFrameJacobian('arm', jacobian)
+        # self.generator.getFrameJacobian('foot', jacobian)
 
         # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
         # (using QR on B yields orthonormal base if necessary)
         # in general, pinv is always working
         self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
 
-        # note: using pinv is only ok if low condition number
+        # note: using pinv is only ok if low condition number, otherwise numerical issues
+        # should always try to avoid inversion if possible
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)
-        self.model.xBase = np.dot(self.model.YBaseInv, self.model.tau.T) # - np.sum( YBaseInv*jacobian*contactForces )
+        self.model.xBase = np.dot(self.model.YBaseInv, self.model.tau.T) # TODO: floating base: - np.sum( YBaseInv*jacobian*contactForces )
 
         #damped least squares
         #from scipy.sparse.linalg import lsqr

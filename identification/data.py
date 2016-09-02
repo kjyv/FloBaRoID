@@ -1,5 +1,7 @@
 import numpy as np
 import numpy.linalg as la
+import scipy as sp
+from scipy import signal
 import helpers
 
 class Data(object):
@@ -280,6 +282,7 @@ class Data(object):
                     self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
         self.updateNumSamples()
 
+
     def removeZeroSamples(self):
         '''remove samples that have near zero velocity'''
 
@@ -296,3 +299,118 @@ class Data(object):
         self.updateNumSamples()
         if self.opt['verbose']:
             print ("remaining samples: {}".format(self.num_used_samples))
+
+
+    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None):
+
+        ''' derivation and filtering of measurements. array values are set in place
+            Q, Tau will be filtered
+            V, Vdot, *_raw will be overwritten
+        '''
+
+        ## Positions
+
+        # convert degs to rads
+        # assuming angles don't wrap, otherwise use np.unwrap before
+        if self.opt['useDeg']:
+            posis_rad = np.deg2rad(Q)
+            vels_rad = np.deg2rad(V)
+            np.copyto(Q, posis_rad)   #(dst, src)
+            np.copyto(V, vels_rad)
+
+        # low-pass filter positions
+        Q_orig = Q.copy()
+        fc = 3.0    #Cut-off frequency (Hz)
+        order = 6   #Filter order
+        b, a = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+        for j in range(0, self.opt['N_DOFS']):
+            Q[:, j] = sp.signal.filtfilt(b, a, Q_orig[:, j])
+        if Q_raw is not None:
+            np.copyto(Q_raw, Q_orig)
+
+        # Plot the frequency and phase response of the filter
+        """
+        w, h = sp.signal.freqz(b, a, worN=8000)
+        plt.subplot(2, 1, 1)
+        plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
+        plt.plot(fc, 0.5*np.sqrt(2), 'ko')
+        plt.axvline(fc, color='k')
+        plt.xlim(0, 0.5*fs)
+        plt.title("Lowpass Filter Frequency Response")
+        plt.xlabel('Frequency [Hz]')
+
+        plt.subplot(2,1,2)
+        h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
+        plt.plot(w, h_Phase)
+        plt.ylabel('Phase (radians)')
+        plt.xlabel(r'Frequency (Hz)')
+        plt.title(r'Phase response')
+        plt.subplots_adjust(hspace=0.5)
+        plt.grid()
+        """
+
+        ## Velocities
+
+        # calc velocity instead of taking measurements (uses filtered positions,
+        # seems better than filtering noisy velocity measurements)
+        # TODO: Khalil, p.299 suggests a "central difference" method to avoid phase shift:
+        # dq(k) = [q(k+1)-q(k-1)]/2T
+        V_self = np.empty_like(Q)
+        for i in range(1, Q.shape[0]):
+            dT = T[i] - T[i-1]
+            if dT != 0:
+                V_self[i] = (Q[i] - Q[i-1])/dT
+            else:
+                V_self[i] = V_self[i-1]
+
+        if V_raw is not None:
+            np.copyto(V_raw, V_self)
+
+        # median filter of velocities self to remove outliers
+        vels_self_orig = V_self.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            V_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], 9)
+
+        # low-pass filter velocities self
+        vels_self_orig = V_self.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            V_self[:, j] = sp.signal.filtfilt(b, a, vels_self_orig[:, j])
+
+        ## Accelerations
+
+        # calc accelerations
+        for i in range(1, V_self.shape[0]):
+            dT = T[i] - T[i-1]
+            if dT != 0:
+                Vdot[i] = (V_self[i] - V_self[i-1])/dT
+            else:
+                Vdot[i] = Vdot[i-1]
+
+        np.copyto(V, V_self)
+
+        # filtering accelerations not necessary?
+
+        # median filter of accelerations
+        accls_orig = Vdot.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            Vdot[:, j] = sp.signal.medfilt(accls_orig[:, j], 11)
+
+        # low-pass filter of accelerations
+        accls_orig = Vdot.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            Vdot[:, j] = sp.signal.filtfilt(b, a, accls_orig[:, j])
+
+        ## Torques
+
+        if Tau_raw is not None:
+            np.copyto(Tau_raw, Tau)
+
+        # median filter of torques
+        torques_orig = Tau.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            Tau[:, j] = sp.signal.medfilt(torques_orig[:, j], 11)
+
+        # low-pass of torques
+        torques_orig = Tau.copy()
+        for j in range(0, self.opt['N_DOFS']):
+            Tau[:, j] = sp.signal.filtfilt(b, a, torques_orig[:, j])

@@ -5,21 +5,21 @@
 * at the same time, constrain parameters to physical consistent standard solution space, regardless if input data is well-conditioned or not
 
 details:
-* optimzied excitation trajectories (parameterized fourier-series to get periodic trajectories) 
-* acceleration and velocity values are derived from position readings, both are zero-phase low-pass filtered
+* find ideal excitation trajectories with non-linear optimization (as parameterized fourier-series to get periodic trajectories) 
+* velocity and acceleration values are derived from position readings, both are zero-phase low-pass filtered
 * from supplied measurements, it is optionally possible to only select a percentage of well-conditioned data blocks to decrease the overall condition number of the input data
 * implemented estimation methods:
   * weighted least squares instead of ordinary least squares (Zak)
   * estimation of parameter error in addition to absolute parameters using previously known CAD values (Gautier)
-  * determine essential parameters (Gautier), estimating only those that are most relevant for the measurement data and leaving the others unchanged
-  * formulating identification and constraints as linear SDP optimization problem (Sousa)
+  * determine essential parameters (Gautier), estimating only those that are the most certain for the measurement data and leaving the others unchanged
+  * formulating identification and constraints as linear SDP optimization problem to get optimal physical consistent parameters (Sousa)
 * verification with other measurement data
 * save identified values back to URDF file
 
 requirements for identification:
 * python 2.7
 * python modules: numpy, scipy, sympy, matplotlib, iDynTree, pyyaml, colorama, humanize,
-  pylmi-sdp, cvxopt, pyOpt, (optional: mpi4py < 2.0.0)
+  pylmi-sdp, cvxopt, pyOpt (apply included patch if getting inf's while optimizing trajectories)
 * optionally for output as html: mpld3, jinja2
 
 requirements for excitation:
@@ -28,19 +28,23 @@ requirements for excitation:
 * for other robots, new modules might have to be written
 
 known issues:
-* excitation methods are not really generic 
-* using position control over yarp is suboptimal and can expose timing issues
-* ros timing might also lead to missed data packages
+* excitation modules are not really generic
+* using position control over yarp is suboptimal and can expose timing issues (seems especially with
+  additional python to c bridge)
+* COM constraints need stl mesh files for the model
 
 usage:
 
-* get joint torque measurements from a robotic link structure
+* copy one of the existing .yaml configuration files and customize for your setup
 
-   possible e.g. by using the excite.py script which filters the measurements as well (containts no generic trajectory generation yet)
-   if using some other means of movement and data recording, the data files of the numpy data files need to have the expected data fields and data needs to be filtered
+* get joint torque measurements from your robotic system
 
-* run identification.py, at least supplying the measurement data file and the corresponding kinematic model .urdf file with some physically consistent CAD parameters
+   possible e.g. by using the excite.py script which filters the measurements as well as getting velocity and acceleration from position measurements.
+   If using some other means of movement and data recording, the data files of the numpy data files need to have the expected data fields (see source) and data needs to be filtered
 
-   optionally an output .urdf file path, separate measurements for validation, some display options
-   possibly it's necessary to set some options for identification methods in the beginning of identification.py
+* run identification.py, at least supplying the measurement data file and the corresponding kinematic model in a .urdf file with some physically consistent CAD parameters
+
+   optionally supply an output .urdf file path (which will be the input model with the identified
+   parameters), a separate measurement file for validation
+   (options are in mostly in .yaml file, others can be seens when calling with -h)
 

@@ -1,0 +1,48 @@
+<regressor>
+    <jointTorqueDynamics>
+        <joints>
+            <!-- head -->
+            <joint>NeckYawj</joint>
+            <joint>NeckPitchj</joint>
+
+            <!-- left arm -->
+            <joint>LShSag</joint>
+            <joint>LShLat</joint>
+            <joint>LShYaw</joint>
+            <joint>LElbj</joint>
+            <joint>LForearmPlate</joint>
+            <joint>LWrj1</joint>
+            <joint>LWrj2</joint>
+
+            <!-- right arm -->
+            <joint>RShSag</joint>
+            <joint>RShLat</joint>
+            <joint>RShYaw</joint>
+            <joint>RElbj</joint>
+            <joint>RForearmPlate</joint>
+            <joint>RWrj1</joint>
+            <joint>RWrj2</joint>
+
+            <!-- waist -->
+            <joint>WaistLat</joint>
+            <joint>WaistSag</joint>
+            <joint>WaistYaw</joint>
+
+            <!-- left leg -->
+            <joint>LHipLat</joint>
+            <joint>LHipYaw</joint>
+            <joint>LHipSag</joint>
+            <joint>LKneeSag</joint>
+            <joint>LAnkSag</joint>
+            <joint>LAnkLat</joint>
+
+            <!-- right arm -->
+            <joint>RHipLat</joint>
+            <joint>RHipYaw</joint>
+            <joint>RHipSag</joint>
+            <joint>RKneeSag</joint>
+            <joint>RAnkSag</joint>
+            <joint>RAnkLat</joint>
+        </joints>
+    </jointTorqueDynamics>
+</regressor>

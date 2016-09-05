@@ -15,8 +15,6 @@ import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.data import Data
 
-from IPython import embed
-
 sampleTime = 0.005
 
 def readCSV(dir, config):
@@ -29,6 +27,7 @@ def readCSV(dir, config):
     out['torques'] = np.empty( (f.shape[0], config['N_DOFS']) )
     out['times'] = np.empty( f.shape[0] )
     out['times'][:] = np.arange(0, f.shape[0])*sampleTime
+    out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
 
     # generate some empty arrays, will be calculated in preprocess()
     out['velocities'] = np.zeros_like(out['positions'])
@@ -41,34 +40,43 @@ def readCSV(dir, config):
     ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])/6
     for dof in range(config['N_DOFS']):
+        out['target_positions'][:, dof] = f[:, dof]   #position reference
         out['positions'][:, dof] = f[:, dof+dofs_file*2]   #motor encoders
         out['torques'][:, dof] = f[:, dof+dofs_file*4]   #torque sensors
         ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
         ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
-    file = os.path.join(dir, 'feedbackData.csv')  #force torque and IMU
+    file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)
-    out['FTleft'] = np.empty( (f.shape[0], 6) )   #FT left foot, 3 force, 3 torque values
+    out['FTleft'] = np.empty( (f.shape[0], 6) )    #FT left foot, 3 force, 3 torque values
     out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot
-    out['IMUrpy'] = np.empty( (f.shape[0], 3) )   #IMU orientation, r,p,y
+    out['IMUrpy'] = np.empty( (f.shape[0], 3) )    #IMU orientation, r,p,y
+    out['IMUlinAcc'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
+    out['IMUrotVel'] = np.empty( (f.shape[0], 3) ) #IMU rotational velocity
+
     ax3 = fig.add_subplot(3,2,3)
+    ax4 = fig.add_subplot(3,2,4)
     rpy_labels = ['r','p', 'y']
+    acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         out['IMUrpy'][:, i] = f[:, i]
+        out['IMUlinAcc'][:, i] = f[:, 18+i]
+        out['IMUrotVel'][:, i] = f[:, 21+i]
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
+        ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
-    ax4 = fig.add_subplot(3,2,4)
     ax5 = fig.add_subplot(3,2,5)
+    ax6 = fig.add_subplot(3,2,6)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
     for i in range(0,6):
         out['FTleft'][:, i] = f[:, 3+i]
         out['FTright'][:, i] = f[:, 3+6+i]
-        ax4.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
-        ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
+        ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
+        ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
     #set titles and enable legends for each subplot
-    t = ['positions', 'torques', 'IMU', 'FT left', 'FT right']
-    for i in range(0,5):
+    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT left', 'FT right']
+    for i in range(0,6):
         plt.subplot(321+i)
         eval('ax{}'.format(1+i)).legend(loc='best', fancybox=True, fontsize=10, title='')
         plt.title(t[i])
@@ -94,9 +102,24 @@ if __name__ == '__main__':
     out = readCSV(args.measurements, config)
     out['frequency'] = 1.0/sampleTime
     data = Data(config)
-    data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
-                    Tau=out['torques'], T=out['times'], Fs=out['frequency'])
 
-    np.savez(args.outfile, out)
+    #init empty arrays for preprocess
+    out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
+    out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
+
+    #filter, diff, integrate
+    data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
+                    Tau=out['torques'], T=out['times'], Fs=out['frequency'],
+                    IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'], IMUlinAcc=out['IMUlinAcc'],
+                    IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'])
+
+    out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
+    out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )
+
+    np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
+                           velocities=out['velocities'], velocities_raw=out['velocities'],
+                           accelerations=out['accelerations'], torques=out['torques'], torques_raw=out['torques'],
+                           base_velocity=out['base_velocity'], base_acceleration=out['base_acceleration'],
+                           times=out['times'], frequency=out['frequency'])
     print("Saved csv data as as {}".format(args.outfile))
     print "Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency'])

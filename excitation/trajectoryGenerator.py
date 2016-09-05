@@ -44,7 +44,6 @@ class TrajectoryGenerator(object):
         self.b = b
         self.q = q
         self.nf = nf
-        self.wf = wf
 
         self.oscillators = list()
         for i in range(0, self.dofs):
@@ -52,6 +51,7 @@ class TrajectoryGenerator(object):
                                                          b = np.array(b[i]), q0 = q[i], nf = nf[i],
                                                          use_deg = self.use_deg
                                                         ))
+        return self
 
     def initWithParams(self, a, b, q, nf, wf=None):
         ''' init with given params
@@ -81,6 +81,7 @@ class TrajectoryGenerator(object):
             self.oscillators.append(OscillationGenerator(w_f = self.w_f_global, a = np.array(a[i]),
                                                          b = np.array(b[i]), q0 = q[i], nf = nf[i], use_deg = self.use_deg
                                                         ))
+        return self
 
     def getAngle(self, dof):
         """ get angle at current time for joint dof """
@@ -316,11 +317,15 @@ class TrajectoryOptimizer(object):
 
         old_verbose = self.config['verbose']
         self.config['verbose'] = 0
+        old_floating_base = self.config['floating_base']
+        self.config['floating_base'] = 0
         if 'model' in locals():
-            trajectory_data, model = self.sim_func(self.config, self.trajectory, model)
+            trajectory_data, data, model = self.sim_func(self.config, self.trajectory, model)
         else:
-            trajectory_data, model = self.sim_func(self.config, self.trajectory)
+            trajectory_data, data, model = self.sim_func(self.config, self.trajectory)
         self.config['verbose'] = old_verbose
+        self.config['floating_base'] = old_floating_base
+
         self.last_trajectory_data = trajectory_data
 
         f = np.linalg.cond(model.YBase)

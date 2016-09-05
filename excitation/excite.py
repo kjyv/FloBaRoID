@@ -22,7 +22,7 @@ parser.add_argument('--periods', type=int, help='how many periods to run the tra
 parser.add_argument('--plot', help='plot measured data', action='store_true')
 parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
-parser.set_defaults(plot=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
+parser.set_defaults(plot=False, plot_targets=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
 import yaml
@@ -82,14 +82,15 @@ def plot(data=None):
         measurements = np.load('measurements.npz')
         Q = measurements['positions']
         Qraw = measurements['positions_raw']
-        Q_t = measurements['target_positions']
         V = measurements['velocities']
         Vraw = measurements['velocities_raw']
-        V_t = measurements['target_velocities']
         dV = measurements['accelerations']
-        dV_t = measurements['target_accelerations']
         Tau = measurements['torques']
         TauRaw = measurements['torques_raw']
+        if args.plot_targets:
+            Q_t = measurements['target_positions']
+            V_t = measurements['target_velocities']
+            dV_t = measurements['target_accelerations']
         T = measurements['times']
         num_samples = measurements['positions'].shape[0]
     else:
@@ -108,10 +109,11 @@ def plot(data=None):
 
     print 'loaded {} measurement samples'.format(num_samples)
 
-    print "tracking error per joint:"
-    for i in range(0, config['N_DOFS']):
-        sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
-        print "joint {}: {}".format(i, sse)
+    if args.plot_targets:
+        print "tracking error per joint:"
+        for i in range(0, config['N_DOFS']):
+            sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
+            print "joint {}: {}".format(i, sse)
 
     print "histogram of time diffs"
     dT = np.diff(T)
@@ -213,6 +215,8 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['torques'] = np.array(trajectory_data['torques'])
     trajectory_data['times'] = np.array(trajectory_data['times'])
     trajectory_data['measured_frequency'] = freq
+    trajectory_data['base_velocity'] = np.zeros( (trajectory_data['velocities'].shape[0], 6) )
+    trajectory_data['base_acceleration'] = np.zeros( (trajectory_data['velocities'].shape[0], 6) )
 
     data.init_from_data(trajectory_data)
     model.computeRegressors(data)

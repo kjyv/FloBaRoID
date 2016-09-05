@@ -1,7 +1,7 @@
 
 #### excitation
 
-excitationSimulate: 1        # simulate torques instead of using measurements (use e.g. with Gazebo)
+excitationSimulate: 1        # simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
 exciteMethod: null #'yarp'         # currently 'yarp', 'ros' or null
 useDeg: 1                    # encode angles in degrees for excitation (internal and data is always in rad)
 
@@ -27,7 +27,7 @@ trajectoryAngleMax:  25.0
 # should be used (or leave completely empty)
 ovr_pos_limit:
     - null
-    - [-60.0, 60.0]
+    - null 
     - null
     - null
     - null
@@ -37,10 +37,10 @@ ovr_pos_limit:
 #### identification
 
 # fixed or floating-base dynamics
-fixed_base: 1
+floating_base: 1
 
 # simulate torques from target values, don't use both
-iDynSimulate: 1 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
@@ -52,6 +52,7 @@ min_tol: 0.00001
 # (Khalil recommends about 500 times number of parameters to identify...)
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 skip_samples: 0    #how many values to skip before using the next sample
+removeNearZero: 1  #remove samples that have almost zero velocity
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0
@@ -71,10 +72,10 @@ noChange: 1
 noChangeThresh: 200
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 1
+restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
-hullScaling: 1.0
+hullScaling: 1.5
 
 # constrain overall mass
 limitOverallMass: 0
@@ -86,13 +87,13 @@ limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
-limitMassToApriori: 1
-limitMassAprioriBoundary: 1.0     #percentage of CAD value in both +- directions
+limitMassToApriori: 0
+limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (1.0 = 100%)
 
 # whether to take out masses to be identified because they are e.g.
 # well known or introduce problems
 # (essential params or when using feasability constraints)
-dontIdentifyMasses: 0
+dontIdentifyMasses: 1
 
 ## other forms of OLS
 

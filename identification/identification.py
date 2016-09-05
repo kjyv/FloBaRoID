@@ -74,7 +74,8 @@ class Identification(object):
         # load measurements
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
-        self.data.removeZeroSamples()
+        if self.opt['removeNearZero']:
+            self.data.removeZeroSamples()
 
         self.tauEstimated = list()
         self.tauMeasured = list()
@@ -243,9 +244,7 @@ class Identification(object):
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 
-        gravity = iDynTree.SpatialAcc();
-        gravity.zero()
-        gravity.setVal(2, -9.81);
+        gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
 
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skip_samples']+1):
@@ -256,15 +255,16 @@ class Identification(object):
             torq = v_data['torques'][m_idx]
 
             # system state for iDynTree
-            q = iDynTree.VectorDynSize.fromPyList(pos)
-            dq = iDynTree.VectorDynSize.fromPyList(vel)
-            ddq = iDynTree.VectorDynSize.fromPyList(acc)
+            q = iDynTree.VectorDynSize.fromList(pos)
+            dq = iDynTree.VectorDynSize.fromList(vel)
+            ddq = iDynTree.VectorDynSize.fromList(acc)
 
             # calc torques with iDynTree dynamicsComputation class
             dynComp.setRobotState(q, dq, ddq, gravity)
 
             torques = iDynTree.VectorDynSize(self.model.N_DOFS)
             baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
+            #TODO: adapt or reuse other sim code for floating base
 
             # compute inverse dynamics with idyntree (simulate)
             dynComp.inverseDynamics(torques, baseReactionForce)

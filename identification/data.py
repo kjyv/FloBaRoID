@@ -2,7 +2,12 @@ import numpy as np
 import numpy.linalg as la
 import scipy as sp
 from scipy import signal
+from scipy import misc
 import helpers
+
+import matplotlib.pyplot as plt
+plt.style.use('seaborn-muted')
+
 
 class Data(object):
     def __init__(self, opt):
@@ -288,7 +293,7 @@ class Data(object):
 
         if self.opt['verbose']:
             print ("removing near zero samples..."),
-        min_vel = 0.05   # rad per sec
+        min_vel = 0.02   # rad per sec
         to_delete = list()
         for t in range(self.num_used_samples):
             if np.min(np.abs(self.samples['velocities'][t])) < min_vel:
@@ -301,14 +306,20 @@ class Data(object):
             print ("remaining samples: {}".format(self.num_used_samples))
 
 
-    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None):
+    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None, IMUlinVel=None, IMUrotVel=None, IMUlinAcc=None, IMUrotAcc=None, IMUrpy=None):
 
         ''' derivation and filtering of measurements. array values are set in place
             Q, Tau will be filtered
-            V, Vdot, *_raw will be overwritten
+            V, Vdot, *_raw will be overwritten (initialized arrays need to be passed to have values written)
+
+            IMUrotVel, IMUlinAcc, IMUrpy will be filtered
+            IMUlinVel, IMUrotAcc will be overwritten
         '''
 
-        ## Positions
+        #TODO: expose as option or make dependent on measurement frequency
+        median_kernel_size = 11
+
+        ## Joint Positions
 
         # convert degs to rads
         # assuming angles don't wrap, otherwise use np.unwrap before
@@ -320,22 +331,23 @@ class Data(object):
 
         # low-pass filter positions
         Q_orig = Q.copy()
+        #TODO: expose filter options or allow graphically
         fc = 3.0    #Cut-off frequency (Hz)
-        order = 6   #Filter order
+        order = 8   #Filter order
         b, a = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
         for j in range(0, self.opt['N_DOFS']):
             Q[:, j] = sp.signal.filtfilt(b, a, Q_orig[:, j])
         if Q_raw is not None:
             np.copyto(Q_raw, Q_orig)
 
+        '''
         # Plot the frequency and phase response of the filter
-        """
         w, h = sp.signal.freqz(b, a, worN=8000)
         plt.subplot(2, 1, 1)
-        plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
+        plt.plot(0.5*Fs*w/np.pi, np.abs(h), 'b')
         plt.plot(fc, 0.5*np.sqrt(2), 'ko')
         plt.axvline(fc, color='k')
-        plt.xlim(0, 0.5*fs)
+        plt.xlim(0, 0.5*Fs)
         plt.title("Lowpass Filter Frequency Response")
         plt.xlabel('Frequency [Hz]')
 
@@ -347,19 +359,21 @@ class Data(object):
         plt.title(r'Phase response')
         plt.subplots_adjust(hspace=0.5)
         plt.grid()
-        """
+        plt.show()
+        '''
 
-        ## Velocities
+        ## Joint Velocities
 
         # calc velocity instead of taking measurements (uses filtered positions,
         # seems better than filtering noisy velocity measurements)
-        # TODO: Khalil, p.299 suggests a "central difference" method to avoid phase shift:
-        # dq(k) = [q(k+1)-q(k-1)]/2T
+        # TODO: Khalil, p.299 suggests a central difference method to avoid phase shift:
         V_self = np.empty_like(Q)
-        for i in range(1, Q.shape[0]):
+        for i in range(1, Q.shape[0]-1):
             dT = T[i] - T[i-1]
             if dT != 0:
-                V_self[i] = (Q[i] - Q[i-1])/dT
+                #V_self[i] = (Q[i] - Q[i-1])/dT
+                V_self[i] = (Q[i+1] - Q[i-1])/(2*dT)
+                #V_self[i] = sp.misc.derivative(lambda x: Q[x], i, dT)
             else:
                 V_self[i] = V_self[i-1]
 
@@ -369,14 +383,14 @@ class Data(object):
         # median filter of velocities self to remove outliers
         vels_self_orig = V_self.copy()
         for j in range(0, self.opt['N_DOFS']):
-            V_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], 9)
+            V_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], median_kernel_size)
 
         # low-pass filter velocities self
         vels_self_orig = V_self.copy()
         for j in range(0, self.opt['N_DOFS']):
             V_self[:, j] = sp.signal.filtfilt(b, a, vels_self_orig[:, j])
 
-        ## Accelerations
+        ## Joint Accelerations
 
         # calc accelerations
         for i in range(1, V_self.shape[0]):
@@ -393,14 +407,14 @@ class Data(object):
         # median filter of accelerations
         accls_orig = Vdot.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Vdot[:, j] = sp.signal.medfilt(accls_orig[:, j], 11)
+            Vdot[:, j] = sp.signal.medfilt(accls_orig[:, j], median_kernel_size)
 
         # low-pass filter of accelerations
         accls_orig = Vdot.copy()
         for j in range(0, self.opt['N_DOFS']):
             Vdot[:, j] = sp.signal.filtfilt(b, a, accls_orig[:, j])
 
-        ## Torques
+        ## Joint Torques
 
         if Tau_raw is not None:
             np.copyto(Tau_raw, Tau)
@@ -408,9 +422,71 @@ class Data(object):
         # median filter of torques
         torques_orig = Tau.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Tau[:, j] = sp.signal.medfilt(torques_orig[:, j], 11)
+            Tau[:, j] = sp.signal.medfilt(torques_orig[:, j], median_kernel_size)
 
         # low-pass of torques
         torques_orig = Tau.copy()
         for j in range(0, self.opt['N_DOFS']):
             Tau[:, j] = sp.signal.filtfilt(b, a, torques_orig[:, j])
+
+        ### IMU data
+        if IMUlinAcc is not None and IMUrotVel is not None:
+            # median filter
+            IMUlinAcc_orig = IMUlinAcc.copy()
+            IMUrotVel_orig = IMUrotVel.copy()
+            for j in range(0, 3):
+                IMUlinAcc[:, j] = sp.signal.medfilt(IMUlinAcc_orig[:, j], median_kernel_size)
+                IMUrotVel[:, j] = sp.signal.medfilt(IMUrotVel_orig[:, j], median_kernel_size)
+
+            # low-pass filter
+            IMUlinAcc_orig = IMUlinAcc.copy()
+            IMUrotVel_orig = IMUrotVel.copy()
+            for j in range(0, 3):
+                IMUlinAcc[:, j] = sp.signal.filtfilt(b, a, IMUlinAcc_orig[:, j])
+                IMUrotVel[:, j] = sp.signal.filtfilt(b, a, IMUrotVel_orig[:, j])
+
+            if IMUlinVel is not None:
+                #rotate accelerations to (estimated) world frame
+                from transforms3d.euler import euler2mat
+                IMUlinAccRot = np.zeros_like(IMUlinAcc)
+                for i in range(0, IMUlinAcc.shape[0]):
+                    rot = IMUrpy[i, :]
+                    R = euler2mat(rot[0], rot[1], rot[2])
+                    #TODO: use quaternions to avoid gimbal lock? (but estimation should give quaternions already)
+                    IMUlinAccRot[i, :] = R.dot(IMUlinAcc[i, :])
+
+                # subtract gravity vector
+                IMUlinAccRot[:, 2] -= 9.81
+
+                for j in range(0, 3):
+                    # integrate to get velocity
+                    IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAccRot[:, j], T, initial=0)
+
+                fig = plt.figure()
+                ax1 = fig.add_subplot(2,1,1)
+                ax1.plot(T, IMUlinAccRot)
+                plt.subplot(211)
+                plt.title("linear accelerations (w/o gravity)")
+                ax2 = fig.add_subplot(2,1,2)
+                ax2.plot(T, IMUlinVel)
+                plt.subplot(212)
+                plt.title("linear velocities")
+                fig.tight_layout()
+                plt.show()
+
+            if IMUrotAcc is not None:
+                for j in range(0, 3):
+                    IMUrotAcc[:, j] = np.gradient(IMUrotVel[:, j])
+
+                fig = plt.figure()
+                ax1 = fig.add_subplot(2,1,1)
+                ax1.plot(T, IMUrotVel)
+                plt.subplot(211)
+                plt.title("rotational velocities")
+                ax2 = fig.add_subplot(2,1,2)
+                ax2.plot(T, IMUrotAcc)
+                plt.subplot(212)
+                plt.title("rotational accelerations")
+                fig.tight_layout()
+                plt.show()
+

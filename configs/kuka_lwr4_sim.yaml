@@ -37,7 +37,7 @@ ovr_pos_limit:
 #### identification
 
 # fixed or floating-base dynamics
-fixed_base: 1
+floating_base: 0
 
 # simulate torques from target values, don't use both
 iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
@@ -52,6 +52,7 @@ min_tol: 0.00001
 # (Khalil recommends about 500 times number of parameters to identify...)
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 skip_samples: 0    #how many values to skip before using the next sample
+removeNearZero: 0  #remove samples that have almost zero velocity
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0

@@ -38,61 +38,57 @@ class Model(object):
                 <allJoints/>
               </jointTorqueDynamics>
             </regressor>'''
-            self.generator.loadRegressorStructureFromString(regrXml)
+        self.generator.loadRegressorStructureFromString(regrXml)
 
-            # TODO: this and the following are not dependent on joints specified in regressor (but
-            # uses all from model file)!
-            self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
-            if self.opt['verbose']:
-                print '# DOFs: {}'.format(self.N_DOFS)
+        # TODO: this and the following are not dependent on joints specified in regressor (but
+        # uses all from model file)!
+        self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+        if self.opt['verbose']:
+            print '# DOFs: {}'.format(self.N_DOFS)
 
-            # Get the number of outputs of the regressor
-            # (should be #links - #fakeLinks)
-            self.N_OUT = self.generator.getNrOfOutputs()
-            if self.opt['verbose']:
-                print '# outputs: {}'.format(self.N_OUT)
+        # Get the number of outputs of the regressor
+        # (should be #links - #fakeLinks)
+        self.N_OUT = self.generator.getNrOfOutputs()
+        if self.opt['verbose']:
+            print '# outputs: {}'.format(self.N_OUT)
 
-            # get initial inertia params (from urdf)
-            self.num_params = self.generator.getNrOfParameters()
-            if self.opt['verbose']:
-                print '# params: {}'.format(self.num_params)
+        # get initial inertia params (from urdf)
+        self.num_params = self.generator.getNrOfParameters()
+        if self.opt['verbose']:
+            print '# params: {}'.format(self.num_params)
 
-            self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
-            if self.opt['verbose']:
-                print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
-                                                 self.generator.getNrOfFakeLinks())
+        self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+        if self.opt['verbose']:
+            print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
+                                             self.generator.getNrOfFakeLinks())
 
-            self.link_names = []
-            for i in range(0, self.N_LINKS):
-                self.link_names.append(self.idyn_model.getLinkName(i))
-            if self.opt['verbose']:
-                print '({})'.format(self.link_names)
+        self.link_names = []
+        for i in range(0, self.N_LINKS):
+            self.link_names.append(self.idyn_model.getLinkName(i))
+        if self.opt['verbose']:
+            print '({})'.format(self.link_names)
 
-            self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
+        self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
-            self.gravity_twist = iDynTree.Twist()
-            self.gravity_twist.zero()
-            self.gravity_twist.setVal(2, -9.81)
+        self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
-            if opt['iDynSimulate'] or opt['useAPriori']:
-                self.dynComp = iDynTree.DynamicsComputations();
-                self.dynComp.loadRobotModelFromFile(self.urdf_file);
+        if opt['iDynSimulate'] or opt['useAPriori']:
+            self.dynComp = iDynTree.DynamicsComputations();
+            self.dynComp.loadRobotModelFromFile(self.urdf_file);
 
-                self.world_gravity = iDynTree.SpatialAcc();
-                self.world_gravity.zero()
-                self.world_gravity.setVal(2, -9.81);
+            self.world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
 
-            # get model parameters
-            xStdModel = iDynTree.VectorDynSize(self.num_params)
-            self.generator.getModelParameters(xStdModel)
-            self.xStdModel = xStdModel.toNumPy()
-            if opt['estimateWith'] == 'urdf':
-                self.xStd = self.xStdModel
+        # get model parameters
+        xStdModel = iDynTree.VectorDynSize(self.num_params)
+        self.generator.getModelParameters(xStdModel)
+        self.xStdModel = xStdModel.toNumPy()
+        if opt['estimateWith'] == 'urdf':
+            self.xStd = self.xStdModel
 
-            # get model dependent projection matrix and linear column dependencies (i.e. base
-            # groupings)
-            # (put here so it's only done once for the loaded model)
-            self.computeRegressorLinDepsQR()
+        # get model dependent projection matrix and linear column dependencies (i.e. base
+        # groupings)
+        # (put here so it's only done once for the loaded model)
+        self.computeRegressorLinDepsQR()
 
     def computeRegressors(self, data):
         """ compute regressors for each time step of the measurement data and stack them vertically,
@@ -111,12 +107,15 @@ class Model(object):
 
         """loop over measurements (optionally skip some values) and get one regressor per time step"""
         for row in range(0, data.num_used_samples):
+            m_idx = row*(self.opt['skip_samples'])+row
             with helpers.Timer() as t:
-                m_idx = row*(self.opt['skip_samples'])+row
                 if self.opt['iDynSimulate']:
-                    pos = data.samples['target_positions'][m_idx]
-                    vel = data.samples['target_velocities'][m_idx]
-                    acc = data.samples['target_accelerations'][m_idx]
+                    #pos = data.samples['target_positions'][m_idx]
+                    #vel = data.samples['target_velocities'][m_idx]
+                    #acc = data.samples['target_accelerations'][m_idx]
+                    pos = data.samples['positions'][m_idx]
+                    vel = data.samples['velocities'][m_idx]
+                    acc = data.samples['accelerations'][m_idx]
                 else:
                     # read samples
                     pos = data.samples['positions'][m_idx]
@@ -125,36 +124,35 @@ class Model(object):
                     torq = data.samples['torques'][m_idx]
 
                 # system state for iDynTree
-                q = iDynTree.VectorDynSize.fromPyList(pos)
-                dq = iDynTree.VectorDynSize.fromPyList(vel)
-                ddq = iDynTree.VectorDynSize.fromPyList(acc)
+                q = iDynTree.VectorDynSize.fromList(pos)
+                dq = iDynTree.VectorDynSize.fromList(vel)
+                ddq = iDynTree.VectorDynSize.fromList(acc)
 
                 if self.opt['iDynSimulate'] or self.opt['useAPriori']:
                     # calc torques with iDynTree dynamicsComputation class
-                    if self.opt['fixed_base']:
+                    baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base
+                    if not self.opt['floating_base']:
                         self.dynComp.setRobotState(q, dq, ddq, self.world_gravity)
-                        baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base
                     else:
                         # the homogeneous transformation that transforms position vectors expressed
                         # in the base reference frame in position frames expressed in the world
                         # reference frame, i.e. pos_world = world_T_base*pos_base
                         world_T_base = self.dynComp.getWorldTransform(0)  #TODO: check this is right
 
-                        #TODO: fill in these values
                         # The twist (linear/angular velocity) of the base, expressed in the world
                         # orientation frame and with respect to the base origin
-                        base_vel = data.samples['base_velocity']
-                        base_velocity = iDynTree.Twist()
+                        base_vel = data.samples['base_velocity'][m_idx]
+                        base_velocity = iDynTree.Twist.fromList(base_vel)
 
                         # The 6d classical acceleration (linear/angular acceleration) of the base
                         # expressed in the world orientation frame and with respect to the base
                         # origin (not spatial acc)
-                        base_acceleration = iDynTree.ClassicalAcc()
+                        base_acc = data.samples['base_acceleration'][m_idx]
+                        base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
                         self.dynComp.setRobotState(q, dq, ddq, world_T_base,
                                                    base_velocity, base_acceleration,
                                                    self.world_gravity)
-                        base_acc = data.samples['base_acceleration']
-                        baseReactionForce = iDynTree.Wrench()   # TODO: use e.g. imu data
+                        baseReactionForce = iDynTree.Wrench()   # TODO: use FT sensor data
 
                     # compute inverse dynamics with idyntree (simulate)
                     torques = iDynTree.VectorDynSize(self.N_DOFS)
@@ -182,12 +180,16 @@ class Model(object):
             start = self.N_DOFS*row
             # get numerical regressor (std)
             with helpers.Timer() as t:
-                if self.opt['fixed_base']:
+                if not self.opt['floating_base']:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
-                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromPyList(torq))
+                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromList(torq))   #why this?
                 else:
-                    #TODO: get base_acceleration
-                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
+                    vel = data.samples['base_velocity'][m_idx]
+                    acc = data.samples['base_acceleration'][m_idx]
+                    base_velocity = iDynTree.Twist.fromList(vel)
+                    base_acceleration = iDynTree.Twist.fromList(acc)
+                    world_T_base = self.dynComp.getWorldTransform(0)
+                    self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
 
                 # get (standard) regressor
                 regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
@@ -316,29 +318,23 @@ class Model(object):
                 # set random system state
                 if len(limits) > 0:
                     rnd = np.random.rand(self.N_DOFS) #0..1
-                    q = iDynTree.VectorDynSize.fromPyList((q_lim_neg+q_range*rnd).tolist())
-                    dq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
-                    ddq = iDynTree.VectorDynSize.fromPyList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
+                    q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd).tolist())
+                    dq = iDynTree.VectorDynSize.fromList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
+                    ddq = iDynTree.VectorDynSize.fromList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
                 else:
-                    q = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                    dq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                    ddq = iDynTree.VectorDynSize.fromPyList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    q = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    ddq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
-                # TODO: handle for fixed dofs (set vel and acc to zero)
-                if self.opt['fixed_base']:
+                # TODO: work with fixed dofs (set vel and acc to zero, look at iDynTree method)
+
+                if not self.opt['floating_base']:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
                 else:
-                    base_acceleration = iDynTree.Twist()
-                    base_acceleration.zero()
-                    av = base_acceleration.getAngularVec3()
-                    av.setVal(0, np.pi*np.random.rand())
-                    av.setVal(1, np.pi*np.random.rand())
-                    av.setVal(2, np.pi*np.random.rand())
-                    lv = base_acceleration.getLinearVec3()
-                    lv.setVal(0, np.pi*np.random.rand())
-                    lv.setVal(1, np.pi*np.random.rand())
-                    lv.setVal(2, np.pi*np.random.rand())
-                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist, base_acceleration)
+                    base_velocity = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
+                    base_acceleration = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
+                    world_T_base = self.dynComp.getWorldTransform(0)
+                    self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
 
                 # get regressor
                 if not self.generator.computeRegressor(regressor, knownTerms):

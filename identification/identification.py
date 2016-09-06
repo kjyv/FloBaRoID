@@ -96,13 +96,6 @@ class Identification(object):
         if tau is None:
             tau = self.model.tau
 
-        # TODO: get jacobian and contact force for each contact frame (when added to iDynTree)
-        # in order to also use FT sensors in hands and feet (floating base)
-        # otherwise aassuming zero external forces for fixed base on trunk
-        #
-        # jacobian = iDynTree.MatrixDynSize(6,6+N_DOFS)
-        # self.generator.getFrameJacobian('foot', jacobian)
-
         # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
         # (using QR on B yields orthonormal base if necessary)
         # in general, pinv is always working
@@ -113,7 +106,10 @@ class Identification(object):
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)
-        self.model.xBase = np.dot(self.model.YBaseInv, self.model.tau.T) # TODO: floating base: - np.sum( YBaseInv*jacobian*contactForces )
+        if self.opt['floating_base']:
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) - self.model.YBaseInv.dot( self.model.contactForcesSum )
+        else:
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
 
         #damped least squares
         #from scipy.sparse.linalg import lsqr
@@ -253,6 +249,16 @@ class Identification(object):
             vel = v_data['velocities'][m_idx]
             acc = v_data['accelerations'][m_idx]
             torq = v_data['torques'][m_idx]
+            if self.opt['floating_base']:
+                # The twist (linear/angular velocity) of the base, expressed in the world
+                # orientation frame and with respect to the base origin
+                base_vel = v_data['base_velocity'][m_idx]
+                base_velocity = iDynTree.Twist.fromList(base_vel)
+                # The 6d classical acceleration (linear/angular acceleration) of the base
+                # expressed in the world orientation frame and with respect to the base
+                # origin (not spatial acc)
+                base_acc = v_data['base_acceleration'][m_idx]
+                base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
 
             # system state for iDynTree
             q = iDynTree.VectorDynSize.fromList(pos)
@@ -260,14 +266,24 @@ class Identification(object):
             ddq = iDynTree.VectorDynSize.fromList(acc)
 
             # calc torques with iDynTree dynamicsComputation class
-            dynComp.setRobotState(q, dq, ddq, gravity)
+            if self.opt['floating_base']:
+                dynComp.setFloatingBase(self.opt['base_link_name'])
+                world_T_base = dynComp.getWorldBaseTransform()
+                dynComp.setRobotState(q, dq, ddq, world_T_base,
+                                      base_velocity, base_acceleration,
+                                      gravity)
+            else:
+                dynComp.setRobotState(q, dq, ddq, gravity)
 
-            torques = iDynTree.VectorDynSize(self.model.N_DOFS)
-            baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base, otherwise use e.g. imu data
-            #TODO: adapt or reuse other sim code for floating base
+            #TODO: reuse sim code for floating base in computeRegressors
 
             # compute inverse dynamics with idyntree (simulate)
+            #empty vars to be filled in
+            torques = iDynTree.VectorDynSize(self.model.N_DOFS)
+            baseReactionForce = iDynTree.Wrench()
+
             dynComp.inverseDynamics(torques, baseReactionForce)
+
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques.toNumPy()
             else:
@@ -280,8 +296,8 @@ class Identification(object):
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
 
-        self.val_error = la.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
-                            *100/la.norm(self.tauMeasuredValidation)
+        self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
+                            *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
 
     def findBaseEssentialParameters(self):

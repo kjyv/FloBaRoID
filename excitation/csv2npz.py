@@ -120,6 +120,6 @@ if __name__ == '__main__':
                            velocities=out['velocities'], velocities_raw=out['velocities'],
                            accelerations=out['accelerations'], torques=out['torques'], torques_raw=out['torques'],
                            base_velocity=out['base_velocity'], base_acceleration=out['base_acceleration'],
-                           times=out['times'], frequency=out['frequency'])
+                           times=out['times'], frequency=out['frequency'], contacts={'r_leg_ft': out['FTright']})
     print("Saved csv data as as {}".format(args.outfile))
     print "Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency'])

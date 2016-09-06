@@ -143,6 +143,7 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
+    cvxopt.solvers.options['maxiters'] = 150
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, primalstart=primalstart)
     toc = time.time()
     if sdpout['status'] == 'optimal':

@@ -1,11 +1,11 @@
 import sys
-import math
 import numpy as np
 import numpy.linalg as la
 from scipy import signal
 import scipy.linalg as sla
 from sympy import symbols
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from IPython import embed
 
 import helpers
 
@@ -101,27 +101,36 @@ class Model(object):
         num_time = 0
         simulate_time = 0
 
-        self.regressor_stack = np.zeros(shape=(self.N_DOFS*data.num_used_samples, self.num_params))
-        self.torques_stack = np.zeros(shape=(self.N_DOFS*data.num_used_samples))
-        self.torquesAP_stack = np.zeros(shape=(self.N_DOFS*data.num_used_samples))
+        self.regressor_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples, self.num_params))
+        self.torques_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
+        self.torquesAP_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
+        if self.opt['floating_base']:
+            self.contacts_stack = np.zeros(shape=(len(data.samples['contacts'].item().keys()), 6*data.num_used_samples))
+            self.contactForcesSum = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
 
         """loop over measurements (optionally skip some values) and get one regressor per time step"""
         for row in range(0, data.num_used_samples):
             m_idx = row*(self.opt['skip_samples'])+row
             with helpers.Timer() as t:
-                if self.opt['iDynSimulate']:
-                    #pos = data.samples['target_positions'][m_idx]
-                    #vel = data.samples['target_velocities'][m_idx]
-                    #acc = data.samples['target_accelerations'][m_idx]
-                    pos = data.samples['positions'][m_idx]
-                    vel = data.samples['velocities'][m_idx]
-                    acc = data.samples['accelerations'][m_idx]
-                else:
-                    # read samples
-                    pos = data.samples['positions'][m_idx]
-                    vel = data.samples['velocities'][m_idx]
-                    acc = data.samples['accelerations'][m_idx]
+                # read samples
+                pos = data.samples['positions'][m_idx]
+                vel = data.samples['velocities'][m_idx]
+                acc = data.samples['accelerations'][m_idx]
+                contacts = {}
+                for frame in data.samples['contacts'].item().keys():
+                    contacts[frame] = data.samples['contacts'].item()[frame][m_idx]
+                if not self.opt['iDynSimulate']:
                     torq = data.samples['torques'][m_idx]
+                if self.opt['floating_base']:
+                    # The twist (linear/angular velocity) of the base, expressed in the world
+                    # orientation frame and with respect to the base origin
+                    base_vel = data.samples['base_velocity'][m_idx]
+                    base_velocity = iDynTree.Twist.fromList(base_vel)
+                    # The 6d classical acceleration (linear/angular acceleration) of the base
+                    # expressed in the world orientation frame and with respect to the base
+                    # origin (not spatial acc)
+                    base_acc = data.samples['base_acceleration'][m_idx]
+                    base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromList(pos)
@@ -130,33 +139,23 @@ class Model(object):
 
                 if self.opt['iDynSimulate'] or self.opt['useAPriori']:
                     # calc torques with iDynTree dynamicsComputation class
-                    baseReactionForce = iDynTree.Wrench()   # assume zero for fixed base
-                    if not self.opt['floating_base']:
-                        self.dynComp.setRobotState(q, dq, ddq, self.world_gravity)
-                    else:
+                    if self.opt['floating_base']:
                         # the homogeneous transformation that transforms position vectors expressed
                         # in the base reference frame in position frames expressed in the world
                         # reference frame, i.e. pos_world = world_T_base*pos_base
-                        world_T_base = self.dynComp.getWorldTransform(0)  #TODO: check this is right
-
-                        # The twist (linear/angular velocity) of the base, expressed in the world
-                        # orientation frame and with respect to the base origin
-                        base_vel = data.samples['base_velocity'][m_idx]
-                        base_velocity = iDynTree.Twist.fromList(base_vel)
-
-                        # The 6d classical acceleration (linear/angular acceleration) of the base
-                        # expressed in the world orientation frame and with respect to the base
-                        # origin (not spatial acc)
-                        base_acc = data.samples['base_acceleration'][m_idx]
-                        base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
+                        self.dynComp.setFloatingBase(self.opt['base_link_name'])
+                        world_T_base = self.dynComp.getWorldBaseTransform()
                         self.dynComp.setRobotState(q, dq, ddq, world_T_base,
                                                    base_velocity, base_acceleration,
                                                    self.world_gravity)
-                        baseReactionForce = iDynTree.Wrench()   # TODO: use FT sensor data
+                    else:
+                        self.dynComp.setRobotState(q, dq, ddq, self.world_gravity)
 
                     # compute inverse dynamics with idyntree (simulate)
-                    torques = iDynTree.VectorDynSize(self.N_DOFS)
+                    torques = iDynTree.VectorDynSize(self.N_DOFS)  #being calculated by inverseDynamics
+                    baseReactionForce = iDynTree.Wrench()   #being calculated by inverseDynamics
                     self.dynComp.inverseDynamics(torques, baseReactionForce)
+
 
                     if self.opt['useAPriori']:
                         torqAP = torques.toNumPy()
@@ -172,28 +171,27 @@ class Model(object):
 
             #...still in sample loop
 
-            if self.opt['useAPriori'] and math.isnan(torqAP[0]) :
-                # torques contain nans, possibly just a very small number in
-                # C that gets converted to nan?
-                torqAP[:] = 0
+            if self.opt['useAPriori'] and np.isnan(torqAP).any():
+                # torques sometimes contain nans, just a very small number in C that gets converted to nan?
+                np.nan_to_num(torqAP)
 
             start = self.N_DOFS*row
             # get numerical regressor (std)
             with helpers.Timer() as t:
-                if not self.opt['floating_base']:
-                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
-                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromList(torq))   #why this?
-                else:
+                if self.opt['floating_base']:
                     vel = data.samples['base_velocity'][m_idx]
                     acc = data.samples['base_acceleration'][m_idx]
                     base_velocity = iDynTree.Twist.fromList(vel)
                     base_acceleration = iDynTree.Twist.fromList(acc)
-                    world_T_base = self.dynComp.getWorldTransform(0)
+                    world_T_base = self.dynComp.getWorldTransform(self.opt['base_link_name'])
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
+                else:
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
+                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromList(torq))   #why this?
 
                 # get (standard) regressor
                 regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
-                knownTerms = iDynTree.VectorDynSize(self.N_OUT)    # what are known terms useable for?
+                knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print "Error during numeric computation of regressor"
 
@@ -206,6 +204,29 @@ class Model(object):
             np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
             if self.opt['useAPriori']:
                 np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
+
+            if self.opt['floating_base']:
+                for i in range(self.contacts_stack.shape[0]):
+                    frame = contacts.keys()[i]
+                    np.copyto(self.contacts_stack[i][start:start+6], contacts[frame])
+
+        if self.opt['floating_base']:
+            #TODO: if robot does not have contact sensors, use HyQ null-space trick
+            #convert contact forces into torque contribution
+            for i in range(self.contacts_stack.shape[0]):
+                frame = contacts.keys()[i]
+
+                # get jacobian and contact force for each contact frame and measurement sample
+                jacobian = iDynTree.MatrixDynSize(6, 6+self.N_DOFS)
+                self.dynComp.getFrameJacobian(frame, jacobian)
+                jacobian = jacobian.toNumPy()
+
+                # mul each sample of measured contact forces with frame jacobian
+                dim = self.N_DOFS
+                contacts_torq = np.empty(dim*self.data.num_used_samples)
+                for s in range(self.data.num_used_samples):
+                    contacts_torq[s*dim:(s+1)*dim] = jacobian.T[6:].dot(self.contacts_stack[i][s*6:(s+1)*6])
+                self.contactForcesSum += contacts_torq
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:
@@ -326,15 +347,15 @@ class Model(object):
                     dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
                     ddq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
 
-                # TODO: work with fixed dofs (set vel and acc to zero, look at iDynTree method)
+                # TODO: make work with fixed dofs (set vel and acc to zero, look at iDynTree method)
 
-                if not self.opt['floating_base']:
-                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
-                else:
+                if self.opt['floating_base']:
                     base_velocity = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
                     base_acceleration = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
-                    world_T_base = self.dynComp.getWorldTransform(0)
+                    world_T_base = self.dynComp.getWorldTransform(self.opt['base_link_name'])
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
+                else:
+                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
 
                 # get regressor
                 if not self.generator.computeRegressor(regressor, knownTerms):
@@ -466,23 +487,14 @@ class Model(object):
 
         with helpers.Timer() as t:
             # get subspace basis (for projection to base regressor/parameters)
-            if False:
-                # using iDynTree
-                subspaceBasis = iDynTree.MatrixDynSize()
-                if not self.generator.computeFixedBaseIdentifiableSubspace(subspaceBasis):
-                # if not self.generator.computeFloatingBaseIdentifiableSubspace(subspaceBasis):
-                    print "Error while computing basis matrix"
-
-                self.B = subspaceBasis.toNumPy()
-            else:
-                Yrand = self.getRandomRegressor(5000)
-                #A = iDynTree.MatrixDynSize(self.num_params, self.num_params)
-                #self.generator.generate_random_regressors(A, False, True, 2000)
-                #Yrand = A.toNumPy()
-                U, s, Vh = la.svd(Yrand, full_matrices=False)
-                r = np.sum(s>self.opt['min_tol'])
-                self.B = -Vh.T[:, 0:r]
-                self.num_base_params = r
+            Yrand = self.getRandomRegressor(5000)
+            #A = iDynTree.MatrixDynSize(self.num_params, self.num_params)
+            #self.generator.generate_random_regressors(A, False, True, 2000)
+            #Yrand = A.toNumPy()
+            U, s, Vh = la.svd(Yrand, full_matrices=False)
+            r = np.sum(s>self.opt['min_tol'])
+            self.B = -Vh.T[:, 0:r]
+            self.num_base_params = r
 
             print("tau: {}".format(self.tau.shape)),
 

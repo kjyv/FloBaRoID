@@ -5,7 +5,7 @@ excitationSimulate: 1        # simulate torques instead of using measurements to
 exciteMethod: null #'yarp'         # currently 'yarp', 'ros' or null
 useDeg: 1                    # encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 0        # find new parameters with optimization or load previous params from file (if no file exists, use random)
+optimizeTrajectory: 1        # find new parameters with optimization or load previous params from file (if no file exists, use random)
 showOptimizationGraph: 1     #display updating graph during trajectory optimization
 useGlobalOptimization: 1     #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 5
@@ -23,8 +23,8 @@ trajectoryCoeffMax:  0.5
 trajectoryAngleMin: -25.0    #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax:  25.0
 
-# manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
-# should be used (or leave completely empty)
+# manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
+# (or leave completely empty)
 ovr_pos_limit:
     - null
     - null 
@@ -38,6 +38,7 @@ ovr_pos_limit:
 
 # fixed or floating-base dynamics
 floating_base: 1
+base_link_name: 'Waist'
 
 # simulate torques from target values, don't use both
 iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)

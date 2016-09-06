@@ -49,7 +49,6 @@ from IPython import embed
 # Sousa, 2014: Physical feasibility of robot base inertial parameter identification: A linear matrix
 # inequality approach
 
-# TODO: add/use contact forces / floating base
 # TODO: load full model and programatically cut off chain from certain joints/links to allow
 # subtree identification
 # TODO: allow visual filtering and data selection (take raw data as input)
@@ -101,13 +100,13 @@ class Identification(object):
         # in general, pinv is always working
         self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
 
-        # note: using pinv is only ok if low condition number, otherwise numerical issues
+        # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)
         if self.opt['floating_base']:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) - self.model.YBaseInv.dot( self.model.contactForcesSum )
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
         else:
             self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
 
@@ -288,6 +287,9 @@ class Identification(object):
                 self.tauEstimatedValidation = torques.toNumPy()
             else:
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques.toNumPy()))
+
+
+        #TODO: add contact forces to torques
 
         if self.opt['skip_samples'] > 0:
             self.tauMeasuredValidation = v_data['torques'][::self.opt['skip_samples']+1]
@@ -794,7 +796,10 @@ class Identification(object):
         else:
             e_rho1 = Matrix(rho1) - R1*K*delta
 
-        rho2_norm_sqr = la.norm(self.model.tau - self.model.YBase.dot(self.model.xBase))**2
+        if self.opt['floating_base']:
+            rho2_norm_sqr = la.norm( (self.model.tau + self.model.contactForcesSum) - self.model.YBase.dot(self.model.xBase) )**2
+        else:
+            rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                              [e_rho1,       I(self.model.num_base_params)]])

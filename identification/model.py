@@ -116,11 +116,10 @@ class Model(object):
                 pos = data.samples['positions'][m_idx]
                 vel = data.samples['velocities'][m_idx]
                 acc = data.samples['accelerations'][m_idx]
+                torq = data.samples['torques'][m_idx]
                 contacts = {}
                 for frame in data.samples['contacts'].item().keys():
-                    contacts[frame] = data.samples['contacts'].item()[frame][m_idx]
-                if not self.opt['iDynSimulate']:
-                    torq = data.samples['torques'][m_idx]
+                    contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
                 if self.opt['floating_base']:
                     # The twist (linear/angular velocity) of the base, expressed in the world
                     # orientation frame and with respect to the base origin
@@ -156,9 +155,10 @@ class Model(object):
                     baseReactionForce = iDynTree.Wrench()   #being calculated by inverseDynamics
                     self.dynComp.inverseDynamics(torques, baseReactionForce)
 
-
                     if self.opt['useAPriori']:
                         torqAP = torques.toNumPy()
+                        # torques sometimes contain nans, just a very small number in C that gets converted to nan?
+                        np.nan_to_num(torqAP)
                     if self.opt['iDynSimulate']:
                         torq = torques.toNumPy()
                         torq = np.nan_to_num(torq)
@@ -170,10 +170,6 @@ class Model(object):
             simulate_time += t.interval
 
             #...still in sample loop
-
-            if self.opt['useAPriori'] and np.isnan(torqAP).any():
-                # torques sometimes contain nans, just a very small number in C that gets converted to nan?
-                np.nan_to_num(torqAP)
 
             start = self.N_DOFS*row
             # get numerical regressor (std)
@@ -227,6 +223,11 @@ class Model(object):
                 for s in range(self.data.num_used_samples):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T[6:].dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
+
+            if self.opt['iDynSimulate']:
+                self.torques_stack += self.contactForcesSum
+            if self.opt['useAPriori']:
+                self.torquesAP_stack += self.contactForcesSum
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:

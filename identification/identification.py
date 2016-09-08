@@ -929,6 +929,8 @@ class Identification(object):
                       'unified_scaling': True},
             {'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error',
                       'unified_scaling': False},
+            {'data': [self.tauMeasured-self.tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error',
+                      'unified_scaling': False},
             {'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
                       'time': rel_time, 'title': 'Positions'},
             {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],

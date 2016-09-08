@@ -794,16 +794,18 @@ class Identification(object):
         #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd] ?)
         K = Matrix(self.model.Binv)
 
-        #TODO: adapt for floating base/contact forces
-        # OLS: minimze ||tau - Y*x_base||^2 (simplify)=> minimize ||rh1.T - R1*K*delta||^2
-        if is_old_sympy:
-            e_rho1 = Matrix(rho1).T - R1*K*delta
-        else:
-            e_rho1 = Matrix(rho1) - R1*K*delta
-
+        # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
+        # sub contact forces
         if self.opt['floating_base']:
-            rho2_norm_sqr = la.norm( (self.model.tau + self.model.contactForcesSum) - self.model.YBase.dot(self.model.xBase) )**2
+            contactForces = Q.T.dot(self.model.contactForcesSum)
         else:
+            contactForces = zeros(self.model.num_base_params, 1)
+
+        if is_old_sympy:
+            e_rho1 = Matrix(rho1).T - (R1*K*delta - contactForces)
+        else:
+            e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
+
         rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],

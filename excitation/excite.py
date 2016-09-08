@@ -20,9 +20,8 @@ parser.add_argument('--dryrun', help="don't send the trajectory", action='store_
 
 parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
-parser.add_argument('--random-colors', dest='random_colors', help="use random colors for graphs", action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
-parser.set_defaults(plot=False, plot_targets=False, dryrun=False, simulate=False, random_colors=False, filename='measurements.npz', periods=1)
+parser.set_defaults(plot=False, plot_targets=False, dryrun=False, simulate=False, filename='measurements.npz', periods=1)
 args = parser.parse_args()
 
 import yaml
@@ -54,7 +53,7 @@ from trajectoryGenerator import TrajectoryGenerator, TrajectoryOptimizer
 
 def plot(data=None):
     fig = plt.figure(1)
-    if args.random_colors:
+    if False:
         from random import sample
         from itertools import permutations
 
@@ -65,8 +64,7 @@ def plot(data=None):
         colors = sample(rgb,Nlines)
         print colors[0:config['N_DOFS']]
     else:
-        # set some nice fixed colors
-        # TODO: use palette with more than 7 values...
+        # set some fixed colors
         colors = [[ 0.97254902,  0.62745098,  0.40784314],
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
@@ -75,6 +73,8 @@ def plot(data=None):
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
+        from palettable.tableau import Tableau_20, ColorBlind_10
+        colors += Tableau_20.mpl_colors + ColorBlind_10.mpl_colors
 
     if not data:
         # python measurements

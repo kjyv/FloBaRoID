@@ -8,7 +8,7 @@ import scipy.linalg as sla
 import colorama
 from colorama import Fore, Back, Style
 
-
+#plot colors
 colors = [[ 0.97254902,  0.62745098,  0.40784314],
           [ 0.0627451 ,  0.53333333,  0.84705882],
           [ 0.15686275,  0.75294118,  0.37647059],
@@ -17,6 +17,9 @@ colors = [[ 0.97254902,  0.62745098,  0.40784314],
           [ 0.18823529,  0.31372549,  0.09411765],
           [ 0.50196078,  0.40784314,  0.15686275]
          ]
+#set some more colors for higher DOF
+from palettable.tableau import Tableau_20, ColorBlind_10
+colors += Tableau_20.mpl_colors + ColorBlind_10.mpl_colors
 
 class OutputConsole(object):
     @staticmethod
@@ -299,9 +302,9 @@ class OutputConsole(object):
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))
 
-        idf.estimateRegressorTorques(estimateWith='urdf')
+        idf.estimateRegressorTorques(estimateWith='urdf')   #estimate torques with CAD params
         idf.apriori_error = sla.norm(idf.tauEstimated-idf.tauMeasured)*100/sla.norm(idf.tauMeasured)
-        idf.estimateRegressorTorques()
+        idf.estimateRegressorTorques()   #estimate torques again with identified parameters
         idf.res_error = sla.norm(idf.tauEstimated-idf.tauMeasured)*100/sla.norm(idf.tauMeasured)
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
                 format(idf.res_error, idf.apriori_error))

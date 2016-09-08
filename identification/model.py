@@ -32,12 +32,21 @@ class Model(object):
                regrXml = file.read()
         else:
             # (default for all joints)
-            regrXml = '''
-            <regressor>
-              <jointTorqueDynamics>
-                <allJoints/>
-              </jointTorqueDynamics>
-            </regressor>'''
+            if self.opt['floating_base']:
+                regrXml = '''
+                <regressor>
+                  <baseLinkDynamics/>
+                  <jointTorqueDynamics>
+                    <allJoints/>
+                  </jointTorqueDynamics>
+                </regressor>'''
+            else:
+                regrXml = '''
+                <regressor>
+                  <jointTorqueDynamics>
+                    <allJoints/>
+                  </jointTorqueDynamics>
+                </regressor>'''
         self.generator.loadRegressorStructureFromString(regrXml)
 
         # TODO: this and the following are not dependent on joints specified in regressor (but
@@ -68,6 +77,7 @@ class Model(object):
         if self.opt['verbose']:
             print '({})'.format(self.link_names)
 
+        self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
         self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
@@ -97,20 +107,22 @@ class Model(object):
 
         self.data = data
 
-        sym_time = 0
         num_time = 0
         simulate_time = 0
 
-        self.regressor_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples, self.num_params))
-        self.torques_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
-        self.torquesAP_stack = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
+        #extra regressor rows for floating base
+        if self.opt['floating_base']: fb = 6
+        else: fb = 0
+        self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_params))
+        self.torques_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
+        self.torquesAP_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
         if self.opt['floating_base']:
             self.contacts_stack = np.zeros(shape=(len(data.samples['contacts'].item().keys()), 6*data.num_used_samples))
-            self.contactForcesSum = np.zeros(shape=((self.N_DOFS)*data.num_used_samples))
+            self.contactForcesSum = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
 
         """loop over measurements (optionally skip some values) and get one regressor per time step"""
-        for row in range(0, data.num_used_samples):
-            m_idx = row*(self.opt['skip_samples'])+row
+        for sample_index in range(0, data.num_used_samples):
+            m_idx = sample_index*(self.opt['skip_samples'])+sample_index
             with helpers.Timer() as t:
                 # read samples
                 pos = data.samples['positions'][m_idx]
@@ -119,6 +131,7 @@ class Model(object):
                 torq = data.samples['torques'][m_idx]
                 contacts = {}
                 for frame in data.samples['contacts'].item().keys():
+                    #TODO: define proper sign for input data
                     contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
                 if self.opt['floating_base']:
                     # The twist (linear/angular velocity) of the base, expressed in the world
@@ -136,8 +149,10 @@ class Model(object):
                 dq = iDynTree.VectorDynSize.fromList(vel)
                 ddq = iDynTree.VectorDynSize.fromList(acc)
 
-                if self.opt['iDynSimulate'] or self.opt['useAPriori']:
-                    # calc torques with iDynTree dynamicsComputation class
+                # in case that we simulate the torque measurements, need torque estimation for a priori parameters
+                # or that we need to simulate the base reaction forces for floating base
+                if self.opt['iDynSimulate'] or self.opt['useAPriori'] or self.opt['floating_base']:
+                    # calc torques and forces with iDynTree dynamicsComputation class
                     if self.opt['floating_base']:
                         # the homogeneous transformation that transforms position vectors expressed
                         # in the base reference frame in position frames expressed in the world
@@ -156,23 +171,33 @@ class Model(object):
                     self.dynComp.inverseDynamics(torques, baseReactionForce)
 
                     if self.opt['useAPriori']:
-                        torqAP = torques.toNumPy()
+                        if self.opt['floating_base']:
+                            torqAP = np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
+                        else:
+                            torqAP = torques.toNumPy()
                         # torques sometimes contain nans, just a very small number in C that gets converted to nan?
                         np.nan_to_num(torqAP)
+
                     if self.opt['iDynSimulate']:
-                        torq = torques.toNumPy()
+                        if self.opt['floating_base']:
+                            torq = np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
+                        else:
+                            torq = torques.toNumPy()
                         torq = np.nan_to_num(torq)
-                        data.samples['torques'][m_idx] = torq
+                        data.samples['torques'][m_idx] = torques.toNumPy()
+                    else:
+                        #add estimated base forces to measured torq vector
+                        torq = np.concatenate((baseReactionForce.toNumPy(), torq))
 
                 if self.opt['addNoise'] != 0:
-                    torq += np.random.randn(self.N_DOFS)*self.opt['addNoise']
+                    torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
 
             simulate_time += t.interval
 
-            #...still in sample loop
+            #...still looping over measurement samples
 
-            start = self.N_DOFS*row
             # get numerical regressor (std)
+            row_index = (self.N_DOFS+fb)*sample_index   # index for current row in stacked regressor matrix
             with helpers.Timer() as t:
                 if self.opt['floating_base']:
                     vel = data.samples['base_velocity'][m_idx]
@@ -191,23 +216,24 @@ class Model(object):
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print "Error during numeric computation of regressor"
 
-                YStd = regressor.toNumPy()
                 # stack on previous regressors
-                np.copyto(self.regressor_stack[start:start+self.N_DOFS], YStd)
+                np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor.toNumPy())
             num_time += t.interval
 
             # stack results onto matrices of previous timesteps
-            np.copyto(self.torques_stack[start:start+self.N_DOFS], torq)
+            np.copyto(self.torques_stack[row_index:row_index+self.N_DOFS+fb], torq)
             if self.opt['useAPriori']:
-                np.copyto(self.torquesAP_stack[start:start+self.N_DOFS], torqAP)
+                np.copyto(self.torquesAP_stack[row_index:row_index+self.N_DOFS+fb], torqAP)
 
+            contact_idx = (sample_index*6)
             if self.opt['floating_base']:
                 for i in range(self.contacts_stack.shape[0]):
                     frame = contacts.keys()[i]
-                    np.copyto(self.contacts_stack[i][start:start+6], contacts[frame])
+                    np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
         if self.opt['floating_base']:
             #TODO: if robot does not have contact sensors, use HyQ null-space trick
+
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
                 frame = contacts.keys()[i]
@@ -218,16 +244,17 @@ class Model(object):
                 jacobian = jacobian.toNumPy()
 
                 # mul each sample of measured contact forces with frame jacobian
-                dim = self.N_DOFS
+                dim = self.N_DOFS+fb
                 contacts_torq = np.empty(dim*self.data.num_used_samples)
                 for s in range(self.data.num_used_samples):
-                    contacts_torq[s*dim:(s+1)*dim] = jacobian.T[6:].dot(self.contacts_stack[i][s*6:(s+1)*6])
+                    contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
 
+            #subtract measured contact forces from torque estimation from iDynTree
             if self.opt['iDynSimulate']:
-                self.torques_stack += self.contactForcesSum
+                self.torques_stack -= self.contactForcesSum
             if self.opt['useAPriori']:
-                self.torquesAP_stack += self.contactForcesSum
+                self.torquesAP_stack -= self.contactForcesSum
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:
@@ -256,38 +283,21 @@ class Model(object):
                 for i in range(0, self.N_DOFS):
                     self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
 
-            """
-            # Plot the frequency and phase response of the filter
-            w, h = signal.freqz(b, a, worN=8000)
-            plt.subplot(2, 1, 1)
-            plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
-            plt.plot(fc, 0.5*np.sqrt(2), 'ko')
-            plt.axvline(fc, color='k')
-            plt.xlim(0, 0.5*fs)
-            plt.title("Lowpass Filter Frequency Response")
-            plt.xlabel('Frequency [Hz]')
-
-            plt.subplot(2,1,2)
-            h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
-            plt.plot(w, h_Phase)
-            plt.ylabel('Phase (radians)')
-            plt.xlabel(r'Frequency (Hz)')
-            plt.title(r'Phase response')
-            plt.subplots_adjust(hspace=0.5)
-            plt.grid()
-            """
-
         self.sample_end = data.samples['positions'].shape[0]
         if self.opt['skip_samples'] > 0: self.sample_end -= (self.opt['skip_samples'])
 
+        '''
         if self.opt['iDynSimulate']:
             if self.opt['useAPriori']:
                 tau = self.torques_stack    # use original measurements, not delta
             else:
                 tau = self.tau
-            self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS))
+            self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS+fb))
         else:
             self.tauMeasured = data.samples['torques'][0:self.sample_end:self.opt['skip_samples']+1, :]
+        '''
+        tau = self.torques_stack    # use original measurements, not delta
+        self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS+fb))
 
         self.T = data.samples['times'][0:self.sample_end:self.opt['skip_samples']+1]
 

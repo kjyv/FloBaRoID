@@ -53,6 +53,7 @@ min_tol: 0.00001
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 skip_samples: 0    #how many values to skip before using the next sample
 removeNearZero: 0  #remove samples that have almost zero velocity
+minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0
@@ -101,7 +102,7 @@ dontIdentifyMasses: 0
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
 # (no effect for SDP constrained solutions)
-useAPriori: 1
+useAPriori: 0
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0

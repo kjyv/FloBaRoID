@@ -11,7 +11,7 @@ import scipy.linalg as sla
 import scipy.stats as stats
 
 import sympy
-from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye
+from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye, zeros
 version = int(sympy.__version__.replace('.','')[:3])
 is_old_sympy = (version <= 74 and not sympy.__version__.startswith('1'))
 
@@ -74,7 +74,7 @@ class Identification(object):
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
         if self.opt['removeNearZero']:
-            self.data.removeZeroSamples()
+            self.data.removeNearZeroSamples()
 
         self.tauEstimated = list()
         self.tauMeasured = list()
@@ -629,36 +629,27 @@ class Identification(object):
         I = Identity
         S = skew
 
-        #correct LMIs if estimating error instead of absolute values
-        if self.opt['useAPriori']:
-            #LMI contraints need be corrected with a priori knowledge
-            apriori = self.model.xStdModel
-            #in order to write no-change constraints, compare to zero (changes)
-            compare = np.zeros_like(self.model.xStdModel)
-        else:
-            #dont correct as we're estimating absolute values
-            apriori = np.zeros_like(self.model.xStdModel)
-            #compare values relative to CAD
-            compare = self.model.xStdModel
+        #compare values relative to apriori CAD parameters
+        compare = self.model.xStdModel
 
         # create LMI matrices (symbols) for each link
         # so that mass is positive, inertia matrix is positive definite
         # (each matrix is later on used to be either >0 or >=0)
         D_inertia_blocks = []
         for i in range(0, self.model.N_LINKS):
-            m = self.model.mass_syms[i] + apriori[i*10]
-            l = Matrix([ self.model.param_syms[i*10+1] + apriori[i*10+1],
-                         self.model.param_syms[i*10+2] + apriori[i*10+2],
-                         self.model.param_syms[i*10+3] + apriori[i*10+3] ] )
-            L = Matrix([ [self.model.param_syms[i*10+4+0] + apriori[i*10+4+0],
-                          self.model.param_syms[i*10+4+1] + apriori[i*10+4+1],
-                          self.model.param_syms[i*10+4+2] + apriori[i*10+4+2]],
-                         [self.model.param_syms[i*10+4+1] + apriori[i*10+4+1],
-                          self.model.param_syms[i*10+4+3] + apriori[i*10+4+3],
-                          self.model.param_syms[i*10+4+4] + apriori[i*10+4+4]],
-                         [self.model.param_syms[i*10+4+2] + apriori[i*10+4+2],
-                          self.model.param_syms[i*10+4+4] + apriori[i*10+4+4],
-                          self.model.param_syms[i*10+4+5] + apriori[i*10+4+5]]
+            m = self.model.mass_syms[i]
+            l = Matrix([ self.model.param_syms[i*10+1],
+                         self.model.param_syms[i*10+2],
+                         self.model.param_syms[i*10+3] ] )
+            L = Matrix([ [self.model.param_syms[i*10+4+0],
+                          self.model.param_syms[i*10+4+1],
+                          self.model.param_syms[i*10+4+2]],
+                         [self.model.param_syms[i*10+4+1],
+                          self.model.param_syms[i*10+4+3],
+                          self.model.param_syms[i*10+4+4]],
+                         [self.model.param_syms[i*10+4+2],
+                          self.model.param_syms[i*10+4+4],
+                          self.model.param_syms[i*10+4+5]]
                        ])
 
             Di = BlockMatrix([[L,    S(l).T],
@@ -688,40 +679,40 @@ class Identification(object):
             if self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']:
                 print Fore.YELLOW + 'skipping identification of link {}!'.format(i) + Fore.RESET
                 # don't change mass
-                D_other_blocks.append(Matrix([compare[i*10]+0.001 - self.model.mass_syms[i]]))
-                D_other_blocks.append(Matrix([self.model.mass_syms[i]+0.001 - compare[i*10]]))
+                D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
+                D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
 
                 # don't change COM
-                D_other_blocks.append(Matrix([compare[i*10+1]+0.0001 - self.model.param_syms[i*10+1]]))
-                D_other_blocks.append(Matrix([compare[i*10+2]+0.0001 - self.model.param_syms[i*10+2]]))
-                D_other_blocks.append(Matrix([compare[i*10+3]+0.0001 - self.model.param_syms[i*10+3]]))
+                D_other_blocks.append(Matrix([compare[i*10+1] - self.model.param_syms[i*10+1]]))
+                D_other_blocks.append(Matrix([compare[i*10+2] - self.model.param_syms[i*10+2]]))
+                D_other_blocks.append(Matrix([compare[i*10+3] - self.model.param_syms[i*10+3]]))
 
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+1]+0.0001 - compare[i*10+1]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+2]+0.0001 - compare[i*10+2]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+3]+0.0001 - compare[i*10+3]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+1] - compare[i*10+1]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+2] - compare[i*10+2]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+3] - compare[i*10+3]]))
 
                 # don't change inertia
-                D_other_blocks.append(Matrix([compare[i*10+4]+0.0001 - self.model.param_syms[i*10+4]]))
-                D_other_blocks.append(Matrix([compare[i*10+5]+0.0001 - self.model.param_syms[i*10+5]]))
-                D_other_blocks.append(Matrix([compare[i*10+6]+0.0001 - self.model.param_syms[i*10+6]]))
-                D_other_blocks.append(Matrix([compare[i*10+7]+0.0001 - self.model.param_syms[i*10+7]]))
-                D_other_blocks.append(Matrix([compare[i*10+8]+0.0001 - self.model.param_syms[i*10+8]]))
-                D_other_blocks.append(Matrix([compare[i*10+9]+0.0001 - self.model.param_syms[i*10+9]]))
+                D_other_blocks.append(Matrix([compare[i*10+4] - self.model.param_syms[i*10+4]]))
+                D_other_blocks.append(Matrix([compare[i*10+5] - self.model.param_syms[i*10+5]]))
+                D_other_blocks.append(Matrix([compare[i*10+6] - self.model.param_syms[i*10+6]]))
+                D_other_blocks.append(Matrix([compare[i*10+7] - self.model.param_syms[i*10+7]]))
+                D_other_blocks.append(Matrix([compare[i*10+8] - self.model.param_syms[i*10+8]]))
+                D_other_blocks.append(Matrix([compare[i*10+9] - self.model.param_syms[i*10+9]]))
 
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+4]+0.0001 - compare[i*10+4]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+5]+0.0001 - compare[i*10+5]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+6]+0.0001 - compare[i*10+6]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+7]+0.0001 - compare[i*10+7]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+8]+0.0001 - compare[i*10+8]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[i*10+9]+0.0001 - compare[i*10+9]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+4] - compare[i*10+4]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+5] - compare[i*10+5]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+6] - compare[i*10+6]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+7] - compare[i*10+7]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+8] - compare[i*10+8]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[i*10+9] - compare[i*10+9]]))
             else:
                 # all other links
                 if self.opt['dontIdentifyMasses']:
-                    D_other_blocks.append(Matrix([compare[i*10]+0.001 - self.model.mass_syms[i]]))
-                    D_other_blocks.append(Matrix([self.model.mass_syms[i]+0.001 - compare[i*10]]))
+                    D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
+                    D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
 
 
-        # constrain overall mass within bound
+        # constrain overall mass within bounds
         if self.opt['limitOverallMass']:
             #use given overall mass else use overall mass from CAD
             if self.opt['limitMassVal']:
@@ -734,27 +725,23 @@ class Identification(object):
                 robotmaxmass_ub = robotmaxmass * 1.3
                 robotmaxmass_lb = robotmaxmass * 0.7
 
-            if self.opt['useAPriori']:
-                D_other_blocks.append(Matrix([robotmaxmass_ub - (robotmass_apriori + sum(self.model.mass_syms))]))
-                D_other_blocks.append(Matrix([(robotmass_apriori + sum(self.model.mass_syms)) - robotmaxmass_lb]))
-            else:
-                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.model.mass_syms)])) #maximum mass
-                D_other_blocks.append(Matrix([sum(self.model.mass_syms) - robotmaxmass_lb])) #minimum mass
+            D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.model.mass_syms)])) #maximum mass
+            D_other_blocks.append(Matrix([sum(self.model.mass_syms) - robotmaxmass_lb])) #minimum mass
 
         # constrain for each link separately
         if self.opt['limitMassValPerLink']:
             for i in range(self.model.N_LINKS):
                 if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                    c = Matrix([self.opt['limitMassValPerLink'] - (apriori[i*10] + self.model.mass_syms[i])])
+                    c = Matrix([self.opt['limitMassValPerLink'] - self.model.mass_syms[i]])
                     D_other_blocks.append(c)
         elif self.opt['limitMassToApriori']:
             # constrain each mass to env of a priori value
             for i in range(self.model.N_LINKS):
                 if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                    ub = Matrix([self.model.xStdModel[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
-                                (apriori[i*10] + self.model.mass_syms[i])])
-                    lb = Matrix([(apriori[i*10] + self.model.mass_syms[i]) -
-                                 self.model.xStdModel[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
+                    ub = Matrix([compare[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
+                                self.model.mass_syms[i]])
+                    lb = Matrix([self.model.mass_syms[i] -
+                                 compare[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
                     D_other_blocks.append(ub)
                     D_other_blocks.append(lb)
 
@@ -764,11 +751,11 @@ class Identification(object):
                 if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
                     link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.model.urdf_file, i, self.opt['hullScaling']))
                     l = Matrix( self.model.param_syms[i*10+1:i*10+4])
-                    m = self.model.mass_syms[i] + apriori[i*10]
+                    m = self.model.mass_syms[i]
                     link_cuboid_hull = link_cuboid_hulls[i]
                     for j in range(3):
-                        ub = Matrix( [[  l[j]+apriori[i*10+1+j] - m*link_cuboid_hull[j][0] ]] )
-                        lb = Matrix( [[ -l[j]-apriori[i*10+1+j] + m*link_cuboid_hull[j][1] ]] )
+                        ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
+                        lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
                         D_other_blocks.append( ub )
                         D_other_blocks.append( lb )
 
@@ -789,6 +776,9 @@ class Identification(object):
     def identifyStandardFeasibleParameters(self):
         # use SDP program to do OLS and constrain to physically feasible
         # space at the same time. Based on Sousa, 2014
+        if self.opt['useAPriori']:
+            print("Please disable using a priori parameters when using constrained optimization.")
+            sys.exit(1)
 
         #build OLS matrix
         I = Identity
@@ -814,7 +804,7 @@ class Identification(object):
         if self.opt['floating_base']:
             rho2_norm_sqr = la.norm( (self.model.tau + self.model.contactForcesSum) - self.model.YBase.dot(self.model.xBase) )**2
         else:
-            rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
+        rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                              [e_rho1,       I(self.model.num_base_params)]])
@@ -829,16 +819,17 @@ class Identification(object):
 
         # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
         # it's probable still a bad solution
-        if not self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
-            print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
-            optimization.solve_sdp = optimization.cvxopt_dsdp5
+        #if not self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
+        #    print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
+        #    optimization.solve_sdp = optimization.cvxopt_dsdp5
 
-        # start at CAD data, might increase convergence speed
-        #if not self.opt['useAPriori'] and optimization.solve_sdp is optimization.dsdp5: prime = self.model.xStdModel
-        #else: prime = None
+        # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
+        if optimization.solve_sdp is optimization.cvxopt_dsdp5 and self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
+            prime = self.model.xStdModel
+        else: prime = None
 
         #solve SDP program (constrained OLS)
-        solution = optimization.solve_sdp(objective_func, lmis, variables)
+        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]
         if u_star:

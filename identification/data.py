@@ -288,15 +288,14 @@ class Data(object):
         self.updateNumSamples()
 
 
-    def removeZeroSamples(self):
+    def removeNearZeroSamples(self):
         '''remove samples that have near zero velocity'''
 
         if self.opt['verbose']:
             print ("removing near zero samples..."),
-        min_vel = 0.02   # rad per sec
         to_delete = list()
         for t in range(self.num_used_samples):
-            if np.min(np.abs(self.samples['velocities'][t])) < min_vel:
+            if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
                 to_delete.append(t)
 
         for k in self.samples.keys():

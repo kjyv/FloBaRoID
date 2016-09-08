@@ -148,9 +148,9 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     toc = time.time()
     if sdpout['status'] == 'optimal':
         print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
-        print "('optimal' does not necessarily mean feasible)"
     else:
         print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
+        print("(Consider to try to use the dsdp5 solver.)")
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
@@ -235,4 +235,4 @@ def dsdp5(objf, lmis, variables, primalstart=None):
     return np.matrix(sol).T
 
 #set a default solver
-solve_sdp = cvxopt_conelp #dsdp5
+solve_sdp = cvxopt_dsdp5 #dsdp5   #cvxopt_dsdp5

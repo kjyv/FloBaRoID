@@ -29,7 +29,7 @@ Details:
 requirements for identification module:
 
 * python 2.7
-* python modules: numpy, scipy, sympy, iDynTree, pyyaml, transforms3d, numpy-stl, pylmi-sdp, cvxopt,, matplotlib, colorama, palettable, humanize
+* python modules: numpy, scipy, sympy, iDynTree, pyyaml, transforms3d, numpy-stl, pylmi-sdp, cvxopt (with dsdp5), matplotlib, colorama, palettable, humanize
 * optionally for html plots: mpld3, jinja2
 
 requirements for excitation modules:

@@ -82,7 +82,7 @@ class Model(object):
 
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
-        if opt['iDynSimulate'] or opt['useAPriori']:
+        if opt['iDynSimulate'] or opt['useAPriori'] or opt['floating_base']:
             self.dynComp = iDynTree.DynamicsComputations();
             self.dynComp.loadRobotModelFromFile(self.urdf_file);
 

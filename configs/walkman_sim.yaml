@@ -55,6 +55,7 @@ min_tol: 0.0001
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 skip_samples: 0    #how many values to skip before using the next sample
 removeNearZero: 1  #remove samples that have almost zero velocity
+minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
 
 # whether only "good" data is being selected or simply all is used
 selectBlocksFromMeasurements: 0
@@ -89,13 +90,13 @@ limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
-limitMassToApriori: 0
-limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (1.0 = 100%)
+limitMassToApriori: 1
+limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # whether to take out masses to be identified because they are e.g.
 # well known or introduce problems
 # (essential params or when using feasability constraints)
-dontIdentifyMasses: 1
+dontIdentifyMasses: 0
 
 ## other forms of OLS
 
@@ -103,7 +104,7 @@ dontIdentifyMasses: 1
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
 # (no effect for SDP constrained solutions)
-useAPriori: 1
+useAPriori: 0
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0

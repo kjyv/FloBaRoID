@@ -129,11 +129,11 @@ class Model(object):
                 vel = data.samples['velocities'][m_idx]
                 acc = data.samples['accelerations'][m_idx]
                 torq = data.samples['torques'][m_idx]
-                contacts = {}
-                for frame in data.samples['contacts'].item().keys():
-                    #TODO: define proper sign for input data
-                    contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
                 if self.opt['floating_base']:
+                    contacts = {}
+                    for frame in data.samples['contacts'].item().keys():
+                        #TODO: define proper sign for input data
+                        contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
                     # The twist (linear/angular velocity) of the base, expressed in the world
                     # orientation frame and with respect to the base origin
                     base_vel = data.samples['base_velocity'][m_idx]
@@ -186,8 +186,9 @@ class Model(object):
                         torq = np.nan_to_num(torq)
                         data.samples['torques'][m_idx] = torques.toNumPy()
                     else:
-                        #add estimated base forces to measured torq vector
-                        torq = np.concatenate((baseReactionForce.toNumPy(), torq))
+                        if self.opt['floating_base']:
+                            #add estimated base forces to measured torq vector
+                            torq = np.concatenate((baseReactionForce.toNumPy(), torq))
 
                 if self.opt['addNoise'] != 0:
                     torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']

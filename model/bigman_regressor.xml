@@ -1,4 +1,5 @@
 <regressor>
+    <baseLinkDynamics/>
     <jointTorqueDynamics>
         <joints>
             <!-- head -->

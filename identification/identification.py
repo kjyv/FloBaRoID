@@ -105,10 +105,12 @@ class Identification(object):
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)
-        if self.opt['floating_base']:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
-        else:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
+
+        #tau already includes contact forces
+        #if self.opt['floating_base']:
+        #    self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
+        #else:
+        self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
 
         #damped least squares
         #from scipy.sparse.linalg import lsqr
@@ -131,11 +133,13 @@ class Identification(object):
             self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
                                        (self.data.num_used_samples-self.model.num_base_params)
 
+            if self.opt['floating_base']: fb = 6
+            else: fb = 0
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             G = scipy.sparse.spdiags(np.repeat(1/self.sigma_rho, self.data.num_used_samples), 0,
-                               self.model.N_DOFS*self.data.num_used_samples, self.model.N_DOFS*self.data.num_used_samples)
+                               (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
             #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
             #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 
@@ -219,8 +223,16 @@ class Identification(object):
             else:
                 print("unknown type of parameters: {}".format(self.opt['estimateWith']))
 
+            if self.opt['floating_base']:
+                fb = 6
+                tauEst -= self.model.contactForcesSum
+            else:
+                fb = 0
+
             # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
-            self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS))
+            self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
+            if estimateWith == 'urdf':
+                self.tauAPriori = self.tauEstimated
 
         #print("torque estimation took %.03f sec." % t.interval)
 
@@ -267,7 +279,9 @@ class Identification(object):
             # calc torques with iDynTree dynamicsComputation class
             if self.opt['floating_base']:
                 dynComp.setFloatingBase(self.opt['base_link_name'])
-                world_T_base = dynComp.getWorldBaseTransform()
+                # here, this is equal to identity as we have no position information
+                # (origin is same base link frame), but that should be fine for identification
+                world_T_base = dynComp.getWorldBaseTransform(self.opt['base_link_name'])
                 dynComp.setRobotState(q, dq, ddq, world_T_base,
                                       base_velocity, base_acceleration,
                                       gravity)
@@ -287,7 +301,6 @@ class Identification(object):
                 self.tauEstimatedValidation = torques.toNumPy()
             else:
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques.toNumPy()))
-
 
         #TODO: add contact forces to torques
 
@@ -791,6 +804,8 @@ class Identification(object):
         #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd] ?)
         K = Matrix(self.model.Binv)
 
+        #TODO: adapt for floating base/contact forces
+        # OLS: minimze ||tau - Y*x_base||^2 (simplify)=> minimize ||rh1.T - R1*K*delta||^2
         if is_old_sympy:
             e_rho1 = Matrix(rho1).T - R1*K*delta
         else:
@@ -866,6 +881,10 @@ class Identification(object):
         return xStd
 
     def estimateParameters(self):
+        if not self.data.num_used_samples > self.model.num_params*2:
+            print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
+            sys.exit(1)
+
         if self.opt['verbose']:
             print("doing identification on {} samples".format(self.data.num_used_samples)),
 
@@ -899,11 +918,14 @@ class Identification(object):
         rel_time = self.model.T-self.model.T[0]
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
+
         #TODO: allow plotting in subplots per joint, include raw values then
         datasets = [
             {'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques',
                       'unified_scaling': True},
             {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques',
+                      'unified_scaling': True},
+            {'data': [self.tauAPriori], 'time': rel_time, 'title': 'CAD Torques',
                       'unified_scaling': True},
             {'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error',
                       'unified_scaling': False},
@@ -927,13 +949,18 @@ class Identification(object):
                 #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
             )
 
+        if self.opt['floating_base']:
+            labels = self.model.baseNames + self.model.jointNames
+        else:
+            labels = self.model.jointNames
+
         if self.opt['outputModule'] == 'matplotlib':
             from output import OutputMatplotlib
-            output = OutputMatplotlib(datasets, self.model.jointNames)
+            output = OutputMatplotlib(datasets, labels)
             output.render()
         elif self.opt['outputModule'] == 'html':
             from output import OutputHTML
-            output = OutputHTML(datasets, self.model.jointNames)
+            output = OutputHTML(datasets, labels)
             output.render()
             #output.runServer()
         else:

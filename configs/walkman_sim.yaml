@@ -39,13 +39,14 @@ ovr_pos_limit:
 # fixed or floating-base dynamics
 floating_base: 1
 base_link_name: 'Waist'
+#if set to 1, also add <baseLinkDynamics/> as first rows to regressor definition xml
 
 # simulate torques from target values, don't use both
 iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
-min_tol: 0.00001
+min_tol: 0.0001
 
 ## data selection
 

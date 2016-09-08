@@ -48,8 +48,7 @@ def readCSV(dir, config):
 
     file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)
-    out['FTleft'] = np.empty( (f.shape[0], 6) )    #FT left foot, 3 force, 3 torque values
-    out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot
+    out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot, 3 force, 3 torque values
     out['IMUrpy'] = np.empty( (f.shape[0], 3) )    #IMU orientation, r,p,y
     out['IMUlinAcc'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
     out['IMUrotVel'] = np.empty( (f.shape[0], 3) ) #IMU rotational velocity
@@ -59,24 +58,22 @@ def readCSV(dir, config):
     rpy_labels = ['r','p', 'y']
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
-        out['IMUrpy'][:, i] = f[:, i]
+        out['IMUrpy'][:, i] = f[:, i]  #use IMUrpy
+        #out['IMUrpy'][:, i] = f[:, 15+i]  #use VNrpy
         out['IMUlinAcc'][:, i] = f[:, 18+i]
         out['IMUrotVel'][:, i] = f[:, 21+i]
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
         ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
     ax5 = fig.add_subplot(3,2,5)
-    ax6 = fig.add_subplot(3,2,6)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
-    for i in range(0,6):
-        out['FTleft'][:, i] = f[:, 3+i]
+    for i in range(0,5):
         out['FTright'][:, i] = f[:, 3+6+i]
-        ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
-        ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
+        ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
     #set titles and enable legends for each subplot
-    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT left', 'FT right']
-    for i in range(0,6):
+    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right']
+    for i in range(0,5):
         plt.subplot(321+i)
         eval('ax{}'.format(1+i)).legend(loc='best', fancybox=True, fontsize=10, title='')
         plt.title(t[i])

@@ -251,58 +251,14 @@ class Identification(object):
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 
-        gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
-
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skip_samples']+1):
-            # read measurements
-            pos = v_data['positions'][m_idx]
-            vel = v_data['velocities'][m_idx]
-            acc = v_data['accelerations'][m_idx]
-            torq = v_data['torques'][m_idx]
-            if self.opt['floating_base']:
-                # The twist (linear/angular velocity) of the base, expressed in the world
-                # orientation frame and with respect to the base origin
-                base_vel = v_data['base_velocity'][m_idx]
-                base_velocity = iDynTree.Twist.fromList(base_vel)
-                # The 6d classical acceleration (linear/angular acceleration) of the base
-                # expressed in the world orientation frame and with respect to the base
-                # origin (not spatial acc)
-                base_acc = v_data['base_acceleration'][m_idx]
-                base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
-
-            # system state for iDynTree
-            q = iDynTree.VectorDynSize.fromList(pos)
-            dq = iDynTree.VectorDynSize.fromList(vel)
-            ddq = iDynTree.VectorDynSize.fromList(acc)
-
-            # calc torques with iDynTree dynamicsComputation class
-            if self.opt['floating_base']:
-                dynComp.setFloatingBase(self.opt['base_link_name'])
-                # here, this is equal to identity as we have no position information
-                # (origin is same base link frame), but that should be fine for identification
-                world_T_base = dynComp.getWorldBaseTransform(self.opt['base_link_name'])
-                dynComp.setRobotState(q, dq, ddq, world_T_base,
-                                      base_velocity, base_acceleration,
-                                      gravity)
-            else:
-                dynComp.setRobotState(q, dq, ddq, gravity)
-
-            #TODO: reuse sim code for floating base in computeRegressors
-
-            # compute inverse dynamics with idyntree (simulate)
-            #empty vars to be filled in
-            torques = iDynTree.VectorDynSize(self.model.N_DOFS)
-            baseReactionForce = iDynTree.Wrench()
-
-            dynComp.inverseDynamics(torques, baseReactionForce)
+            torques = self.model.simulateDynamics(v_data, m_idx, dynComp)
 
             if self.tauEstimatedValidation is None:
-                self.tauEstimatedValidation = torques.toNumPy()
+                self.tauEstimatedValidation = torques
             else:
-                self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques.toNumPy()))
-
-        #TODO: add contact forces to torques
+                self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques))
 
         if self.opt['skip_samples'] > 0:
             self.tauMeasuredValidation = v_data['torques'][::self.opt['skip_samples']+1]

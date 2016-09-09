@@ -86,8 +86,6 @@ class Model(object):
             self.dynComp = iDynTree.DynamicsComputations();
             self.dynComp.loadRobotModelFromFile(self.urdf_file);
 
-            self.world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
-
         # get model parameters
         xStdModel = iDynTree.VectorDynSize(self.num_params)
         self.generator.getModelParameters(xStdModel)
@@ -100,9 +98,64 @@ class Model(object):
         # (put here so it's only done once for the loaded model)
         self.computeRegressorLinDepsQR()
 
+
+    def simulateDynamics(self, samples, sample_idx, dynComp=None):
+        """ compute torques for one time step of measurements """
+
+        if not dynComp:
+            dynComp = self.dynComp
+        world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
+
+        # read sample data
+        pos = samples['positions'][sample_idx]
+        vel = samples['velocities'][sample_idx]
+        acc = samples['accelerations'][sample_idx]
+        torq = samples['torques'][sample_idx]
+        if self.opt['floating_base']:
+            contacts = {}
+            for frame in samples['contacts'].item().keys():
+                #TODO: define proper sign for input data
+                contacts[frame] = -samples['contacts'].item()[frame][sample_idx]
+            # The twist (linear/angular velocity) of the base, expressed in the world
+            # orientation frame and with respect to the base origin
+            base_vel = samples['base_velocity'][sample_idx]
+            base_velocity = iDynTree.Twist.fromList(base_vel)
+            # The 6d classical acceleration (linear/angular acceleration) of the base
+            # expressed in the world orientation frame and with respect to the base
+            # origin (not spatial acc)
+            base_acc = samples['base_acceleration'][sample_idx]
+            base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
+
+        # system state for iDynTree
+        q = iDynTree.VectorDynSize.fromList(pos)
+        dq = iDynTree.VectorDynSize.fromList(vel)
+        ddq = iDynTree.VectorDynSize.fromList(acc)
+
+        # calc torques and forces with iDynTree dynamicsComputation class
+        if self.opt['floating_base']:
+            # the homogeneous transformation that transforms position vectors expressed
+            # in the base reference frame in position frames expressed in the world
+            # reference frame, i.e. pos_world = world_T_base*pos_base
+            dynComp.setFloatingBase(self.opt['base_link_name'])
+            world_T_base = dynComp.getWorldBaseTransform()
+            dynComp.setRobotState(q, dq, ddq, world_T_base,
+                                       base_velocity, base_acceleration,
+                                       world_gravity)
+        else:
+            dynComp.setRobotState(q, dq, ddq, world_gravity)
+
+        # compute inverse dynamics with idyntree (simulate)
+        torques = iDynTree.VectorDynSize(self.N_DOFS)  #being calculated by inverseDynamics
+        baseReactionForce = iDynTree.Wrench()   #being calculated by inverseDynamics
+        dynComp.inverseDynamics(torques, baseReactionForce)
+
+        if self.opt['floating_base']:
+            return np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
+        else:
+            return torques.toNumPy()
+
     def computeRegressors(self, data):
         """ compute regressors for each time step of the measurement data and stack them vertically,
-            also compute torques for these measurements with the a priori parameters (from URDF)
         """
 
         self.data = data
@@ -134,15 +187,6 @@ class Model(object):
                     for frame in data.samples['contacts'].item().keys():
                         #TODO: define proper sign for input data
                         contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
-                    # The twist (linear/angular velocity) of the base, expressed in the world
-                    # orientation frame and with respect to the base origin
-                    base_vel = data.samples['base_velocity'][m_idx]
-                    base_velocity = iDynTree.Twist.fromList(base_vel)
-                    # The 6d classical acceleration (linear/angular acceleration) of the base
-                    # expressed in the world orientation frame and with respect to the base
-                    # origin (not spatial acc)
-                    base_acc = data.samples['base_acceleration'][m_idx]
-                    base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromList(pos)
@@ -152,43 +196,19 @@ class Model(object):
                 # in case that we simulate the torque measurements, need torque estimation for a priori parameters
                 # or that we need to simulate the base reaction forces for floating base
                 if self.opt['iDynSimulate'] or self.opt['useAPriori'] or self.opt['floating_base']:
-                    # calc torques and forces with iDynTree dynamicsComputation class
-                    if self.opt['floating_base']:
-                        # the homogeneous transformation that transforms position vectors expressed
-                        # in the base reference frame in position frames expressed in the world
-                        # reference frame, i.e. pos_world = world_T_base*pos_base
-                        self.dynComp.setFloatingBase(self.opt['base_link_name'])
-                        world_T_base = self.dynComp.getWorldBaseTransform()
-                        self.dynComp.setRobotState(q, dq, ddq, world_T_base,
-                                                   base_velocity, base_acceleration,
-                                                   self.world_gravity)
-                    else:
-                        self.dynComp.setRobotState(q, dq, ddq, self.world_gravity)
-
-                    # compute inverse dynamics with idyntree (simulate)
-                    torques = iDynTree.VectorDynSize(self.N_DOFS)  #being calculated by inverseDynamics
-                    baseReactionForce = iDynTree.Wrench()   #being calculated by inverseDynamics
-                    self.dynComp.inverseDynamics(torques, baseReactionForce)
+                    torques = self.simulateDynamics(data.samples, m_idx)
 
                     if self.opt['useAPriori']:
-                        if self.opt['floating_base']:
-                            torqAP = np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
-                        else:
-                            torqAP = torques.toNumPy()
                         # torques sometimes contain nans, just a very small number in C that gets converted to nan?
-                        np.nan_to_num(torqAP)
+                        torqAP = np.nan_to_num(torques)
 
                     if self.opt['iDynSimulate']:
-                        if self.opt['floating_base']:
-                            torq = np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
-                        else:
-                            torq = torques.toNumPy()
-                        torq = np.nan_to_num(torq)
-                        data.samples['torques'][m_idx] = torques.toNumPy()
+                        torq = np.nan_to_num(torques)
+                        data.samples['torques'][m_idx] = torques[6:]
                     else:
                         if self.opt['floating_base']:
-                            #add estimated base forces to measured torq vector
-                            torq = np.concatenate((baseReactionForce.toNumPy(), torq))
+                            #add estimated base forces to measured torq vector from file
+                            torq = np.concatenate((torques[0:6], torq))
 
                 if self.opt['addNoise'] != 0:
                     torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
@@ -287,16 +307,6 @@ class Model(object):
         self.sample_end = data.samples['positions'].shape[0]
         if self.opt['skip_samples'] > 0: self.sample_end -= (self.opt['skip_samples'])
 
-        '''
-        if self.opt['iDynSimulate']:
-            if self.opt['useAPriori']:
-                tau = self.torques_stack    # use original measurements, not delta
-            else:
-                tau = self.tau
-            self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS+fb))
-        else:
-            self.tauMeasured = data.samples['torques'][0:self.sample_end:self.opt['skip_samples']+1, :]
-        '''
         tau = self.torques_stack    # use original measurements, not delta
         self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS+fb))
 

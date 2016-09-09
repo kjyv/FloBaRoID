@@ -219,6 +219,7 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['base_acceleration'] = np.zeros( (trajectory_data['velocities'].shape[0], 6) )
 
     data.init_from_data(trajectory_data)
+    #TODO: this also computes regressors in addition to simulation, which we don't really need
     model.computeRegressors(data)
 
     config['iDynSimulate'] = old_sim
@@ -260,11 +261,11 @@ def main():
     traj_data['Qraw'] = np.zeros_like(traj_data['Q'])
     traj_data['TauRaw'] = np.zeros_like(traj_data['Tau'])
 
-    #simulate torque for measured data (since e.g. Gazebo produces unusable torque values)
+    #use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
     if config['excitationSimulate']:
         tau_len = traj_data['Tau'].shape[0]   # get length of measured (zero) taus
         if tau_len < traj_data['torques'].shape[0]:
-            traj_data['Tau'][:,:]  = traj_data['torques'][0:tau_len,:]
+            traj_data['Tau'][:,:] = traj_data['torques'][0:tau_len,:]
             traj_data['V'][:,:] = traj_data['velocities'][0:tau_len,:]
             traj_data['Vdot'][:,:] = traj_data['accelerations'][0:tau_len,:]
         else:

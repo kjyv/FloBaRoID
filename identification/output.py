@@ -334,100 +334,86 @@ class OutputConsole(object):
                 format(idf.res_error, idf.apriori_error))
 
 class OutputMatplotlib(object):
-    def __init__(self, datasets, jointNames, opt):
+    def __init__(self, datasets, html=True):
         self.datasets = datasets
-        # scale all figures to same ranges and add some margin
-        self.ymin = np.min([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
-        self.ymax = np.max([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
-        self.jointNames = jointNames
-        self.opt = opt
-
-    def render(self):
-        """show plots in separate matplotlib windows"""
-
-        import matplotlib
-        import matplotlib.pyplot as plt
-        for d in self.datasets:
-            fig = plt.figure()
-            if d.has_key('unified_scaling') and d['unified_scaling']:
-                plt.ylim([self.ymin, self.ymax])
-            plt.title(d['title'])
-            plt.xlabel("Time (s)")
-            for d_i in range(0, len(d['data'])):
-                if len(d['data'][d_i].shape) > 1:
-                    #data matrices
-                    for i in range(0, d['data'][d_i].shape[1]):
-                        if i < 6 and self.opt['floating_base']:
-                            ls = '--'
-                        else:
-                            ls = '-'
-                        l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(d['time'], d['data'][d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0), linestyle=ls)
-                else:
-                    #data vector
-                    plt.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(d_i/2.0))
-
-            leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
-            leg.draggable()
-        plt.show()
-
-
-class OutputHTML(object):
-    def __init__(self, datasets, jointNames, opt):
-        self.datasets = datasets
-        # scale unified scaling figures to same ranges and add some margin
-        # TODO: find datasets that are set to be scaled unified and look at those
-        self.ymin = np.min([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
-        self.ymax = np.max([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
-        self.jointNames = jointNames
-        self.opt = opt
+        self.html = html
 
     def render(self, filename='output.html'):
-        """write matplotlib/d3 plots to html file"""
-        import matplotlib.pyplot as plt,mpld3
-        from mpld3 import plugins
-        from jinja2 import Environment, FileSystemLoader
-
+        if self.html:
+            # write matplotlib/d3 plots to html file
+            import matplotlib.pyplot as plt,mpld3
+            from mpld3 import plugins
+            from jinja2 import Environment, FileSystemLoader
+        else:
+            # show plots in separate matplotlib windows
+            import matplotlib
+            import matplotlib.pyplot as plt
         figures = list()
-        for d in self.datasets:
-            fig = plt.figure()
-            if d.has_key('unified_scaling') and d['unified_scaling']:
-                plt.ylim([self.ymin, self.ymax])
-            plt.title(d['title'])
-            plt.xlabel("Time (s)")
-            for d_i in range(0, len(d['data'])):
-                if len(d['data'][d_i].shape) > 1:
-                    #data matrices
-                    for i in range(0, d['data'][d_i].shape[1]):
-                        if i < 6 and self.opt['floating_base']:
-                            ls = '--'
-                        else:
-                            ls = '-'
-                        l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(d['time'], d['data'][d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0), linestyle=ls)
-                else:
-                    #data vector
-                    plt.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(d_i/2.0))
+        for group in self.datasets:
+            fig, axes = plt.subplots(len(group['dataset']), sharex=True)
+            # scale unified scaling figures to same ranges and add some margin
+            if group['unified_scaling']:
+                ymin = 0
+                ymax = 0
+                for i in range(len(group['dataset'])):
+                    ymin = np.min((np.min(group['dataset'][i]['data']), ymin)) * 1.05
+                    ymax = np.max((np.max(group['dataset'][i]['data']), ymax)) * 1.05
 
-            leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
-            leg.draggable()
-            plugins.clear(fig)
-            plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
-                            plugins.MousePosition(fontsize=14))
-            figures.append(mpld3.fig_to_html(fig))
+            #plot each group of data
+            for d_i in range(len(group['dataset'])):
+                d = group['dataset'][d_i]
+                ax = axes[d_i]
+                ax.set_title(d['title'])
+                if group['unified_scaling']:
+                    ax.set_ylim([ymin, ymax])
+                for data_i in range(0, len(d['data'])):
+                    if len(d['data'][data_i].shape) > 1:
+                        #data matrices
+                        for i in range(0, d['data'][data_i].shape[1]):
+                            l = group['labels'][i] if data_i == 0 else ''
+                            if i < 6 and group.has_key('contains_base') and group['contains_base']:
+                                ls = '--'
+                            else:
+                                ls = '-'
+                            ax.plot(d['time'], d['data'][data_i][:, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls)
+                    else:
+                        #data vector
+                        ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
 
-        path = os.path.dirname(os.path.abspath(__file__))
-        template_environment = Environment(autoescape=False,
-                                           loader=FileSystemLoader(os.path.join(path, '../output')),
-                                           trim_blocks=False)
+            ax.set_xlabel("Time (s)")
 
-        context = { 'figures': figures }
-        outfile = os.path.join(path, '..', 'output', 'output.html')
-        with open(outfile, 'w') as f:
-            html = template_environment.get_template("templates/index.html").render(context)
-            f.write(html)
+            plt.setp([a.get_xticklabels() for a in axes[:-1]], visible=False)
+            if self.html:
+                #TODO: show legend properly (see mpld3 bug #274)
+                handles, labels = ax.get_legend_handles_labels()
+                #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+                leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+            else:
+                handles, labels = ax.get_legend_handles_labels()
+                leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+            #plt.tight_layout()
 
-        print("Saved output at file://{}".format(outfile))
+            if self.html:
+                plugins.clear(fig)
+                plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
+                                plugins.MousePosition(fontsize=14))
+                figures.append(mpld3.fig_to_html(fig))
+            else:
+                plt.show()
+
+        if self.html:
+            path = os.path.dirname(os.path.abspath(__file__))
+            template_environment = Environment(autoescape=False,
+                                               loader=FileSystemLoader(os.path.join(path, '../output')),
+                                               trim_blocks=False)
+
+            context = { 'figures': figures }
+            outfile = os.path.join(path, '..', 'output', 'output.html')
+            with open(outfile, 'w') as f:
+                html = template_environment.get_template("templates/index.html").render(context)
+                f.write(html)
+
+            print("Saved output at file://{}".format(outfile))
 
     def openURL(self):
         import sys, subprocess, time

@@ -871,50 +871,52 @@ class Identification(object):
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
 
-        #TODO: allow plotting in subplots per joint, include raw values then
+        if self.opt['floating_base']:
+            torque_labels = self.model.baseNames + self.model.jointNames
+        else:
+            torque_labels = self.model.jointNames
+
         datasets = [
-            {'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques',
-                      'unified_scaling': True},
-            {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques',
-                      'unified_scaling': True},
-            {'data': [self.tauAPriori], 'time': rel_time, 'title': 'CAD Torques',
-                      'unified_scaling': True},
-            {'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error',
-                      'unified_scaling': False},
-            {'data': [self.tauMeasured-self.tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error',
-                      'unified_scaling': False},
-            {'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                      'time': rel_time, 'title': 'Positions'},
-            {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                      'time': rel_time, 'title': 'Velocities'},
-            {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                      'time': rel_time, 'title': 'Accelerations'},
+            { 'unified_scaling': True, 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
+              [{'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
+               {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
+               {'data': [self.tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
+              ]
+            },
+            { 'unified_scaling': True, 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
+              [{'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error'},
+               {'data': [self.tauMeasured-self.tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
+              ]
+            },
+            { 'unified_scaling': False, 'labels': self.model.jointNames, 'dataset':
+              [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                'time': rel_time, 'title': 'Positions'},
+               {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                'time': rel_time, 'title': 'Velocities'},
+               {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                'time': rel_time, 'title': 'Accelerations'},
+              ]
+            }
         ]
 
         if self.data.samples.has_key('positions_raw'):
-            datasets[3]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+            datasets[2]['dataset'][0]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
         if self.data.samples.has_key('velocities_raw'):
-            datasets[4]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+            datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
 
         if self.validation_file:
-            datasets.append(
+            datasets[2]['dataset'].append(
                 {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
                  'time': rel_vtime, 'title': 'Validation Error'},
                 #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
             )
 
-        if self.opt['floating_base']:
-            labels = self.model.baseNames + self.model.jointNames
-        else:
-            labels = self.model.jointNames
-
+        from output import OutputMatplotlib
         if self.opt['outputModule'] == 'matplotlib':
-            from output import OutputMatplotlib
-            output = OutputMatplotlib(datasets, labels, self.opt)
+            output = OutputMatplotlib(datasets, html=False)
             output.render()
         elif self.opt['outputModule'] == 'html':
-            from output import OutputHTML
-            output = OutputHTML(datasets, labels, self.opt)
+            output = OutputMatplotlib(datasets, html=True)
             output.render()
             #output.runServer()
         else:

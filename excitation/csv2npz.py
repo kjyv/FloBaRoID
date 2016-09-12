@@ -36,7 +36,7 @@ def readCSV(dir, config):
     #plt.rc('text', usetex=True)
 
     fig = plt.figure()
-    ax1 = fig.add_subplot(3,2,1) # three rows, one column, first plot
+    ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
     ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])/6
     for dof in range(config['N_DOFS']):

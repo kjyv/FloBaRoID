@@ -126,8 +126,7 @@ filterRegressor: 0
 ## output and debugging
 
 createPlots: 1               #create or show plots of measurements and estimated values
-# how to output plots and other stuff ['matplotlib', 'html]
-outputModule: 'html'
+outputModule: 'html'         #how to output plots and other stuff ['matplotlib', 'html]
 
 # self.options for console output
 showMemUsage: 0              #print used memory for different variables

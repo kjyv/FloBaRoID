@@ -30,7 +30,6 @@ import helpers
 
 import optimization
 from optimization import LMI_PSD, LMI_PD
-import lmi_sdp
 
 # stuff
 from colorama import Fore, Back, Style
@@ -578,6 +577,9 @@ class Identification(object):
         # initialize LMI matrices to set physical consistency constraints for SDP solver
         # based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
 
+        if self.opt['verbose']:
+            print("Initializing LMIs...")
+
         def skew(v):
             return Matrix([ [     0, -v[2],  v[1] ],
                             [  v[2],     0, -v[0] ],
@@ -786,7 +788,8 @@ class Identification(object):
             prime = self.model.xStdModel
         else: prime = None
 
-        #solve SDP program (constrained OLS)
+        if self.opt['verbose']:
+            print("Solving constrained OLS as SDP")
         solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]
@@ -907,11 +910,11 @@ class Identification(object):
 
         if self.opt['outputModule'] == 'matplotlib':
             from output import OutputMatplotlib
-            output = OutputMatplotlib(datasets, labels)
+            output = OutputMatplotlib(datasets, labels, self.opt)
             output.render()
         elif self.opt['outputModule'] == 'html':
             from output import OutputHTML
-            output = OutputHTML(datasets, labels)
+            output = OutputHTML(datasets, labels, self.opt)
             output.render()
             #output.runServer()
         else:
@@ -948,8 +951,7 @@ def main():
                               Identifies on all joints if not specified.')
 
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
-    parser.add_argument('-e', '--explain', help='whether to explain identified parameters', action='store_true')
-    parser.set_defaults(plot=False, explain=False, regressor=None, model_real=None)
+    parser.set_defaults(plot=False, regressor=None, model_real=None)
     args = parser.parse_args()
 
     import yaml
@@ -996,9 +998,9 @@ def main():
             idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
                                         new_params=idf.model.xStd, link_names=idf.model.link_names)
 
-    if args.explain: OutputConsole.render(idf)
+    OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques()
-    if args.plot: idf.plot()
+    if idf.opt['createPlots']: idf.plot()
     if idf.opt['showMemUsage']: idf.printMemUsage()
 
 if __name__ == '__main__':

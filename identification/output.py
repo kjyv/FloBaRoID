@@ -9,7 +9,10 @@ import colorama
 from colorama import Fore, Back, Style
 
 #plot colors
-colors = [[ 0.97254902,  0.62745098,  0.40784314],
+colors = []
+"""
+#some random colors
+colors += [[ 0.97254902,  0.62745098,  0.40784314],
           [ 0.0627451 ,  0.53333333,  0.84705882],
           [ 0.15686275,  0.75294118,  0.37647059],
           [ 0.90980392,  0.37647059,  0.84705882],
@@ -17,9 +20,30 @@ colors = [[ 0.97254902,  0.62745098,  0.40784314],
           [ 0.18823529,  0.31372549,  0.09411765],
           [ 0.50196078,  0.40784314,  0.15686275]
          ]
+"""
+
+# color triplets
+color_triplets_6 = [
+           [ 0.29019608,  0.43529412,  0.89019608],
+           [ 0.52156863,  0.58431373,  0.88235294],
+           [ 0.70980392,  0.73333333,  0.89019608],
+           [ 0.90196078,  0.68627451,  0.7254902 ],
+           [ 0.87843137,  0.48235294,  0.56862745],
+           [ 0.82745098,  0.24705882,  0.41568627],
+          ]
+
+grayscale_6 = [
+               [ 0.        ,  0.        ,  0.        ],
+               [ 0.13333333,  0.13333333,  0.13333333],
+               [ 0.26666667,  0.26666667,  0.26666667],
+               [ 0.4       ,  0.4       ,  0.4       ],
+               [ 0.53333333,  0.53333333,  0.53333333],
+               [ 0.67058824,  0.67058824,  0.67058824]
+              ]
+
 #set some more colors for higher DOF
-from palettable.tableau import Tableau_20, ColorBlind_10
-colors += Tableau_20.mpl_colors + ColorBlind_10.mpl_colors
+from palettable.tableau import Tableau_10, Tableau_20
+colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
 
 class OutputConsole(object):
     @staticmethod
@@ -310,32 +334,38 @@ class OutputConsole(object):
                 format(idf.res_error, idf.apriori_error))
 
 class OutputMatplotlib(object):
-    def __init__(self, datasets, jointNames):
+    def __init__(self, datasets, jointNames, opt):
         self.datasets = datasets
         # scale all figures to same ranges and add some margin
-        self.ymin = np.min([datasets[0][0][0], datasets[1][0][0]]) * 1.05
-        self.ymax = np.max([datasets[0][0][0], datasets[1][0][0]]) * 1.05
+        self.ymin = np.min([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
+        self.ymax = np.max([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
         self.jointNames = jointNames
+        self.opt = opt
 
     def render(self):
         """show plots in separate matplotlib windows"""
 
         import matplotlib
         import matplotlib.pyplot as plt
-        for (data, time, title) in self.datasets:
+        for d in self.datasets:
             fig = plt.figure()
-            plt.ylim([self.ymin, self.ymax])
-            plt.title(title)
+            if d.has_key('unified_scaling') and d['unified_scaling']:
+                plt.ylim([self.ymin, self.ymax])
+            plt.title(d['title'])
             plt.xlabel("Time (s)")
-            for d_i in range(0, len(data)):
-                if len(data[d_i].shape) > 1:
+            for d_i in range(0, len(d['data'])):
+                if len(d['data'][d_i].shape) > 1:
                     #data matrices
-                    for i in range(0, data[d_i].shape[1]):
+                    for i in range(0, d['data'][d_i].shape[1]):
+                        if i < 6 and self.opt['floating_base']:
+                            ls = '--'
+                        else:
+                            ls = '-'
                         l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(time, data[d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                        plt.plot(d['time'], d['data'][d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0), linestyle=ls)
                 else:
                     #data vector
-                    plt.plot(time, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+                    plt.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(d_i/2.0))
 
             leg = plt.legend(loc='best', fancybox=True, fontsize=10, title='')
             leg.draggable()
@@ -343,13 +373,14 @@ class OutputMatplotlib(object):
 
 
 class OutputHTML(object):
-    def __init__(self, datasets, jointNames):
+    def __init__(self, datasets, jointNames, opt):
         self.datasets = datasets
         # scale unified scaling figures to same ranges and add some margin
         # TODO: find datasets that are set to be scaled unified and look at those
         self.ymin = np.min([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
         self.ymax = np.max([datasets[0]['data'][0], datasets[1]['data'][0]]) * 1.05
         self.jointNames = jointNames
+        self.opt = opt
 
     def render(self, filename='output.html'):
         """write matplotlib/d3 plots to html file"""
@@ -368,8 +399,12 @@ class OutputHTML(object):
                 if len(d['data'][d_i].shape) > 1:
                     #data matrices
                     for i in range(0, d['data'][d_i].shape[1]):
+                        if i < 6 and self.opt['floating_base']:
+                            ls = '--'
+                        else:
+                            ls = '-'
                         l = self.jointNames[i] if d_i == 0 else ''  # only put joint names in the legend once
-                        plt.plot(d['time'], d['data'][d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0))
+                        plt.plot(d['time'], d['data'][d_i][:, i], label=l, color=colors[i], alpha=1-(d_i/2.0), linestyle=ls)
                 else:
                     #data vector
                     plt.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(d_i/2.0))

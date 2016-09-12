@@ -52,12 +52,13 @@ min_tol: 0.00001
 # (Khalil recommends about 500 times number of parameters to identify...)
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 skip_samples: 0    #how many values to skip before using the next sample
-removeNearZero: 0  #remove samples that have almost zero velocity
-minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
 
-# whether only "good" data is being selected or simply all is used
+# whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
 block_size: 250  # needs to be at least as much as parameters so regressor is square or higher
+
+removeNearZero: 0  #remove samples that have almost zero velocity
+minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
 
 ## use constrained SDP to solve OLS
 
@@ -122,6 +123,7 @@ filterRegressor: 0
 
 ## output and debugging
 
+createPlots: 1               #create or show plots of measurements and estimated values
 # how to output plots and other stuff ['matplotlib', 'html]
 outputModule: 'html'
 

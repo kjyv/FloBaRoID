@@ -138,39 +138,6 @@ def to_cvxopt(objective_func, lmis, variables, objective_type='minimize',
 
     return c, Gs, hs
 
-def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # using cvxopt conelp (start point must be feasible (?), no structure exploitation)
-    import cvxopt.solvers
-    c, Gs, hs = to_cvxopt(objf, lmis, variables)
-    tic = time.time()
-    cvxopt.solvers.options['maxiters'] = 150
-    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, primalstart=primalstart)
-    toc = time.time()
-    if sdpout['status'] == 'optimal':
-        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
-    else:
-        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
-        print("(Consider to try to use the dsdp5 solver.)")
-    print('Elapsed time: %.2f s'%(toc-tic))
-    return np.matrix(sdpout['x'])
-
-
-def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
-    # using cvxopt interface to dsdp (might be faster, can use non-feasible starting point
-    # (but not from cvxopt?), but can't handle equalities)
-    import cvxopt.solvers
-    c, Gs, hs = to_cvxopt(objf, lmis, variables)
-    cvxopt.solvers.options['DSDP_GapTolerance'] = epsilon_sdptol
-    tic = time.time()
-    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
-    toc = time.time()
-    if sdpout['status'] == 'optimal':
-        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
-    else:
-        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
-    print('Elapsed time: %.2f s'%(toc-tic))
-    return np.matrix(sdpout['x'])
-
 
 def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
                    split_blocks=True, comment=None):
@@ -198,6 +165,40 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
             s += _print_sparse(x+1, b+1, lmi_coeffs[b][0][x])
 
     return s
+
+def cvxopt_conelp(objf, lmis, variables):
+    # using cvxopt conelp (start point must be feasible (?), no structure exploitation)
+    import cvxopt.solvers
+    c, Gs, hs = to_cvxopt(objf, lmis, variables)
+    tic = time.time()
+    cvxopt.solvers.options['maxiters'] = 150
+    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
+    toc = time.time()
+    if sdpout['status'] == 'optimal':
+        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+    else:
+        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
+        print("(Consider to try to use the dsdp5 solver.)")
+    print('Elapsed time: %.2f s'%(toc-tic))
+    return np.matrix(sdpout['x'])
+
+
+def cvxopt_dsdp5(objf, lmis, variables):
+    # using cvxopt interface to dsdp (might be faster, can use non-feasible starting point
+    # (but weird format in cvxopt), but can't handle equalities)
+    import cvxopt.solvers
+    c, Gs, hs = to_cvxopt(objf, lmis, variables)
+    cvxopt.solvers.options['DSDP_GapTolerance'] = epsilon_sdptol
+    tic = time.time()
+    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
+    toc = time.time()
+    if sdpout['status'] == 'optimal':
+        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+    else:
+        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
+    print('Elapsed time: %.2f s'%(toc-tic))
+    return np.matrix(sdpout['x'])
+
 
 def dsdp5(objf, lmis, variables, primalstart=None):
     import subprocess
@@ -235,4 +236,4 @@ def dsdp5(objf, lmis, variables, primalstart=None):
     return np.matrix(sol).T
 
 #set a default solver
-solve_sdp = cvxopt_dsdp5 #dsdp5   #cvxopt_dsdp5
+solve_sdp = dsdp5   # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp

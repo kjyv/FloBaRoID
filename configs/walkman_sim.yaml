@@ -76,10 +76,10 @@ noChange: 1
 noChangeThresh: 200
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 0
+restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
-hullScaling: 1.5
+hullScaling: 1.0
 
 # constrain overall mass
 limitOverallMass: 0

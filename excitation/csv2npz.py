@@ -2,6 +2,7 @@
 #-*- coding: utf-8 -*-
 
 #read data from Przemek's Walk-Man walking csv files
+# (atm only one leg)
 
 import sys
 import os
@@ -15,9 +16,9 @@ import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.data import Data
 
-sampleTime = 0.005
+sampleTime = 0.005   #200 Hz
 
-def readCSV(dir, config):
+def readCSV(dir, config, plot):
     out = {}
     jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R', 'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R', 'WaistLat', 'WaistSag', 'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
 
@@ -32,8 +33,6 @@ def readCSV(dir, config):
     # generate some empty arrays, will be calculated in preprocess()
     out['velocities'] = np.zeros_like(out['positions'])
     out['accelerations'] = np.zeros_like(out['positions'])
-
-    #plt.rc('text', usetex=True)
 
     fig = plt.figure()
     ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
@@ -58,16 +57,21 @@ def readCSV(dir, config):
     rpy_labels = ['r','p', 'y']
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
-        out['IMUrpy'][:, i] = f[:, i]  #use IMUrpy
-        #out['IMUrpy'][:, i] = f[:, 15+i]  #use VNrpy
+        #use IMUrpy
+        out['IMUrpy'][:, i] = f[:, i]
         out['IMUlinAcc'][:, i] = f[:, 18+i]
         out['IMUrotVel'][:, i] = f[:, 21+i]
+        #use VNrpy
+        #out['IMUrpy'][:, i] = f[:, 15+i]
+        #out['IMUlinAcc'][:, i] = f[:, 24+i]
+        #out['IMUrotVel'][:, i] = f[:, 27+i]
+
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
         ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
     ax5 = fig.add_subplot(3,2,5)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
-    for i in range(0,5):
+    for i in range(0,6):
         out['FTright'][:, i] = f[:, 3+6+i]
         ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
@@ -80,7 +84,8 @@ def readCSV(dir, config):
 
     fig.tight_layout()
 
-    plt.show()
+    if plot:
+        plt.show()
 
     return out
 
@@ -89,14 +94,15 @@ if __name__ == '__main__':
     #parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('--measurements', required=True, type=str, help='the directory to load the measurements from')
     parser.add_argument('--outfile', type=str, help='the filename to save the measurements to')
-    parser.set_defaults(outfile='measurements.npz')
+    parser.add_argument('--plot', help='whether to plot the data', action='store_true')
+    parser.set_defaults(outfile='measurements.npz', plot=False)
     args = parser.parse_args()
 
     config = {}
     config['N_DOFS'] = 6   #walkman leg
     config['useDeg'] = False
 
-    out = readCSV(args.measurements, config)
+    out = readCSV(args.measurements, config, args.plot)
     out['frequency'] = 1.0/sampleTime
     data = Data(config)
 
@@ -108,7 +114,32 @@ if __name__ == '__main__':
     data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
                     Tau=out['torques'], T=out['times'], Fs=out['frequency'],
                     IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'], IMUlinAcc=out['IMUlinAcc'],
-                    IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'])
+                    IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'], FT=[out['FTright']])
+
+    if args.plot:
+        fig = plt.figure()
+        ax1 = fig.add_subplot(2,1,1)
+        ax1.plot(out['times'], out['IMUlinAcc'])
+        plt.subplot(211)
+        plt.title("linear accelerations (w/o gravity)")
+        ax2 = fig.add_subplot(2,1,2)
+        ax2.plot(out['times'], out['IMUlinVel'])
+        plt.subplot(212)
+        plt.title("linear velocities")
+        fig.tight_layout()
+        plt.show()
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(2,1,1)
+        ax1.plot(out['times'], out['IMUrotVel'])
+        plt.subplot(211)
+        plt.title("rotational velocities")
+        ax2 = fig.add_subplot(2,1,2)
+        ax2.plot(out['times'], out['IMUrotAcc'])
+        plt.subplot(212)
+        plt.title("rotational accelerations")
+        fig.tight_layout()
+        plt.show()
 
     out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
     out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )

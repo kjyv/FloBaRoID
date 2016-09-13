@@ -266,7 +266,7 @@ class Identification(object):
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
 
-        self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
+        self.val_error = sla.norm(self.tauEstimatedValidation[:, 6:]-self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
 
@@ -767,7 +767,7 @@ class Identification(object):
         rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                             [e_rho1,       I(self.model.num_base_params)]])
+                             [e_rho1, I(self.model.num_base_params)]])
         U_rho = U_rho.as_explicit()
 
         #add constraint LMIs
@@ -784,7 +784,7 @@ class Identification(object):
         #    optimization.solve_sdp = optimization.cvxopt_dsdp5
 
         # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
-        if optimization.solve_sdp is optimization.cvxopt_dsdp5 and self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
+        if optimization.solve_sdp is optimization.dsdp5 and self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
             prime = self.model.xStdModel
         else: prime = None
 
@@ -877,13 +877,13 @@ class Identification(object):
             torque_labels = self.model.jointNames
 
         datasets = [
-            { 'unified_scaling': True, 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
+            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
               [{'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
                {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
                {'data': [self.tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
               ]
             },
-            { 'unified_scaling': True, 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
+            { 'unified_scaling': True, 'y_label': 'Torque Error (Nm)', 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
               [{'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error'},
                {'data': [self.tauMeasured-self.tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
               ]

@@ -1,7 +1,8 @@
-# OpenDSI
+# FloBaRoID 
 
-Open Dynamical System Identification
-- Framework for dynamical system identification of floating-base rigid body structures
+FLOating BAse RObot dynamical IDentification
+
+- Open source framework for dynamical system identification of floating-base rigid body tree-structures
 
 Modules:
 
@@ -9,7 +10,6 @@ Modules:
 * identification: identify dynamical parameters (mass, com and inertia) starting from an URDF model description of the robot and from measurements
 	* parameters are constrained to physical consistent standard parameter space, regardless if input data is well-conditioned or not
 * write improved parameters into output URDF ready to use for control or simulation
-
 
 Details:
 

@@ -379,6 +379,8 @@ class OutputMatplotlib(object):
                     else:
                         #data vector
                         ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
+                if group.has_key('y_label'):
+                    ax.set_ylabel(group['y_label'])
 
             ax.set_xlabel("Time (s)")
 

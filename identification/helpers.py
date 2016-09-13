@@ -270,14 +270,13 @@ class URDFHelpers(object):
                     [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
                     [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
         else:
-            return [[100,100], [100,100], [100,100]]
-
             #TODO: in case we have no stl files:
             # take length of link (distance to next link, last one?) and assume width and height from it (proper
             # geometry is not known without CAD geometry)
             # w = h = l/2 ?
             # length: go through all links, getFrameIndex for each (dynamicsComputations) and then
             # of its parent, get position from Model::getFrameTransform
+            return [[100,100], [100,100], [100,100]]
 
     @classmethod
     def getJointLimits(self, input_urdf, use_deg=True):

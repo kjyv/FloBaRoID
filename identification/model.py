@@ -253,7 +253,7 @@ class Model(object):
                     np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
         if self.opt['floating_base']:
-            #TODO: if robot does not have contact sensors, use HyQ null-space trick
+            #TODO: if robot does not have contact sensors, use HyQ null-space trick (only for static positions?)
 
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):

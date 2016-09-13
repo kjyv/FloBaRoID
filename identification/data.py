@@ -305,7 +305,7 @@ class Data(object):
             print ("remaining samples: {}".format(self.num_used_samples))
 
 
-    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None, IMUlinVel=None, IMUrotVel=None, IMUlinAcc=None, IMUrotAcc=None, IMUrpy=None):
+    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None, IMUlinVel=None, IMUrotVel=None, IMUlinAcc=None, IMUrotAcc=None, IMUrpy=None, FT=None):
 
         ''' derivation and filtering of measurements. array values are set in place
             Q, Tau will be filtered
@@ -314,6 +314,27 @@ class Data(object):
             IMUrotVel, IMUlinAcc, IMUrpy will be filtered
             IMUlinVel, IMUrotAcc will be overwritten
         '''
+
+        def plot_filter(b,a):
+            # Plot the frequency and phase response of the filter
+            w, h = sp.signal.freqz(b, a, worN=8000)
+            plt.subplot(2, 1, 1)
+            plt.plot(0.5*Fs*w/np.pi, np.abs(h), 'b')
+            plt.plot(fc, 0.5*np.sqrt(2), 'ko')
+            plt.axvline(fc, color='k')
+            plt.xlim(0, 0.5*Fs)
+            plt.title("Lowpass Filter Frequency Response")
+            plt.xlabel('Frequency [Hz]')
+
+            plt.subplot(2,1,2)
+            h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
+            plt.plot(w, h_Phase)
+            plt.ylabel('Phase (radians)')
+            plt.xlabel(r'Frequency (Hz)')
+            plt.title(r'Phase response')
+            plt.subplots_adjust(hspace=0.5)
+            plt.grid()
+            plt.show()
 
         #TODO: expose as option or make dependent on measurement frequency
         median_kernel_size = 11
@@ -328,38 +349,19 @@ class Data(object):
             np.copyto(Q, posis_rad)   #(dst, src)
             np.copyto(V, vels_rad)
 
-        # low-pass filter positions
-        Q_orig = Q.copy()
+        #init low pass filter coefficients
         #TODO: expose filter options or allow graphically
         fc = 3.0    #Cut-off frequency (Hz)
-        order = 8   #Filter order
+        order = 4   #Filter order
         b, a = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+        #plot_filter(b, a)
+
+        # low-pass filter positions
+        Q_orig = Q.copy()
         for j in range(0, self.opt['N_DOFS']):
             Q[:, j] = sp.signal.filtfilt(b, a, Q_orig[:, j])
         if Q_raw is not None:
             np.copyto(Q_raw, Q_orig)
-
-        '''
-        # Plot the frequency and phase response of the filter
-        w, h = sp.signal.freqz(b, a, worN=8000)
-        plt.subplot(2, 1, 1)
-        plt.plot(0.5*Fs*w/np.pi, np.abs(h), 'b')
-        plt.plot(fc, 0.5*np.sqrt(2), 'ko')
-        plt.axvline(fc, color='k')
-        plt.xlim(0, 0.5*Fs)
-        plt.title("Lowpass Filter Frequency Response")
-        plt.xlabel('Frequency [Hz]')
-
-        plt.subplot(2,1,2)
-        h_Phase = np.unwrap(np.arctan2(np.imag(h), np.real(h)))
-        plt.plot(w, h_Phase)
-        plt.ylabel('Phase (radians)')
-        plt.xlabel(r'Frequency (Hz)')
-        plt.title(r'Phase response')
-        plt.subplots_adjust(hspace=0.5)
-        plt.grid()
-        plt.show()
-        '''
 
         ## Joint Velocities
 
@@ -437,12 +439,18 @@ class Data(object):
                 IMUlinAcc[:, j] = sp.signal.medfilt(IMUlinAcc_orig[:, j], median_kernel_size)
                 IMUrotVel[:, j] = sp.signal.medfilt(IMUrotVel_orig[:, j], median_kernel_size)
 
+            fc = 8.0    #Cut-off frequency (Hz)
+            order = 5   #Filter order
+            b_2, a_2 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+
+            plot_filter(b_2, a_2)
+
             # low-pass filter
             IMUlinAcc_orig = IMUlinAcc.copy()
             IMUrotVel_orig = IMUrotVel.copy()
             for j in range(0, 3):
-                IMUlinAcc[:, j] = sp.signal.filtfilt(b, a, IMUlinAcc_orig[:, j])
-                IMUrotVel[:, j] = sp.signal.filtfilt(b, a, IMUrotVel_orig[:, j])
+                IMUlinAcc[:, j] = sp.signal.filtfilt(b_2, a_2, IMUlinAcc_orig[:, j])
+                IMUrotVel[:, j] = sp.signal.filtfilt(b_2, a_2, IMUrotVel_orig[:, j])
 
             if IMUlinVel is not None:
                 #rotate accelerations to (estimated) world frame
@@ -451,41 +459,41 @@ class Data(object):
                 for i in range(0, IMUlinAcc.shape[0]):
                     rot = IMUrpy[i, :]
                     R = euler2mat(rot[0], rot[1], rot[2])
-                    #TODO: use quaternions to avoid gimbal lock? (but estimation should give quaternions already)
+                    #TODO: use quaternions to avoid gimbal lock? (orientation estimation needs to give quaternions already though)
                     IMUlinAccRot[i, :] = R.dot(IMUlinAcc[i, :])
 
                 # subtract gravity vector
-                IMUlinAccRot[:, 2] -= 9.81
+                #IMUlinAccRot[:, 2] += 9.81
 
+                # subtract means, includes gravity and other static offsets
+                IMUlinAccRot -= np.mean(IMUlinAccRot, axis=0)
+
+                for i in range(0, IMUlinAcc.shape[0]):
+                    # rotate back
+                    IMUlinAcc[i, :] = R.T.dot(IMUlinAccRot[i, :])
+
+                if la.norm(IMUlinAcc[:, 0]) > 0.1:
+                    print("Warning: base acceleration not zero at time 0 (integrated velocity will be wrong)!")
+
+                # integrate linear acceleration to get velocity
                 for j in range(0, 3):
-                    # integrate to get velocity
                     IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAccRot[:, j], T, initial=0)
 
-                fig = plt.figure()
-                ax1 = fig.add_subplot(2,1,1)
-                ax1.plot(T, IMUlinAccRot)
-                plt.subplot(211)
-                plt.title("linear accelerations (w/o gravity)")
-                ax2 = fig.add_subplot(2,1,2)
-                ax2.plot(T, IMUlinVel)
-                plt.subplot(212)
-                plt.title("linear velocities")
-                fig.tight_layout()
-                plt.show()
-
+            # get rotational acceleration as simple derivative of velocity
             if IMUrotAcc is not None:
                 for j in range(0, 3):
                     IMUrotAcc[:, j] = np.gradient(IMUrotVel[:, j])
 
-                fig = plt.figure()
-                ax1 = fig.add_subplot(2,1,1)
-                ax1.plot(T, IMUrotVel)
-                plt.subplot(211)
-                plt.title("rotational velocities")
-                ax2 = fig.add_subplot(2,1,2)
-                ax2.plot(T, IMUrotAcc)
-                plt.subplot(212)
-                plt.title("rotational accelerations")
-                fig.tight_layout()
-                plt.show()
 
+        #filter contact data
+        if FT is not None:
+            for ft in FT:
+                # median filter
+                ft_orig = ft.copy()
+                for j in range(0, 3):
+                    ft[:, j] = sp.signal.medfilt(ft_orig[:, j], median_kernel_size)
+
+                # low-pass filter
+                ft_orig = ft.copy()
+                for j in range(0, 3):
+                    ft[:, j] = sp.signal.filtfilt(b, a, ft_orig[:, j])

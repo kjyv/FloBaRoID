@@ -614,18 +614,6 @@ class Identification(object):
                               [S(l), I(3)*m]])
             D_inertia_blocks.append(Di.as_explicit().as_mutable())
 
-        # add conditions for triangle inequality of inertia tensor diagonal
-        # TODO: these need to be valid for parameters expressed about COM, not link frame
-        # also they have to be the eigenvalues of the inertia tensor instead of diagonal elements
-        '''
-        for i in range(0, self.model.N_LINKS):
-            ixx = self.model.param_syms[i*10+4]
-            iyy = self.model.param_syms[i*10+7]
-            izz = self.model.param_syms[i*10+9]
-            D_inertia_blocks.append(Matrix([ixx+iyy-izz]))
-            D_inertia_blocks.append(Matrix([ixx+izz-iyy]))
-            D_inertia_blocks.append(Matrix([iyy+izz-ixx]))
-        '''
         D_other_blocks = []
 
         linkConds = self.model.getSubregressorsConditionNumbers()
@@ -669,7 +657,6 @@ class Identification(object):
                     D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
                     D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
 
-
         # constrain overall mass within bounds
         if self.opt['limitOverallMass']:
             #use given overall mass else use overall mass from CAD
@@ -708,6 +695,7 @@ class Identification(object):
             for i in range(self.model.N_LINKS):
                 if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
                     link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.model.urdf_file, i, self.opt['hullScaling']))
+                    #print link_cuboid_hulls[i]*self.model.xStdModel[i*10]
                     l = Matrix( self.model.param_syms[i*10+1:i*10+4])
                     m = self.model.mass_syms[i]
                     link_cuboid_hull = link_cuboid_hulls[i]

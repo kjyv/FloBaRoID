@@ -139,8 +139,8 @@ class Model(object):
             dynComp.setFloatingBase(self.opt['base_link_name'])
             world_T_base = dynComp.getWorldBaseTransform()
             dynComp.setRobotState(q, dq, ddq, world_T_base,
-                                       base_velocity, base_acceleration,
-                                       world_gravity)
+                                  base_velocity, base_acceleration,
+                                  world_gravity)
         else:
             dynComp.setRobotState(q, dq, ddq, world_gravity)
 

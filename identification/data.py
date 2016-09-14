@@ -367,14 +367,12 @@ class Data(object):
 
         # calc velocity instead of taking measurements (uses filtered positions,
         # seems better than filtering noisy velocity measurements)
-        # TODO: Khalil, p.299 suggests a central difference method to avoid phase shift:
         V_self = np.empty_like(Q)
         for i in range(1, Q.shape[0]-1):
             dT = T[i] - T[i-1]
             if dT != 0:
                 #V_self[i] = (Q[i] - Q[i-1])/dT
                 V_self[i] = (Q[i+1] - Q[i-1])/(2*dT)
-                #V_self[i] = sp.misc.derivative(lambda x: Q[x], i, dT)
             else:
                 V_self[i] = V_self[i-1]
 
@@ -443,7 +441,7 @@ class Data(object):
             order = 5   #Filter order
             b_2, a_2 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
 
-            plot_filter(b_2, a_2)
+            #plot_filter(b_2, a_2)
 
             # low-pass filter
             IMUlinAcc_orig = IMUlinAcc.copy()
@@ -462,14 +460,18 @@ class Data(object):
                     #TODO: use quaternions to avoid gimbal lock? (orientation estimation needs to give quaternions already though)
                     IMUlinAccRot[i, :] = R.dot(IMUlinAcc[i, :])
 
-                # subtract gravity vector
-                #IMUlinAccRot[:, 2] += 9.81
+                grav_norm = np.mean(la.norm(IMUlinAcc, axis=1))
+                if grav_norm < 9.81:
+                    print('Warning: base acceleration is smaller than gravity ({})!'.format(grav_norm))
+
+                # subtract gravity
+                IMUlinAccRot[:, 2] -= -9.81
 
                 # subtract means, includes gravity and other static offsets
                 IMUlinAccRot -= np.mean(IMUlinAccRot, axis=0)
 
                 for i in range(0, IMUlinAcc.shape[0]):
-                    # rotate back
+                    # rotate back (save proper linear acceleration without gravity)
                     IMUlinAcc[i, :] = R.T.dot(IMUlinAccRot[i, :])
 
                 if la.norm(IMUlinAcc[:, 0]) > 0.1:

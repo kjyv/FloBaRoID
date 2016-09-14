@@ -34,7 +34,7 @@ it is then possible to manually set arm positions, e.g. by writing
 
 To generate excitation trajectories and send them to the robot, set 
 the option exciteMethod to 'yarp' and run `./excite.py [...]`.
-This will also read the resulting joint torques measurements and write them to a file measurements.npy
+This will also read the resulting joint torques measurements and write them to a file measurements.npz
 
 ## Generate excitation for Kuka LWR4+
 
@@ -56,15 +56,24 @@ data fields have the same amount of samples S relative to the time in field 'tim
 
 |field name|content|
 |---|---|
-|positions | joint positions in radians, SxN_DOF|
-|positions_raw | unfiltered joint positions, SxN_DOF|
+|positions | joint positions in rad, SxN_DOF|
+|[positions_raw] | unfiltered joint positions, SxN_DOF|
 |velocities | joint angular velocity in rad/sec, SxN_DOF|
-|velocities_raw | unfiltered joint angular velocities in rad/sec, SxN_DOF|
-|accelerations | joint angular accelerations, SxN_DOF|
-|torques | measured torques of each joint, SxN_DOF|
-|torques_raw | unfiltered torques of each joint, SxN_DOF|
-|base_velocity | linear (0-2) and angular (3-5) velocity of the base link, Sx6|
-|base_acceleration |  linear (0-2) and angular (3-5) acceleration of the base link, Sx6|
-|contacts | measured external contact wrenches, dictionary {'urdf frame name': Sx6}|
+|[velocities_raw] | unfiltered joint angular velocities in rad/sec, SxN_DOF|
+|accelerations | joint angular accelerations in rad/s<sup>2</sup>, SxN_DOF|
+|torques | measured torques of each joint in Nm, SxN_DOF|
+|[torques_raw] | unfiltered torques of each joint, SxN_DOF|
+|base_velocity* | linear (0-2) and angular (3-5) velocity of the base link in m/s and rad/s, Sx6|
+|base_acceleration* |  proper linear (0-2) and angular (3-5) acceleration of the base link (without gravity) in m/s<sup>2</sup> and rad/s<sup>2</sup>, Sx6|
+|contacts* | measured external contact wrenches, dictionary {'urdf frame name': Sx6}|
 |times | time of each sample in sec, Sx1|
 |frequency | frequency of measured values in Hz, 1 value|
+
+Values in [] are optional.
+Values with * only need to be specified when using floating base dynamics.
+
+All data is expected by identification.py to already be cleaned and low-pass filtered and to not include any big measurement errors. The noise should ideally be gaussian and have zero mean.
+
+The sampling frequency should be sufficiently high (at least 100 Hz) to get reasonably good position and velocity derivatives.
+
+The amount of samples should also be high enough for identification to take place. It depends on how many samples are later removed (zero velocity) and how many parameters are to be identified. 10 times the amount of parameters is possibly a good rule of thumb, more is always better. The higher the sampling frequency, the less information there is in successive samples, so the number should be higher at e.g. 1000 Hz.

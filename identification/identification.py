@@ -250,6 +250,9 @@ class Identification(object):
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 
+        old_skip = self.opt['skip_samples']
+        self.opt['skip_samples'] = 4
+
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skip_samples']+1):
             torques = self.model.simulateDynamics(v_data, m_idx, dynComp)
@@ -265,6 +268,8 @@ class Identification(object):
         else:
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
+
+        self.opt['skip_samples'] = old_skip
 
         self.val_error = sla.norm(self.tauEstimatedValidation[:, 6:]-self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
@@ -893,10 +898,15 @@ class Identification(object):
             datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
 
         if self.validation_file:
-            datasets[2]['dataset'].append(
-                {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
-                 'time': rel_vtime, 'title': 'Validation Error'},
-                #([self.tauEstimatedValidation], rel_vtime, 'Validation Estimation'),
+            datasets.append(
+                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels, 'contains_base': 0,
+                    'dataset': [
+                        {'data': [self.tauEstimatedValidation],
+                         'time': rel_vtime, 'title': 'Estimated Validation'},
+                        {'data': [self.tauEstimatedValidation[:, 6:]-self.tauMeasuredValidation],
+                         'time': rel_vtime, 'title': 'Validation Error'}
+                        ]
+                }
             )
 
         from output import OutputMatplotlib

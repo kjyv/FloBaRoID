@@ -453,33 +453,26 @@ class Data(object):
             if IMUlinVel is not None:
                 #rotate accelerations to (estimated) world frame
                 from transforms3d.euler import euler2mat
-                IMUlinAccRot = np.zeros_like(IMUlinAcc)
-                for i in range(0, IMUlinAcc.shape[0]):
-                    rot = IMUrpy[i, :]
-                    R = euler2mat(rot[0], rot[1], rot[2])
-                    #TODO: use quaternions to avoid gimbal lock? (orientation estimation needs to give quaternions already though)
-                    IMUlinAccRot[i, :] = R.dot(IMUlinAcc[i, :])
+                rot = IMUrpy[i, :]
+                R = euler2mat(rot[0], rot[1], rot[2])
+                #TODO: use quaternions to avoid gimbal lock? (orientation estimation needs to give quaternions already though)
 
                 grav_norm = np.mean(la.norm(IMUlinAcc, axis=1))
                 if grav_norm < 9.81:
                     print('Warning: base acceleration is smaller than gravity ({})!'.format(grav_norm))
 
-                # subtract gravity
-                IMUlinAccRot[:, 2] -= -9.81
+                # subtract rotated gravity vector
+                IMUlinAcc -= R.dot(np.array([0,0,-9.81]))
 
-                # subtract means, includes gravity and other static offsets
-                IMUlinAccRot -= np.mean(IMUlinAccRot, axis=0)
-
-                for i in range(0, IMUlinAcc.shape[0]):
-                    # rotate back (save proper linear acceleration without gravity)
-                    IMUlinAcc[i, :] = R.T.dot(IMUlinAccRot[i, :])
+                # subtract means, includes wrong gravity offset and other static offsets
+                IMUlinAcc -= np.mean(IMUlinAcc, axis=0)
 
                 if la.norm(IMUlinAcc[:, 0]) > 0.1:
                     print("Warning: base acceleration not zero at time 0 (integrated velocity will be wrong)!")
 
                 # integrate linear acceleration to get velocity
                 for j in range(0, 3):
-                    IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAccRot[:, j], T, initial=0)
+                    IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAcc[:, j], T, initial=0)
 
             # get rotational acceleration as simple derivative of velocity
             if IMUrotAcc is not None:

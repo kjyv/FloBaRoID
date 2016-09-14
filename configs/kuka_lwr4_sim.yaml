@@ -57,8 +57,8 @@ skip_samples: 0    #how many values to skip before using the next sample
 selectBlocksFromMeasurements: 0
 block_size: 250  # needs to be at least as much as parameters so regressor is square or higher
 
-removeNearZero: 0  #remove samples that have almost zero velocity
-minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
+removeNearZero: 1  #remove samples that have almost zero velocity
+minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
 
 ## use constrained SDP to solve OLS
 
@@ -124,10 +124,9 @@ filterRegressor: 0
 ## output and debugging
 
 createPlots: 1               #create or show plots of measurements and estimated values
-# how to output plots and other stuff ['matplotlib', 'html]
-outputModule: 'html'
+outputModule: 'html'         # how to output plots and other stuff ['matplotlib', 'html]
 
-# self.options for console output
+# options for console output
 showMemUsage: 0              #print used memory for different variables
 showTiming: 0                #show times various steps have taken
 showRandomRegressor: 0       #show 2d plot of random regressor

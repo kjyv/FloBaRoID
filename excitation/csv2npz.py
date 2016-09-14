@@ -58,12 +58,12 @@ def readCSV(dir, config, plot):
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         #use IMUrpy
-        out['IMUrpy'][:, i] = f[:, i]
-        out['IMUlinAcc'][:, i] = f[:, 18+i]
+        #out['IMUrpy'][:, i] = f[:, i]
+        #out['IMUlinAcc'][:, i] = f[:, 18+i]
         out['IMUrotVel'][:, i] = f[:, 21+i]
         #use VNrpy
-        #out['IMUrpy'][:, i] = f[:, 15+i]
-        #out['IMUlinAcc'][:, i] = f[:, 24+i]
+        out['IMUrpy'][:, i] = f[:, 15+i]
+        out['IMUlinAcc'][:, i] = f[:, 24+i]
         #out['IMUrotVel'][:, i] = f[:, 27+i]
 
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])

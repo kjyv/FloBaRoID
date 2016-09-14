@@ -63,8 +63,9 @@ data fields have the same amount of samples S relative to the time in field 'tim
 |accelerations | joint angular accelerations in rad/s<sup>2</sup>, SxN_DOF|
 |torques | measured torques of each joint in Nm, SxN_DOF|
 |[torques_raw] | unfiltered torques of each joint, SxN_DOF|
-|base_velocity* | linear (0-2) and angular (3-5) velocity of the base link in m/s and rad/s, Sx6|
-|base_acceleration* |  proper linear (0-2) and angular (3-5) acceleration of the base link (without gravity) in m/s<sup>2</sup> and rad/s<sup>2</sup>, Sx6|
+|base_velocity* | linear (0-2) and angular (3-5) velocity of the base link expressed in the world reference frame  in m/s and rad/s, Sx6|
+|base_acceleration* |  proper linear (0-2) and angular (3-5) acceleration of the base link (without gravity) expressed in the world reference frame in m/s<sup>2</sup> and rad/s<sup>2</sup>, Sx6|
+|base_rpy* |  Orientation of the base link in roll-pitch-yaw order expressed relative to the world reference frame in rad Sx3|
 |contacts* | measured external contact wrenches, dictionary {'urdf frame name': Sx6}|
 |times | time of each sample in sec, Sx1|
 |frequency | frequency of measured values in Hz, 1 value|

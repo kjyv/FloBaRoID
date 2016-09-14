@@ -446,33 +446,61 @@ class Data(object):
             # low-pass filter
             IMUlinAcc_orig = IMUlinAcc.copy()
             IMUrotVel_orig = IMUrotVel.copy()
+            IMUrpy_orig = IMUrpy.copy()
             for j in range(0, 3):
                 IMUlinAcc[:, j] = sp.signal.filtfilt(b_2, a_2, IMUlinAcc_orig[:, j])
                 IMUrotVel[:, j] = sp.signal.filtfilt(b_2, a_2, IMUrotVel_orig[:, j])
+                IMUrpy[:, j] = sp.signal.filtfilt(b, a, IMUrpy_orig[:, j])
 
             if IMUlinVel is not None:
                 #rotate accelerations to (estimated) world frame
                 from transforms3d.euler import euler2mat
                 rot = IMUrpy[i, :]
-                R = euler2mat(rot[0], rot[1], rot[2])
-                #TODO: use quaternions to avoid gimbal lock? (orientation estimation needs to give quaternions already though)
+                R = euler2mat(-rot[0], -rot[1], -rot[2])
+                IMUlinAccWorld = np.zeros_like(IMUlinAcc)
+                for i in range(0, IMUlinAcc.shape[0]):
+                    IMUlinAccWorld[i, :] = R.dot(IMUlinAcc[i, :])
+                #TODO: use quaternions to avoid gimbal lock (orientation estimation needs to give quaternions already though)
 
-                grav_norm = np.mean(la.norm(IMUlinAcc, axis=1))
-                if grav_norm < 9.81:
-                    print('Warning: base acceleration is smaller than gravity ({})!'.format(grav_norm))
+                grav_norm = np.mean(la.norm(IMUlinAccWorld, axis=1))
+                if grav_norm < 9.80:
+                    print('Warning: base acceleration is smaller than gravity ({})! Scaling'.format(grav_norm))
+                    #scale up/down
+                    IMUlinAccWorld *= 9.81/grav_norm
 
-                # subtract rotated gravity vector
-                IMUlinAcc -= R.dot(np.array([0,0,-9.81]))
+                # subtract gravity vector
+                IMUlinAccWorld -= np.array([0,0,-9.81])
+
+                if la.norm(IMUlinAccWorld[:, 0]) > 0.1:
+                    print("Warning: proper base acceleration not zero at time 0 (assuming start at 0, integrated velocity will be wrong)!")
+
+                #try to skip initial values until close to 0 acceleration time is found
+                if False:
+                    means = np.mean(IMUlinAccWorld, axis=0)
+                    IMUlinAccWorld -= means
+
+                    start = 0
+                    for j in range(0, 3):
+                        #only start integrating when acceleration is small
+                        for s in range(0, IMUlinAccWorld.shape[0]):
+                            if la.norm(IMUlinAccWorld[s:s+10, j]) < 0.4:
+                                start = np.max((s, start))
+                                break
+
+                    IMUlinAccWorld[:start, :] = 0
+                    IMUlinAccWorld += means
 
                 # subtract means, includes wrong gravity offset and other static offsets
-                IMUlinAcc -= np.mean(IMUlinAcc, axis=0)
+                IMUlinAccWorld -= np.mean(IMUlinAccWorld, axis=0)
 
-                if la.norm(IMUlinAcc[:, 0]) > 0.1:
-                    print("Warning: base acceleration not zero at time 0 (integrated velocity will be wrong)!")
+                # rotate back (save proper linear acceleration without gravity)
+                for i in range(0, IMUlinAcc.shape[0]):
+                    IMUlinAcc[i, :] = R.T.dot(IMUlinAccWorld[i, :])
 
                 # integrate linear acceleration to get velocity
                 for j in range(0, 3):
                     IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAcc[:, j], T, initial=0)
+                    IMUlinVel[j, :] = R.T.dot(IMUlinVel[j, :])
 
             # get rotational acceleration as simple derivative of velocity
             if IMUrotAcc is not None:

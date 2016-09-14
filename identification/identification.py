@@ -251,7 +251,7 @@ class Identification(object):
         os.remove(self.model.urdf_file + '.tmp')
 
         old_skip = self.opt['skip_samples']
-        self.opt['skip_samples'] = 4
+        self.opt['skip_samples'] = 8
 
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skip_samples']+1):
@@ -269,9 +269,13 @@ class Identification(object):
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
 
+        # add simulated base forces also to measurements
+        if self.opt['floating_base']:
+            self.tauMeasuredValidation = np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
+
         self.opt['skip_samples'] = old_skip
 
-        self.val_error = sla.norm(self.tauEstimatedValidation[:, 6:]-self.tauMeasuredValidation) \
+        self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
 
@@ -899,11 +903,13 @@ class Identification(object):
 
         if self.validation_file:
             datasets.append(
-                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels, 'contains_base': 0,
-                    'dataset': [
+                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                    'contains_base': self.opt['floating_base'], 'dataset': [
+                        #{'data': [self.tauMeasuredValidation],
+                        # 'time': rel_vtime, 'title': 'Measured Validation'},
                         {'data': [self.tauEstimatedValidation],
                          'time': rel_vtime, 'title': 'Estimated Validation'},
-                        {'data': [self.tauEstimatedValidation[:, 6:]-self.tauMeasuredValidation],
+                        {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
                          'time': rel_vtime, 'title': 'Validation Error'}
                         ]
                 }

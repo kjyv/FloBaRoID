@@ -125,6 +125,7 @@ class Model(object):
             # origin (not spatial acc)
             base_acc = samples['base_acceleration'][sample_idx]
             base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
+            rpy = samples['base_rpy'][sample_idx]
 
         # system state for iDynTree
         q = iDynTree.VectorDynSize.fromList(pos)
@@ -133,11 +134,17 @@ class Model(object):
 
         # calc torques and forces with iDynTree dynamicsComputation class
         if self.opt['floating_base']:
-            # the homogeneous transformation that transforms position vectors expressed
-            # in the base reference frame in position frames expressed in the world
+            # get the homogeneous transformation that transforms vectors expressed
+            # in the base reference frame to frames expressed in the world
             # reference frame, i.e. pos_world = world_T_base*pos_base
+            # for identification purposes, the position does not matter but rotation is taken
+            # from IMU estimation. The gravity, base velocity and acceleration all need to be
+            # expressed in world frame then
             dynComp.setFloatingBase(self.opt['base_link_name'])
-            world_T_base = dynComp.getWorldBaseTransform()
+            rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+            pos = iDynTree.Position.Zero()
+            world_T_base = iDynTree.Transform(rot, pos)
+
             dynComp.setRobotState(q, dq, ddq, world_T_base,
                                   base_velocity, base_acceleration,
                                   world_gravity)
@@ -225,9 +232,12 @@ class Model(object):
                 if self.opt['floating_base']:
                     vel = data.samples['base_velocity'][m_idx]
                     acc = data.samples['base_acceleration'][m_idx]
+                    rpy = data.samples['base_rpy'][m_idx]
                     base_velocity = iDynTree.Twist.fromList(vel)
                     base_acceleration = iDynTree.Twist.fromList(acc)
-                    world_T_base = self.dynComp.getWorldTransform(self.opt['base_link_name'])
+                    rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+                    pos = iDynTree.Position.Zero()
+                    world_T_base = iDynTree.Transform(rot, pos)
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
                 else:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)

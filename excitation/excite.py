@@ -53,6 +53,7 @@ from trajectoryGenerator import TrajectoryGenerator, TrajectoryOptimizer
 
 def plot(data=None):
     fig = plt.figure(1)
+    fig.clear()
     if False:
         from random import sample
         from itertools import permutations
@@ -165,9 +166,6 @@ def plot(data=None):
     plt.show()
 
 def simulateTrajectory(config, trajectory, model=None):
-    #trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=True)
-    #trajectory.initWithRandomParams()
-
     # generate data arrays for simulation and regressor building
     old_sim = config['iDynSimulate']
     config['iDynSimulate'] = True
@@ -206,6 +204,8 @@ def simulateTrajectory(config, trajectory, model=None):
         trajectory_data['times'].append(t)
         trajectory_data['torques'].append(np.zeros(config['N_DOFS']))
 
+    num_samples = len(trajectory_data['times'])
+
     trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
     trajectory_data['positions'] = trajectory_data['target_positions']
     trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
@@ -215,8 +215,10 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['torques'] = np.array(trajectory_data['torques'])
     trajectory_data['times'] = np.array(trajectory_data['times'])
     trajectory_data['measured_frequency'] = freq
-    trajectory_data['base_velocity'] = np.zeros( (trajectory_data['velocities'].shape[0], 6) )
-    trajectory_data['base_acceleration'] = np.zeros( (trajectory_data['velocities'].shape[0], 6) )
+    trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
+    trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
+    trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
+    trajectory_data['contacts'] = np.array({'dummy': np.zeros( num_samples )})
 
     data.init_from_data(trajectory_data)
     #TODO: this also computes regressors in addition to simulation, which we don't really need
@@ -230,7 +232,10 @@ def main():
     traj_file = config['model'] + '.trajectory.npz'
     if config['optimizeTrajectory']:
         trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
-        trajectory = trajectoryOptimizer.optimizeTrajectory()
+        if config['showOptimizationTrajs']:
+            trajectory = trajectoryOptimizer.optimizeTrajectory(plot_func=plot)
+        else
+            trajectory = trajectoryOptimizer.optimizeTrajectory()
         np.savez(traj_file, use_deg=trajectory.use_deg, a=trajectory.a, b=trajectory.b,
                  q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
     else:
@@ -240,6 +245,11 @@ def main():
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
         except IOError:
             trajectory = TrajectoryGenerator(config['N_DOFS']).initWithRandomParams()
+            print "a {}".format([t_a.tolist() for t_a in trajectory.a])
+            print "b {}".format([t_b.tolist() for t_b in trajectory.b])
+            print "q {}".format(trajectory.q.tolist())
+            print "nf {}".format(trajectory.nf.tolist())
+            print "wf {}".format(trajectory.w_f_global)
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
 

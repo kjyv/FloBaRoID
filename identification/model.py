@@ -213,7 +213,10 @@ class Model(object):
 
                     if self.opt['iDynSimulate']:
                         torq = np.nan_to_num(torques)
-                        data.samples['torques'][m_idx] = torques[6:]
+                        if self.opt['floating_base']:
+                            data.samples['torques'][m_idx] = torques[6:]
+                        else:
+                            data.samples['torques'][m_idx] = torques
                     else:
                         if self.opt['floating_base']:
                             #add estimated base forces to measured torq vector from file
@@ -270,6 +273,8 @@ class Model(object):
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
                 frame = contacts.keys()[i]
+                if frame is 'dummy':  #ignore empty contacts from simulation
+                    continue
 
                 # get jacobian and contact force for each contact frame and measurement sample
                 jacobian = iDynTree.MatrixDynSize(6, 6+self.N_DOFS)

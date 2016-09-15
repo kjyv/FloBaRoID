@@ -24,6 +24,7 @@ class TrajectoryGenerator(object):
 
     def initWithRandomParams(self):
         # init with random params
+        # TODO: use specified bounds
         a = [0]*self.dofs
         b = [0]*self.dofs
         nf = np.random.randint(1,4, self.dofs)
@@ -177,9 +178,21 @@ class TrajectoryOptimizer(object):
         self.wf_max = self.config['trajectoryPulseMax']
         self.wf_init = self.config['trajectoryPulseInit']
         #angle offsets
-        self.qmin = self.config['trajectoryAngleMin']
-        self.qmax = self.config['trajectoryAngleMax']
-        self.qinit = 0.0
+        if self.config['trajectoryAngleRanges'][0] is not None:
+            self.qmin = []
+            self.qmax = []
+            self.qinit = []
+            for i in range(0, self.dofs):
+                low = self.config['trajectoryAngleRanges'][i][0]
+                high = self.config['trajectoryAngleRanges'][i][1]
+                self.qmin.append(low)
+                self.qmax.append(high)
+                self.qinit.append((high+low)*0.5)  #set init to middle of range
+        else:
+            self.qmin = [self.config['trajectoryAngleMin']]*self.dofs
+            self.qmax = [self.config['trajectoryAngleMax']]*self.dofs
+            self.qinit = [self.config['trajectoryAngleMax']-self.config['trajectoryAngleMin']]*self.dofs
+
         if not self.config['useDeg']:
             self.qmin = np.deg2rad(self.qmin)
             self.qmax = np.deg2rad(self.qmax)
@@ -192,15 +205,13 @@ class TrajectoryOptimizer(object):
         for i in range(0, self.dofs):
             for j in range(0, self.nf[0]):
                 #fade out and alternate sign
-                #self.ainit[j] = self.config['trajectorySpeed']/ (j+1) * ((j%2)*2-1)
-                #self.binit[j] = self.config['trajectorySpeed']/ (j+1) * ((1-j%2)*2-1)
-                #self.ainit[i,j] = self.binit[i,j] = self.config['trajectorySpeed']+((self.amax-self.config['trajectorySpeed'])/(self.dofs-i))
-                self.ainit[i,j] = self.binit[i,j] = self.config['trajectorySpeed']
+                #self.ainit[j] = self.config['trajectoryCoeffInit']/ (j+1) * ((j%2)*2-1)
+                #self.binit[j] = self.config['trajectoryCoeffInit']/ (j+1) * ((1-j%2)*2-1)
+                #self.ainit[i,j] = self.binit[i,j] = self.config['trajectoryCoeffInit']+
+                #                  ((self.amax-self.config['trajectoryCoeffInit'])/(self.dofs-i))
+                self.ainit[i,j] = self.binit[i,j] = self.config['trajectoryCoeffInit']
 
-        self.useScipy = 0
-        self.useNLopt = 0
-
-        self.last_best_f = 10e10
+        self.last_best_f = float('inf')
         self.last_best_f_f1 = 0
         self.last_best_sol = None
 
@@ -219,8 +230,6 @@ class TrajectoryOptimizer(object):
         # 'globals' for objfunc
         self.iter_cnt = 0   #iteration counter
         self.last_g = None
-        if self.useScipy or self.useNLopt:
-            self.constr = [{'type':'ineq', 'fun': lambda x: -1} for i in range(self.dofs*5)]
 
     def updateGraph(self):
         # draw all optimization steps so far (yes, no updating)
@@ -306,13 +315,13 @@ class TrajectoryOptimizer(object):
             # not be very high as it is added again anyway)
             f = 10000.0
             if self.config['minVelocityConstraint']:
-            g = [10.0]*self.dofs*5
+                g = [10.0]*self.dofs*5
             else:
                 g = [10.0]*self.dofs*4
 
             fail = 1.0
             self.iter_cnt-=1
-                return f, g, fail
+            return f, g, fail
 
         self.trajectory.initWithParams(a,b,q, self.nf, wf)
 
@@ -328,6 +337,7 @@ class TrajectoryOptimizer(object):
         self.config['floating_base'] = old_floating_base
 
         self.last_trajectory_data = trajectory_data
+        if self.plot_func: self.plot_func(trajectory_data)
 
         f = np.linalg.cond(model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
@@ -341,7 +351,11 @@ class TrajectoryOptimizer(object):
 
         f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
-        g = [0.0]*self.dofs*5
+        if self.config['minVelocityConstraint']:
+            g = [0.0]*self.dofs*5
+        else:
+            g = [0.0]*self.dofs*4
+
         # check for joint limits
         jn = self.config['jointNames']
         for n in range(self.dofs):
@@ -359,8 +373,11 @@ class TrajectoryOptimizer(object):
             g[2*self.dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - self.limits[jn[n]]['velocity']
             # max torques
             g[3*self.dofs+n] = np.nanmax(np.abs(trajectory_data['torques'][:, n])) - self.limits[jn[n]]['torque']
-            # max joint vel of trajectory should at least be 10% of joint limit
-            g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*0.1 - np.max(np.abs(trajectory_data['velocities'][:, n]))
+
+            if self.config['minVelocityConstraint']:
+                # max joint vel of trajectory should at least be 10% of joint limit
+                g[4*self.dofs+n] = self.limits[jn[n]]['velocity']*self.config['minVelocityPercentage'] - \
+                                    np.max(np.abs(trajectory_data['velocities'][:, n]))
 
             # highest joint torque should at least be 10% of joint limit
             #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
@@ -413,13 +430,16 @@ class TrajectoryOptimizer(object):
             print "constraints violated:"
             if True in np.in1d(range(1,2*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "angle limits"
+                print np.array(g)[range(1,2*self.dofs)]
             if True in np.in1d(range(2*self.dofs,3*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "max velocity limits"
                 #print np.array(g)[range(2*self.dofs,3*self.dofs)]
             if True in np.in1d(range(3*self.dofs,4*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
                 print "max torque limits"
-            if True in np.in1d(range(4*self.dofs,5*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
-                print "min velocity limits"
+
+            if self.config['minVelocityConstraint']:
+                if True in np.in1d(range(4*self.dofs,5*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                    print "min velocity limits"
             #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
             #    print "min torque limits"
             #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
@@ -429,9 +449,11 @@ class TrajectoryOptimizer(object):
         x = kwargs['x_new']
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
-    def optimizeTrajectory(self):
+    def optimizeTrajectory(self, plot_func=None):
         # use non-linear optimization to find parameters for minimal
         # condition number trajectory
+
+        self.plot_func = plot_func
 
         if self.config['showOptimizationGraph']:
             self.initGraph()
@@ -451,7 +473,7 @@ class TrajectoryOptimizer(object):
 
         # q - offsets
         for i in range(self.dofs):
-            opt_prob.addVar('q_%d'%i,'c', value=0.0, lower=self.qmin, upper=self.qmax)
+            opt_prob.addVar('q_%d'%i,'c', value=self.qinit[i], lower=self.qmin[i], upper=self.qmax[i])
         # a, b - sin/cos params
         for i in range(self.dofs):
             for j in range(self.nf[0]):
@@ -461,7 +483,10 @@ class TrajectoryOptimizer(object):
                 opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=self.binit[i][j], lower=self.bmin, upper=self.bmax)
 
         # add constraint vars (constraint functions are in obfunc)
-        opt_prob.addConGroup('g', self.dofs*5, 'i')
+        if self.config['minVelocityConstraint']:
+            opt_prob.addConGroup('g', self.dofs*5, 'i')
+        else:
+            opt_prob.addConGroup('g', self.dofs*4, 'i')
         #print opt_prob
 
         initial = [v.value for v in opt_prob._variables.values()]
@@ -488,40 +513,40 @@ class TrajectoryOptimizer(object):
                 opt(opt_prob, store_hst=False, xstart=initial)
             print opt_prob.solution(0)
 
-            ### pyOpt local
+        ### pyOpt local
 
-            # after using global optimization, get more exact solution with
-            # gradient based method init optimizer (only local)
-            opt2 = SLSQP()   #sequential least squares
-            opt2.setOption('MAXIT', self.config['localOptIterations'])
-            if self.config['verbose']:
-                opt2.setOption('IPRINT', 0)
-            # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
-            # iterations are probably steps along the gradient. How to get proper no. of func calls?
-            self.iter_max = "(unknown)"
+        # after using global optimization, get more exact solution with
+        # gradient based method init optimizer (only local)
+        opt2 = SLSQP()   #sequential least squares
+        opt2.setOption('MAXIT', self.config['localOptIterations'])
+        if self.config['verbose']:
+            opt2.setOption('IPRINT', 0)
+        # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
+        # iterations are probably steps along the gradient. How to get proper no. of func calls?
+        self.iter_max = "(unknown)"
 
-            if self.config['useGlobalOptimization']:
-                if self.last_best_sol is not None:
-                    #use best constrained solution
-                    for i in range(len(opt_prob._variables)):
-                        opt_prob._variables[i].value = self.last_best_sol[i]
-                else:
-                    #reuse previous solution
-                    for i in range(len(opt_prob._variables)):
-                        opt_prob._variables[i].value = opt_prob.solution(0).getVar(i).value
-
-                opt2(opt_prob, store_hst=False, sens_step=0.1)
+        if self.config['useGlobalOptimization']:
+            if self.last_best_sol is not None:
+                #use best constrained solution
+                for i in range(len(opt_prob._variables)):
+                    opt_prob._variables[i].value = self.last_best_sol[i]
             else:
-                try:
-                    #reuse history
-                    opt2(opt_prob, store_hst=True, hot_start=True, sens_step=0.1)
-                except NameError:
-                    opt2(opt_prob, store_hst=True, sens_step=0.1)
+                #reuse previous solution
+                for i in range(len(opt_prob._variables)):
+                    opt_prob._variables[i].value = opt_prob.solution(0).getVar(i).value
 
-            local_sol = opt_prob.solution(0)
-            if not self.config['useGlobalOptimization']:
-                print local_sol
-            local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
+            opt2(opt_prob, store_hst=False, sens_step=0.1)
+        else:
+            try:
+                #reuse history
+                opt2(opt_prob, store_hst=True, hot_start=True, sens_step=0.1)
+            except NameError:
+                opt2(opt_prob, store_hst=True, sens_step=0.1)
+
+        local_sol = opt_prob.solution(0)
+        if not self.config['useGlobalOptimization']:
+            print local_sol
+        local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
 
         if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol

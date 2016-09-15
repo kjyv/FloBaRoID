@@ -1,27 +1,33 @@
 
 #### excitation
 
-excitationSimulate: 1        # simulate torques instead of using measurements (use e.g. with Gazebo)
-exciteMethod: null #'ros'          # currently 'yarp', 'ros' or null
-useDeg: 0                    # encode angles in degrees for excitation (internal and data is always in rad)
+excitationSimulate: 1          #simulate torques instead of using measurements (use e.g. with Gazebo)
+exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null
+useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 1        # find new parameters with optimization or load previous params from file (if no file exists, use random)
+optimizeTrajectory: 1          #find new parameters with optimization or load previous params from file (if no file exists, use random)
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
+showOptimizationTrajs: 1       #display the trajectory plot after each optimization step
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 5
 localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                    #limit objective function evaluations to this value (not used currently)
-min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
+min_tol_constr: 0.01           #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
-trajectorySpeed: 0.4           #set this as high as possible without violating constraints (see output after start)
 trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.5
+trajectoryCoeffInit: 0.4       #set this as high as possible without violating constraints (see output after start)
 trajectoryCoeffMin: -0.5       #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
 trajectoryAngleMin: -25.0      #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax:  25.0
+
+# instead of one range, define individual ranges for each link. If ..AngleMin/Max is to be used for
+# all of them, set entry with null
+trajectoryAngleRanges:
+    - null
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
 # should be used (or leave completely empty)
@@ -33,6 +39,10 @@ ovr_pos_limit:
     - null
     - null
     - null
+
+# maximize minimal velocity for each joint (better excitation of parameters)
+# (implemented as penalty, so will not necessarily reach the set value)
+minVelocityConstraint: 0
 
 #### identification
 
@@ -59,6 +69,10 @@ block_size: 250  # needs to be at least as much as parameters so regressor is sq
 
 removeNearZero: 1  #remove samples that have almost zero velocity
 minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
+
+# IMU processing (floating base)
+waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
+zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
 
 ## use constrained SDP to solve OLS
 

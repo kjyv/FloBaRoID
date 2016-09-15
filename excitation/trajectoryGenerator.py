@@ -305,12 +305,13 @@ class TrajectoryOptimizer(object):
             # TODO: for some algorithms (with augemented lagrangian added bounds) this should
             # not be very high as it is added again anyway)
             f = 10000.0
+            if self.config['minVelocityConstraint']:
             g = [10.0]*self.dofs*5
+            else:
+                g = [10.0]*self.dofs*4
+
             fail = 1.0
             self.iter_cnt-=1
-            if self.useScipy or self.useNLopt:
-                return f
-            else:
                 return f, g, fail
 
         self.trajectory.initWithParams(a,b,q, self.nf, wf)
@@ -380,14 +381,6 @@ class TrajectoryOptimizer(object):
             self.x_constr.append(c)
             self.updateGraph()
 
-        if self.useScipy or self.useNLopt:
-            for i in range(len(g)):
-                #update the constraint function static value (last evaluation)
-                self.constr[i]['fun'] = lambda x: self.objective_func(x, constr=True)[i]['fun'](x)
-                if constr:
-                    #return the constraint functions to get the constraint gradient
-                    return self.constr
-
         #TODO: allow some manual constraints for angles (from config)
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
@@ -398,8 +391,7 @@ class TrajectoryOptimizer(object):
             self.last_best_sol = x
 
         fail = 0.0
-        if self.useScipy or self.useNLopt: return f
-        else: return f, g, fail
+        return f, g, fail
 
     def testBounds(self, x):
         #test variable bounds
@@ -496,66 +488,6 @@ class TrajectoryOptimizer(object):
                 opt(opt_prob, store_hst=False, xstart=initial)
             print opt_prob.solution(0)
 
-        if self.useScipy:
-            def printIter(x):
-                print("iteration: found sol {}: ".format(x))
-            bounds = [(v.lower, v.upper) for v in opt_prob._variables.values()]
-            local_sol = sp.optimize.minimize(self.objective_func, initial,
-                                                  bounds = bounds,
-                                                  constraints = self.constr,
-                                                  callback = printIter,
-                                                  method = 'COBYLA',
-                                                  options = {'rhobeg': 0.1, 'maxiter': self.config['maxFun'], 'disp':True }
-                                                 )
-            print("COBYLA solution found:")
-            print local_sol.message
-            print local_sol.x
-
-            local_sol_vec = local_sol.x
-        elif self.useNLopt:
-            def objfunc_nlopt(x, grad):
-                if grad.size > 0:
-                    print('getting gradient of obj func')
-                    grad[:] = self.approx_jacobian(self.objective_func, x, 0.1)
-                return self.objective_func(x)
-            import nlopt
-            n_var = len(opt_prob._variables.values())
-            #opt = nlopt.opt(nlopt.GN_ISRES, n_var)
-            #opt = nlopt.opt(nlopt.LD_SLSQP, n_var)  #in NLopt, needs explicit gradient approximation
-            #opt = nlopt.opt(nlopt.LD_MMA, n_var)
-            #opt = nlopt.opt(nlopt.LN_COBYLA, n_var)
-
-            #allow constraints for methods that don't support it
-            opt = nlopt.opt(nlopt.LN_AUGLAG, n_var)
-            #local_opt = nlopt.opt(nlopt.LN_SBPLX, n_var)
-            local_opt = nlopt.opt(nlopt.LN_BOBYQA, n_var)
-            opt.set_local_optimizer(local_opt)
-
-            opt.set_min_objective(objfunc_nlopt)
-
-            opt.set_lower_bounds([v.lower for v in opt_prob._variables.values()])
-            opt.set_upper_bounds([v.upper for v in opt_prob._variables.values()])
-
-            for i in range(len(self.constr)):
-                def func(x, grad):
-                    if grad.size > 0:
-                        # TODO:
-                        # approx_jacobian is already doing all the steps for the gradient in
-                        # objfunc_nlopt, so doing here again (for each constraint!) is not necessary
-                        # instead, both cond and const should be returned, the solution gradient calculated
-                        # and the constr's for each x+perturbation cached. the approx here should only need the
-                        # cached values to generate the constraint gradients.
-                        # the points (x) need to be an index for the dicts, when to throw away?
-                        print('getting gradient of constr')
-                        grad[:] = self.approx_jacobian(lambda xx: self.objective_func(xx, constr=True)[i]['fun'](xx), x, 0.1)
-                    return self.objective_func(x, constr=True)[i]['fun'](x)
-                opt.add_inequality_constraint(func)
-
-            #opt.set_stopval(20)
-            opt.set_maxeval(self.config['maxFun'])
-            local_sol_vec = opt.optimize(initial)
-            print("finished with objective function value {}".format(opt.last_optimum_value()))
-        else:
             ### pyOpt local
 
             # after using global optimization, get more exact solution with

@@ -4,6 +4,7 @@ import scipy as sp
 from scipy import signal
 from scipy import misc
 import helpers
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
 plt.style.use('seaborn-muted')
@@ -296,6 +297,10 @@ class Data(object):
         to_delete = list()
         for t in range(self.num_used_samples):
             if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
+                #if self.opt['floating_base']:
+                #    if np.min(np.abs(self.samples['base_velocity'][t])) < self.opt['minVel']*3:
+                #        to_delete.append(t)
+                #else:
                 to_delete.append(t)
 
         for k in self.samples.keys():
@@ -454,9 +459,8 @@ class Data(object):
 
             if IMUlinVel is not None:
                 #rotate accelerations to (estimated) world frame
-                from transforms3d.euler import euler2mat
                 rot = IMUrpy[i, :]
-                R = euler2mat(-rot[0], -rot[1], -rot[2])
+                R = iDynTree.Rotation.RPY(-rot[0], -rot[1], -rot[2]).toNumPy()
                 IMUlinAccWorld = np.zeros_like(IMUlinAcc)
                 for i in range(0, IMUlinAcc.shape[0]):
                     IMUlinAccWorld[i, :] = R.dot(IMUlinAcc[i, :])
@@ -469,13 +473,13 @@ class Data(object):
                     IMUlinAccWorld *= 9.81/grav_norm
 
                 # subtract gravity vector
-                IMUlinAccWorld -= np.array([0,0,-9.81])
+                #IMUlinAccWorld -= np.array([0,0,-9.81])
 
                 if la.norm(IMUlinAccWorld[:, 0]) > 0.1:
                     print("Warning: proper base acceleration not zero at time 0 (assuming start at 0, integrated velocity will be wrong)!")
 
                 #try to skip initial values until close to 0 acceleration time is found
-                if False:
+                if self.opt['waitForZeroAcc']:
                     means = np.mean(IMUlinAccWorld, axis=0)
                     IMUlinAccWorld -= means
 
@@ -483,7 +487,7 @@ class Data(object):
                     for j in range(0, 3):
                         #only start integrating when acceleration is small
                         for s in range(0, IMUlinAccWorld.shape[0]):
-                            if la.norm(IMUlinAccWorld[s:s+10, j]) < 0.4:
+                            if la.norm(IMUlinAccWorld[s:s+10, j]) < self.opt['zeroAccThresh']:
                                 start = np.max((s, start))
                                 break
 

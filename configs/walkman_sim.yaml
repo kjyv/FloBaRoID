@@ -1,27 +1,46 @@
 
 #### excitation
 
-excitationSimulate: 1        # simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
-exciteMethod: null #'yarp'         # currently 'yarp', 'ros' or null
-useDeg: 1                    # encode angles in degrees for excitation (internal and data is always in rad)
+excitationSimulate: 1        #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
+exciteMethod: null #'yarp'         #currently 'yarp', 'ros' or null
+useDeg: 1                    #encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 1        # find new parameters with optimization or load previous params from file (if no file exists, use random)
+optimizeTrajectory: 1        #find new parameters with optimization or load previous params from file (if no file exists, use random)
 showOptimizationGraph: 1     #display updating graph during trajectory optimization
+showOptimizationTrajs: 1     #display the trajectory plot after each optimization step
 useGlobalOptimization: 1     #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 5
 localOptIterations: 1        #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                  #limit objective function evaluations to this value (not used currently)
-min_tol_constr: 0.01         # threshold for being within constraints (only used for display)
+min_tol_constr: 0.01         #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
-trajectorySpeed: 0.4         #set this as high as possible without violating constraints (see output after start)
 trajectoryPulseInit: 0.75    #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
-trajectoryPulseMax:  1.5
+trajectoryPulseMax:  1.0
+trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
 trajectoryCoeffMin: -0.5     #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
-trajectoryAngleMin: -25.0    #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax:  25.0
+trajectoryAngleMin: -10.0      #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMax: 10.0
+
+# instead of one range, define individual ranges for each link. initial is the center of these
+# ranges. If ..AngleMin/Max is to be used for all of them, set entry with null
+trajectoryAngleRanges:
+    [[-5.9745248069, 3.9797344371],
+     [-9.9543738355, 5.9746393985],
+     [-12.938974128, 6.9696016556],
+     [5.0,          14.929013234],
+     [-8.9596980573, 3.9797344371],
+     [-4.9771869178, 4.9771869178]
+    ]
+#    [[-49.9745248069, 39.9797344371],
+#     [-89.9543738355, 49.9746393985],
+#     [-119.938974128, 59.9696016556],
+#     [0.0,            139.929013234],
+#     [-79.9596980573, 39.9797344371],
+#     [-44.9771869178, 44.9771869178]
+#    ]
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
 # (or leave completely empty)
@@ -34,6 +53,10 @@ ovr_pos_limit:
     - null
     - null
 
+# constrain to minimal velocity (percentage of maximum) for each joint (better excitation of parameters)
+minVelocityConstraint: 0
+minVelocityPercentage: 0.1
+
 #### identification
 
 # fixed or floating-base dynamics
@@ -42,7 +65,7 @@ base_link_name: 'Waist'
 #if set to 1, also add <baseLinkDynamics/> as first rows to regressor definition xml
 
 # simulate torques from target values, don't use both
-iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+iDynSimulate: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
@@ -61,6 +84,10 @@ block_size: 250  # needs to be at least as much as parameters so regressor is sq
 
 removeNearZero: 1  #remove samples that have almost zero velocity
 minVel: 0.02       #minimum mean velocity for a sample to be taken (rad/s)
+
+# IMU processing (floating base)
+waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
+zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
 
 ## use constrained SDP to solve OLS
 

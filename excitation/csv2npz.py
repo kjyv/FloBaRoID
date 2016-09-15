@@ -8,6 +8,9 @@ import sys
 import os
 import argparse
 import numpy as np
+import numpy.linalg as la
+
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
 plt.style.use('seaborn-muted')
@@ -50,6 +53,7 @@ def readCSV(dir, config, plot):
     out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot, 3 force, 3 torque values
     out['IMUrpy'] = np.empty( (f.shape[0], 3) )    #IMU orientation, r,p,y
     out['IMUlinAcc'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
+    out['IMUlinAcc2'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
     out['IMUrotVel'] = np.empty( (f.shape[0], 3) ) #IMU rotational velocity
 
     ax3 = fig.add_subplot(3,2,3)
@@ -59,14 +63,35 @@ def readCSV(dir, config, plot):
     for i in range(0,3):
         #use IMUrpy
         #out['IMUrpy'][:, i] = f[:, i]
-        #out['IMUlinAcc'][:, i] = f[:, 18+i]
-        out['IMUrotVel'][:, i] = f[:, 21+i]
+        out['IMUlinAcc'][:, i] = f[:, 18+i]
+        #out['IMUrotVel'][:, i] = f[:, 21+i]
         #use VNrpy
         out['IMUrpy'][:, i] = f[:, 15+i]
-        out['IMUlinAcc'][:, i] = f[:, 24+i]
-        #out['IMUrotVel'][:, i] = f[:, 27+i]
+        out['IMUlinAcc2'][:, i] = f[:, 24+i]
+        out['IMUrotVel'][:, i] = f[:, 27+i]
+
+        #rotate VNrpy vals to robot frame (it's built in rotated like this)
+        #hm, should really be pi, 0, 0 according to Przemek
+        robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
+
+        for j in range(0, out['IMUlinAcc2'].shape[0]):
+            out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
+
+        #for j in range(0, out['IMUrotVel'].shape[0]):
+        #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
+
+        #for j in range(0, out['IMUrpy'].shape[0]):
+        #    out['IMUrpy'][j, :] = robotToIMU.dot(out['IMUrpy'][j, :])
+
+        if 0:
+            #use other IMU and take average
+            out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling should'nt be necessary...
+            out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
+        else:
+            out['IMUlinAcc'] = out['IMUlinAcc2']
 
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
+        #ax3.plot(out['times'], out['IMUlinAcc2'][:, i], label=acc_labels[i])
         ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
     ax5 = fig.add_subplot(3,2,5)
@@ -91,14 +116,20 @@ def readCSV(dir, config, plot):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Load measurements from csv and write as npz.')
-    #parser.add_argument('--config', required=True, type=str, help="use options from given config file")
+    parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('--measurements', required=True, type=str, help='the directory to load the measurements from')
     parser.add_argument('--outfile', type=str, help='the filename to save the measurements to')
     parser.add_argument('--plot', help='whether to plot the data', action='store_true')
     parser.set_defaults(outfile='measurements.npz', plot=False)
     args = parser.parse_args()
 
-    config = {}
+    #config = {}
+    import yaml
+    with open(args.config, 'r') as stream:
+        try:
+            config = yaml.load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
     config['N_DOFS'] = 6   #walkman leg
     config['useDeg'] = False
 

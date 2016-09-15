@@ -393,7 +393,7 @@ class OutputMatplotlib(object):
             else:
                 handles, labels = ax.get_legend_handles_labels()
                 leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
-            plt.tight_layout()
+            fig.set_tight_layout(True)
 
             if self.html:
                 plugins.clear(fig)

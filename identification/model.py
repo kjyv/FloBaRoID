@@ -26,6 +26,14 @@ class Model(object):
         if self.opt['verbose']:
             print 'loaded model {}'.format(urdf_file)
 
+        #viz = iDynTree.Visualizer()
+        #viz.addModel(self.idyn_model, 'model')
+        #for i in range(0,30):
+            #model_inst = viz.modelViz('model')
+            #model_inst.setPositions(world_H_base, VectorDynSize jointPos)
+        #    viz.draw()
+        #viz.close()
+
         # define what regressor type
         if regressor_file:
             with open(regressor_file, 'r') as file:
@@ -48,6 +56,7 @@ class Model(object):
                   </jointTorqueDynamics>
                 </regressor>'''
         self.generator.loadRegressorStructureFromString(regrXml)
+        self.regrXml = regrXml
 
         # TODO: this and the following are not dependent on joints specified in regressor (but
         # uses all from model file)!
@@ -273,7 +282,7 @@ class Model(object):
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
                 frame = contacts.keys()[i]
-                if frame is 'dummy':  #ignore empty contacts from simulation
+                if frame == 'dummy':  #ignore empty contacts from simulation
                     continue
 
                 # get jacobian and contact force for each contact frame and measurement sample
@@ -348,10 +357,11 @@ class Model(object):
         try:
             regr_file = np.load(regr_filename)
             R = regr_file['R']
-            n = regr_file['n']
+            n = regr_file['n']   #number of samples that were used
+            fb = regr_file['fb']  #floating base flag
             if self.opt['verbose']:
                 print("loaded random regressor from {}".format(regr_filename))
-            if n != n_samples:
+            if n != n_samples or fb != self.opt['floating_base'] or R.shape[0] != self.num_params:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
         except IOError, KeyError:
@@ -409,7 +419,7 @@ class Model(object):
                 else:
                     R += A.T.dot(A)
 
-            np.savez(regr_filename, R=R, n=n_samples)
+            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floating_base'])
 
         if self.opt.has_key('showRandomRegressor') and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt

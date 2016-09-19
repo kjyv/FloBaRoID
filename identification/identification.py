@@ -26,13 +26,12 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from model import Model
 from data import Data
 from output import OutputConsole
+from colorama import Fore, Back, Style
 import helpers
 
 import optimization
 from optimization import LMI_PSD, LMI_PD
 
-# stuff
-from colorama import Fore, Back, Style
 from IPython import embed
 
 # Referenced papers:
@@ -47,10 +46,6 @@ from IPython import embed
 # sensors data
 # Sousa, 2014: Physical feasibility of robot base inertial parameter identification: A linear matrix
 # inequality approach
-
-# TODO: load full model and programatically cut off chain from certain joints/links to allow
-# subtree identification
-# TODO: allow visual filtering and data selection (take raw data as input)
 
 class Identification(object):
     def __init__(self, opt, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
@@ -780,14 +775,15 @@ class Identification(object):
         #    print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
         #    optimization.solve_sdp = optimization.cvxopt_dsdp5
 
+        if self.opt['verbose']:
+            print("Solving constrained OLS as SDP")
+
         # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
         if optimization.solve_sdp is optimization.dsdp5 and self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
             prime = self.model.xStdModel
-        else: prime = None
-
-        if self.opt['verbose']:
-            print("Solving constrained OLS as SDP")
-        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+            solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+        else:
+            solution = optimization.solve_sdp(objective_func, lmis, variables)
 
         u_star = solution[0,0]
         if u_star:

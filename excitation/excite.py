@@ -66,7 +66,8 @@ def plot(data=None):
         print colors[0:config['N_DOFS']]
     else:
         # set some fixed colors
-        colors = [[ 0.97254902,  0.62745098,  0.40784314],
+        colors = []
+        """colors = [[ 0.97254902,  0.62745098,  0.40784314],
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
                   [ 0.90980392,  0.37647059,  0.84705882],
@@ -74,8 +75,9 @@ def plot(data=None):
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
-        from palettable.tableau import Tableau_20, ColorBlind_10
-        colors += Tableau_20.mpl_colors + ColorBlind_10.mpl_colors
+        """
+        from palettable.tableau import Tableau_10, Tableau_20
+        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
 
     if not data:
         # python measurements
@@ -123,8 +125,7 @@ def plot(data=None):
     print "bins: {}".format(B)
     print "sums: {}".format(H)
     late_msgs = (1 - float(np.sum(H)-np.sum(H[1:])) / float(np.sum(H))) * 100
-    print "({}% messages too late)".format(late_msgs)
-    print "\n"
+    print "({}% messages too late)\n".format(late_msgs)
 
     # what to plot (each tuple has a title and one or multiple data arrays)
     if args.plot_targets:    #plot target values
@@ -201,7 +202,7 @@ def simulateTrajectory(config, trajectory, model=None):
             qddot = np.deg2rad(qddot)
         trajectory_data['target_accelerations'].append(qddot)
 
-        trajectory_data['times'].append(t)
+        trajectory_data['times'].append(t/freq)
         trajectory_data['torques'].append(np.zeros(config['N_DOFS']))
 
     num_samples = len(trajectory_data['times'])
@@ -285,8 +286,9 @@ def main():
             traj_data['Vdot'][0:torques_len,:] = traj_data['accelerations'][:,:]
     else:
         # filter, differentiate, convert, etc.
-        data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'], V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'],
-                        Tau=traj_data['Tau'], Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
+        data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'],
+                        V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'], Tau=traj_data['Tau'],
+                        Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
 
     saveMeasurements(args.filename, traj_data)
 
@@ -301,6 +303,8 @@ def saveMeasurements(filename, data):
                  torques=data['Tau'], torques_raw=data['TauRaw'],
                  target_positions=np.deg2rad(data['Qsent']), target_velocities=np.deg2rad(data['QdotSent']),
                  target_accelerations=np.deg2rad(data['QddotSent']),
+                 base_velocity=data['base_velocity'], base_acceleration=data['base_acceleration'],
+                 base_rpy=data['base_rpy'], contacts=data['contacts'],
                  times=data['T'], frequency=data['measured_frequency'])
     else:
         np.savez(filename,
@@ -308,8 +312,11 @@ def saveMeasurements(filename, data):
                  velocities=data['velocities'], velocities_raw=data['velocities'],
                  accelerations=data['accelerations'],
                  torques=data['torques'], torques_raw=data['torques'],
-                 target_positions=np.deg2rad(data['target_positions']), target_velocities=np.deg2rad(data['target_velocities']),
+                 target_positions=np.deg2rad(data['target_positions']),
+                 target_velocities=np.deg2rad(data['target_velocities']),
                  target_accelerations=np.deg2rad(data['target_accelerations']),
+                 base_velocity=data['base_velocity'], base_acceleration=data['base_acceleration'],
+                 base_rpy=data['base_rpy'], contacts=data['contacts'],
                  times=data['times'], frequency=data['measured_frequency'])
 
     print "saved measurements to {}".format(args.filename)

@@ -175,7 +175,7 @@ def cvxopt_conelp(objf, lmis, variables):
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     toc = time.time()
     if sdpout['status'] == 'optimal':
-        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+        print("'optimal' does not necessarily mean feasible".format(sdpout['status']))
     else:
         print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
         print("(Consider to try to use the dsdp5 solver.)")

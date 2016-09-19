@@ -238,11 +238,11 @@ class TrajectoryOptimizer(object):
             i = last_i = 0
             last_state = self.x_constr[0]
             while (i < len(self.x_constr)):
+                if self.x_constr[i]: color = 'g'
+                else: color = 'r'
                 if self.x_constr[i] == last_state:
+                    # draw intermediate and at end of data
                     if i-last_i +1 >= self.updateGraphEveryVals:
-                        # draw intermedieate and at end of data
-                        if self.x_constr[i]: color = 'g'
-                        else: color = 'r'
                         #need to draw one point more to properly connect to next segment
                         if last_i == 0: end = i+1
                         else: end = i+2
@@ -251,8 +251,6 @@ class TrajectoryOptimizer(object):
                 else:
                     #draw line when state has changed
                     last_state = not last_state
-                    if self.x_constr[i]: color = 'g'
-                    else: color = 'r'
                     if last_i == 0: end = i+1
                     else: end = i+2
                     self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color, color='0.75')
@@ -300,6 +298,8 @@ class TrajectoryOptimizer(object):
 
     def objective_func(self, x, constr=None):
         self.iter_cnt += 1
+        print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
+
         wf, q, a, b = self.vecToParams(x)
 
         if self.config['verbose']:
@@ -345,9 +345,9 @@ class TrajectoryOptimizer(object):
         #xBaseModel = np.dot(model.Binv, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
 
-        print "\niter #{}/{}: objective function value: {} (last best: {} + {})".format(self.iter_cnt,
-                                                                                   self.iter_max,
-                                                                                   f, self.last_best_f-self.last_best_f_f1, self.last_best_f_f1)
+        print "objective function value: {} (last best: {} + {})".format(f,
+                                                            self.last_best_f-self.last_best_f_f1,
+                                                            self.last_best_f_f1)
 
         f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
@@ -398,7 +398,6 @@ class TrajectoryOptimizer(object):
             self.x_constr.append(c)
             self.updateGraph()
 
-        #TODO: allow some manual constraints for angles (from config)
         #TODO: add cartesian/collision constraints, e.g. using fcl
 
         #keep last best solution (some solvers don't keep it)
@@ -406,6 +405,8 @@ class TrajectoryOptimizer(object):
             self.last_best_f = f
             self.last_best_f_f1 = f1
             self.last_best_sol = x
+
+        print("\n\n")
 
         fail = 0.0
         return f, g, fail

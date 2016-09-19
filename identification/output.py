@@ -129,8 +129,10 @@ class OutputConsole(object):
                     #if apriori == 0: apriori = 0.01
                     if diff_apriori != 0:
                         pc_delta = np.abs((100/diff_apriori)*diff_real)
-                    elif diff_real > 0.0001:
-                        pc_delta = np.abs((100/0.01)*diff_real)
+                    elif np.abs(diff_real) > 0:
+                        #if there was no error between apriori and real
+                        #pc_delta = np.abs((100/0.01)*diff_real)
+                        pc_delta = 100 + np.abs(diff_r_pc)
                     else:
                         #both real and a priori are zero, error is still at 100% (of zero error)
                         pc_delta = 100

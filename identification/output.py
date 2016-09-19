@@ -59,10 +59,13 @@ class OutputConsole(object):
         import iDynTree
         #if requested, load params from other urdf for comparison
         if idf.urdf_file_real:
-            dc = iDynTree.DynamicsComputations()
-            dc.loadRobotModelFromFile(idf.urdf_file_real)
+            dc = iDynTree.DynamicsRegressorGenerator()
+            if not dc.loadRobotAndSensorsModelFromFile(idf.urdf_file_real):
+                sys.exit()
             tmp = iDynTree.VectorDynSize(idf.model.num_params)
-            dc.getModelDynamicsParameters(tmp)
+            #set regressor, otherwise getModelParameters segfaults
+            dc.loadRegressorStructureFromString(idf.model.regrXml)
+            dc.getModelParameters(tmp)
             xStdReal = tmp.toNumPy()
             xBaseReal = np.dot(idf.model.Binv, xStdReal)
 
@@ -320,8 +323,8 @@ class OutputConsole(object):
                         format(sum_pc_delta_all/len(idf.model.xStd)))
                 sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
                 sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                print( "Squared distance of parameter vectors (apriori, identified) to real: {} vs. {}".\
-                        format(sq_error_apriori, sq_error_idf))
+                print( "Squared distance of parameter vectors (identified, apriori) to real: {} vs. {}".\
+                        format(sq_error_idf, sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))

@@ -18,10 +18,10 @@
 class excitation_thread : public generic_thread
 {
 private:
-     // left_arm chain interface
-    walkman::yarp_single_chain_interface left_arm_chain_interface;
-    // left_arm configuration vector
-    yarp::sig::Vector left_arm_configuration;
+     // walkman chain interface
+    walkman::yarp_single_chain_interface *chain_interface;
+    // chain configuration vector
+    yarp::sig::Vector chain_configuration;
     // joints number
     int num_joints;
     // ref speed vector

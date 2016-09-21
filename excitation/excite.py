@@ -277,18 +277,18 @@ def main():
         tau_len = traj_data['Tau'].shape[0]   # get length of measured (zero) taus
         if tau_len < traj_data['torques'].shape[0]:
             traj_data['Tau'][:,:] = traj_data['torques'][0:tau_len,:]
-            traj_data['V'][:,:] = traj_data['velocities'][0:tau_len,:]
-            traj_data['Vdot'][:,:] = traj_data['accelerations'][0:tau_len,:]
+            if config['exciteMethod'] == None:
+                traj_data['V'][:,:] = traj_data['velocities'][0:tau_len,:]
         else:
             torques_len = traj_data['torques'].shape[0]
             traj_data['Tau'][0:torques_len,:]  = traj_data['torques'][:,:]
-            traj_data['V'][0:torques_len,:] = traj_data['velocities'][:,:]
-            traj_data['Vdot'][0:torques_len,:] = traj_data['accelerations'][:,:]
-    else:
-        # filter, differentiate, convert, etc.
-        data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'],
-                        V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'], Tau=traj_data['Tau'],
-                        Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
+            if config['exciteMethod'] == None:
+                traj_data['V'][0:torques_len,:] = traj_data['velocities'][:,:]
+
+    # filter, differentiate, convert, etc.
+    data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'],
+                    V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'], Tau=traj_data['Tau'],
+                    Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
 
     saveMeasurements(args.filename, traj_data)
 

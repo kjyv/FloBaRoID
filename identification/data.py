@@ -7,7 +7,6 @@ import helpers
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
-plt.style.use('seaborn-muted')
 
 
 class Data(object):
@@ -355,16 +354,29 @@ class Data(object):
             np.copyto(V, vels_rad)
 
         #init low pass filter coefficients
-        #TODO: expose filter options or allow graphically
         fc = 3.0    #Cut-off frequency (Hz)
         order = 4   #Filter order
-        b, a = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+        b_3, a_3 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+
+        fc = 6.0    #Cut-off frequency (Hz)
+        order = 5   #Filter order
+        b_6, a_6 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+
+        fc = 8.0    #Cut-off frequency (Hz)
+        order = 5   #Filter order
+        b_8, a_8 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+
+        fc = 12.0    #Cut-off frequency (Hz)
+        order = 5   #Filter order
+        b_12, a_12 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
+
         #plot_filter(b, a)
+        #TODO: expose filter options or allow graphically
 
         # low-pass filter positions
         Q_orig = Q.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Q[:, j] = sp.signal.filtfilt(b, a, Q_orig[:, j])
+            Q[:, j] = sp.signal.filtfilt(b_6, a_6, Q_orig[:, j])
         if Q_raw is not None:
             np.copyto(Q_raw, Q_orig)
 
@@ -392,7 +404,7 @@ class Data(object):
         # low-pass filter velocities self
         vels_self_orig = V_self.copy()
         for j in range(0, self.opt['N_DOFS']):
-            V_self[:, j] = sp.signal.filtfilt(b, a, vels_self_orig[:, j])
+            V_self[:, j] = sp.signal.filtfilt(b_12, a_12, vels_self_orig[:, j])
 
         ## Joint Accelerations
 
@@ -416,7 +428,7 @@ class Data(object):
         # low-pass filter of accelerations
         accls_orig = Vdot.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Vdot[:, j] = sp.signal.filtfilt(b, a, accls_orig[:, j])
+            Vdot[:, j] = sp.signal.filtfilt(b_3, a_3, accls_orig[:, j])
 
         ## Joint Torques
 
@@ -431,7 +443,7 @@ class Data(object):
         # low-pass of torques
         torques_orig = Tau.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Tau[:, j] = sp.signal.filtfilt(b, a, torques_orig[:, j])
+            Tau[:, j] = sp.signal.filtfilt(b_8, a_8, torques_orig[:, j])
 
         ### IMU data
         if IMUlinAcc is not None and IMUrotVel is not None:
@@ -442,20 +454,16 @@ class Data(object):
                 IMUlinAcc[:, j] = sp.signal.medfilt(IMUlinAcc_orig[:, j], median_kernel_size)
                 IMUrotVel[:, j] = sp.signal.medfilt(IMUrotVel_orig[:, j], median_kernel_size)
 
-            fc = 8.0    #Cut-off frequency (Hz)
-            order = 5   #Filter order
-            b_2, a_2 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
-
-            #plot_filter(b_2, a_2)
+            #plot_filter(b_8, a_8)
 
             # low-pass filter
             IMUlinAcc_orig = IMUlinAcc.copy()
             IMUrotVel_orig = IMUrotVel.copy()
             IMUrpy_orig = IMUrpy.copy()
             for j in range(0, 3):
-                IMUlinAcc[:, j] = sp.signal.filtfilt(b_2, a_2, IMUlinAcc_orig[:, j])
-                IMUrotVel[:, j] = sp.signal.filtfilt(b_2, a_2, IMUrotVel_orig[:, j])
-                IMUrpy[:, j] = sp.signal.filtfilt(b, a, IMUrpy_orig[:, j])
+                IMUlinAcc[:, j] = sp.signal.filtfilt(b_8, a_8, IMUlinAcc_orig[:, j])
+                IMUrotVel[:, j] = sp.signal.filtfilt(b_8, a_8, IMUrotVel_orig[:, j])
+                IMUrpy[:, j] = sp.signal.filtfilt(b_3, a_3, IMUrpy_orig[:, j])
 
             if IMUlinVel is not None:
                 #rotate accelerations to (estimated) world frame
@@ -523,4 +531,4 @@ class Data(object):
                 # low-pass filter
                 ft_orig = ft.copy()
                 for j in range(0, 3):
-                    ft[:, j] = sp.signal.filtfilt(b, a, ft_orig[:, j])
+                    ft[:, j] = sp.signal.filtfilt(b_3, a_3, ft_orig[:, j])

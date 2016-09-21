@@ -20,8 +20,9 @@ in robotCommunication/yarpGYM/:
 `cmake ../`   
 `make`
 
-(have 'gazebo' and 'yarpserver --write' running)
-`./excitation`
+run 'yarpserver --write' and then 'gazebo', load the robot
+
+run `./excitation`
 
 `$ yarp write ... /excitation/switch:i`   
 `>> start`

@@ -166,7 +166,7 @@ def plot(data=None):
 
     plt.show()
 
-def simulateTrajectory(config, trajectory, model=None):
+def simulateTrajectory(config, trajectory, model=None, measurements=None):
     # generate data arrays for simulation and regressor building
     old_sim = config['iDynSimulate']
     config['iDynSimulate'] = True
@@ -181,7 +181,7 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['target_accelerations'] = []
     trajectory_data['torques'] = []
     trajectory_data['times'] = []
-    freq = 200.0
+    freq=200.0
     for t in range(0, int(trajectory.getPeriodLength()*freq)):
         trajectory.setTime(t/freq)
         q = [trajectory.getAngle(d) for d in range(config['N_DOFS'])]
@@ -220,6 +220,13 @@ def simulateTrajectory(config, trajectory, model=None):
     trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
     trajectory_data['contacts'] = np.array({'dummy': np.zeros( num_samples )})
+
+    if measurements:
+        trajectory_data['positions'] = measurements['Q']
+        trajectory_data['velocities'] = measurements['V']
+        trajectory_data['accelerations'] = measurements['Vdot']
+        trajectory_data['measured_frequency'] = measurements['measured_frequency']
+
 
     data.init_from_data(trajectory_data)
     #TODO: this also computes regressors in addition to simulation, which we don't really need
@@ -289,6 +296,11 @@ def main():
     data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'],
                     V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'], Tau=traj_data['Tau'],
                     Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
+
+    #simulate again with measured/filtered data
+    if config['excitationSimulate']:
+        traj_data_sim, data, model = simulateTrajectory(config, trajectory, measurements=traj_data)
+        traj_data['Tau'] = traj_data_sim['torques'][0:traj_data['Tau'].shape[0]]
 
     saveMeasurements(args.filename, traj_data)
 

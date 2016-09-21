@@ -404,7 +404,7 @@ class Data(object):
         # low-pass filter velocities self
         vels_self_orig = V_self.copy()
         for j in range(0, self.opt['N_DOFS']):
-            V_self[:, j] = sp.signal.filtfilt(b_12, a_12, vels_self_orig[:, j])
+            V_self[:, j] = sp.signal.filtfilt(b_6, a_6, vels_self_orig[:, j])
 
         ## Joint Accelerations
 

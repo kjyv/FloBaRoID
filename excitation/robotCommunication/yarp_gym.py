@@ -5,7 +5,7 @@ import numpy as np
 def gen_position_msg(msg_port, angles, velocities):
     bottle = msg_port.prepare()
     bottle.clear()
-    bottle.fromString("(set_left_arm {} {}) 0".format(' '.join(map(str, angles)), ' '.join(map(str, velocities)) ))
+    bottle.fromString("(set_right_leg {} {}) 0".format(' '.join(map(str, angles)), ' '.join(map(str, velocities)) ))
     return bottle
 
 def gen_command(msg_port, command):
@@ -14,7 +14,7 @@ def gen_command(msg_port, command):
     bottle.fromString("({}) 0".format(command))
     return bottle
 
-def main(config, trajectory, data_out):
+def main(config, trajectory, out):
     # connect to yarp and open output port
     yarp.Network.init()
     yarp.Time.useNetworkClock("/clock")
@@ -54,16 +54,16 @@ def main(config, trajectory, data_out):
     waited_for_start = 0
     started = False
     while t_elapsed < duration:
-        trajectories.setTime(t_elapsed)
-        target_angles = [trajectories.getAngle(i) for i in range(0, config['N_DOFS'])]
-        target_velocities = [trajectories.getVelocity(i) for i in range(0, config['N_DOFS'])]
-        target_accelerations = [trajectories.getAcceleration(i) for i in range(0, config['N_DOFS'])]
+        trajectory.setTime(t_elapsed)
+        target_angles = [trajectory.getAngle(i) for i in range(0, config['N_DOFS'])]
+        target_velocities = [trajectory.getVelocity(i) for i in range(0, config['N_DOFS'])]
+        target_accelerations = [trajectory.getAcceleration(i) for i in range(0, config['N_DOFS'])]
         #for i in range(0, config['N_DOFS']):
         #    target_velocities[i]+=velocity_correction[i]
 
         # make sure we start moving at a position with zero velocity
         if not started:
-            started = trajectories.wait_for_zero_vel(t_elapsed)
+            started = trajectory.wait_for_zero_vel(t_elapsed)
             t_elapsed = yarp.Time.now() - t_init
             waited_for_start = t_elapsed
 
@@ -74,8 +74,8 @@ def main(config, trajectory, data_out):
 
                 print "waiting to arrive at an initial position...",
                 sys.stdout.flush()
-                yarp.Time.delay(trajectories.getPeriodLength())
-                t_init+=trajectories.getPeriodLength()
+                yarp.Time.delay(trajectory.getPeriodLength())
+                t_init+=trajectory.getPeriodLength()
                 duration+=waited_for_start
                 print "ok."
             continue
@@ -126,16 +126,16 @@ def main(config, trajectory, data_out):
     # clean up
     command_port.close()
     data_port.close()
-    data_out['Q'] = np.array(measured_positions); del measured_positions
-    data_out['Qsent'] = np.array(sent_positions);
-    data_out['QdotSent'] = np.array(sent_velocities);
-    data_out['QddotSent'] = np.array(sent_accelerations);
-    data_out['V'] = np.array(measured_velocities); del measured_velocities
-    data_out['Tau'] = np.array(measured_torques); del measured_torques
-    data_out['T'] = np.array(measured_time); del measured_time
+    out['Q'] = np.array(measured_positions); del measured_positions
+    out['Qsent'] = np.array(sent_positions);
+    out['QdotSent'] = np.array(sent_velocities);
+    out['QddotSent'] = np.array(sent_accelerations);
+    out['V'] = np.array(measured_velocities); del measured_velocities
+    out['Tau'] = np.array(measured_torques); del measured_torques
+    out['T'] = np.array(measured_time); del measured_time
 
-    data_out['measured_frequency'] = len(sent_positions)/duration
+    out['measured_frequency'] = len(sent_positions)/duration
 
     # some stats
-    print "got {} samples in {}s.".format(data_out['Q'].shape[0], duration),
-    print "(about {} Hz)".format(data_out['measured_frequency'])
+    print "got {} samples in {}s.".format(out['Q'].shape[0], duration),
+    print "(about {} Hz)".format(out['measured_frequency'])

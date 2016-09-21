@@ -50,7 +50,7 @@ public:
 
         list.addString(command);
 
-        if(command == "set_left_arm")
+        if(command == "set_left_leg" || command == "set_right_leg")
         {
             list.addDouble(angle0);
             list.addDouble(angle1);
@@ -58,14 +58,14 @@ public:
             list.addDouble(angle3);
             list.addDouble(angle4);
             list.addDouble(angle5);
-            list.addDouble(angle6);
+            //list.addDouble(angle6);
             list.addDouble(velocity0);
             list.addDouble(velocity1);
             list.addDouble(velocity2);
             list.addDouble(velocity3);
             list.addDouble(velocity4);
             list.addDouble(velocity5);
-            list.addDouble(velocity6);
+            //list.addDouble(velocity6);
         }
 
         return temp;
@@ -91,14 +91,14 @@ public:
         }
 
         //TODO: check that list has enough entries and otherwise give message
-        if(list->size() < 7*2) {
+        if(list->size() < 6*2) {
             std::cout << "warning: not enough parameters given in Bottle!" << std::endl;
             return;
         }
 
         command = list->get(0).asString();
         int index = 1;
-        if(command == "set_left_arm")
+        if(command == "set_left_leg" || command == "set_right_leg")
         {
             angle0 = list->get(index++).asDouble();
             angle1 = list->get(index++).asDouble();
@@ -106,14 +106,14 @@ public:
             angle3 = list->get(index++).asDouble();
             angle4 = list->get(index++).asDouble();
             angle5 = list->get(index++).asDouble();
-            angle6 = list->get(index++).asDouble();
+            //angle6 = list->get(index++).asDouble();
             velocity0 = list->get(index++).asDouble();
             velocity1 = list->get(index++).asDouble();
             velocity2 = list->get(index++).asDouble();
             velocity3 = list->get(index++).asDouble();
             velocity4 = list->get(index++).asDouble();
             velocity5 = list->get(index++).asDouble();
-            velocity6 = list->get(index++).asDouble();
+            //velocity6 = list->get(index++).asDouble();
         }
 
         return;

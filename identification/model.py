@@ -64,16 +64,6 @@ class Model(object):
         if self.opt['verbose']:
             print '# DOFs: {}'.format(self.N_DOFS)
 
-        # Get the number of outputs of the regressor
-        # (should be #links - #fakeLinks)
-        self.N_OUT = self.generator.getNrOfOutputs()
-        if self.opt['verbose']:
-            print '# outputs: {}'.format(self.N_OUT)
-
-        # get initial inertia params (from urdf)
-        self.num_params = self.generator.getNrOfParameters()
-        if self.opt['verbose']:
-            print '# params: {}'.format(self.num_params)
 
         self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         if self.opt['verbose']:
@@ -86,12 +76,23 @@ class Model(object):
         if self.opt['verbose']:
             print '({})'.format(self.link_names)
 
+        # Get the number of outputs of the regressor
+        # (should be #links - #fakeLinks)
+        self.N_OUT = self.generator.getNrOfOutputs()
+        if self.opt['verbose']:
+            print('# outputs: {}'.format(self.N_OUT))
+
+        # get initial inertia params (from urdf)
+        self.num_params = self.generator.getNrOfParameters()
+        if self.opt['verbose']:
+            print('# params: {}'.format(self.num_params))
+
         self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
         self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
-        if opt['iDynSimulate'] or opt['useAPriori'] or opt['floating_base']:
+        if opt['simulateTorques'] or opt['useAPriori'] or opt['floating_base']:
             self.dynComp = iDynTree.DynamicsComputations();
             self.dynComp.loadRobotModelFromFile(self.urdf_file);
 
@@ -121,10 +122,6 @@ class Model(object):
         acc = samples['accelerations'][sample_idx]
         torq = samples['torques'][sample_idx]
         if self.opt['floating_base']:
-            contacts = {}
-            for frame in samples['contacts'].item().keys():
-                #TODO: define proper sign for input data
-                contacts[frame] = -samples['contacts'].item()[frame][sample_idx]
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
             base_vel = samples['base_velocity'][sample_idx]
@@ -191,7 +188,12 @@ class Model(object):
             self.contacts_stack = np.zeros(shape=(len(data.samples['contacts'].item().keys()), 6*data.num_used_samples))
             self.contactForcesSum = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
 
-        """loop over measurements (optionally skip some values) and get one regressor per time step"""
+        """loop over measurement data, optionally skip some values
+            - get the regressor per time step
+            - if necessary, calculate inverse dynamics to get simulated torques
+            - if necessary, get torques from contact forces and add them to the torques
+            - stack the torques, regressors and contacts into matrices
+        """
         for sample_index in range(0, data.num_used_samples):
             m_idx = sample_index*(self.opt['skip_samples'])+sample_index
             with helpers.Timer() as t:
@@ -213,23 +215,23 @@ class Model(object):
 
                 # in case that we simulate the torque measurements, need torque estimation for a priori parameters
                 # or that we need to simulate the base reaction forces for floating base
-                if self.opt['iDynSimulate'] or self.opt['useAPriori'] or self.opt['floating_base']:
+                if self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floating_base']:
                     torques = self.simulateDynamics(data.samples, m_idx)
 
                     if self.opt['useAPriori']:
-                        # torques sometimes contain nans, just a very small number in C that gets converted to nan?
+                        # torques sometimes contain nans, just a very small C number that gets converted to nan?
                         torqAP = np.nan_to_num(torques)
 
-                    if self.opt['iDynSimulate']:
+                    if self.opt['simulateTorques']:
                         torq = np.nan_to_num(torques)
                         if self.opt['floating_base']:
-                            data.samples['torques'][m_idx] = torques[6:]
+                            data.samples['torques'][m_idx] = torq[6:]
                         else:
-                            data.samples['torques'][m_idx] = torques
+                            data.samples['torques'][m_idx] = torq
                     else:
                         if self.opt['floating_base']:
                             #add estimated base forces to measured torq vector from file
-                            torq = np.concatenate((torques[0:6], torq))
+                            torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
 
                 if self.opt['addNoise'] != 0:
                     torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
@@ -253,7 +255,6 @@ class Model(object):
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
                 else:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
-                    #self.generator.setTorqueSensorMeasurement(iDynTree.VectorDynSize.fromList(torq))   #why this?
 
                 # get (standard) regressor
                 regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
@@ -265,7 +266,7 @@ class Model(object):
                 np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor.toNumPy())
             num_time += t.interval
 
-            # stack results onto matrices of previous timesteps
+            # stack results onto matrices of previous time steps
             np.copyto(self.torques_stack[row_index:row_index+self.N_DOFS+fb], torq)
             if self.opt['useAPriori']:
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.N_DOFS+fb], torqAP)
@@ -282,7 +283,8 @@ class Model(object):
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
                 frame = contacts.keys()[i]
-                if frame == 'dummy':  #ignore empty contacts from simulation
+                if frame == 'dummy_sim':  #ignore empty contacts from simulation
+                    print("Empty contacts data!")
                     continue
 
                 # get jacobian and contact force for each contact frame and measurement sample
@@ -298,8 +300,9 @@ class Model(object):
                 self.contactForcesSum += contacts_torq
 
             #subtract measured contact forces from torque estimation from iDynTree
-            if self.opt['iDynSimulate']:
+            if self.opt['simulateTorques']:
                 self.torques_stack -= self.contactForcesSum
+                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))[:, 6:]
             if self.opt['useAPriori']:
                 self.torquesAP_stack -= self.contactForcesSum
 
@@ -320,12 +323,9 @@ class Model(object):
 
         if self.opt['filterRegressor']:
             order = 6                       #Filter order
-            try:
-                fs = self.data.samples['frequency']  #Sampling freq
-            except:
-                fs = 200.0
+            fs = self.data.samples['frequency']  #Sampling freq
             fc = 5                          #Cut-off frequency (Hz)
-            b, a = signal.butter(order, fc / (fs/2), btype='low', analog=False)
+            b, a = signal.butter(order, old_div(fc, (old_div(fs,2))), btype='low', analog=False)
             for j in range(0, self.num_base_params):
                 for i in range(0, self.N_DOFS):
                     self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
@@ -333,8 +333,8 @@ class Model(object):
         self.sample_end = data.samples['positions'].shape[0]
         if self.opt['skip_samples'] > 0: self.sample_end -= (self.opt['skip_samples'])
 
-        tau = self.torques_stack    # use original measurements, not delta
-        self.tauMeasured = np.reshape(tau, (data.num_used_samples, self.N_DOFS+fb))
+        # keep original measurements
+        self.tauMeasured = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
 
         self.T = data.samples['times'][0:self.sample_end:self.opt['skip_samples']+1]
 
@@ -364,7 +364,7 @@ class Model(object):
             if n != n_samples or fb != self.opt['floating_base'] or R.shape[0] != self.num_params:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
-        except IOError, KeyError:
+        except (IOError, KeyError):
             generate_new = True
 
         if generate_new:
@@ -421,7 +421,7 @@ class Model(object):
 
             np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floating_base'])
 
-        if self.opt.has_key('showRandomRegressor') and self.opt['showRandomRegressor']:
+        if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
             plt.imshow(R, interpolation='nearest')
             plt.show()
@@ -486,7 +486,7 @@ class Model(object):
                     if np.abs(fact)>self.opt['min_tol']: self.B[P[k],j] = fact
             self.B[indep_idx,j] = 1
 
-        if self.opt.has_key('orthogonalizeBasis') and self.opt['orthogonalizeBasis']:
+        if 'orthogonalizeBasis' in self.opt and self.opt['orthogonalizeBasis']:
             #orthogonalize, so linear relationships can be inverted
             Q_B_qr, R_B_qr = la.qr(self.B)
             Q_B_qr[np.abs(Q_B_qr) < self.opt['min_tol']] = 0

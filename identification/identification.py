@@ -183,7 +183,7 @@ class Identification(object):
             for eq in base_deps_vals[1:]:
                 prev_eq2 -= eq.lhs - eq.rhs
 
-            print "solution space:", prev_eq2
+            print("solution space: {}".format(prev_eq2))
 
             #get some point in the affine subspace (set all but one var then solve)
             p_on_eq = []
@@ -201,39 +201,36 @@ class Identification(object):
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
 
-        with helpers.Timer() as t:
-            if not estimateWith:
-                #use global parameter choice if none is given specifically
-                estimateWith = self.opt['estimateWith']
-            # estimate torques with idyntree regressor and different params
-            if estimateWith == 'urdf':
-                tauEst = np.dot(self.model.YStd, self.model.xStdModel)
-            elif estimateWith == 'base_essential':
-                tauEst = np.dot(self.model.YBase, self.xBase_essential)
-            elif estimateWith == 'base':
-                tauEst = np.dot(self.model.YBase, self.model.xBase)
-            elif estimateWith in ['std', 'std_direct']:
-                tauEst = np.dot(self.model.YStd, self.model.xStd)
-            else:
-                print("unknown type of parameters: {}".format(self.opt['estimateWith']))
+        if not estimateWith:
+            #use global parameter choice if none is given specifically
+            estimateWith = self.opt['estimateWith']
+        # estimate torques with idyntree regressor and different params
+        if estimateWith == 'urdf':
+            tauEst = np.dot(self.model.YStd, self.model.xStdModel)
+        elif estimateWith == 'base_essential':
+            tauEst = np.dot(self.model.YBase, self.xBase_essential)
+        elif estimateWith == 'base':
+            tauEst = np.dot(self.model.YBase, self.model.xBase)
+        elif estimateWith in ['std', 'std_direct']:
+            tauEst = np.dot(self.model.YStd, self.model.xStd)
+        else:
+            print("unknown type of parameters: {}".format(self.opt['estimateWith']))
 
-            if self.opt['floating_base']:
-                fb = 6
-                tauEst -= self.model.contactForcesSum
-            else:
-                fb = 0
+        if self.opt['floating_base']:
+            fb = 6
+            tauEst -= self.model.contactForcesSum
+        else:
+            fb = 0
 
-            # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
-            self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
-            if estimateWith == 'urdf':
-                self.tauAPriori = self.tauEstimated
-
-        #print("torque estimation took %.03f sec." % t.interval)
+        # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
+        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
+        if estimateWith == 'urdf':
+            self.tauAPriori = self.tauEstimated
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
-        # have inverse dynamics yet, so we have to go over a new urdf file now)
+        # have inverse dynamics yet, so we have to go over a new urdf file for now)
         import os
 
         v_data = np.load(self.validation_file)
@@ -267,6 +264,8 @@ class Identification(object):
         # add simulated base forces also to measurements
         if self.opt['floating_base']:
             self.tauMeasuredValidation = np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
+
+        #TODO: add contact forces to estimation
 
         self.opt['skip_samples'] = old_skip
 
@@ -361,7 +360,7 @@ class Identification(object):
 
                 old_ratio = ratio
                 ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
-                print "min-max ratio of relative stddevs: {},".format(ratio),
+                print("min-max ratio of relative stddevs: {},".format(ratio)),
 
                 print("cond(YBase):{},".format(la.cond(self.model.YBase))),
 
@@ -826,8 +825,11 @@ class Identification(object):
         return xStd
 
     def estimateParameters(self):
-        if not self.data.num_used_samples > self.model.num_params*2:
+        if not self.data.num_used_samples > self.model.num_params*2 \
+            and self.opt.has_key('selectingBlocks') and not self.opt['selectingBlocks']:
             print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
+            if self.opt['start_offset'] > 0:
+                print("(start_offset is at {})".format(self.opt['start_offset']))
             sys.exit(1)
 
         if self.opt['verbose']:
@@ -966,6 +968,7 @@ def main():
     idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 
     if idf.opt['selectBlocksFromMeasurements']:
+        idf.opt['selectingBlocks'] = 1
         old_essential_option = idf.opt['useEssentialParams']
         idf.opt['useEssentialParams'] = 0
 
@@ -985,6 +988,7 @@ def main():
 
         idf.data.selectBlocks()
         idf.data.assembleSelectedBlocks()
+        idf.opt['selectingBlocks'] = 0
         idf.opt['useEssentialParams'] = old_essential_option
         idf.opt['useConsistencyConstraints'] = old_feasible_option
 

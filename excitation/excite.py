@@ -168,8 +168,8 @@ def plot(data=None):
 
 def simulateTrajectory(config, trajectory, model=None, measurements=None):
     # generate data arrays for simulation and regressor building
-    old_sim = config['iDynSimulate']
-    config['iDynSimulate'] = True
+    old_sim = config['simulateTorques']
+    config['simulateTorques'] = True
 
     if not model:
         model = Model(config, config['model'])
@@ -219,7 +219,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
-    trajectory_data['contacts'] = np.array({'dummy': np.zeros( num_samples )})
+    trajectory_data['contacts'] = np.array({'dummy_sim': np.zeros( num_samples )})
 
     if measurements:
         trajectory_data['positions'] = measurements['Q']
@@ -228,11 +228,15 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         trajectory_data['measured_frequency'] = measurements['measured_frequency']
 
 
+    old_skip = config['skip_samples']
+    config['skip_samples'] = 0
+    old_offset = config['start_offset']
+    config['start_offset'] = 0
     data.init_from_data(trajectory_data)
-    #TODO: this also computes regressors in addition to simulation, which we don't really need
-    model.computeRegressors(data)
-
-    config['iDynSimulate'] = old_sim
+    model.computeRegressors(data) #TODO: this needlessly also computes regressors in addition to simulation
+    config['skip_samples'] = old_skip
+    config['start_offset'] = old_offset
+    config['simulateTorques'] = old_sim
 
     return trajectory_data, data, model
 

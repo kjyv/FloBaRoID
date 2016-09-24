@@ -76,7 +76,7 @@
   <link name="RThighUpLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0052929709 -0.022561833 0.0056701669"/>
-      <mass value="3.2402068"/>
+      <mass value="2.2402068"/>
       <inertia ixx="0.010102097" ixy="0.00010858487" ixz="0.00025291395" iyy="0.0067147" iyz="8.3447072e-05" izz="0.01048513"/>
     </inertial>
     <visual>
@@ -136,7 +136,7 @@
   <link name="RFootmot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.022024173 0.0025677238 0.00094588455"/>
-      <mass value="3.2844159"/>
+      <mass value="2.2844159"/>
       <inertia ixx="0.0075550679" ixy="0.00067488292" ixz="5.8332889e-05" iyy="0.011241163" iyz="-0.00014552081" izz="0.013391865"/>
     </inertial>
     <visual>
@@ -156,7 +156,7 @@
   <link name="RFoot">
     <inertial>
       <origin rpy="0 0 0" xyz="0.01282904 -0.00463694 -0.10109499"/>
-      <mass value="3.33109981"/>
+      <mass value="3.83109981"/>
       <inertia ixx="0.01006627" ixy="-0.00051955" ixz="-0.00374069" iyy="0.02882577" iyz="0.00044505" izz="0.02819025"/>
     </inertial>
     <visual>

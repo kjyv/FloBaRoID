@@ -236,4 +236,4 @@ def dsdp5(objf, lmis, variables, primalstart=None):
     return np.matrix(sol).T
 
 #set a default solver
-solve_sdp = cvxopt_conelp # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp
+solve_sdp = dsdp5 # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp

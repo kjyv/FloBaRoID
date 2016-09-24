@@ -18,6 +18,7 @@ plt.style.use('seaborn-muted')
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.data import Data
+from identification.model import Model
 
 sampleTime = 0.005   #200 Hz
 
@@ -62,20 +63,30 @@ def readCSV(dir, config, plot):
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         #use IMUrpy
+        """
+        #hw
         #out['IMUrpy'][:, i] = f[:, i]
         out['IMUlinAcc'][:, i] = f[:, 18+i]
-        #out['IMUrotVel'][:, i] = f[:, 21+i]
+        out['IMUrotVel'][:, i] = f[:, 21+i]
         #use VNrpy
         out['IMUrpy'][:, i] = f[:, 15+i]
         out['IMUlinAcc2'][:, i] = f[:, 24+i]
-        out['IMUrotVel'][:, i] = f[:, 27+i]
+        #out['IMUrotVel'][:, i] = f[:, 27+i]
+        """
+        #sim
+        out['IMUrpy'][:, i] = f[:, i]
+        out['IMUlinAcc'][:, i] = f[:, 18+i]
+        out['IMUrotVel'][:, i] = f[:, 21+i]
 
         #rotate VNrpy vals to robot frame (it's built in rotated like this)
         #hm, should really be pi, 0, 0 according to Przemek
         robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
 
+        """
+        #hw
         for j in range(0, out['IMUlinAcc2'].shape[0]):
             out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
+        """
 
         #for j in range(0, out['IMUrotVel'].shape[0]):
         #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
@@ -85,7 +96,7 @@ def readCSV(dir, config, plot):
 
         if 0:
             #use other IMU and take average
-            out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling should'nt be necessary...
+            out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling shouldn't be necessary...
             out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
         else:
             out['IMUlinAcc'] = out['IMUlinAcc2']
@@ -118,6 +129,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Load measurements from csv and write as npz.')
     parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('--measurements', required=True, type=str, help='the directory to load the measurements from')
+    parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--outfile', type=str, help='the filename to save the measurements to')
     parser.add_argument('--plot', help='whether to plot the data', action='store_true')
     parser.set_defaults(outfile='measurements.npz', plot=False)
@@ -132,18 +144,20 @@ if __name__ == '__main__':
             print(exc)
     config['N_DOFS'] = 6   #walkman leg
     config['useDeg'] = False
+    config['model'] = args.model
 
     out = readCSV(args.measurements, config, args.plot)
     out['frequency'] = 1.0/sampleTime
     data = Data(config)
 
     #init empty arrays for preprocess
+    out['torques_raw'] = np.empty_like( out['torques'])
     out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
     out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
 
     #filter, diff, integrate
     data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
-                    Tau=out['torques'], T=out['times'], Fs=out['frequency'],
+                    Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'], Fs=out['frequency'],
                     IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'], IMUlinAcc=out['IMUlinAcc'],
                     IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'], FT=[out['FTright']])
 
@@ -174,12 +188,30 @@ if __name__ == '__main__':
 
     out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
     out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )
+    out['contacts'] = np.array({'r_leg_ft': out['FTright']})
+    out['base_rpy'] = out['IMUrpy']
+
+    if config['excitationSimulate']:
+        #use all data
+        old_skip = config['skip_samples']
+        config['skip_samples'] = 0
+        old_offset = config['start_offset']
+        config['start_offset'] = 0
+        old_sim = config['simulateTorques']
+        config['simulateTorques'] = 1
+        data.init_from_data(out)
+        model = Model(config, config['model'])
+        model.computeRegressors(data)
+        out['torques'] = out['torques_raw'] = model.data.samples['torques']
+        config['skip_samples'] = old_skip
+        config['start_offset'] = old_offset
+        config['simulateTorques'] = old_sim
 
     np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
                            velocities=out['velocities'], velocities_raw=out['velocities'],
-                           accelerations=out['accelerations'], torques=out['torques'], torques_raw=out['torques'],
+                           accelerations=out['accelerations'], torques=out['torques'], torques_raw=out['torques_raw'],
                            base_velocity=out['base_velocity'], base_acceleration=out['base_acceleration'],
-                           base_rpy=out['IMUrpy'], contacts={'r_leg_ft': out['FTright']},
+                           base_rpy=out['base_rpy'], contacts=out['contacts'],
                            times=out['times'], frequency=out['frequency'])
-    print("Saved csv data as as {}".format(args.outfile))
+    print("Saved csv data as {}".format(args.outfile))
     print "Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency'])

@@ -50,7 +50,7 @@ minVelocityConstraint: 0
 floating_base: 0
 
 # simulate torques from target values, don't use both
-iDynSimulate: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
@@ -66,6 +66,7 @@ skip_samples: 0    #how many values to skip before using the next sample
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
 block_size: 250  # needs to be at least as much as parameters so regressor is square or higher
+selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
 
 removeNearZero: 1  #remove samples that have almost zero velocity
 minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)

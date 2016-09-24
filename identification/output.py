@@ -384,6 +384,7 @@ class OutputMatplotlib(object):
                     else:
                         #data vector
                         ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
+                ax.grid(b=True, which='both', color='0.4')
                 if group.has_key('y_label'):
                     ax.set_ylabel(group['y_label'])
 
@@ -394,10 +395,11 @@ class OutputMatplotlib(object):
                 #TODO: show legend properly (see mpld3 bug #274)
                 handles, labels = ax.get_legend_handles_labels()
                 #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
-                leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+                leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':7})
             else:
                 handles, labels = ax.get_legend_handles_labels()
                 leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+            fig.subplots_adjust(hspace=2)
             fig.set_tight_layout(True)
 
             if self.html:

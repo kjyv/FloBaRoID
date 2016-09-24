@@ -27,7 +27,7 @@ class Data(object):
     def init_from_data(self, data):
         '''load data from numpy array'''
 
-        self.samples = self.measurements = data
+        self.samples = self.measurements = data.copy()
         self.num_loaded_samples = self.samples['positions'].shape[0]
         self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
         if self.opt['verbose']:
@@ -43,6 +43,7 @@ class Data(object):
             for fa in measurements_files:
                 for fn in fa:
                     m = np.load(fn)
+
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]
@@ -204,8 +205,8 @@ class Data(object):
     def selectBlocks(self):
         """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""
 
-        # select blocks with best 30% condition numbers
-        perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], 50)
+        # select blocks with some best % of condition numbers
+        perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], self.opt['selectBestPerenctage'])
 
         cond_matrix = np.zeros((len(self.seenBlocks), self.model.N_LINKS))
         c = 0

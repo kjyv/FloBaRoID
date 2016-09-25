@@ -1,4 +1,5 @@
-#!/usr/bin/env python2.7
+from builtins import range
+#!/usr/bin/env python3
 
 import numpy as np
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()

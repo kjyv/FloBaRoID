@@ -1,3 +1,7 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import range
+from builtins import object
 import sys
 import numpy as np
 import threading
@@ -116,8 +120,8 @@ def main(config, trajectory, data, move_group):
     data['QdotSent'] = np.array(sent_velocities);
     data['QddotSent'] = np.array(sent_accelerations);
 
-    print "got {} samples in {}s.".format(data['Q'].shape[0], duration),
-    print "(about {} Hz)".format(data['measured_frequency'])
+    print("got {} samples in {}s.".format(data['Q'].shape[0], duration), end=' ')
+    print("(about {} Hz)".format(data['measured_frequency']))
 
 if __name__ == '__main__':
     main({}, {})

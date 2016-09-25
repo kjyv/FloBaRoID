@@ -168,5 +168,5 @@ showBaseParams: 1            #display a list of identified base params (if appli
 verbose: 1                   #show more messages
 
 # which parameters to use when estimating torques for validation. Set to one of
-# ['base', 'std', 'std_direct', 'urdf
+# ['base', 'std', 'std_direct', 'urdf']
 estimateWith: 'std'

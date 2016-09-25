@@ -34,7 +34,7 @@ class Data(object):
 
         self.samples = self.measurements = data.copy()
         self.num_loaded_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
+        self.num_used_samples = self.num_loaded_samples//(self.opt['skip_samples']+1)
         if self.opt['verbose']:
             print('loaded {} data samples (using {})'.format(
                 self.num_loaded_samples, self.num_used_samples))

@@ -1,9 +1,14 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import range
+from builtins import object
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
 from scipy import signal
 from scipy import misc
-import helpers
+from . import helpers
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
@@ -31,8 +36,8 @@ class Data(object):
         self.num_loaded_samples = self.samples['positions'].shape[0]
         self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
         if self.opt['verbose']:
-            print 'loaded {} data samples (using {})'.format(
-                self.num_loaded_samples, self.num_used_samples)
+            print('loaded {} data samples (using {})'.format(
+                self.num_loaded_samples, self.num_used_samples))
         self.inited = True
 
     def init_from_files(self, measurements_files):
@@ -42,12 +47,12 @@ class Data(object):
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
-                    m = np.load(fn)
+                    m = np.load(fn, encoding='latin1')
 
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]
-                        if not self.measurements.has_key(k):
+                        if k not in self.measurements:
                             # first file
                             if m[k].ndim == 0:
                                 self.measurements[k] = m[k]
@@ -74,16 +79,16 @@ class Data(object):
                     m.close()
 
             self.num_loaded_samples = self.measurements['positions'].shape[0]
-            self.num_used_samples = self.num_loaded_samples/(self.opt['skip_samples']+1)
+            self.num_used_samples = self.num_loaded_samples//(self.opt['skip_samples']+1)
             if self.opt['verbose']:
-                print 'loaded {} measurement samples (using {})'.format(
-                    self.num_loaded_samples, self.num_used_samples)
+                print('loaded {} measurement samples (using {})'.format(
+                    self.num_loaded_samples, self.num_used_samples))
 
             # create data that identification is working on (subset of all measurements)
             self.samples = {}
             self.block_pos = 0
             if self.opt['selectBlocksFromMeasurements']:
-                # fill with starting block
+                # fill only with starting block
                 for k in self.measurements.keys():
                     if self.measurements[k].ndim == 0:
                         self.samples[k] = self.measurements[k]
@@ -93,7 +98,7 @@ class Data(object):
                         self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.opt['block_size'], :]
 
                 self.num_selected_samples = self.samples['positions'].shape[0]
-                self.num_used_samples = self.num_selected_samples/(self.opt['skip_samples']+1)
+                self.num_used_samples = self.num_selected_samples//(self.opt['skip_samples']+1)
             else:
                 # simply use all data
                 self.samples = self.measurements
@@ -118,17 +123,17 @@ class Data(object):
 
     def updateNumSamples(self):
         self.num_selected_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_selected_samples/(self.opt['skip_samples']+1)
+        self.num_used_samples = self.num_selected_samples//(self.opt['skip_samples']+1)
 
     def removeLastSampleBlock(self):
         if self.opt['verbose']:
-            print "removing block starting at {}".format(self.block_pos)
+            print("removing block starting at {}".format(self.block_pos))
         for k in self.measurements.keys():
-            self.samples[k] = np.delete(self.samples[k], range(self.num_selected_samples - self.opt['block_size'],
-                                                               self.num_selected_samples), axis=0)
+            self.samples[k] = np.delete(self.samples[k], list(range(self.num_selected_samples - self.opt['block_size'],
+                                                               self.num_selected_samples)), axis=0)
         self.updateNumSamples()
         if self.opt['verbose']:
-            print "we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples)
+            print("we now have {} samples selected (using {})".format(self.num_selected_samples, self.num_used_samples))
 
     def getNextSampleBlock(self):
         """ fill samples with next measurements block """
@@ -140,7 +145,7 @@ class Data(object):
             self.opt['block_size'] = self.num_loaded_samples - self.block_pos
 
         if self.opt['verbose']:
-            print "getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples)
+            print("getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples))
 
         for k in self.measurements.keys():
             if self.measurements[k].ndim == 0:
@@ -214,11 +219,11 @@ class Data(object):
             (b,bs,cond,linkConds) = block
             if cond > perc_cond:
                 if self.opt['verbose']:
-                    print "not using block starting at {} (cond {})".format(b, cond)
+                    print("not using block starting at {} (cond {})".format(b, cond))
                 self.unusedBlocks.append(block)
             else:
                 if self.opt['verbose']:
-                    print "using block starting at {} (cond {})".format(b, cond)
+                    print("using block starting at {} (cond {})".format(b, cond))
                 self.usedBlocks.append(block)
 
                 # create variance matrix
@@ -233,7 +238,7 @@ class Data(object):
         #if found, delete larger one of the original blocks from usedBlocks (move to unused)
         #TODO: check this with the same file twice as input, should not use any blocks from the second file
         variances = np.var(cond_matrix[0:c,:],axis=1)
-        v_idx = np.array(range(0, c))
+        v_idx = np.array(list(range(0, c)))
         sort_idx = np.argsort(variances)
 
         to_delete = list()
@@ -253,7 +258,7 @@ class Data(object):
 
         for d in np.sort(to_delete)[::-1]:
             if self.opt['verbose']:
-                print "delete block {}".format(self.usedBlocks[d][0])
+                print("delete block {}".format(self.usedBlocks[d][0]))
             del self.usedBlocks[d]
 
 
@@ -293,8 +298,9 @@ class Data(object):
         '''remove samples that have near zero velocity'''
 
         if self.opt['verbose']:
-            print ("removing near zero samples..."),
+            print("removing near zero samples...", end=' ')
         to_delete = list()
+        from IPython import embed
         for t in range(self.num_used_samples):
             if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
                 #if self.opt['floating_base']:

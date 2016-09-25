@@ -1,3 +1,6 @@
+from __future__ import print_function
+from builtins import str
+from builtins import range
 import time
 import sympy
 from sympy import Basic, BlockDiagMatrix, sympify
@@ -177,7 +180,7 @@ def cvxopt_conelp(objf, lmis, variables):
     if sdpout['status'] == 'optimal':
         print("'optimal' does not necessarily mean feasible".format(sdpout['status']))
     else:
-        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
+        print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
         print("(Consider to try to use the dsdp5 solver.)")
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
@@ -195,7 +198,7 @@ def cvxopt_dsdp5(objf, lmis, variables):
     if sdpout['status'] == 'optimal':
         print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
     else:
-        print Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET
+        print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
@@ -214,22 +217,22 @@ def dsdp5(objf, lmis, variables, primalstart=None):
         f.write(sdpadat)
 
     if primalstart is not None:
-        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'w') as f:
+        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
             np.savetxt(f, primalstart)
     else:
-        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'w') as f:
+        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
             np.savetxt(f, np.zeros(len(variables)-1))
 
     try:
         result = subprocess.check_output(['dsdp5', 'sdp.dat-s', '-save', 'dsdp5.out', '-gaptol',
                                          '{}'.format(epsilon_sdptol), '-y0', 'primal.dat'],
-                                         cwd = os.path.join(path, 'sdpa_dat'))
-    except subprocess.CalledProcessError, e:
-        print "DSDP stopped early: {}".format(e.returncode)
+                                         cwd = os.path.join(path, 'sdpa_dat')).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print("DSDP stopped early: {}".format(e.returncode))
         result = e.output
 
     error = [s for s in result.split('\n') if 'DSDP Terminated Due to' in s]
-    if error: print Fore.RED + error[0] + Fore.RESET
+    if error: print(Fore.RED + error[0] + Fore.RESET)
 
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]

@@ -479,6 +479,7 @@ class Model(object):
         R1 = R[0:r, 0:r]
         R2 = R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
+        self.linear_deps[np.abs(self.linear_deps) < self.opt['min_tol']] = 0
 
         # collect grouped columns for each independent column
         # build base matrix

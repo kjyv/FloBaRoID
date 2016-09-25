@@ -1,3 +1,8 @@
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import division
+from builtins import range
+from builtins import object
 import sys
 import numpy as np
 import numpy.linalg as la
@@ -7,7 +12,7 @@ from sympy import symbols
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from IPython import embed
 
-import helpers
+from . import helpers
 
 class Model(object):
     def __init__(self, opt, urdf_file, regressor_file=None):
@@ -24,7 +29,7 @@ class Model(object):
         self.idyn_model = iDynTree.Model()
         iDynTree.modelFromURDF(urdf_file, self.idyn_model)
         if self.opt['verbose']:
-            print 'loaded model {}'.format(urdf_file)
+            print('loaded model {}'.format(urdf_file))
 
         #viz = iDynTree.Visualizer()
         #viz.addModel(self.idyn_model, 'model')
@@ -62,19 +67,19 @@ class Model(object):
         # uses all from model file)!
         self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
         if self.opt['verbose']:
-            print '# DOFs: {}'.format(self.N_DOFS)
+            print('# DOFs: {}'.format(self.N_DOFS))
 
 
         self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         if self.opt['verbose']:
-            print '# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
-                                             self.generator.getNrOfFakeLinks())
+            print('# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
+                                             self.generator.getNrOfFakeLinks()))
 
         self.link_names = []
         for i in range(0, self.N_LINKS):
             self.link_names.append(self.idyn_model.getLinkName(i))
         if self.opt['verbose']:
-            print '({})'.format(self.link_names)
+            print('({})'.format(self.link_names))
 
         # Get the number of outputs of the regressor
         # (should be #links - #fakeLinks)
@@ -194,6 +199,7 @@ class Model(object):
             - if necessary, get torques from contact forces and add them to the torques
             - stack the torques, regressors and contacts into matrices
         """
+        contacts = {}
         for sample_index in range(0, data.num_used_samples):
             m_idx = sample_index*(self.opt['skip_samples'])+sample_index
             with helpers.Timer() as t:
@@ -203,7 +209,6 @@ class Model(object):
                 acc = data.samples['accelerations'][m_idx]
                 torq = data.samples['torques'][m_idx]
                 if self.opt['floating_base']:
-                    contacts = {}
                     for frame in data.samples['contacts'].item().keys():
                         #TODO: define proper sign for input data
                         contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
@@ -260,7 +265,7 @@ class Model(object):
                 regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
                 knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
                 if not self.generator.computeRegressor(regressor, knownTerms):
-                    print "Error during numeric computation of regressor"
+                    print("Error during numeric computation of regressor")
 
                 # stack on previous regressors
                 np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor.toNumPy())
@@ -274,15 +279,15 @@ class Model(object):
             contact_idx = (sample_index*6)
             if self.opt['floating_base']:
                 for i in range(self.contacts_stack.shape[0]):
-                    frame = contacts.keys()[i]
+                    frame = list(contacts.keys())[i]
                     np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
-        if self.opt['floating_base']:
+        if self.opt['floating_base'] and len(contacts.keys()):
             #TODO: if robot does not have contact sensors, use HyQ null-space method (only for static positions?)
 
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
-                frame = contacts.keys()[i]
+                frame = list(contacts.keys())[i]
                 if frame == 'dummy_sim':  #ignore empty contacts from simulation
                     print("Empty contacts data!")
                     continue
@@ -318,7 +323,7 @@ class Model(object):
         self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
 
         if self.opt['verbose']:
-            print("YStd: {}".format(self.YStd.shape)),
+            print("YStd: {}".format(self.YStd.shape), end=' ')
         print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
         if self.opt['filterRegressor']:
@@ -408,7 +413,7 @@ class Model(object):
 
                 # get regressor
                 if not self.generator.computeRegressor(regressor, knownTerms):
-                    print "Error during numeric computation of regressor"
+                    print("Error during numeric computation of regressor")
 
                 A = regressor.toNumPy()
 
@@ -545,9 +550,9 @@ class Model(object):
             self.B = -Vh.T[:, 0:r]
             self.num_base_params = r
 
-            print("tau: {}".format(self.tau.shape)),
+            print("tau: {}".format(self.tau.shape), end=' ')
 
-            print("YStd: {}".format(self.YStd.shape)),
+            print("YStd: {}".format(self.YStd.shape), end=' ')
             # project regressor to base regressor, Y_base = Y_std*B
             self.YBase = np.dot(self.YStd, self.B)
             if self.opt['verbose']:

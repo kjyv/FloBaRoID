@@ -1,5 +1,11 @@
 #-*- coding: utf-8 -*-
 
+from __future__ import division
+from __future__ import print_function
+from future import standard_library
+standard_library.install_aliases()
+from builtins import range
+from builtins import object
 import os
 from IPython import embed
 import numpy as np
@@ -53,7 +59,7 @@ class OutputConsole(object):
         colorama.init(autoreset=False)
 
         if not idf.opt['useEssentialParams']:
-            idf.stdEssentialIdx = range(0, idf.model.num_params)
+            idf.stdEssentialIdx = list(range(0, idf.model.num_params))
             idf.stdNonEssentialIdx = []
 
         import iDynTree
@@ -178,9 +184,9 @@ class OutputConsole(object):
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if idf.urdf_file_real:
-                    print template.format("'Real'", "A priori", "Approx", "Change", "%e", u"Δ%e".encode('utf-8'), u"%σ".encode('utf-8'), "Description")
+                    print(template.format("'Real'", "A priori", "Approx", "Change", "%e", "Δ%e", "%σ", "Description"))
                 else:
-                    print template.format("A priori", "Approx", "Change", "%e", u"%σ".encode('utf-8'), "Description")
+                    print(template.format("A priori", "Approx", "Change", "%e", "%σ", "Description"))
 
                 # print values/description
                 template = ''
@@ -197,16 +203,16 @@ class OutputConsole(object):
                         t = Style.DIM + t
                     if idx_p in idf.stdEssentialIdx:
                         t = Style.BRIGHT + t
-                    print t,
+                    print(t, end=' ')
                     idx_p+=1
-                    print Style.RESET_ALL
-                print "\n"
+                    print(Style.RESET_ALL)
+                print("\n")
 
         ### print base params
         if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not idf.opt['useEssentialParams']:
-                baseEssentialIdx = range(0, idf.model.num_base_params)
+                baseEssentialIdx = list(range(0, idf.model.num_base_params))
                 baseNonEssentialIdx = []
                 xBase_essential = idf.model.xBase
             else:
@@ -266,9 +272,9 @@ class OutputConsole(object):
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if idf.urdf_file_real:
-                    print template.format("\#", "Real", "Model", "Approx", "Change", "Error", u"%σ".encode('utf-8'), "Description")
+                    print(template.format("\#", "Real", "Model", "Approx", "Change", "Error", "%σ", "Description"))
                 else:
-                    print template.format("Model", "Approx", "Change", u"%σ".encode('utf-8'), "Description")
+                    print(template.format("Model", "Approx", "Change", "%σ", "Description"))
 
                 # print values/description
                 template = ''
@@ -287,25 +293,25 @@ class OutputConsole(object):
                         t = Style.BRIGHT + t
                     if idf.opt['showEssentialSteps'] and l[-2] == np.max(idf.p_sigma_x):
                         t = Fore.CYAN + t
-                    print t,
+                    print(t, end=' ')
                     idx_p+=1
-                    print Style.RESET_ALL
+                    print(Style.RESET_ALL)
 
         if idf.opt['selectBlocksFromMeasurements']:
             if len(idf.data.usedBlocks):
-                print "used {} of {} blocks: {}".format(len(idf.data.usedBlocks),
+                print("used {} of {} blocks: {}".format(len(idf.data.usedBlocks),
                                                         len(idf.data.usedBlocks)+len(idf.data.unusedBlocks),
-                                                        [b for (b,bs,cond,linkConds) in idf.data.usedBlocks])
+                                                        [b for (b,bs,cond,linkConds) in idf.data.usedBlocks]))
             else:
-                print "\ncurrent block: {}".format(idf.data.block_pos)
+                print("\ncurrent block: {}".format(idf.data.block_pos))
             #print "unused blocks: {}".format(idf.unusedBlocks)
-            print "condition number: {}".format(la.cond(idf.model.YBase))
+            print("condition number: {}".format(la.cond(idf.model.YBase)))
 
         if idf.opt['showStandardParams']:
             cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
             print("Per-link physical consistency (a priori): {}".format(cons_apriori))
-            if False in cons_apriori.values():
-                print Fore.RED + "a priori parameters not consistent!" + Fore.RESET
+            if False in list(cons_apriori.values()):
+                print(Fore.RED + "a priori parameters not consistent!" + Fore.RESET)
             print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)))
             print("Per-link full physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)))
 
@@ -315,8 +321,8 @@ class OutputConsole(object):
             if idf.opt['showStandardParams']:
                 if idf.opt['useEssentialParams']:
                     print("Mean relative error of essential std params: {}%".\
-                            format(sum_diff_r_pc_ess/len(idf.stdEssentialIdx)))
-                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.model.xStd)))
+                            format(old_div(sum_diff_r_pc_ess,len(idf.stdEssentialIdx))))
+                print("Mean relative error of all std params: {}%".format(old_div(sum_diff_r_pc_all,len(idf.model.xStd))))
 
                 if idf.opt['useEssentialParams']:
                     print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
@@ -376,7 +382,7 @@ class OutputMatplotlib(object):
                         #data matrices
                         for i in range(0, d['data'][data_i].shape[1]):
                             l = group['labels'][i] if data_i == 0 else ''
-                            if i < 6 and group.has_key('contains_base') and group['contains_base']:
+                            if i < 6 and 'contains_base' in group and group['contains_base']:
                                 ls = '--'
                             else:
                                 ls = '-'
@@ -385,7 +391,7 @@ class OutputMatplotlib(object):
                         #data vector
                         ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
                 ax.grid(b=True, which='both', color='0.4')
-                if group.has_key('y_label'):
+                if 'y_label' in group:
                     ax.set_ylabel(group['y_label'])
 
             ax.set_xlabel("Time (s)")
@@ -428,7 +434,7 @@ class OutputMatplotlib(object):
         import sys, subprocess, time
 
         time.sleep(1)
-        print "Opening output..."
+        print("Opening output...")
         #call(["open", '"http://127.0.0.1:8000"'])
         filepath = "http://127.0.0.1:8080/output/output.html"
 
@@ -440,13 +446,13 @@ class OutputMatplotlib(object):
             subprocess.call(('xdg-open', filepath))
 
     def runServer(self):
-        import SimpleHTTPServer
-        import SocketServer
+        import http.server
+        import socketserver
         import threading
 
         port = 8080
-        Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-        httpd = SocketServer.TCPServer(("", port), Handler)
+        Handler = http.server.SimpleHTTPRequestHandler
+        httpd = socketserver.TCPServer(("", port), Handler)
         threading.Thread(target=self.openURL).start()
         print("serving on port {}, press ctrl-c to stop".format(port))
         httpd.serve_forever()

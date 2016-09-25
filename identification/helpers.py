@@ -1,5 +1,9 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import str
+from builtins import range
+from builtins import object
 import time
-from IPython import embed
 import iDynTree
 import numpy as np
 
@@ -35,7 +39,7 @@ class ParamHelpers(object):
                     p_vec.setVal(j, params[i+j])
                 si = iDynTree.SpatialInertia()
                 si.fromVector(p_vec)
-                cons[i / 10] = si.isPhysicallyConsistent()
+                cons[i // 10] = si.isPhysicallyConsistent()
         return cons
 
     def checkPhysicalConsistencyNoTriangle(self, params):
@@ -51,14 +55,14 @@ class ParamHelpers(object):
         for i in range(0, self.n_params):
             if (i % 10 == 0):
                 if params[i] <= 0:  #masses need to be positive
-                    cons[i / 10] = False
+                    cons[i // 10] = False
                     continue
                 #check if inertia tensor is positive definite (only then cholesky decomp exists)
                 try:
-                    np.linalg.cholesky(tensors[i / 10])
-                    cons[i / 10] = True
+                    np.linalg.cholesky(tensors[i // 10])
+                    cons[i // 10] = True
                 except np.linalg.linalg.LinAlgError:
-                    cons[i / 10] = False
+                    cons[i // 10] = False
         return cons
 
     def isPhysicalConsistent(self, params):
@@ -234,7 +238,7 @@ class URDFHelpers(object):
                         self.mesh_scaling = '1 1 1'
 
         if not link_found or m is None:
-            print Fore.LIGHTRED_EX + "No mesh information specified for {} in URDF! Using approximation.".format(link_name) + Fore.RESET
+            print(Fore.LIGHTRED_EX + "No mesh information specified for {} in URDF! Using approximation.".format(link_name) + Fore.RESET)
             filepath = None
         else:
             if not filepath.lower().endswith('stl'):

@@ -390,6 +390,7 @@ class OutputMatplotlib(object):
                     else:
                         #data vector
                         ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
+
                 ax.grid(b=True, which='both', color='0.4')
                 if 'y_label' in group:
                     ax.set_ylabel(group['y_label'])
@@ -397,6 +398,8 @@ class OutputMatplotlib(object):
             ax.set_xlabel("Time (s)")
 
             plt.setp([a.get_xticklabels() for a in axes[:-1]], visible=False)
+            #plt.setp([a.get_yticklabels() for a in axes], fontsize=8)
+
             if self.html:
                 #TODO: show legend properly (see mpld3 bug #274)
                 handles, labels = ax.get_legend_handles_labels()

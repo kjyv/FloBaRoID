@@ -722,20 +722,20 @@ class Identification(object):
                 D_other_blocks.append( Matrix([rbt.rbtdef.fc[i]]) )
 
             """
-            D_blocks = D_inertia_blocks + D_other_blocks
+            self.D_blocks = D_inertia_blocks + D_other_blocks
 
             epsilon_safemargin = 1e-30
             #LMIs = list(map(LMI_PD, D_blocks))
-            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in D_blocks])
+            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
         if self.opt['showTiming']:
             print("Initializing LMIs took %.03f sec." % (t.interval))
 
 
-    def identifyStandardFeasibleParameters(self):
+    def identifyFeasibleStandardParameters(self):
         with helpers.Timer() as t:
-            # use SDP program to do OLS and constrain to physically feasible
-            # space at the same time. Based on Sousa, 2014
+            # use SDP optimzation to solve constrained OLS to find globally optimal physically
+            # feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
             if self.opt['useAPriori']:
                 print("Please disable using a priori parameters when using constrained optimization.")
                 sys.exit(1)
@@ -804,8 +804,102 @@ class Identification(object):
                 print("found constrained solution with distance {} from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
+
+        if self.opt['showTiming']:
+            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+
+
+    def identifyFeasibleBaseParameters(self):
+        with helpers.Timer() as t:
+            # use SDP optimzation to solve OLS to find physically feasible base parameters (i.e. for
+            # which a consistent std solution exists), based on code from Sousa, 2014
             if self.opt['useAPriori']:
-                self.model.xStd += self.model.xStdModel
+                print("Please disable using a priori parameters when using constrained optimization.")
+                sys.exit(1)
+
+            if self.opt['verbose']:
+                print("Preparing SDP...")
+
+            #build OLS matrix
+            I = Identity
+            def mrepl(m,repl):
+                return m.applyfunc(lambda x: x.xreplace(repl))
+            delta = Matrix(self.model.param_syms)
+            beta_symbs = sympy.Matrix([sympy.Symbol('beta'+str(i+1),real=True) for i in range(self.model.num_base_params)])
+
+            Pb = Matrix(self.model.Pp[:, :self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
+            Pd = Matrix(self.model.Pp[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
+            Kd = self.model.linear_deps
+            beta = (Pb.T + Kd * Pd.T) * delta
+
+            delta_d = Pd.T*delta
+            n_delta_d = len(delta_d)
+            varchange_dict = dict(zip(Pb.T*delta,  beta_symbs - (beta - Pb.T*delta )))
+
+            #rewrite LMIs for base params
+            DB_blocks = [mrepl(Di, varchange_dict) for Di in self.D_blocks]
+            epsilon_safemargin = 1e-30
+            DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
+
+            Q, R = la.qr(self.model.YBase)
+            Q1 = Q[:, 0:self.model.num_base_params]
+            #Q2 = Q[:, self.model.num_base_params:]
+            rho1 = Q1.T.dot(self.model.tau)
+            R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
+
+            #projection matrix so that xBase = K*xStd
+            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd] ?)
+            #K = Matrix(self.model.Binv)
+
+            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
+            # sub contact forces
+            if self.opt['floating_base']:
+                contactForces = Q.T.dot(self.model.contactForcesSum)
+            else:
+                contactForces = zeros(self.model.num_base_params, 1)
+
+            if is_old_sympy:
+                e_rho1 = Matrix(rho1).T - (R1*beta_symbs - contactForces)
+            else:
+                e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
+
+            rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
+            u = Symbol('u')
+            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
+                                 [e_rho1, I(self.model.num_base_params)]])
+            U_rho = U_rho.as_explicit()
+
+            if self.opt['verbose']:
+                print("Add constraint LMIs")
+
+            lmis = [LMI_PSD(U_rho)] + DB_LMIs_marg
+            variables = [u] + list(beta_symbs) + list(delta_d)
+
+            #solve SDP
+            objective_func = u
+
+            # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
+            # it's probable still a bad solution
+            #if not self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
+            #    print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
+            #    optimization.solve_sdp = optimization.cvxopt_dsdp5
+
+            if self.opt['verbose']:
+                print("Solving constrained OLS as SDP")
+
+            # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
+            if optimization.solve_sdp is optimization.dsdp5:
+                prime = self.model.xBaseModel
+                solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+            else:
+                solution = optimization.solve_sdp(objective_func, lmis, variables)
+
+            u_star = solution[0,0]
+            if u_star:
+                print("found constrained solution with distance {} from OLS solution".format(u_star))
+            beta_star = np.matrix(solution[1:1+self.model.num_base_params])
+            delta_d_star = np.matrix(solution[1+self.model.num_base_params:])
+            self.model.xBase = np.squeeze(np.asarray(beta_star))
 
         if self.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
@@ -814,13 +908,14 @@ class Identification(object):
     def findFeasibleStdFromStd(self, xStd):
         # correct any std solution to feasible std parameters
         if self.opt['useAPriori']:
-            xStd -= self.model.xStdModel
+            print("Please disable using a priori parameters when using constrained optimization.")
+            sys.exit(1)
 
         delta = Matrix(self.model.param_syms)
         I = Identity
 
         # correct a std solution to be feasible
-        Pd = self.Pp[:, self.model.num_base_params:]
+        Pd = self.model.Pp[:, self.model.num_base_params:]
         delta_d = (Pd.T*delta)
         n_delta_d = len(delta_d)
 
@@ -839,8 +934,6 @@ class Identification(object):
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 
-        if self.opt['useAPriori']:
-            xStd += self.model.xStdModel
         return xStd
 
     def estimateParameters(self):
@@ -869,7 +962,10 @@ class Identification(object):
                 self.identifyBaseParameters()
                 if self.opt['useConsistencyConstraints']:
                     self.initSDP_LMIs()
-                    self.identifyStandardFeasibleParameters()
+                    self.identifyFeasibleStandardParameters()
+                    #self.identifyFeasibleBaseParameters()
+                    #self.findStdFromBaseParameters()
+                    #self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
                 else:
                     self.findStdFromBaseParameters()
                 if self.opt['useAPriori']:

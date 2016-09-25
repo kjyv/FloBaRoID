@@ -1,3 +1,7 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import range
+from builtins import object
 import numpy as np
 import scipy as sp
 from identification.helpers import URDFHelpers
@@ -5,11 +9,10 @@ from identification.helpers import URDFHelpers
 import matplotlib
 import matplotlib.pyplot as plt
 
-from distutils.version import LooseVersion, StrictVersion
-if LooseVersion(matplotlib.__version__) >= StrictVersion('1.5'):
+from distutils.version import LooseVersion
+if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
     plt.style.use('seaborn-pastel')
 
-from IPython import embed
 
 class TrajectoryGenerator(object):
     ''' pulsating trajectory generator for one joint using fourier series from
@@ -303,10 +306,10 @@ class TrajectoryOptimizer(object):
         wf, q, a, b = self.vecToParams(x)
 
         if self.config['verbose']:
-            print 'wf {}'.format(wf)
-            print 'a {}'.format(np.round(a,5).tolist())
-            print 'b {}'.format(np.round(b,5).tolist())
-            print 'q {}'.format(np.round(q,5).tolist())
+            print('wf {}'.format(wf))
+            print('a {}'.format(np.round(a,5).tolist()))
+            print('b {}'.format(np.round(b,5).tolist()))
+            print('q {}'.format(np.round(q,5).tolist()))
 
         #input vars out of bounds, skip call
         if not self.testBounds(x):
@@ -345,9 +348,9 @@ class TrajectoryOptimizer(object):
         #xBaseModel = np.dot(model.Binv, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
 
-        print "objective function value: {} (last best: {} + {})".format(f,
+        print("objective function value: {} (last best: {} + {})".format(f,
                                                             self.last_best_f-self.last_best_f_f1,
-                                                            self.last_best_f_f1)
+                                                            self.last_best_f_f1))
 
         f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
@@ -421,26 +424,26 @@ class TrajectoryOptimizer(object):
         res = wf_t and q_t and a_t and b_t
 
         if not res:
-            print "bounds violated"
+            print("bounds violated")
 
         return res
 
     def testConstraints(self, g):
         res = np.all(np.array(g) <= self.config['min_tol_constr'])
         if not res:
-            print "constraints violated:"
-            if True in np.in1d(range(1,2*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
-                print "angle limits"
-                print np.array(g)[range(1,2*self.dofs)]
-            if True in np.in1d(range(2*self.dofs,3*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
-                print "max velocity limits"
+            print("constraints violated:")
+            if True in np.in1d(list(range(1,2*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                print("angle limits")
+                print(np.array(g)[list(range(1,2*self.dofs))])
+            if True in np.in1d(list(range(2*self.dofs,3*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                print("max velocity limits")
                 #print np.array(g)[range(2*self.dofs,3*self.dofs)]
-            if True in np.in1d(range(3*self.dofs,4*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
-                print "max torque limits"
+            if True in np.in1d(list(range(3*self.dofs,4*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                print("max torque limits")
 
             if self.config['minVelocityConstraint']:
-                if True in np.in1d(range(4*self.dofs,5*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
-                    print "min velocity limits"
+                if True in np.in1d(list(range(4*self.dofs,5*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                    print("min velocity limits")
             #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
             #    print "min torque limits"
             #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
@@ -490,7 +493,7 @@ class TrajectoryOptimizer(object):
             opt_prob.addConGroup('g', self.dofs*4, 'i')
         #print opt_prob
 
-        initial = [v.value for v in opt_prob._variables.values()]
+        initial = [v.value for v in list(opt_prob._variables.values())]
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
@@ -512,7 +515,7 @@ class TrajectoryOptimizer(object):
                 opt(opt_prob, store_hst=False, hot_start=True, xstart=initial)
             except NameError:
                 opt(opt_prob, store_hst=False, xstart=initial)
-            print opt_prob.solution(0)
+            print(opt_prob.solution(0))
 
         ### pyOpt local
 
@@ -546,12 +549,12 @@ class TrajectoryOptimizer(object):
 
         local_sol = opt_prob.solution(0)
         if not self.config['useGlobalOptimization']:
-            print local_sol
+            print(local_sol)
         local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
 
         if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol
-            print "using last best constrained solution instead of given solver solution."
+            print("using last best constrained solution instead of given solver solution.")
 
         sol_wf, sol_q, sol_a, sol_b = self.vecToParams(local_sol_vec)
 

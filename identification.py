@@ -19,8 +19,8 @@ import scipy.stats as stats
 
 import sympy
 from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye, zeros
-version = int(sympy.__version__.replace('.','')[:3])
-is_old_sympy = (version <= 74 and not sympy.__version__.startswith('1'))
+from distutils.version import LooseVersion
+is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
 
 # plotting
 import matplotlib

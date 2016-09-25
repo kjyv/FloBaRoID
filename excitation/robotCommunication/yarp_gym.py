@@ -1,3 +1,7 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import map
+from builtins import range
 import sys
 import yarp
 import numpy as np
@@ -72,12 +76,12 @@ def main(config, trajectory, out):
                 gen_position_msg(command_port, target_angles, target_velocities)
                 command_port.write()
 
-                print "waiting to arrive at an initial position...",
+                print("waiting to arrive at an initial position...", end=' ')
                 sys.stdout.flush()
                 yarp.Time.delay(trajectory.getPeriodLength())
                 t_init+=trajectory.getPeriodLength()
                 duration+=waited_for_start
-                print "ok."
+                print("ok.")
             continue
 
         # set target angles
@@ -108,7 +112,7 @@ def main(config, trajectory, out):
                 velocities[i] = b_velocities.get(i).asDouble()
                 torques[i] = b_torques.get(i).asDouble()
         else:
-            print "warning, wrong amount of values received! ({} DOFS vs. {})".format(config['N_DOFS'], b_positions.size())
+            print("warning, wrong amount of values received! ({} DOFS vs. {})".format(config['N_DOFS'], b_positions.size()))
 
         # test manual correction for position error
         #p = 0
@@ -137,5 +141,5 @@ def main(config, trajectory, out):
     out['measured_frequency'] = len(sent_positions)/duration
 
     # some stats
-    print "got {} samples in {}s.".format(out['Q'].shape[0], duration),
-    print "(about {} Hz)".format(out['measured_frequency'])
+    print("got {} samples in {}s.".format(out['Q'].shape[0], duration), end=' ')
+    print("(about {} Hz)".format(out['measured_frequency']))

@@ -1,13 +1,15 @@
 #!/usr/bin/env python2.7
 #-*- coding: utf-8 -*-
 
+from __future__ import division
+from __future__ import print_function
+from builtins import range
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 from scipy import signal
 from scipy import sparse
-from IPython import embed
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
@@ -45,11 +47,10 @@ traj_data = {}   #hold some global data vars in here
 #append parent dir for relative import
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-from identification.identification import Identification
 from identification.model import Model
 from identification.data import Data
 
-from trajectoryGenerator import TrajectoryGenerator, TrajectoryOptimizer
+from excitation.trajectoryGenerator import TrajectoryGenerator, TrajectoryOptimizer
 
 def plot(data=None):
     fig = plt.figure(1)
@@ -61,9 +62,9 @@ def plot(data=None):
         # get a random color wheel
         Nlines = 200
         color_lvl = 8
-        rgb = np.array(list(permutations(range(0,256,color_lvl),3)))/255.0
+        rgb = np.array(list(permutations(list(range(0,256,color_lvl),3))))/255.0
         colors = sample(rgb,Nlines)
-        print colors[0:config['N_DOFS']]
+        print(colors[0:config['N_DOFS']])
     else:
         # set some fixed colors
         colors = []
@@ -110,22 +111,22 @@ def plot(data=None):
         T = data['times']
         num_samples = data['positions'].shape[0]
 
-    print 'loaded {} measurement samples'.format(num_samples)
+    print('loaded {} measurement samples'.format(num_samples))
 
     if args.plot_targets:
-        print "tracking error per joint:"
+        print("tracking error per joint:")
         for i in range(0, config['N_DOFS']):
             sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
-            print "joint {}: {}".format(i, sse)
+            print("joint {}: {}".format(i, sse))
 
-    print "histogram of time diffs"
+    print("histogram of time diffs")
     dT = np.diff(T)
     H, B = np.histogram(dT)
     #plt.hist(H, B)
-    print "bins: {}".format(B)
-    print "sums: {}".format(H)
     late_msgs = (1 - float(np.sum(H)-np.sum(H[1:])) / float(np.sum(H))) * 100
-    print "({}% messages too late)\n".format(late_msgs)
+    print("bins: {}".format(B))
+    print("sums: {}".format(H))
+    print("({}% messages too late)\n".format(late_msgs))
 
     # what to plot (each tuple has a title and one or multiple data arrays)
     if args.plot_targets:    #plot target values
@@ -257,11 +258,11 @@ def main():
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
         except IOError:
             trajectory = TrajectoryGenerator(config['N_DOFS']).initWithRandomParams()
-            print "a {}".format([t_a.tolist() for t_a in trajectory.a])
-            print "b {}".format([t_b.tolist() for t_b in trajectory.b])
-            print "q {}".format(trajectory.q.tolist())
-            print "nf {}".format(trajectory.nf.tolist())
-            print "wf {}".format(trajectory.w_f_global)
+            print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
+            print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
+            print("q {}".format(trajectory.q.tolist()))
+            print("nf {}".format(trajectory.nf.tolist()))
+            print("wf {}".format(trajectory.w_f_global))
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
 
@@ -277,7 +278,7 @@ def main():
         return
 
     # generate some empty arrays, will be calculated in preprocess()
-    if not traj_data.has_key('Vdot'):
+    if 'Vdot' not in traj_data:
         traj_data['Vdot'] = np.zeros_like(traj_data['V'])
     traj_data['Vraw'] = np.zeros_like(traj_data['V'])
     traj_data['Qraw'] = np.zeros_like(traj_data['Q'])
@@ -335,7 +336,7 @@ def saveMeasurements(filename, data):
                  base_rpy=data['base_rpy'], contacts=data['contacts'],
                  times=data['times'], frequency=data['measured_frequency'])
 
-    print "saved measurements to {}".format(args.filename)
+    print("saved measurements to {}".format(args.filename))
 
 if __name__ == '__main__':
     #try:

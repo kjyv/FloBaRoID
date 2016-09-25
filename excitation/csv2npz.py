@@ -4,6 +4,9 @@
 #read data from Przemek's Walk-Man walking csv files
 # (atm only one leg)
 
+from __future__ import division
+from __future__ import print_function
+from builtins import range
 import sys
 import os
 import argparse
@@ -12,8 +15,11 @@ import numpy.linalg as la
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
+import matplotlib
 import matplotlib.pyplot as plt
-plt.style.use('seaborn-muted')
+from distutils.version import LooseVersion
+if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
+    plt.style.use('seaborn-muted')
 
 import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
@@ -41,7 +47,7 @@ def readCSV(dir, config, plot):
     fig = plt.figure()
     ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
     ax2 = fig.add_subplot(3,2,2)
-    dofs_file = len(f[1])/6
+    dofs_file = len(f[1])//6
     for dof in range(config['N_DOFS']):
         out['target_positions'][:, dof] = f[:, dof]   #position reference
         out['positions'][:, dof] = f[:, dof+dofs_file*2]   #motor encoders
@@ -214,4 +220,4 @@ if __name__ == '__main__':
                            base_rpy=out['base_rpy'], contacts=out['contacts'],
                            times=out['times'], frequency=out['frequency'])
     print("Saved csv data as {}".format(args.outfile))
-    print "Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency'])
+    print("Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency']))

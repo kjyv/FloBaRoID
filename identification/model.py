@@ -8,6 +8,7 @@ import numpy as np
 import numpy.linalg as la
 from scipy import signal
 import scipy.linalg as sla
+import sympy
 from sympy import symbols
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from IPython import embed
@@ -499,9 +500,13 @@ class Model(object):
             self.B = Q_B_qr
             self.Binv = self.B.T
         else:
-            self.Binv = la.pinv(self.B)   #if basis B is not orthogonal
+            # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
+            # (using QR on B yields orthonormal base if necessary)
+            # in general, pinv is always working
+            self.Binv = la.pinv(self.B)
 
         # define sympy symbols for each std column
+        self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i+1),real=True) for i in range(self.num_base_params)])
         self.param_syms = list()
         self.mass_syms = list()
         for i in range(0,self.N_LINKS):
@@ -528,7 +533,6 @@ class Model(object):
         '''
         #use reduced row echelon form to get basis for identifiable subspace
         #(rrf does not get minimal reduced space though)
-        from sympy import Matrix
         Ew = Matrix(Yrand).rref()
         Ew_np = np.array(Ew[0].tolist(), dtype=float)
         # B in Paper:

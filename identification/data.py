@@ -47,8 +47,7 @@ class Data(object):
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
-                    m = np.load(fn, encoding='latin1')
-
+                    m = np.load(fn, encoding='latin1', fix_imports=True)
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 #-*- coding: utf-8 -*-
 
 #read data from Przemek's Walk-Man walking csv files
@@ -30,7 +30,11 @@ sampleTime = 0.005   #200 Hz
 
 def readCSV(dir, config, plot):
     out = {}
-    jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R', 'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R', 'WaistLat', 'WaistSag', 'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
+    jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R',
+                  'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R', 'WaistLat', 'WaistSag',
+                  'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1',
+                  'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj',
+                  'RForearmPlate', 'RWrj1', 'RWrj2']
 
     file = os.path.join(dir, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(file)
@@ -141,7 +145,6 @@ if __name__ == '__main__':
     parser.set_defaults(outfile='measurements.npz', plot=False)
     args = parser.parse_args()
 
-    #config = {}
     import yaml
     with open(args.config, 'r') as stream:
         try:
@@ -163,9 +166,10 @@ if __name__ == '__main__':
 
     #filter, diff, integrate
     data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
-                    Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'], Fs=out['frequency'],
-                    IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'], IMUlinAcc=out['IMUlinAcc'],
-                    IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'], FT=[out['FTright']])
+                    Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
+                    Fs=out['frequency'], IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'],
+                    IMUlinAcc=out['IMUlinAcc'], IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'],
+                    FT=[out['FTright']])
 
     if args.plot:
         fig = plt.figure()
@@ -214,10 +218,10 @@ if __name__ == '__main__':
         config['simulateTorques'] = old_sim
 
     np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
-                           velocities=out['velocities'], velocities_raw=out['velocities'],
-                           accelerations=out['accelerations'], torques=out['torques'], torques_raw=out['torques_raw'],
-                           base_velocity=out['base_velocity'], base_acceleration=out['base_acceleration'],
-                           base_rpy=out['base_rpy'], contacts=out['contacts'],
-                           times=out['times'], frequency=out['frequency'])
+             velocities=out['velocities'], velocities_raw=out['velocities'],
+             accelerations=out['accelerations'], torques=out['torques'],
+             torques_raw=out['torques_raw'], base_velocity=out['base_velocity'],
+             base_acceleration=out['base_acceleration'], base_rpy=out['base_rpy'],
+             contacts=out['contacts'], times=out['times'], frequency=out['frequency'])
     print("Saved csv data as {}".format(args.outfile))
     print("Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency']))

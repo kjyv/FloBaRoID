@@ -178,34 +178,38 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     cvxopt.solvers.options['maxiters'] = 200
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     toc = time.time()
+    state = sdpout['status']
     if sdpout['status'] == 'optimal':
-        print("'optimal' does not necessarily mean feasible".format(sdpout['status']))
+        print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
         sdpout['x'] = np.reshape(primalstart, (len(primalstart),1))
-        print("(Consider to try to use the dsdp5 solver.)")
     print('Elapsed time: %.2f s'%(toc-tic))
-    return np.matrix(sdpout['x'])
+    return np.matrix(sdpout['x']), state
 
 
-def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
+def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     cvxopt.solvers.options['dsdp']= {'DSDP_GapTolerance': epsilon_sdptol, 'DSDP_Monitor': 10}
     tic = time.time()
-    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, beta=10e20, solver='dsdp')
+    if wide_bounds:
+        sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, beta=10e15, gama=10e15, solver='dsdp')
+    else:
+        sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
     toc = time.time()
+    state = sdpout['status']
     if sdpout['status'] == 'optimal':
-        print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
+        print("{} (does not necessarily mean feasible)".format(sdpout['status']))
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
     print('Elapsed time: %.2f s'%(toc-tic))
-    return np.matrix(sdpout['x'])
+    return np.matrix(sdpout['x']), state
 
 
-def dsdp5(objf, lmis, variables, primalstart=None):
+def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     # use dsdp5 directly (probably faster, can use (also non-feasible)
     # starting points
     import subprocess
@@ -227,14 +231,21 @@ def dsdp5(objf, lmis, variables, primalstart=None):
         with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
             np.savetxt(f, np.zeros(len(variables)-1))
 
+    # change options for far away solutions
+    if wide_bounds:
+        bounds = ['-boundy', '1e15', '-penalty', '1e15']
+    else:
+        bounds = []
+
     try:
         result = subprocess.check_output(['dsdp5', 'sdp.dat-s', '-save', 'dsdp5.out', '-gaptol',
-                                         '{}'.format(epsilon_sdptol), '-boundy', '1e15',
-                                         '-penalty', '1e15',
-                                         '-y0', 'primal.dat'],
+                                         '{}'.format(epsilon_sdptol)] + bounds +
+                                         ['-y0', 'primal.dat'],
                                          cwd = os.path.join(path, 'sdpa_dat')).decode('utf-8')
+        state = 'optimal'
     except subprocess.CalledProcessError as e:
         print("DSDP stopped early: {}".format(e.returncode))
+        state = 'stopped'
         result = e.output
 
     #print(result)
@@ -245,11 +256,16 @@ def dsdp5(objf, lmis, variables, primalstart=None):
             error.append(s)
         if 'DSDP Primal Unbounded, Dual Infeasible' in s:
             error.append(s)
+        state = 'infeasible'
     if error: print(Fore.RED + error[0] + Fore.RESET)
 
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
-    return np.matrix(sol).T
+    return np.matrix(sol).T, state
 
 #set a default solver
-solve_sdp = dsdp5 # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp
+solve_sdp = cvxopt_conelp # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp
+
+# it seems cvxopt_conelp and cvxopt_dsdp5 are working well when the data is good whereas dsdp5
+# sometimes fails that situation completely. However, in some bad data situations dsdp5 performs very well
+# (with changed bounds) where the other two don't work. Weird

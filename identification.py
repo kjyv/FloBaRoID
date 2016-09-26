@@ -793,7 +793,13 @@ class Identification(object):
             # otherwise returns primal as solution when failing)
             # TODO: get success or fail status and use it (e.g. use other method if failing)
             prime = np.concatenate(([0],self.model.xStdModel))
-            solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+
+            #try again with wider bounds and dsdp5 cmd line
+            if state is not 'optimal':
+                print("Trying again with dsdp5 solver")
+                optimization.solve_sdp = optimization.dsdp5
+                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
 
             u_star = solution[0,0]
             if u_star:
@@ -885,7 +891,7 @@ class Identification(object):
             # otherwise returns primal as solution when failing)
             # TODO: get success or fail status and use it (e.g. use other method if failing)
             prime = np.concatenate((self.model.xBaseModel, np.array(Pd.T*self.model.xStdModel)[:,0]))
-            solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             u_star = solution[0,0]
             if u_star:
@@ -924,7 +930,7 @@ class Identification(object):
 
         # start at CAD data to find closer solution
         prime = self.model.xStdModel
-        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u = solution[0,0]
         print("found feasible std solution with distance {} from CAD solution".format(u))
@@ -957,7 +963,7 @@ class Identification(object):
 
         # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
         prime = np.concatenate(([0],self.model.xStdModel))
-        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]
         if u_star:

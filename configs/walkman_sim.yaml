@@ -69,9 +69,9 @@ simulateTorques: 0    #simulate torque for measured angles etc using idyntree (i
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
-min_tol: 0.0001
+min_tol: 0.001
 
-## data selection
+## data processing and selection
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)

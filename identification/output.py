@@ -322,7 +322,7 @@ class OutputConsole(object):
                 if idf.opt['useEssentialParams']:
                     print("Mean relative error of essential std params: {}%".\
                             format(old_div(sum_diff_r_pc_ess,len(idf.stdEssentialIdx))))
-                print("Mean relative error of all std params: {}%".format(old_div(sum_diff_r_pc_all,len(idf.model.xStd))))
+                print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.model.xStd)))
 
                 if idf.opt['useEssentialParams']:
                     print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
@@ -361,7 +361,7 @@ class OutputMatplotlib(object):
             import matplotlib.pyplot as plt
         figures = list()
         for group in self.datasets:
-            fig, axes = plt.subplots(len(group['dataset']), sharex=True)
+            fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True)
             # scale unified scaling figures to same ranges and add some margin
             if group['unified_scaling']:
                 ymin = 0

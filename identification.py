@@ -95,9 +95,6 @@ class Identification(object):
         if tau is None:
             tau = self.model.tau
 
-        # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
-        # (using QR on B yields orthonormal base if necessary)
-        # in general, pinv is always working
         self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
@@ -754,7 +751,13 @@ class Identification(object):
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
 
             #projection matrix so that xBase = K*xStd
-            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd] ?)
+            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd])
+            """
+            Pb = Matrix(self.model.Pp.T[:, 0:self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
+            Pd = Matrix(self.model.Pp.T[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
+            Kd = self.model.linear_deps
+            K = (Pb.T + Kd * Pd.T)
+            """
             K = Matrix(self.model.Binv)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -783,25 +786,18 @@ class Identification(object):
             #solve SDP
             objective_func = u
 
-            # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
-            # it's probable still a bad solution
-            #if not self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
-            #    print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
-            #    optimization.solve_sdp = optimization.cvxopt_dsdp5
-
             if self.opt['verbose']:
                 print("Solving constrained OLS as SDP")
 
-            # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
-            if optimization.solve_sdp is optimization.dsdp5 and self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
-                prime = self.model.xStdModel
-                solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-            else:
-                solution = optimization.solve_sdp(objective_func, lmis, variables)
+            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
+            # otherwise returns primal as solution when failing)
+            # TODO: get success or fail status and use it (e.g. use other method if failing)
+            prime = np.concatenate(([0],self.model.xStdModel))
+            solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             u_star = solution[0,0]
             if u_star:
-                print("found constrained solution with distance {} from OLS solution".format(u_star))
+                print("found std solution with distance {} from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -824,32 +820,36 @@ class Identification(object):
             I = Identity
             def mrepl(m,repl):
                 return m.applyfunc(lambda x: x.xreplace(repl))
+
+            #base and standard parameter symbols
             delta = Matrix(self.model.param_syms)
-            beta_symbs = sympy.Matrix([sympy.Symbol('beta'+str(i+1),real=True) for i in range(self.model.num_base_params)])
+            beta_symbs = self.model.base_syms
 
-            Pb = Matrix(self.model.Pp[:, :self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
-            Pd = Matrix(self.model.Pp[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
-            Kd = self.model.linear_deps
-            beta = (Pb.T + Kd * Pd.T) * delta
+            #permutation for base projection
+            #Pb = Matrix(self.model.Pp.T[:, :self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
+            Pd = Matrix(self.model.Pp.T[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
+            #get base parameter equations
+            #Kd = self.model.linear_deps
+            #beta = (Pb.T + Kd * Pd.T) * delta
+            #delta_b = Pb.T*delta
+            beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
+            delta_b = Matrix(np.array(delta)[self.model.independent_cols])
 
-            delta_d = Pd.T*delta
+            #delta_d = Pd.T*delta
+            delta_d = Matrix(np.array(delta)[self.model.P[self.model.num_base_params:]])
             n_delta_d = len(delta_d)
-            varchange_dict = dict(zip(Pb.T*delta,  beta_symbs - (beta - Pb.T*delta )))
+            self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
 
             #rewrite LMIs for base params
-            DB_blocks = [mrepl(Di, varchange_dict) for Di in self.D_blocks]
+            DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             epsilon_safemargin = 1e-30
-            DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
+            self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
             #Q2 = Q[:, self.model.num_base_params:]
             rho1 = Q1.T.dot(self.model.tau)
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
-
-            #projection matrix so that xBase = K*xStd
-            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd] ?)
-            #K = Matrix(self.model.Binv)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
@@ -872,31 +872,24 @@ class Identification(object):
             if self.opt['verbose']:
                 print("Add constraint LMIs")
 
-            lmis = [LMI_PSD(U_rho)] + DB_LMIs_marg
+            lmis = [LMI_PSD(U_rho)] + self.DB_LMIs_marg
             variables = [u] + list(beta_symbs) + list(delta_d)
 
             #solve SDP
             objective_func = u
 
-            # try to use dsdp if a priori values are inconsistent (otherwise doesn't find solution)
-            # it's probable still a bad solution
-            #if not self.paramHelpers.isPhysicalConsistent(self.model.xStdModel):
-            #    print(Fore.RED+"a priori not consistent, but trying to use dsdp solver"+Fore.RESET)
-            #    optimization.solve_sdp = optimization.cvxopt_dsdp5
-
             if self.opt['verbose']:
                 print("Solving constrained OLS as SDP")
 
-            # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
-            if optimization.solve_sdp is optimization.dsdp5:
-                prime = self.model.xBaseModel
-                solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-            else:
-                solution = optimization.solve_sdp(objective_func, lmis, variables)
+            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
+            # otherwise returns primal as solution when failing)
+            # TODO: get success or fail status and use it (e.g. use other method if failing)
+            prime = np.concatenate((self.model.xBaseModel, np.array(Pd.T*self.model.xStdModel)[:,0]))
+            solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             u_star = solution[0,0]
             if u_star:
-                print("found constrained solution with distance {} from OLS solution".format(u_star))
+                print("found feasible base solution with distance {} from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+self.model.num_base_params])
             delta_d_star = np.matrix(solution[1+self.model.num_base_params:])
             self.model.xBase = np.squeeze(np.asarray(beta_star))
@@ -904,9 +897,44 @@ class Identification(object):
         if self.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
 
+    def findFeasibleStdFromFeasibleBase(self, xBase):
+        # find a std feasible solution for feasible base solution
+        # (exists per definition?)
+        if self.opt['useAPriori']:
+            print("Please disable using a priori parameters when using constrained optimization.")
+            sys.exit(1)
+
+        I = Identity
+        def mrepl(m,repl):
+            return m.applyfunc(lambda x: x.xreplace(repl))
+
+        #replace base vars with estimated vales
+        dict_subs = dict(zip(self.model.base_syms, xBase))
+        lmis = [ LMI_PD(mrepl(lmi.canonical.gts, dict_subs)) for lmi in self.DB_LMIs_marg]
+
+        sol_cad_dist = Matrix(self.model.xStdModel - self.model.param_syms)
+        u = Symbol('u')
+        U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
+                             [sol_cad_dist, I(self.model.num_params)]])
+        U_rho = U_rho.as_explicit()
+
+        lmis = [LMI_PSD(U_rho)] + lmis
+        variables = [u] + list(self.model.param_syms)
+        objective_func = u   #'find' problem
+
+        # start at CAD data to find closer solution
+        prime = self.model.xStdModel
+        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+
+        u = solution[0,0]
+        print("found feasible std solution with distance {} from CAD solution".format(u))
+        xStd = np.squeeze(np.asarray(solution[1:]))
+
+        return xStd
 
     def findFeasibleStdFromStd(self, xStd):
-        # correct any std solution to feasible std parameters
+        # find closest feasible std solution for some std parameters
+        # (increases error)
         if self.opt['useAPriori']:
             print("Please disable using a priori parameters when using constrained optimization.")
             sys.exit(1)
@@ -924,13 +952,16 @@ class Identification(object):
                                [xStd - delta,    I(self.model.num_params)]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
-        variables = [u] + list(delta) # + list(delta_d)
+        variables = [u] + list(delta)
         objective_func = u
-        solution = optimization.solve_sdp(objective_func, lmis, variables)
+
+        # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
+        prime = np.concatenate(([0],self.model.xStdModel))
+        solution = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]
         if u_star:
-            print("found constrained solution with distance {} from OLS solution".format(u_star))
+            print("found std solution with distance {} from OLS solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 
@@ -962,10 +993,18 @@ class Identification(object):
                 self.identifyBaseParameters()
                 if self.opt['useConsistencyConstraints']:
                     self.initSDP_LMIs()
+
+                    #self.identifyFeasibleBaseParameters()
+                    #self.model.xStd = self.findFeasibleStdFromFeasibleBase(self.model.xBaseModel)
+
                     self.identifyFeasibleStandardParameters()
+
                     #self.identifyFeasibleBaseParameters()
                     #self.findStdFromBaseParameters()
-                    #self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
+
+                    if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
+                        print("Correcting solution to feasible std (non-optimal)")
+                        self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
                 else:
                     self.findStdFromBaseParameters()
                 if self.opt['useAPriori']:

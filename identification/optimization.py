@@ -169,31 +169,33 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
 
     return s
 
-def cvxopt_conelp(objf, lmis, variables):
-    # using cvxopt conelp (start point must be feasible (?), no structure exploitation)
+def cvxopt_conelp(objf, lmis, variables, primalstart=None):
+    # using cvxopt conelp (no structure exploitation)
+    # currently not using primal as starting point (since idk what s is)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
-    cvxopt.solvers.options['maxiters'] = 150
+    cvxopt.solvers.options['maxiters'] = 200
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     toc = time.time()
     if sdpout['status'] == 'optimal':
         print("'optimal' does not necessarily mean feasible".format(sdpout['status']))
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
+        sdpout['x'] = np.reshape(primalstart, (len(primalstart),1))
         print("(Consider to try to use the dsdp5 solver.)")
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x'])
 
 
-def cvxopt_dsdp5(objf, lmis, variables):
-    # using cvxopt interface to dsdp (might be faster, can use non-feasible starting point
-    # (but weird format in cvxopt), but can't handle equalities)
+def cvxopt_dsdp5(objf, lmis, variables, primalstart=None):
+    # using cvxopt interface to dsdp5
+    # (not using primal atm)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
-    cvxopt.solvers.options['DSDP_GapTolerance'] = epsilon_sdptol
+    cvxopt.solvers.options['dsdp']= {'DSDP_GapTolerance': epsilon_sdptol, 'DSDP_Monitor': 10}
     tic = time.time()
-    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
+    sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, beta=10e20, solver='dsdp')
     toc = time.time()
     if sdpout['status'] == 'optimal':
         print("{} ('optimal' does not necessarily mean feasible)".format(sdpout['status']))
@@ -204,6 +206,8 @@ def cvxopt_dsdp5(objf, lmis, variables):
 
 
 def dsdp5(objf, lmis, variables, primalstart=None):
+    # use dsdp5 directly (probably faster, can use (also non-feasible)
+    # starting points
     import subprocess
     import os
 
@@ -225,13 +229,21 @@ def dsdp5(objf, lmis, variables, primalstart=None):
 
     try:
         result = subprocess.check_output(['dsdp5', 'sdp.dat-s', '-save', 'dsdp5.out', '-gaptol',
-                                         '{}'.format(epsilon_sdptol), '-y0', 'primal.dat'],
+                                         '{}'.format(epsilon_sdptol), '-boundy', '1e15',
+                                         '-y0', 'primal.dat'],
                                          cwd = os.path.join(path, 'sdpa_dat')).decode('utf-8')
     except subprocess.CalledProcessError as e:
         print("DSDP stopped early: {}".format(e.returncode))
         result = e.output
 
-    error = [s for s in result.split('\n') if 'DSDP Terminated Due to' in s]
+    #print(result)
+
+    error = list()
+    for s in result.split('\n'):
+        if 'DSDP Terminated Due to' in s:
+            error.append(s)
+        if 'DSDP Primal Unbounded, Dual Infeasible' in s:
+            error.append(s)
     if error: print(Fore.RED + error[0] + Fore.RESET)
 
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()

@@ -230,6 +230,7 @@ def dsdp5(objf, lmis, variables, primalstart=None):
     try:
         result = subprocess.check_output(['dsdp5', 'sdp.dat-s', '-save', 'dsdp5.out', '-gaptol',
                                          '{}'.format(epsilon_sdptol), '-boundy', '1e15',
+                                         '-penalty', '1e15',
                                          '-y0', 'primal.dat'],
                                          cwd = os.path.join(path, 'sdpa_dat')).decode('utf-8')
     except subprocess.CalledProcessError as e:

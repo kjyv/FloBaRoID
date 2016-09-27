@@ -490,7 +490,7 @@ class Data(object):
                 #IMUlinAccWorld -= np.array([0,0,-9.81])
 
                 if la.norm(IMUlinAccWorld[:, 0]) > 0.1:
-                    print("Warning: proper base acceleration not zero at time 0" \
+                    print("Warning: proper base acceleration not zero at time 0 " \
                           "(assuming start at zero, integrated velocity will be wrong)!")
 
                 #try to skip initial values until close to 0 acceleration time is found

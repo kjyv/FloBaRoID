@@ -230,10 +230,6 @@ class Model(object):
 
                     if self.opt['simulateTorques']:
                         torq = np.nan_to_num(torques)
-                        if self.opt['floating_base']:
-                            data.samples['torques'][m_idx] = torq[6:]
-                        else:
-                            data.samples['torques'][m_idx] = torq
                     else:
                         if self.opt['floating_base']:
                             #add estimated base forces to measured torq vector from file
@@ -306,11 +302,17 @@ class Model(object):
                 self.contactForcesSum += contacts_torq
 
             #subtract measured contact forces from torque estimation from iDynTree
+            torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
             if self.opt['simulateTorques']:
                 self.torques_stack -= self.contactForcesSum
-                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))[:, 6:]
-            if self.opt['useAPriori']:
-                self.torquesAP_stack -= self.contactForcesSum
+            else:
+                # if not simulating, measurements of joint torques already contain contact contribution,
+                # so only add to base force estimation
+                contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+fb))
+                torques_stack_2dim[:, :6] -= contactForcesSum_2dim[:, :6]
+                self.torques_stack = torques_stack_2dim.flatten()
+
+            self.data.samples['torques'] = torques_stack_2dim
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:
@@ -325,7 +327,7 @@ class Model(object):
 
         if self.opt['verbose']:
             print("YStd: {}".format(self.YStd.shape), end=' ')
-        print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
+            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
         if self.opt['filterRegressor']:
             order = 6                       #Filter order
@@ -339,7 +341,7 @@ class Model(object):
         self.sample_end = data.samples['positions'].shape[0]
         if self.opt['skip_samples'] > 0: self.sample_end -= (self.opt['skip_samples'])
 
-        # keep original measurements
+        # keep absolute torques (self.tau can be relative)
         self.tauMeasured = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
 
         self.T = data.samples['times'][0:self.sample_end:self.opt['skip_samples']+1]

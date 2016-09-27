@@ -27,6 +27,7 @@ from identification.data import Data
 from identification.model import Model
 
 sampleTime = 0.005   #200 Hz
+is_hw = 1
 
 def readCSV(dir, config, plot):
     out = {}
@@ -73,30 +74,28 @@ def readCSV(dir, config, plot):
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         #use IMUrpy
-        """
-        #hw
-        #out['IMUrpy'][:, i] = f[:, i]
-        out['IMUlinAcc'][:, i] = f[:, 18+i]
-        out['IMUrotVel'][:, i] = f[:, 21+i]
-        #use VNrpy
-        out['IMUrpy'][:, i] = f[:, 15+i]
-        out['IMUlinAcc2'][:, i] = f[:, 24+i]
-        #out['IMUrotVel'][:, i] = f[:, 27+i]
-        """
-        #sim
-        out['IMUrpy'][:, i] = f[:, i]
-        out['IMUlinAcc'][:, i] = f[:, 18+i]
-        out['IMUrotVel'][:, i] = f[:, 21+i]
+        if is_hw:
+            #out['IMUrpy'][:, i] = f[:, i]
+            out['IMUlinAcc'][:, i] = f[:, 18+i]
+            out['IMUrotVel'][:, i] = f[:, 21+i]
+            #use VNrpy
+            out['IMUrpy'][:, i] = f[:, 15+i]
+            out['IMUlinAcc2'][:, i] = f[:, 24+i]
+            #out['IMUrotVel'][:, i] = f[:, 27+i]
+        else:
+            #sim
+            out['IMUrpy'][:, i] = f[:, i]
+            out['IMUlinAcc'][:, i] = f[:, 18+i]
+            out['IMUrotVel'][:, i] = f[:, 21+i]
 
         #rotate VNrpy vals to robot frame (it's built in rotated like this)
         #hm, should really be pi, 0, 0 according to Przemek
         robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
 
-        """
         #hw
-        for j in range(0, out['IMUlinAcc2'].shape[0]):
-            out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
-        """
+        if is_hw:
+            for j in range(0, out['IMUlinAcc2'].shape[0]):
+                out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
 
         #for j in range(0, out['IMUrotVel'].shape[0]):
         #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
@@ -118,7 +117,11 @@ def readCSV(dir, config, plot):
     ax5 = fig.add_subplot(3,2,5)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
     for i in range(0,6):
-        out['FTright'][:, i] = f[:, 3+6+i]
+        if is_hw:
+            out['FTright'][:, i] = -f[:, 3+6+i]
+        else:
+            #gazebo
+            out['FTright'][:, i] = f[:, 3+6+i]
         ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
     #set titles and enable legends for each subplot
@@ -201,7 +204,7 @@ if __name__ == '__main__':
     out['contacts'] = np.array({'r_leg_ft': out['FTright']})
     out['base_rpy'] = out['IMUrpy']
 
-    if config['excitationSimulate']:
+    if not is_hw: #config['excitationSimulate']:
         #use all data
         old_skip = config['skip_samples']
         config['skip_samples'] = 0

@@ -77,7 +77,6 @@ class Identification(object):
         self.data.init_from_files(measurements_files)
 
         self.tauEstimated = list()
-        self.tauMeasured = list()
 
         self.paramHelpers = helpers.ParamHelpers(self.model.num_params)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.link_names)
@@ -197,7 +196,7 @@ class Identification(object):
             p_on_eq[0:len(rns)] = rns   #collect values
             p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms)-1])[0])   #solve for remaining (last) symbol
             print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
-            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq))*100/sla.norm(self.tauMeasured)
+            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq))*100/sla.norm(self.model.tauMeasured)
             print(pham_percent)
 
 
@@ -307,7 +306,7 @@ class Identification(object):
             self.estimateRegressorTorques('base')
 
             if not self.opt['useAPriori']:
-                tauDiff = self.tauMeasured - self.tauEstimated
+                tauDiff = self.model.tauMeasured - self.tauEstimated
             else:
                 tauDiff = self.tauEstimated
 
@@ -332,7 +331,7 @@ class Identification(object):
                 plt.draw()
                 plt.show()
 
-            pham_percent_start = sla.norm(tauDiff)*100/sla.norm(self.tauMeasured)
+            pham_percent_start = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))
 
             rho_start = np.square(sla.norm(tauDiff))
@@ -368,10 +367,10 @@ class Identification(object):
                 print("cond(YBase):{},".format(la.cond(self.model.YBase)), end=' ')
 
                 if not self.opt['useAPriori']:
-                    tauDiff = self.tauMeasured - self.tauEstimated
+                    tauDiff = self.model.tauMeasured - self.tauEstimated
                 else:
                     tauDiff = self.tauEstimated
-                pham_percent = sla.norm(tauDiff)*100/sla.norm(self.tauMeasured)
+                pham_percent = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
                 error_increase_pham = pham_percent_start - pham_percent
                 print("error delta {}").format(error_increase_pham)
 
@@ -985,7 +984,6 @@ class Identification(object):
             print("doing identification on {} samples".format(self.data.num_used_samples), end=' ')
 
         self.model.computeRegressors(self.data)
-        self.tauMeasured = self.model.tauMeasured
 
         if self.opt['useEssentialParams']:
             self.identifyBaseParameters()
@@ -1026,21 +1024,34 @@ class Identification(object):
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
 
-        if self.opt['floating_base']:
+        if self.opt['floating_base'] and self.opt['plotBaseDynamics']:
             torque_labels = self.model.baseNames + self.model.jointNames
         else:
             torque_labels = self.model.jointNames
 
+        if self.opt['floating_base'] and not self.opt['plotBaseDynamics']:
+            tauMeasured = self.model.tauMeasured[:, 6:]
+            tauEstimated = self.tauEstimated[:, 6:]
+            tauAPriori = self.tauAPriori[:, 6:]
+        else:
+            tauMeasured = self.model.tauMeasured
+            tauEstimated = self.tauEstimated
+            tauAPriori = self.tauAPriori
+
         datasets = [
-            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
-              [{'data': [self.tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
-               {'data': [self.tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
-               {'data': [self.tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
+            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+              'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+              'dataset':
+              [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
+               {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
+               {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
               ]
             },
-            { 'unified_scaling': True, 'y_label': 'Torque Error (Nm)', 'labels': torque_labels, 'contains_base': self.opt['floating_base'], 'dataset':
-              [{'data': [self.tauMeasured-self.tauEstimated], 'time': rel_time, 'title': 'Estimation Error'},
-               {'data': [self.tauMeasured-self.tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
+            { 'unified_scaling': True, 'y_label': 'Torque Error (Nm)', 'labels': torque_labels,
+              'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+              'dataset':
+              [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Estimation Error'},
+               {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
               ]
             },
             { 'unified_scaling': False, 'labels': self.model.jointNames, 'dataset':

@@ -312,7 +312,7 @@ class Model(object):
                 torques_stack_2dim[:, :6] -= contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
 
-            self.data.samples['torques'] = torques_stack_2dim
+            self.data.samples['torques'] = torques_stack_2dim[:, 6:]
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:

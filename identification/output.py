@@ -406,8 +406,20 @@ class OutputMatplotlib(object):
                 #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
                 leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':7})
             else:
+                font_size = 12
+                matplotlib.rcParams.update({'font.size': font_size})
+                matplotlib.rcParams.update({'axes.labelsize': font_size - 2})
+                matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
+                matplotlib.rcParams.update({'axes.titlesize': font_size})
+                matplotlib.rcParams.update({'legend.fontsize': font_size})
+                matplotlib.rcParams.update({'xtick.labelsize': font_size -2})
+                matplotlib.rcParams.update({'ytick.labelsize': font_size -2})
+                matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
+                matplotlib.rcParams.update({'patch.linewidth': font_size/15.})
+                matplotlib.rcParams.update({'grid.linewidth': font_size/20.})
                 handles, labels = ax.get_legend_handles_labels()
-                leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+                leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':font_size-4})
+                leg.draggable()
             fig.subplots_adjust(hspace=2)
             fig.set_tight_layout(True)
 

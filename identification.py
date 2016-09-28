@@ -1050,7 +1050,7 @@ class Identification(object):
             { 'unified_scaling': True, 'y_label': 'Torque Error (Nm)', 'labels': torque_labels,
               'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
               'dataset':
-              [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Estimation Error'},
+              [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
                {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
               ]
             },
@@ -1073,14 +1073,15 @@ class Identification(object):
         if self.validation_file:
             datasets.append(
                 { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                    'contains_base': self.opt['floating_base'], 'dataset': [
-                        #{'data': [self.tauMeasuredValidation],
-                        # 'time': rel_vtime, 'title': 'Measured Validation'},
-                        {'data': [self.tauEstimatedValidation],
-                         'time': rel_vtime, 'title': 'Estimated Validation'},
-                        {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
-                         'time': rel_vtime, 'title': 'Validation Error'}
-                        ]
+                    'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                    'dataset':
+                    [#{'data': [self.tauMeasuredValidation],
+                     # 'time': rel_vtime, 'title': 'Measured Validation'},
+                     {'data': [self.tauEstimatedValidation],
+                      'time': rel_vtime, 'title': 'Estimated Validation'},
+                     {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
+                      'time': rel_vtime, 'title': 'Validation Error'}
+                    ]
                 }
             )
 

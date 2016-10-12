@@ -1033,10 +1033,14 @@ class Identification(object):
             tauMeasured = self.model.tauMeasured[:, 6:]
             tauEstimated = self.tauEstimated[:, 6:]
             tauAPriori = self.tauAPriori[:, 6:]
+            tauEstimatedValidation = self.tauEstimatedValidation[:, 6:]
+            tauMeasuredValidation = self.tauMeasuredValidation[:, 6:]
         else:
             tauMeasured = self.model.tauMeasured
             tauEstimated = self.tauEstimated
             tauAPriori = self.tauAPriori
+            tauEstimatedValidation = self.tauEstimatedValidation
+            tauMeasuredValidation = self.tauMeasuredValidation
 
         datasets = [
             { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
@@ -1077,9 +1081,9 @@ class Identification(object):
                     'dataset':
                     [#{'data': [self.tauMeasuredValidation],
                      # 'time': rel_vtime, 'title': 'Measured Validation'},
-                     {'data': [self.tauEstimatedValidation],
+                     {'data': [tauEstimatedValidation],
                       'time': rel_vtime, 'title': 'Estimated Validation'},
-                     {'data': [self.tauEstimatedValidation-self.tauMeasuredValidation],
+                     {'data': [tauEstimatedValidation-tauMeasuredValidation],
                       'time': rel_vtime, 'title': 'Validation Error'}
                     ]
                 }

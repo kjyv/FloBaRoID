@@ -1033,14 +1033,16 @@ class Identification(object):
             tauMeasured = self.model.tauMeasured[:, 6:]
             tauEstimated = self.tauEstimated[:, 6:]
             tauAPriori = self.tauAPriori[:, 6:]
-            tauEstimatedValidation = self.tauEstimatedValidation[:, 6:]
-            tauMeasuredValidation = self.tauMeasuredValidation[:, 6:]
+            if self.validation_file:
+                tauEstimatedValidation = self.tauEstimatedValidation[:, 6:]
+                tauMeasuredValidation = self.tauMeasuredValidation[:, 6:]
         else:
             tauMeasured = self.model.tauMeasured
             tauEstimated = self.tauEstimated
             tauAPriori = self.tauAPriori
-            tauEstimatedValidation = self.tauEstimatedValidation
-            tauMeasuredValidation = self.tauMeasuredValidation
+            if self.validation_file:
+                tauEstimatedValidation = self.tauEstimatedValidation
+                tauMeasuredValidation = self.tauMeasuredValidation
 
         datasets = [
             { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,

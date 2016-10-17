@@ -62,7 +62,6 @@ minVelocityPercentage: 0.1
 # fixed or floating-base dynamics
 floating_base: 1
 base_link_name: 'Waist'
-#if set to 1, also add <baseLinkDynamics/> as first rows to regressor definition xml
 
 # simulate torques from target values, don't use both
 simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
@@ -74,8 +73,8 @@ min_tol: 0.001
 ## data processing and selection
 
 # determine number of samples to use
-# (Khalil recommends about 500 times number of parameters to identify...)
 start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
+# (Khalil recommends about 500 times number of parameters to identify)
 skip_samples: 0    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)

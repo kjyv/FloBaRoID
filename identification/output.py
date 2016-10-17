@@ -338,8 +338,8 @@ class OutputConsole(object):
                         format(sum_error_all_base/len(idf.model.xBase)))
 
         idf.estimateRegressorTorques(estimateWith='urdf')   #estimate torques with CAD params
-        idf.apriori_error = sla.norm(idf.tauEstimated-idf.model.tauMeasured)*100/sla.norm(idf.model.tauMeasured)
         idf.estimateRegressorTorques()   #estimate torques again with identified parameters
+        idf.apriori_error = sla.norm(idf.tauAPriori-idf.model.tauMeasured)*100/sla.norm(idf.model.tauMeasured)
         idf.res_error = sla.norm(idf.tauEstimated-idf.model.tauMeasured)*100/sla.norm(idf.model.tauMeasured)
         print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
                 format(idf.res_error, idf.apriori_error))

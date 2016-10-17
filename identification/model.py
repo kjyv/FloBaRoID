@@ -164,8 +164,8 @@ class Model(object):
             dynComp.setRobotState(q, dq, ddq, world_gravity)
 
         # compute inverse dynamics with idyntree (simulate)
-        torques = iDynTree.VectorDynSize(self.N_DOFS)  #being calculated by inverseDynamics
-        baseReactionForce = iDynTree.Wrench()   #being calculated by inverseDynamics
+        torques = iDynTree.VectorDynSize(self.N_DOFS)
+        baseReactionForce = iDynTree.Wrench()
         dynComp.inverseDynamics(torques, baseReactionForce)
 
         if self.opt['floating_base']:
@@ -264,8 +264,15 @@ class Model(object):
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print("Error during numeric computation of regressor")
 
+                #the base forces are expressed in the base frame for the regressor, so transform them
+                if self.opt['floating_base']:
+                    to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
+                    regressor = regressor.toNumPy()
+                    regressor[0:3, :] = to_world.dot(regressor[0:3, :])
+                    regressor[3:6, :] = to_world.dot(regressor[3:6, :])
+
                 # stack on previous regressors
-                np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor.toNumPy())
+                np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor)
             num_time += t.interval
 
             # stack results onto matrices of previous time steps
@@ -301,13 +308,15 @@ class Model(object):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
 
-            #subtract measured contact forces from torque estimation from iDynTree
+            #reshape torque stack
             torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
+
+            #subtract measured contact forces from torque estimation from iDynTree
             if self.opt['simulateTorques']:
                 self.torques_stack -= self.contactForcesSum
             else:
                 # if not simulating, measurements of joint torques already contain contact contribution,
-                # so only add to base force estimation
+                # so only add it to the (simulated) base force estimation
                 contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+fb))
                 torques_stack_2dim[:, :6] -= contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
@@ -409,7 +418,10 @@ class Model(object):
                 if self.opt['floating_base']:
                     base_velocity = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
                     base_acceleration = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
-                    world_T_base = self.dynComp.getWorldTransform(self.opt['base_link_name'])
+                    rpy = np.random.ranf(3)*0.05
+                    rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+                    pos = iDynTree.Position.Zero()
+                    world_T_base = iDynTree.Transform(rot, pos)
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
                 else:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
@@ -419,6 +431,11 @@ class Model(object):
                     print("Error during numeric computation of regressor")
 
                 A = regressor.toNumPy()
+                #the base forces are expressed in the base frame for the regressor, so transform them
+                if self.opt['floating_base']:
+                    to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
+                    A[0:3, :] = to_world.dot(A[0:3, :])
+                    A[3:6, :] = to_world.dot(A[3:6, :])
 
                 # add to previous regressors, linear dependency doesn't change
                 # (if too many, saturation or accuracy problems?)

@@ -43,7 +43,6 @@ from identification.optimization import LMI_PSD, LMI_PD
 from IPython import embed
 
 # Referenced papers:
-# Gautier, 2013: Identification of Consistent Standard Dynamic Parameters of Industrial Robots
 # Gautier, 1991: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
 # Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the
@@ -76,11 +75,10 @@ class Identification(object):
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
 
-        self.tauEstimated = list()
-
         self.paramHelpers = helpers.ParamHelpers(self.model.num_params)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.link_names)
 
+        self.tauEstimated = list()
         self.res_error = 100
         self.urdf_file_real = urdf_file_real
         self.validation_file = validation_file
@@ -106,14 +104,14 @@ class Identification(object):
         #if self.opt['floating_base']:
         #    self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
         #else:
-        self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
+        #self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
+
+        #ordinary least squares with numpy method (might be better in noisy situations)
+        self.model.xBase = la.lstsq(YBase, tau)[0]
 
         #damped least squares
         #from scipy.sparse.linalg import lsqr
         #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
-
-        #ordinary least squares with numpy method
-        #self.model.xBase = la.lstsq(YBase, tau)[0]
 
         if self.opt['useWLS']:
             """
@@ -236,7 +234,7 @@ class Identification(object):
         import os
 
         v_data = np.load(self.validation_file)
-        dynComp = iDynTree.DynamicsComputations();
+        dynComp = iDynTree.DynamicsComputations()
 
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file,
                                              output_urdf=self.model.urdf_file + '.tmp',
@@ -1180,7 +1178,7 @@ def main():
     idf.estimateRegressorTorques()
 
     if args.model_output:
-        if idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
+        if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
             print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
             idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \

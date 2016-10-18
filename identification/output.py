@@ -254,7 +254,7 @@ class OutputConsole(object):
                 if idf.urdf_file_real:
                     lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
                 else:
-                    lines.append((old, new, diff, sigma, param_columns))
+                    lines.append((idx_p, old, new, diff, sigma, param_columns))
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     idx_ep+=1
@@ -263,8 +263,8 @@ class OutputConsole(object):
                 column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
                 precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
             else:
-                column_widths = [13, 13, 7, 6, 30]   # widths of the columns
-                precisions = [8, 8, 4, 3, 0]         # numerical precision
+                column_widths = [3, 13, 13, 7, 6, 30]   # widths of the columns
+                precisions = [0, 8, 8, 4, 3, 0]         # numerical precision
 
             if not summary_only:
                 # print column header
@@ -274,7 +274,7 @@ class OutputConsole(object):
                 if idf.urdf_file_real:
                     print(template.format("\#", "Real", "Model", "Approx", "Change", "Error", "%σ", "Description"))
                 else:
-                    print(template.format("Model", "Approx", "Change", "%σ", "Description"))
+                    print(template.format("\#", "Model", "Approx", "Change", "%σ", "Description"))
 
                 # print values/description
                 template = ''

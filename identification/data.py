@@ -315,7 +315,9 @@ class Data(object):
             print ("remaining samples: {}".format(self.num_used_samples))
 
 
-    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None, IMUlinVel=None, IMUrotVel=None, IMUlinAcc=None, IMUrotAcc=None, IMUrpy=None, FT=None):
+    def preprocess(self, Q, V, Vdot, Tau, T, Fs, Q_raw=None, V_raw=None, Tau_raw=None,
+                   IMUlinVel=None, IMUrotVel=None, IMUlinAcc=None, IMUrotAcc=None,
+                   IMUrpy=None, FT=None):
 
         ''' derivation and filtering of measurements. array values are set in place
             Q, Tau will be filtered
@@ -324,6 +326,31 @@ class Data(object):
             IMUrotVel, IMUlinAcc, IMUrpy will be filtered
             IMUlinVel, IMUrotAcc will be overwritten
         '''
+
+        def central_diff( array, times, n = 2 ):
+            #varying time step
+            div = times[1] - times[0]
+
+            #central difference from Sousa code
+            size = len( array )
+            diff = np.zeros_like( array )
+            if n == 1:
+                diff[0] = ( array[1] - array[0]  ) / div
+                for i in range(1, size-1):
+                    div = times[i] - times[i-1]
+                    diff[i] = ( array[i+1] - array[i-1]  ) / (2*div)
+                diff[size-1] = ( array[size-1] - array[size-2]  ) / div
+            elif n == 2:
+                diff[0] = ( array[1] - array[0]  ) / div
+                diff[1] = ( array[2] - array[0]  ) / (2*div)
+                for i in range(2, size-2):
+                    div = times[i] - times[i-1]
+                    diff[i] = ( - array[i+2] + 8*array[i+1] - 8*array[i-1] + array[i-2] ) / (12*div)
+                diff[size-2] = ( array[size-1] - array[size-3]  ) / (2*div)
+                diff[size-1] = ( array[size-1] - array[size-2]  ) / div
+            else:
+                raise Exception('use n = 1 or 2')
+            return diff
 
         def plot_filter(b,a):
             # Plot the frequency and phase response of the filter
@@ -391,13 +418,9 @@ class Data(object):
         # calc velocity instead of taking measurements (uses filtered positions,
         # seems better than filtering noisy velocity measurements)
         V_self = np.empty_like(Q)
-        for i in range(1, Q.shape[0]-1):
-            dT = T[i] - T[i-1]
-            if dT != 0:
-                #V_self[i] = (Q[i] - Q[i-1])/dT
-                V_self[i] = (Q[i+1] - Q[i-1])/(2*dT)
-            else:
-                V_self[i] = V_self[i-1]
+
+        diff = central_diff(Q, T, 2)
+        np.copyto(V_self, diff)
 
         if V_raw is not None:
             np.copyto(V_raw, V_self)
@@ -412,19 +435,13 @@ class Data(object):
         for j in range(0, self.opt['N_DOFS']):
             V_self[:, j] = sp.signal.filtfilt(b_6, a_6, vels_self_orig[:, j])
 
+        np.copyto(V, V_self)
+
         ## Joint Accelerations
 
         # calc accelerations
-        for i in range(1, V_self.shape[0]):
-            dT = T[i] - T[i-1]
-            if dT != 0:
-                Vdot[i] = (V_self[i] - V_self[i-1])/dT
-            else:
-                Vdot[i] = Vdot[i-1]
-
-        np.copyto(V, V_self)
-
-        # filtering accelerations not necessary?
+        diff = central_diff(V_self, T, 2)
+        np.copyto(Vdot, diff)
 
         # median filter of accelerations
         accls_orig = Vdot.copy()
@@ -432,9 +449,9 @@ class Data(object):
             Vdot[:, j] = sp.signal.medfilt(accls_orig[:, j], median_kernel_size)
 
         # low-pass filter of accelerations
-        accls_orig = Vdot.copy()
-        for j in range(0, self.opt['N_DOFS']):
-            Vdot[:, j] = sp.signal.filtfilt(b_3, a_3, accls_orig[:, j])
+        #accls_orig = Vdot.copy()
+        #for j in range(0, self.opt['N_DOFS']):
+        #    Vdot[:, j] = sp.signal.filtfilt(b_3, a_3, accls_orig[:, j])
 
         ## Joint Torques
 
@@ -472,13 +489,17 @@ class Data(object):
                 IMUrpy[:, j] = sp.signal.filtfilt(b_3, a_3, IMUrpy_orig[:, j])
 
             if IMUlinVel is not None:
-                #rotate accelerations to (estimated) world frame
-                rot = IMUrpy[i, :]
-                R = iDynTree.Rotation.RPY(-rot[0], -rot[1], -rot[2]).toNumPy()
+                #rotate data to (estimated) world frame (iDynTree floating base wants that)
+                #TODO: use quaternions to avoid gimbal lock (orientation estimation needs to give quaternions already)
                 IMUlinAccWorld = np.zeros_like(IMUlinAcc)
+                IMUrotVelWorld = np.zeros_like(IMUrotVel)
                 for i in range(0, IMUlinAcc.shape[0]):
+                    rot = IMUrpy[i, :]
+                    R = iDynTree.Rotation.RPY(rot[0], rot[1], rot[2]).toNumPy()
                     IMUlinAccWorld[i, :] = R.dot(IMUlinAcc[i, :])
-                #TODO: use quaternions to avoid gimbal lock (orientation estimation needs to give quaternions already though)
+                    IMUrotVelWorld[i, :] = R.dot(IMUrotVel[i, :])
+                np.copyto(IMUrotVel, IMUrotVelWorld)
+
 
                 grav_norm = np.mean(la.norm(IMUlinAccWorld, axis=1))
                 if grav_norm < 9.80:
@@ -513,13 +534,16 @@ class Data(object):
                 IMUlinAccWorld -= np.mean(IMUlinAccWorld, axis=0)
 
                 # rotate back (save proper linear acceleration without gravity)
-                for i in range(0, IMUlinAcc.shape[0]):
-                    IMUlinAcc[i, :] = R.T.dot(IMUlinAccWorld[i, :])
+                #for i in range(0, IMUlinAcc.shape[0]):
+                #    rot = IMUrpy[i, :]
+                #    R = iDynTree.Rotation.RPY(-rot[0], -rot[1], -rot[2]).toNumPy()
+                #    IMUlinAcc[i, :] = R.T.dot(IMUlinAccWorld[i, :])
+                np.copyto(IMUlinAcc, IMUlinAccWorld)
 
                 # integrate linear acceleration to get velocity
                 for j in range(0, 3):
                     IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAcc[:, j], T, initial=0)
-                    IMUlinVel[j, :] = R.T.dot(IMUlinVel[j, :])
+                    #IMUlinVel[j, :] = R.T.dot(IMUlinVel[j, :])
 
             # get rotational acceleration as simple derivative of velocity
             if IMUrotAcc is not None:

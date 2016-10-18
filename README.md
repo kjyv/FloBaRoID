@@ -1,8 +1,10 @@
 # FloBaRoID 
 
-(FLOating BAse RObot dynamical IDentification)
+FLOating BAse RObot dynamical IDentification
 
-Open source framework for dynamical system identification of floating-base rigid body tree-structures.
+Framework for dynamical system identification of floating-base rigid body tree-structures.
+
+(Usage is licensed under the LGPL 3.0. Please quote name and authors if you're using this software in any project).
 
 Modules:
 

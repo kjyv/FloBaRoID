@@ -73,12 +73,12 @@ def readCSV(dir, config, plot):
     rpy_labels = ['r','p', 'y']
     acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
-        #use IMUrpy
         if is_hw:
+            #use data fields for first IMU (IMUrpy)
             #out['IMUrpy'][:, i] = f[:, i]
             out['IMUlinAcc'][:, i] = f[:, 18+i]
             out['IMUrotVel'][:, i] = f[:, 21+i]
-            #use VNrpy
+            #use data fields for second IMU (VNrpy)
             out['IMUrpy'][:, i] = f[:, 15+i]
             out['IMUlinAcc2'][:, i] = f[:, 24+i]
             #out['IMUrotVel'][:, i] = f[:, 27+i]
@@ -88,30 +88,29 @@ def readCSV(dir, config, plot):
             out['IMUlinAcc'][:, i] = f[:, 18+i]
             out['IMUrotVel'][:, i] = f[:, 21+i]
 
-        #rotate VNrpy vals to robot frame (it's built in rotated like this)
-        #hm, should really be pi, 0, 0 according to Przemek
-        robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
-
-        #hw
         if is_hw:
+            #rotate VNrpy vals to robot frame (as it is physically rotated)
+            #TODO: should be pi,0,0 according to Przemek but 0,0,pi seems to be better?
+            robotToIMU = iDynTree.Rotation.RPY(np.pi, 0, 0).toNumPy()
             for j in range(0, out['IMUlinAcc2'].shape[0]):
                 out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
 
-        #for j in range(0, out['IMUrotVel'].shape[0]):
-        #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
+            #rotate rotational velocity
+            #for j in range(0, out['IMUrotVel'].shape[0]):
+            #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
 
-        #for j in range(0, out['IMUrpy'].shape[0]):
-        #    out['IMUrpy'][j, :] = robotToIMU.dot(out['IMUrpy'][j, :])
+            #correct rotation estimation as well
+            for j in range(0, out['IMUrpy'].shape[0]):
+                out['IMUrpy'][j, 0] += np.pi
 
-        if 0:
-            #use other IMU and take average
-            out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling shouldn't be necessary...
-            out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
-        else:
-            out['IMUlinAcc'] = out['IMUlinAcc2']
+        '''
+        #use other IMU and take average
+        out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling shouldn't be necessary...
+        out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
+        '''
+        out['IMUlinAcc'] = out['IMUlinAcc2']
 
         ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
-        #ax3.plot(out['times'], out['IMUlinAcc2'][:, i], label=acc_labels[i])
         ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
     ax5 = fig.add_subplot(3,2,5)
@@ -155,7 +154,7 @@ if __name__ == '__main__':
         except yaml.YAMLError as exc:
             print(exc)
     config['N_DOFS'] = 6   #walkman leg
-    config['useDeg'] = False
+    config['useDeg'] = 0
     config['model'] = args.model
 
     out = readCSV(args.measurements, config, args.plot)
@@ -204,7 +203,7 @@ if __name__ == '__main__':
     out['contacts'] = np.array({'r_leg_ft': out['FTright']})
     out['base_rpy'] = out['IMUrpy']
 
-    if not is_hw: #config['excitationSimulate']:
+    if not is_hw:
         #use all data
         old_skip = config['skip_samples']
         config['skip_samples'] = 0

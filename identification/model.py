@@ -264,10 +264,10 @@ class Model(object):
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print("Error during numeric computation of regressor")
 
+                regressor = regressor.toNumPy()
                 #the base forces are expressed in the base frame for the regressor, so transform them
                 if self.opt['floating_base']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
-                    regressor = regressor.toNumPy()
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
@@ -591,20 +591,51 @@ class Model(object):
         # get condition number for each of the links
         linkConds = list()
         for i in range(0, self.N_LINKS):
+            #get columns of base regressor that are dependent on std parameters of link i
+            #TODO: check if this is a sound approach
+            #TODO: try going further down to e.g. condition number of link mass, com, inertial
+
+            #get parts of base regressor with only independent columns (identifiable space)
+
+            #get all independent std columns for link i
             base_columns = [j for j in range(0, self.num_base_params) \
                                   if self.independent_cols[j] in range(i*10, i*10+9)]
 
-            #get base params that have corresponding std params for the current link
-            #TODO: check if this is a valid approach, also use proper new dependents
-            for j in range(0, self.num_base_params):
-                for dep in np.where(np.abs(self.linear_deps[j, :])>0.1)[0]:
-                    if dep in range(i*10, i*10+9):
-                        base_columns.append(j)
+            #add dependent columns (not really correct, see getting self.B)
+            #for j in range(0, self.num_base_params):
+            #    for dep in np.where(np.abs(self.linear_deps[j, :])>self.opt['min_tol'])[0]:
+            #        if dep in range(i*10, i*10+9):
+            #            base_columns.append(j)
             if not len(base_columns):
-                linkConds.append(99999)
+                linkConds.append(10e15)
             else:
                 linkConds.append(la.cond(self.YBase[:, base_columns]))
-            #linkConds.append(la.cond(self.YStd[:, i*10:i*10+9]))
+
+            #use base column dependencies to get parts of base regressor with influence on each each link
+            '''
+            base_columns = list()
+            for k in range(i*10, i*10+9):
+                for j in range(0, self.num_base_params):
+                    if self.param_syms[k] in self.base_deps[j].free_symbols:
+                        if not j in base_columns:
+                            base_columns.append(j)
+                        continue
+
+            if not len(base_columns):
+                linkConds.append(10e15)
+            else:
+                linkConds.append(la.cond(self.YBase[:, base_columns]))
+            '''
+
+            #use std regressor directly
+            '''
+            c = la.cond(self.YStd[:, i*10:i*10+9])
+            if np.isfinite(c):
+                linkConds.append(c)
+            else:
+                linkConds.append(10e15)
+            '''
+
         print("Condition numbers of link sub-regressors: [{}]".format(linkConds))
 
         return linkConds

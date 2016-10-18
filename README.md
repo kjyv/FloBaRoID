@@ -4,8 +4,6 @@ FLOating BAse RObot dynamical IDentification
 
 Framework for dynamical system identification of floating-base rigid body tree-structures.
 
-(Usage is licensed under the LGPL 3.0. Please quote name and authors if you're using this software in any project).
-
 Modules:
 
 * excitation: control a robot movement along optimized trajectories and record the state and torque measurements (using [Yarp](https://github.com/robotology/yarp) or ROS/MoveIt! at the moment)
@@ -61,3 +59,5 @@ known issues:
    parameters), a separate measurement file for validation
    (options are in mostly in .yaml file, others can be seens when calling with -h)
 
+
+Usage is licensed under the LGPL 3.0, see License.md. Please quote name and authors if you're using this software in any project.

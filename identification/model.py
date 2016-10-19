@@ -209,9 +209,9 @@ class Model(object):
                 acc = data.samples['accelerations'][m_idx]
                 torq = data.samples['torques'][m_idx]
                 if self.opt['floating_base']:
-                    for frame in data.samples['contacts'].item().keys():
+                    for frame in data.samples['contacts'].item(0).keys():
                         #TODO: define proper sign for input data
-                        contacts[frame] = data.samples['contacts'].item()[frame][m_idx]
+                        contacts[frame] = data.samples['contacts'].item(0)[frame][m_idx]
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromList(pos)

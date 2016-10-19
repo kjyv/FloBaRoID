@@ -121,9 +121,10 @@ def readCSV(dir, config, plot):
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
     #hardware and gazebo seem to have opposite sign
-        if is_hw:
+    if is_hw:
         #FTleft 3:9
         #FTright 9:15
+
         '''
         out['FTright'][:, 0] = -f[:, 9]
         out['FTright'][:, 1] = -f[:, 10]
@@ -139,7 +140,7 @@ def readCSV(dir, config, plot):
         #for j in range(0, out['FTright'].shape[0]):
         #    out['FTright'][j, 0:3] = FTtoWorld.dot(out['FTright'][j, 0:3])
         #    out['FTright'][j, 3:6] = FTtoWorld.dot(out['FTright'][j, 3:6])
-        else:
+    else:
         out['FTright'][:, 0:6] = f[:, 9:15]
 
     for i in range(0,6):

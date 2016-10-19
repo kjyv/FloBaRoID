@@ -1065,14 +1065,14 @@ class Identification(object):
                {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
               ]
             },
-            { 'unified_scaling': True, 'y_label': 'Torque Error (Nm)', 'labels': torque_labels,
+            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
               'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
               'dataset':
               [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
                {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
               ]
             },
-            { 'unified_scaling': False, 'labels': self.model.jointNames, 'dataset':
+            { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
               [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
                 'time': rel_time, 'title': 'Positions'},
                {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],

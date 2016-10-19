@@ -40,6 +40,7 @@ class Data(object):
                 self.num_loaded_samples, self.num_used_samples))
         self.inited = True
 
+
     def init_from_files(self, measurements_files):
         '''load data from measurements_files, optionally skipping some values'''
 
@@ -54,7 +55,14 @@ class Data(object):
                         if k not in self.measurements:
                             # first file
                             if m[k].ndim == 0:
-                                self.measurements[k] = m[k]
+                                if isinstance(m[k].item(0), dict):
+                                    #contacts
+                                    contact_dict = {}
+                                    for c in m[k].item(0).keys():
+                                        contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
+                                    self.measurements[k] = np.array(contact_dict)
+                                else:
+                                    self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
                                 self.measurements[k] = m[k][self.opt['start_offset']:]
                             else:
@@ -62,12 +70,22 @@ class Data(object):
                         else:
                             # following files, append data
                             if m[k].ndim == 0:
-                                #TODO: get mean value of scalar values (needs to count how many values then)
-                                self.measurements[k] = m[k]
+                                if isinstance(m[k].item(0), dict):
+                                    #contacts
+                                    contact_dict = {}
+                                    for c in m[k].item(0).keys():
+                                        contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
+                                    self.measurements[k] = np.array(contact_dict)
+                                else:
+                                    #TODO: get mean value of scalar values (needs to count how many values then)
+                                    self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
-                                # let values start with first time diff
-                                mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0])
-                                mv[k] = mv[k] + self.measurements[k][-1]   # add after previous times
+                                if k == 'times':
+                                    #TODO: use start_offset in here
+                                    # shift new values to start at 0 plus first time diff
+                                    mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0])
+                                    # add after last timestamp of previous data
+                                    mv[k] = mv[k] + self.measurements[k][-1]
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
                                                                         mv[k][self.opt['start_offset']:]),
                                                                         axis=0)
@@ -301,14 +319,17 @@ class Data(object):
         to_delete = list()
         for t in range(self.num_used_samples):
             if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
-                #if self.opt['floating_base']:
-                #    if np.min(np.abs(self.samples['base_velocity'][t])) < self.opt['minVel']*3:
-                #        to_delete.append(t)
-                #else:
                 to_delete.append(t)
 
         for k in self.samples.keys():
-            self.samples[k] = np.delete(self.samples[k], to_delete, 0)
+            if self.samples[k].ndim == 0:
+                #contacts
+                if isinstance(self.samples[k].item(0), dict):
+                    #contacts
+                    for c in self.samples[k].item(0).keys():
+                        self.samples[k].item(0)[c] = np.delete(self.samples[k].item(0)[c], to_delete, 0)
+            else:
+                self.samples[k] = np.delete(self.samples[k], to_delete, 0)
         self.updateNumSamples()
         if self.opt['verbose']:
             print ("remaining samples: {}".format(self.num_used_samples))

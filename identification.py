@@ -84,120 +84,6 @@ class Identification(object):
         self.validation_file = validation_file
 
 
-    def identifyBaseParameters(self, YBase=None, tau=None):
-        """use previously computed regressors and identify base parameter vector using ordinary or weighted least squares."""
-
-        if YBase is None:
-            YBase = self.model.YBase
-        if tau is None:
-            tau = self.model.tau
-
-        self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
-
-        # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
-        # should always try to avoid inversion if possible
-
-        # invert equation to get parameter vector from measurements and model + system state values
-        self.model.YBaseInv = la.pinv(self.model.YBase)
-
-        #tau already includes contact forces
-        #if self.opt['floating_base']:
-        #    self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
-        #else:
-        #self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
-
-        #ordinary least squares with numpy method (might be better in noisy situations)
-        self.model.xBase = la.lstsq(YBase, tau)[0]
-
-        #damped least squares
-        #from scipy.sparse.linalg import lsqr
-        #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
-
-        if self.opt['useWLS']:
-            """
-            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991 and Gautier, 1997.
-            adds weighting with standard dev of estimation error on base regressor and params.
-            """
-
-            # get estimation once with previous ordinary LS solution parameters
-            self.estimateRegressorTorques('base')
-
-            # get standard deviation of measurement and modeling error \sigma_{rho}^2
-            # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
-                                       (self.data.num_used_samples-self.model.num_base_params)
-
-            if self.opt['floating_base']: fb = 6
-            else: fb = 0
-            # repeat stddev values for each measurement block (n_joints * num_samples)
-            # along the diagonal of G
-            # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
-            G = scipy.sparse.spdiags(np.repeat(1/self.sigma_rho, self.data.num_used_samples), 0,
-                               (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
-            #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
-            #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
-
-            # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-            #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
-            #sigma_x = np.sqrt(np.diag(C_xx))
-
-            # weight Y and tau with deviations, identify params
-            YBase = G.dot(self.model.YBase)
-            tau = G.dot(self.model.tau)
-            if self.opt['verbose']:
-                print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
-
-            # get identified values using weighted matrices without weighing them again
-            self.opt['useWLS'] = 0
-            self.identifyBaseParameters(YBase, tau)
-            self.opt['useWLS'] = 1
-
-    def getBaseParamsFromParamError(self):
-        self.model.xBase += self.model.xBaseModel   #both param vecs link relative linearized
-
-        if self.opt['useEssentialParams']:
-            self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[self.baseEssentialIdx]
-
-    def findStdFromBaseParameters(self):
-        # Note: assumes that xBase is still in error form if using a priori
-        # i.e. don't call after getBaseParamsFromParamError
-
-        # project back to standard parameters
-        self.model.xStd = self.model.B.dot(self.model.xBase)
-
-        # get estimated parameters from estimated error (add a priori knowledge)
-        if self.opt['useAPriori']:
-            self.model.xStd += self.model.xStdModel
-        elif self.opt['projectToAPriori']:
-            #add a priori parameters projected on non-identifiable subspace
-            self.model.xStd += (np.eye(self.model.B.shape[0])-self.model.B.dot(self.model.Binv)).dot(self.model.xStdModel)
-
-            #do projection algebraically
-            #for each identified base param,
-            base_deps_vals = []
-            for idx in range(0,self.model.num_base_params):
-                base_deps_vals.append(Eq(self.model.base_deps[idx], self.model.xBase[idx]))
-
-            prev_eq = base_deps_vals[0].lhs - base_deps_vals[0].rhs
-            prev_eq2 = prev_eq.copy()
-            for eq in base_deps_vals[1:]:
-                prev_eq2 -= eq.lhs - eq.rhs
-
-            print("solution space: {}".format(prev_eq2))
-
-            #get some point in the affine subspace (set all but one var then solve)
-            p_on_eq = []
-            rns = np.random.rand(len(self.model.param_syms)-1)
-            #rns = np.zeros(len(syms)-1)
-            #rns[0] = 1
-            eq = prev_eq2.subs(list(zip(self.model.param_syms, rns)))   #replace vars with values
-            p_on_eq[0:len(rns)] = rns   #collect values
-            p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms)-1])[0])   #solve for remaining (last) symbol
-            print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
-            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq))*100/sla.norm(self.model.tauMeasured)
-            print(pham_percent)
-
-
     def estimateRegressorTorques(self, estimateWith=None):
         """ get torque estimations using regressors, prepare for plotting """
 
@@ -222,10 +108,15 @@ class Identification(object):
         else:
             fb = 0
 
-        # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
+
+        #if self.opt['floating_base']:
+        #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
+
+        # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
         if estimateWith == 'urdf':
             self.tauAPriori = self.tauEstimated
+
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
@@ -272,6 +163,54 @@ class Identification(object):
         self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
+
+
+    def getBaseParamsFromParamError(self):
+        self.model.xBase += self.model.xBaseModel   #both param vecs link relative linearized
+
+        if self.opt['useEssentialParams']:
+            self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[self.baseEssentialIdx]
+
+
+    def findStdFromBaseParameters(self):
+        # Note: assumes that xBase is still in error form if using a priori
+        # i.e. don't call after getBaseParamsFromParamError
+
+        # project back to standard parameters
+        self.model.xStd = self.model.B.dot(self.model.xBase)
+
+        # get estimated parameters from estimated error (add a priori knowledge)
+        if self.opt['useAPriori']:
+            self.model.xStd += self.model.xStdModel
+        elif self.opt['projectToAPriori']:
+            #add a priori parameters projected on non-identifiable subspace
+            self.model.xStd += (np.eye(self.model.B.shape[0])-self.model.B.dot(self.model.Binv)).dot(self.model.xStdModel)
+
+            #do projection algebraically
+            #for each identified base param,
+            base_deps_vals = []
+            for idx in range(0,self.model.num_base_params):
+                base_deps_vals.append(Eq(self.model.base_deps[idx], self.model.xBase[idx]))
+
+            prev_eq = base_deps_vals[0].lhs - base_deps_vals[0].rhs
+            prev_eq2 = prev_eq.copy()
+            for eq in base_deps_vals[1:]:
+                prev_eq2 -= eq.lhs - eq.rhs
+
+            print("solution space: {}".format(prev_eq2))
+
+            #get some point in the affine subspace (set all but one var then solve)
+            p_on_eq = []
+            rns = np.random.rand(len(self.model.param_syms)-1)
+            #rns = np.zeros(len(syms)-1)
+            #rns[0] = 1
+            eq = prev_eq2.subs(list(zip(self.model.param_syms, rns)))   #replace vars with values
+            p_on_eq[0:len(rns)] = rns   #collect values
+            p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms)-1])[0])   #solve for remaining (last) symbol
+            print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
+            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq))*100/sla.norm(self.model.tauMeasured)
+            print(pham_percent)
+
 
     def findBaseEssentialParameters(self):
         """
@@ -443,6 +382,7 @@ class Identification(object):
         if self.opt['showTiming']:
             print("Getting base essential parameters took %.03f sec." % t.interval)
 
+
     def findStdFromBaseEssParameters(self):
         """
         Find essential standard parameters from previously determined base essential parameters.
@@ -516,6 +456,75 @@ class Identification(object):
                 #else:
                 self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
+
+    def identifyBaseParameters(self, YBase=None, tau=None):
+        """use previously computed regressors and identify base parameter vector using ordinary or weighted least squares."""
+
+        if YBase is None:
+            YBase = self.model.YBase
+        if tau is None:
+            tau = self.model.tau
+
+        self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
+
+        # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
+        # should always try to avoid inversion if possible
+
+        # invert equation to get parameter vector from measurements and model + system state values
+        self.model.YBaseInv = la.pinv(self.model.YBase)
+
+        if self.opt['floating_base']:
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
+        else:
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
+
+        #ordinary least squares with numpy method (might be better in noisy situations)
+        #self.model.xBase = la.lstsq(YBase, tau)[0]
+
+        #damped least squares
+        #from scipy.sparse.linalg import lsqr
+        #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
+
+        if self.opt['useWLS']:
+            """
+            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991 and Gautier, 1997.
+            adds weighting with standard dev of estimation error on base regressor and params.
+            """
+
+            # get estimation once with previous ordinary LS solution parameters
+            self.estimateRegressorTorques('base')
+
+            # get standard deviation of measurement and modeling error \sigma_{rho}^2
+            # for each joint subsystem (rho is assumed zero mean independent noise)
+            self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
+                                       (self.data.num_used_samples-self.model.num_base_params)
+
+            if self.opt['floating_base']: fb = 6
+            else: fb = 0
+            # repeat stddev values for each measurement block (n_joints * num_samples)
+            # along the diagonal of G
+            # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
+            G = scipy.sparse.spdiags(np.repeat(1/self.sigma_rho, self.data.num_used_samples), 0,
+                               (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
+            #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
+            #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+
+            # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+            #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
+            #sigma_x = np.sqrt(np.diag(C_xx))
+
+            # weight Y and tau with deviations, identify params
+            YBase = G.dot(self.model.YBase)
+            tau = G.dot(self.model.tau)
+            if self.opt['verbose']:
+                print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
+
+            # get identified values using weighted matrices without weighing them again
+            self.opt['useWLS'] = 0
+            self.identifyBaseParameters(YBase, tau)
+            self.opt['useWLS'] = 1
+
+
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
         with helpers.Timer() as t:
@@ -575,6 +584,7 @@ class Identification(object):
 
         if self.opt['showTiming']:
             print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
+
 
     def initSDP_LMIs(self):
         # initialize LMI matrices to set physical consistency constraints for SDP solver
@@ -900,6 +910,7 @@ class Identification(object):
         if self.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
 
+
     def findFeasibleStdFromFeasibleBase(self, xBase):
         # find a std feasible solution for feasible base solution
         # (exists per definition?)
@@ -935,6 +946,7 @@ class Identification(object):
 
         return xStd
 
+
     def findFeasibleStdFromStd(self, xStd):
         # find closest feasible std solution for some std parameters
         # (increases error)
@@ -969,6 +981,7 @@ class Identification(object):
         xStd = np.squeeze(np.asarray(delta_star))
 
         return xStd
+
 
     def estimateParameters(self):
         if not self.data.num_used_samples > self.model.num_params*2 \
@@ -1014,6 +1027,7 @@ class Identification(object):
 
             elif self.opt['estimateWith'] == 'std_direct':
                 self.identifyStandardParameters()
+
 
     def plot(self):
         """Display some torque plots."""
@@ -1099,6 +1113,7 @@ class Identification(object):
             #output.runServer()
         else:
             print('No known output module given. Not creating plots!')
+
 
     def printMemUsage(self):
         import humanize

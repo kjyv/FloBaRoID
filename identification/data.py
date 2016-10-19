@@ -299,7 +299,6 @@ class Data(object):
         if self.opt['verbose']:
             print("removing near zero samples...", end=' ')
         to_delete = list()
-        from IPython import embed
         for t in range(self.num_used_samples):
             if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
                 #if self.opt['floating_base']:
@@ -409,7 +408,7 @@ class Data(object):
         # low-pass filter positions
         Q_orig = Q.copy()
         for j in range(0, self.opt['N_DOFS']):
-            Q[:, j] = sp.signal.filtfilt(b_6, a_6, Q_orig[:, j])
+            Q[:, j] = sp.signal.filtfilt(b_8, a_8, Q_orig[:, j])
         if Q_raw is not None:
             np.copyto(Q_raw, Q_orig)
 

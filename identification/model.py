@@ -134,7 +134,7 @@ class Model(object):
             base_velocity = iDynTree.Twist.fromList(base_vel)
             # The 6d classical acceleration (linear/angular acceleration) of the base
             # expressed in the world orientation frame and with respect to the base
-            # origin (not spatial acc)
+            # origin
             base_acc = samples['base_acceleration'][sample_idx]
             base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
             rpy = samples['base_rpy'][sample_idx]
@@ -157,8 +157,7 @@ class Model(object):
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)
 
-            dynComp.setRobotState(q, dq, ddq, world_T_base,
-                                  base_velocity, base_acceleration,
+            dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
                                   world_gravity)
         else:
             dynComp.setRobotState(q, dq, ddq, world_gravity)
@@ -212,7 +211,7 @@ class Model(object):
                 if self.opt['floating_base']:
                     for frame in data.samples['contacts'].item().keys():
                         #TODO: define proper sign for input data
-                        contacts[frame] = -data.samples['contacts'].item()[frame][m_idx]
+                        contacts[frame] = data.samples['contacts'].item()[frame][m_idx]
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromList(pos)
@@ -307,6 +306,7 @@ class Model(object):
                 for s in range(self.data.num_used_samples):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
+            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+6))
 
             #reshape torque stack
             torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
@@ -314,13 +314,13 @@ class Model(object):
             #subtract measured contact forces from torque estimation from iDynTree
             if self.opt['simulateTorques']:
                 self.torques_stack -= self.contactForcesSum
+                #torques_stack_2dim[:, 6:] -= self.contactForcesSum_2dim[:, 6:]
+                #self.torques_stack = torques_stack_2dim.flatten()
             else:
                 # if not simulating, measurements of joint torques already contain contact contribution,
                 # so only add it to the (simulated) base force estimation
-                contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+fb))
-                torques_stack_2dim[:, :6] -= contactForcesSum_2dim[:, :6]
+                torques_stack_2dim[:, :6] -= self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
-
             self.data.samples['torques'] = torques_stack_2dim[:, 6:]
 
         with helpers.Timer() as t:

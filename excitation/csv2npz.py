@@ -52,13 +52,17 @@ def readCSV(dir, config, plot):
     fig = plt.figure()
     ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
     ax2 = fig.add_subplot(3,2,2)
-    dofs_file = len(f[1])//6
-    for dof in range(config['N_DOFS']):
+    dofs_file = len(f[1])//7
+
+    for dof in range(0, config['N_DOFS']):
         out['target_positions'][:, dof] = f[:, dof]   #position reference
         out['positions'][:, dof] = f[:, dof+dofs_file*2]   #motor encoders
         out['torques'][:, dof] = f[:, dof+dofs_file*4]   #torque sensors
         ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
         ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
+
+    #TODO: check sensor directions
+    out['torques'][:, 3] *= -1
 
     file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)
@@ -91,7 +95,7 @@ def readCSV(dir, config, plot):
         if is_hw:
             #rotate VNrpy vals to robot frame (as it is physically rotated)
             #TODO: should be pi,0,0 according to Przemek but 0,0,pi seems to be better?
-            robotToIMU = iDynTree.Rotation.RPY(np.pi, 0, 0).toNumPy()
+            robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
             for j in range(0, out['IMUlinAcc2'].shape[0]):
                 out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
 
@@ -115,12 +119,30 @@ def readCSV(dir, config, plot):
 
     ax5 = fig.add_subplot(3,2,5)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
-    for i in range(0,6):
+
+    #hardware and gazebo seem to have opposite sign
         if is_hw:
-            out['FTright'][:, i] = -f[:, 3+6+i]
+        #FTleft 3:9
+        #FTright 9:15
+        '''
+        out['FTright'][:, 0] = -f[:, 9]
+        out['FTright'][:, 1] = -f[:, 10]
+        out['FTright'][:, 2] = -f[:, 11]
+
+        out['FTright'][:, 3] = -f[:, 12]
+        out['FTright'][:, 4] = -f[:, 13]
+        out['FTright'][:, 5] = -f[:, 14]
+        '''
+        out['FTright'][:, 0:6] = -f[:, 9:15]*0.5
+
+        #FTtoWorld = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
+        #for j in range(0, out['FTright'].shape[0]):
+        #    out['FTright'][j, 0:3] = FTtoWorld.dot(out['FTright'][j, 0:3])
+        #    out['FTright'][j, 3:6] = FTtoWorld.dot(out['FTright'][j, 3:6])
         else:
-            #gazebo
-            out['FTright'][:, i] = f[:, 3+6+i]
+        out['FTright'][:, 0:6] = f[:, 9:15]
+
+    for i in range(0,6):
         ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
     #set titles and enable legends for each subplot

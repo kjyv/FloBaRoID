@@ -18,10 +18,10 @@ min_tol_constr: 0.01         #threshold for being within constraints (only used 
 trajectoryPulseInit: 0.75    #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
+trajectoryCoeffInit: 0.1     #set this as high as possible without violating velocity constraints (see output after start)
 trajectoryCoeffMin: -0.4     #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.4
-trajectoryAngleMin: -10.0      #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMin: -10.0    #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax: 10.0
 
 # instead of one range, define individual ranges for each link. initial is the center of these
@@ -73,17 +73,17 @@ min_tol: 0.001
 ## data processing and selection
 
 # determine number of samples to use
-start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
 # (Khalil recommends about 500 times number of parameters to identify)
-skip_samples: 0    #how many values to skip before using the next sample
+start_offset: 0    #how many samples from the beginning of the (first) measurement are skipped
+skip_samples: 6    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
 block_size: 50  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
 
-removeNearZero: 1  #remove samples that have almost zero velocity
-minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
+removeNearZero: 0  #remove samples that have almost zero velocity
+minVel: 0.05        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 
 # IMU processing (floating base)
 waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
@@ -100,7 +100,7 @@ useConsistencyConstraints: 1
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
 noChange: 1
-noChangeThresh: 200
+noChangeThresh: 100
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
 restrictCOMtoHull: 1

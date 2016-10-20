@@ -62,7 +62,7 @@ def readCSV(dir, config, plot):
         ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
     #TODO: check sensor directions
-    out['torques'][:, 3] *= -1
+    #out['torques'][:, 3] *= -1
 
     file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)
@@ -125,16 +125,14 @@ def readCSV(dir, config, plot):
         #FTleft 3:9
         #FTright 9:15
 
-        '''
-        out['FTright'][:, 0] = -f[:, 9]
-        out['FTright'][:, 1] = -f[:, 10]
-        out['FTright'][:, 2] = -f[:, 11]
+        out['FTright'][:, 0] = -f[:, 9]*0
+        out['FTright'][:, 1] = -f[:, 10]*0
+        out['FTright'][:, 2] = f[:, 11]
 
         out['FTright'][:, 3] = -f[:, 12]
         out['FTright'][:, 4] = -f[:, 13]
         out['FTright'][:, 5] = -f[:, 14]
-        '''
-        out['FTright'][:, 0:6] = -f[:, 9:15]*0.5
+        out['FTright'][:, 0:6] *= 0.7
 
         #FTtoWorld = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
         #for j in range(0, out['FTright'].shape[0]):

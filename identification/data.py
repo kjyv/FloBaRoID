@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 class Data(object):
     def __init__(self, opt):
         self.opt = opt
-        self.measurements = {}
+        self.measurements = {}   #loaded data
         self.num_loaded_samples = 0    # no of samples from file
         self.num_used_samples = 0      # no of samples after skipping
-        self.samples = {}
+        self.samples = {}        #selected data (when using block selection)
 
         self.usedBlocks = list()
         self.unusedBlocks = list()
@@ -317,8 +317,8 @@ class Data(object):
         if self.opt['verbose']:
             print("removing near zero samples...", end=' ')
         to_delete = list()
-        for t in range(self.num_used_samples):
-            if np.min(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
+        for t in range(self.num_loaded_samples):
+            if np.max(np.abs(self.samples['velocities'][t])) < self.opt['minVel']:
                 to_delete.append(t)
 
         for k in self.samples.keys():

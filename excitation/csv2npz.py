@@ -26,16 +26,38 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.data import Data
 from identification.model import Model
 
+from IPython import embed
+
 sampleTime = 0.005   #200 Hz
 is_hw = 1
 
 def readCSV(dir, config, plot):
     out = {}
+    #field order in csv file
     jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R',
                   'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R', 'WaistLat', 'WaistSag',
                   'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1',
                   'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj',
                   'RForearmPlate', 'RWrj1', 'RWrj2']
+
+    # idyntree urdf joint order (model class):
+    # WaistLat, WaistSag, WaistYaw, NeckYawj, NeckPitchj, RHipLat, RHipYaw, RHipSag, RKneeSag,
+    # RAnkSag, RAnkLat, LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat, RShSag, RShLat,
+    # RShYaw, RElbj, LShSag, LShLat, LShYaw, LElbj, LForearmPlate, LWrj1, LWrj2, RForearmPlate,
+    # RWrj1, RWrj2
+    #csv_T_urdf_indices = [12, 13, 14, 22, 23,  0, 1, 2, 3, 4, 5,  6, 7, 8, 9, 10, 11,  24, 25, 26, 27,  15,
+    #                      16, 17, 18, 19, 20, 21,  28, 29, 30]
+    # idyntree urdf joint order (generator and dynComp class)
+    # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat, RHipLat, RHipYaw, RHipSag, RKneeSag,
+    # RAnkSag, RAnkLat, WaistLat, WaistSag, WaistYaw, LShSag LShLat, LShYaw, LElbj, LForearmPlate,
+    # LWrj1, LWrj2, NeckYawj, NeckPitchj, RShSag, RShLat, RShYaw, RElbj, RForearmPlate, RWrj1, RWrj2
+    # mapping to urdf joints in indices:
+    csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
+                          21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+
+    print(np.array(jointNames)[csv_T_urdf_indices])
+
+    config['N_DOFS'] = len(jointNames)
 
     file = os.path.join(dir, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(file)
@@ -55,17 +77,15 @@ def readCSV(dir, config, plot):
     dofs_file = len(f[1])//7
 
     for dof in range(0, config['N_DOFS']):
-        out['target_positions'][:, dof] = f[:, dof]   #position reference
-        out['positions'][:, dof] = f[:, dof+dofs_file*2]   #motor encoders
-        out['torques'][:, dof] = f[:, dof+dofs_file*4]   #torque sensors
+        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof]]   #position reference
+        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*2]   #motor encoders
+        out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*4]   #torque sensors
         ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
         ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
-    #TODO: check sensor directions
-    #out['torques'][:, 3] *= -1
-
     file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)
+    out['FTleft'] = np.empty( (f.shape[0], 6) )   #FT left foot, 3 force, 3 torque values
     out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot, 3 force, 3 torque values
     out['IMUrpy'] = np.empty( (f.shape[0], 3) )    #IMU orientation, r,p,y
     out['IMUlinAcc'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
@@ -104,12 +124,11 @@ def readCSV(dir, config, plot):
             #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
 
             #correct rotation estimation as well
-            for j in range(0, out['IMUrpy'].shape[0]):
-                out['IMUrpy'][j, 0] += np.pi
+            #for j in range(0, out['IMUrpy'].shape[0]):
+            #    out['IMUrpy'][j, 0] += np.pi
 
         '''
         #use other IMU and take average
-        out['IMUlinAcc'][:, i] *= (9.81/1.2)   #scaling shouldn't be necessary...
         out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
         '''
         out['IMUlinAcc'] = out['IMUlinAcc2']
@@ -118,12 +137,18 @@ def readCSV(dir, config, plot):
         ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
     ax5 = fig.add_subplot(3,2,5)
+    ax6 = fig.add_subplot(3,2,6)
     ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
-    #hardware and gazebo seem to have opposite sign
+    #hardware and gazebo seem to have different sign
     if is_hw:
-        #FTleft 3:9
-        #FTright 9:15
+        out['FTleft'][:, 0] = -f[:, 3]*0
+        out['FTleft'][:, 1] = -f[:, 4]*0
+        out['FTleft'][:, 2] = f[:, 5]
+
+        out['FTleft'][:, 3] = -f[:, 6]
+        out['FTleft'][:, 4] = -f[:, 7]
+        out['FTleft'][:, 5] = -f[:, 8]
 
         out['FTright'][:, 0] = -f[:, 9]*0
         out['FTright'][:, 1] = -f[:, 10]*0
@@ -132,23 +157,24 @@ def readCSV(dir, config, plot):
         out['FTright'][:, 3] = -f[:, 12]
         out['FTright'][:, 4] = -f[:, 13]
         out['FTright'][:, 5] = -f[:, 14]
-        out['FTright'][:, 0:6] *= 0.7
 
         #FTtoWorld = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
         #for j in range(0, out['FTright'].shape[0]):
         #    out['FTright'][j, 0:3] = FTtoWorld.dot(out['FTright'][j, 0:3])
         #    out['FTright'][j, 3:6] = FTtoWorld.dot(out['FTright'][j, 3:6])
     else:
+        out['FTleft'][:, 0:6] = f[:, 3:9]
         out['FTright'][:, 0:6] = f[:, 9:15]
 
     for i in range(0,6):
-        ax5.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
+        ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
+        ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
     #set titles and enable legends for each subplot
-    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right']
+    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right', 'FT left']
     for i in range(0,5):
         plt.subplot(321+i)
-        eval('ax{}'.format(1+i)).legend(loc='best', fancybox=True, fontsize=10, title='')
+        eval('ax{}'.format(1+i)).legend(fancybox=True, fontsize=10, title='')
         plt.title(t[i])
 
     fig.tight_layout()
@@ -174,7 +200,6 @@ if __name__ == '__main__':
             config = yaml.load(stream)
         except yaml.YAMLError as exc:
             print(exc)
-    config['N_DOFS'] = 6   #walkman leg
     config['useDeg'] = 0
     config['model'] = args.model
 
@@ -224,6 +249,7 @@ if __name__ == '__main__':
     out['contacts'] = np.array({'r_leg_ft': out['FTright']})
     out['base_rpy'] = out['IMUrpy']
 
+    #simulate with iDynTree if we're using gazebo data
     if not is_hw:
         #use all data
         old_skip = config['skip_samples']

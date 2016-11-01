@@ -49,7 +49,7 @@ grayscale_6 = [
 
 #set some more colors for higher DOF
 from palettable.tableau import Tableau_10, Tableau_20
-colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
+colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
 
 class OutputConsole(object):
     @staticmethod
@@ -312,8 +312,12 @@ class OutputConsole(object):
             print("Per-link physical consistency (a priori): {}".format(cons_apriori))
             if False in list(cons_apriori.values()):
                 print(Fore.RED + "a priori parameters not consistent!" + Fore.RESET)
-            print("Per-link physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)))
-            print("Per-link full physical consistency (identified): {}".format(idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)))
+
+            consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
+            print("Per-link physical consistency (identified): {}".format(consistency))
+
+            consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
+            print("Per-link full physical consistency (identified): {}".format(consistency))
 
         print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
 

@@ -27,10 +27,8 @@ class Model(object):
             sys.exit()
 
         # load also with new model class for some functions
-        self.idyn_model = iDynTree.Model()
-        iDynTree.modelFromURDF(urdf_file, self.idyn_model)
-        if self.opt['verbose']:
-            print('loaded model {}'.format(urdf_file))
+        #self.idyn_model = iDynTree.Model()
+        #iDynTree.modelFromURDF(urdf_file, self.idyn_model)
 
         #viz = iDynTree.Visualizer()
         #viz.addModel(self.idyn_model, 'model')
@@ -40,10 +38,21 @@ class Model(object):
         #    viz.draw()
         #viz.close()
 
+        if self.opt['verbose']:
+            print('loaded model {}'.format(urdf_file))
+
         # define what regressor type
         if regressor_file:
             with open(regressor_file, 'r') as file:
                regrXml = file.read()
+
+            self.jointNames = []
+            import xml.etree.ElementTree as ET
+            tree = ET.fromstring(regrXml)
+            for l in tree.iter():
+                if l.tag == 'joint':
+                    self.jointNames.append(l.text)
+            self.N_DOFS = len(self.jointNames)
         else:
             # (default for all joints)
             if self.opt['floating_base']:
@@ -64,23 +73,22 @@ class Model(object):
         self.generator.loadRegressorStructureFromString(regrXml)
         self.regrXml = regrXml
 
-        # TODO: this and the following are not dependent on joints specified in regressor (but
-        # uses all from model file)!
-        self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+        if not regressor_file:
+            self.jointNames = self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")
+            self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+
+        # TODO: reported dofs and links are not dependent on joints specified in regressor (but
+        # uses all from model file)
+        # dynComp simulates with all joints regardless of regressor, regressor rows should be as specified
         if self.opt['verbose']:
             print('# DOFs: {}'.format(self.N_DOFS))
-
+            print('Joints: {}'.format(self.jointNames))
+            #print('Joints: {}'.format(self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")))
+            #print('\nJoints: {}'.format([self.idyn_model.getJointName(i) for i in range(0, self.idyn_model.getNrOfDOFs())]))
 
         self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         if self.opt['verbose']:
-            print('# links: {} ({} fake)'.format(self.N_LINKS+self.generator.getNrOfFakeLinks(),
-                                             self.generator.getNrOfFakeLinks()))
-
-        self.link_names = []
-        for i in range(0, self.N_LINKS):
-            self.link_names.append(self.idyn_model.getLinkName(i))
-        if self.opt['verbose']:
-            print('({})'.format(self.link_names))
+            print('# links: {} (+ {} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks()))
 
         # Get the number of outputs of the regressor
         # (should be #links - #fakeLinks)
@@ -88,19 +96,25 @@ class Model(object):
         if self.opt['verbose']:
             print('# outputs: {}'.format(self.N_OUT))
 
+        self.linkNames = []
+        for i in range(0, self.N_LINKS):
+            self.linkNames.append(self.generator.getDescriptionOfOutput(i))
+        if self.opt['verbose']:
+            print('({})'.format(self.linkNames))
+
+
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
         if self.opt['verbose']:
             print('# params: {}'.format(self.num_params))
 
         self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
-        self.jointNames = [self.generator.getDescriptionOfDegreeOfFreedom(dof) for dof in range(0, self.N_DOFS)]
 
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
         if opt['simulateTorques'] or opt['useAPriori'] or opt['floating_base']:
-            self.dynComp = iDynTree.DynamicsComputations();
-            self.dynComp.loadRobotModelFromFile(self.urdf_file);
+            self.dynComp = iDynTree.DynamicsComputations()
+            self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
         # get model parameters
         xStdModel = iDynTree.VectorDynSize(self.num_params)
@@ -636,6 +650,6 @@ class Model(object):
                 linkConds.append(10e15)
             '''
 
-        print("Condition numbers of link sub-regressors: [{}]".format(linkConds))
+        print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds)))
 
         return linkConds

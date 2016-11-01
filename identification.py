@@ -76,7 +76,7 @@ class Identification(object):
         self.data.init_from_files(measurements_files)
 
         self.paramHelpers = helpers.ParamHelpers(self.model.num_params)
-        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.link_names)
+        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames)
 
         self.tauEstimated = list()
         self.res_error = 100
@@ -129,7 +129,7 @@ class Identification(object):
 
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file,
                                              output_urdf=self.model.urdf_file + '.tmp',
-                                             new_params=self.model.xStd, link_names=self.model.link_names)
+                                             new_params=self.model.xStd, link_names=self.model.linkNames)
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 
@@ -1197,7 +1197,7 @@ def main():
             print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
             idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
-                                        new_params=idf.model.xStd, link_names=idf.model.link_names)
+                                        new_params=idf.model.xStd, link_names=idf.model.linkNames)
 
     OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques()

@@ -95,9 +95,7 @@ class Model(object):
             else:
                 print('# outputs: {}'.format(self.N_OUT))
 
-        self.linkNames = []
-        for i in range(0, self.N_OUT):
-            self.linkNames.append(self.generator.getDescriptionOfOutput(i))
+        self.linkNames = self.generator.getDescriptionOfLinks().split()
         if self.opt['verbose']:
             print('({})'.format(self.linkNames))
 

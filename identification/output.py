@@ -394,7 +394,7 @@ class OutputMatplotlib(object):
                             ax.plot(d['time'], d['data'][data_i][:, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls)
                     else:
                         #data vector
-                        ax.plot(d['time'], d['data'][d_i], label=d['title'], color=colors[0], alpha=1-(data_i/2.0))
+                        ax.plot(d['time'], d['data'][data_i], label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
 
                 ax.grid(b=True, which='both', color='0.4')
                 if 'y_label' in group:

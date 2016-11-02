@@ -155,6 +155,7 @@ filterRegressor: 0
 createPlots: 1               #create or show plots of measurements and estimated values
 outputModule: 'html'         #how to output plots and other stuff ['matplotlib', 'html]
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
+plotPerJoint: 1              #plot each joint with error in one graph
 
 # self.options for console output
 showMemUsage: 0              #print used memory for different variables

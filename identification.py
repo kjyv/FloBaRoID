@@ -120,6 +120,7 @@ class Identification(object):
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
+
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
         # have inverse dynamics yet, so we have to go over a new urdf file for now)
         import os
@@ -173,6 +174,7 @@ class Identification(object):
 
 
     def findStdFromBaseParameters(self):
+        '''find std parameter from base parameters (simply projection method)'''
         # Note: assumes that xBase is still in error form if using a priori
         # i.e. don't call after getBaseParamsFromParamError
 
@@ -384,9 +386,7 @@ class Identification(object):
 
 
     def findStdFromBaseEssParameters(self):
-        """
-        Find essential standard parameters from previously determined base essential parameters.
-        """
+        """ Find essential standard parameters from previously determined base essential parameters. """
 
         with helpers.Timer() as t:
             # get the choice of indices into the std params of the independent columns.
@@ -458,7 +458,8 @@ class Identification(object):
 
 
     def identifyBaseParameters(self, YBase=None, tau=None):
-        """use previously computed regressors and identify base parameter vector using ordinary or weighted least squares."""
+        """use previously computed regressors and identify base parameter vector using ordinary or
+           weighted least squares."""
 
         if YBase is None:
             YBase = self.model.YBase
@@ -527,6 +528,7 @@ class Identification(object):
 
     def identifyStandardParameters(self):
         """Identify standard parameters directly with non-singular standard regressor."""
+
         with helpers.Timer() as t:
             U, s, VH = la.svd(self.model.YStd, full_matrices=False)
             nb = self.model.num_base_params
@@ -563,6 +565,7 @@ class Identification(object):
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
+
         with helpers.Timer() as t:
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
@@ -587,8 +590,9 @@ class Identification(object):
 
 
     def initSDP_LMIs(self):
-        # initialize LMI matrices to set physical consistency constraints for SDP solver
-        # based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
+        ''' initialize LMI matrices to set physical consistency constraints for SDP solver
+            based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
+        '''
 
         with helpers.Timer() as t:
             if self.opt['verbose']:
@@ -737,9 +741,10 @@ class Identification(object):
 
 
     def identifyFeasibleStandardParameters(self):
+        ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
+            feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
+        '''
         with helpers.Timer() as t:
-            # use SDP optimzation to solve constrained OLS to find globally optimal physically
-            # feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
             if self.opt['useAPriori']:
                 print("Please disable using a priori parameters when using constrained optimization.")
                 sys.exit(1)
@@ -765,6 +770,7 @@ class Identification(object):
             Kd = self.model.linear_deps
             K = (Pb.T + Kd * Pd.T)
             """
+            import time
             K = Matrix(self.model.Binv)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -819,9 +825,10 @@ class Identification(object):
 
 
     def identifyFeasibleBaseParameters(self):
+        ''' use SDP optimzation to solve OLS to find physically feasible base parameters (i.e. for
+            which a consistent std solution exists), based on code from Sousa, 2014
+        '''
         with helpers.Timer() as t:
-            # use SDP optimzation to solve OLS to find physically feasible base parameters (i.e. for
-            # which a consistent std solution exists), based on code from Sousa, 2014
             if self.opt['useAPriori']:
                 print("Please disable using a priori parameters when using constrained optimization.")
                 sys.exit(1)
@@ -912,8 +919,8 @@ class Identification(object):
 
 
     def findFeasibleStdFromFeasibleBase(self, xBase):
-        # find a std feasible solution for feasible base solution
-        # (exists per definition?)
+        ''' find a std feasible solution for feasible base solution (exists per definition?)'''
+
         if self.opt['useAPriori']:
             print("Please disable using a priori parameters when using constrained optimization.")
             sys.exit(1)
@@ -948,8 +955,8 @@ class Identification(object):
 
 
     def findFeasibleStdFromStd(self, xStd):
-        # find closest feasible std solution for some std parameters
-        # (increases error)
+        ''' find closest feasible std solution for some std parameters (increases error) '''
+
         if self.opt['useAPriori']:
             print("Please disable using a priori parameters when using constrained optimization.")
             sys.exit(1)
@@ -984,6 +991,8 @@ class Identification(object):
 
 
     def estimateParameters(self):
+        '''identify parameters using data and regressor (method depends on chosen options)'''
+
         if not self.data.num_used_samples > self.model.num_params*2 \
             and 'selectingBlocks' in self.opt and not self.opt['selectingBlocks']:
             print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
@@ -1030,7 +1039,7 @@ class Identification(object):
 
 
     def plot(self):
-        """Display some torque plots."""
+        """Create state and torque plots."""
 
         rel_time = self.model.T-self.model.T[0]
         if self.validation_file:
@@ -1056,37 +1065,62 @@ class Identification(object):
                 tauEstimatedValidation = self.tauEstimatedValidation
                 tauMeasuredValidation = self.tauMeasuredValidation
 
-        datasets = [
-            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-              'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
-              'dataset':
-              [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
-               {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
-               {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
-              ]
-            },
-            { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-              'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
-              'dataset':
-              [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
-               {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
-              ]
-            },
-            { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
-              [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                'time': rel_time, 'title': 'Positions'},
-               {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                'time': rel_time, 'title': 'Velocities'},
-               {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                'time': rel_time, 'title': 'Accelerations'},
-              ]
-            }
-        ]
+        if self.opt['plotPerJoint']:
+            datasets = []
+            for i in range(self.model.N_DOFS):
+                datasets.append(
+                    { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': ['Measured', 'Estimated', 'CAD'],
+                      'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                      'dataset': [
+                        {'data':[np.vstack((tauMeasured[:,i], tauEstimated[:,i], tauAPriori[:,i])).T],
+                         'time': rel_time, 'title': torque_labels[i]}
+                      ]
+                    }
+                )
 
-        if 'positions_raw' in self.data.samples:
-            datasets[2]['dataset'][0]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
-        if 'velocities_raw' in self.data.samples:
-            datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+            datasets.append(
+                { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
+                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Positions'},
+                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Velocities'},
+                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Accelerations'},
+                  ]
+                }
+            )
+        else:
+            datasets = [
+                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                  'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                  'dataset':
+                  [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
+                   {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
+                   {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
+                  ]
+                },
+                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                  'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                  'dataset':
+                  [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
+                   {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
+                  ]
+                },
+                { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
+                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Positions'},
+                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Velocities'},
+                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                    'time': rel_time, 'title': 'Accelerations'},
+                  ]
+                }
+            ]
+
+            if 'positions_raw' in self.data.samples:
+                datasets[2]['dataset'][0]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+            if 'velocities_raw' in self.data.samples:
+                datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
 
         if self.validation_file:
             datasets.append(

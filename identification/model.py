@@ -74,7 +74,8 @@ class Model(object):
         self.regrXml = regrXml
 
         if not regressor_file:
-            self.jointNames = self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")
+            import re
+            self.jointNames = re.sub(r"DOF Index: \d Name: ", "", self.generator.getDescriptionOfDegreesOfFreedom()).split()
             self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
 
         # TODO: reported dofs and links are not dependent on joints specified in regressor (but

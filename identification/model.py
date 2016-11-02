@@ -86,22 +86,24 @@ class Model(object):
             #print('Joints: {}'.format(self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")))
             #print('\nJoints: {}'.format([self.idyn_model.getJointName(i) for i in range(0, self.idyn_model.getNrOfDOFs())]))
 
-        self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
-        if self.opt['verbose']:
-            print('# links: {} (+ {} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks()))
-
         # Get the number of outputs of the regressor
-        # (should be #links - #fakeLinks)
+        # (should eq #dofs + #base vals)
         self.N_OUT = self.generator.getNrOfOutputs()
         if self.opt['verbose']:
-            print('# outputs: {}'.format(self.N_OUT))
+            if self.opt['floating_base']:
+                print('# outputs: {} (DOFs + 6 base)'.format(self.N_OUT))
+            else:
+                print('# outputs: {}'.format(self.N_OUT))
 
         self.linkNames = []
-        for i in range(0, self.N_LINKS):
+        for i in range(0, self.N_OUT):
             self.linkNames.append(self.generator.getDescriptionOfOutput(i))
         if self.opt['verbose']:
             print('({})'.format(self.linkNames))
 
+        self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+        if self.opt['verbose']:
+            print('# links: {} (+ {} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks()))
 
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
@@ -650,6 +652,6 @@ class Model(object):
                 linkConds.append(10e15)
             '''
 
-        print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds)))
+        print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds))))
 
         return linkConds

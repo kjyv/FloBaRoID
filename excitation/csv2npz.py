@@ -100,7 +100,7 @@ def readCSV(dir, config, plot):
         if is_hw:
             #use data fields for first IMU (IMUrpy)
             #out['IMUrpy'][:, i] = f[:, i]
-            out['IMUlinAcc'][:, i] = f[:, 18+i]
+            out['IMUlinAcc'][:, i] = f[:, 18+i]*9.81
             out['IMUrotVel'][:, i] = f[:, 21+i]
             #use data fields for second IMU (VNrpy)
             out['IMUrpy'][:, i] = f[:, 15+i]

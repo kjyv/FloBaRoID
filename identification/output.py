@@ -316,6 +316,7 @@ class OutputConsole(object):
             consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
             print("Per-link physical consistency (identified): {}".format(consistency))
 
+        if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
             print("Per-link full physical consistency (identified): {}".format(consistency))
 

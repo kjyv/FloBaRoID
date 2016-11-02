@@ -46,4 +46,23 @@
             <joint>RWrj2</joint>
         </joints>
     </jointTorqueDynamics>
+    <ignoredLink>l_foot_upper_left_link</ignoredLink>
+    <ignoredLink>l_foot_upper_right_link</ignoredLink>
+    <ignoredLink>l_foot_lower_left_link</ignoredLink>
+    <ignoredLink>l_foot_lower_right_link</ignoredLink>
+    <ignoredLink>r_foot_upper_left_link</ignoredLink>
+    <ignoredLink>r_foot_upper_right_link</ignoredLink>
+    <ignoredLink>r_foot_lower_left_link</ignoredLink>
+    <ignoredLink>r_foot_lower_right_link</ignoredLink>
+    <ignoredLink>l_sole</ignoredLink>
+    <ignoredLink>l_toe</ignoredLink>
+    <ignoredLink>r_sole</ignoredLink>
+    <ignoredLink>r_toe</ignoredLink>
+    <ignoredLink>RSoftHand</ignoredLink>
+    <ignoredLink>LSoftHand</ignoredLink>
+    <ignoredLink>imu_link</ignoredLink>
+    <ignoredLink>imu_link2</ignoredLink>
+    <ignoredLink>multisense/right_camera_frame</ignoredLink>
+    <ignoredLink>multisense/left_camera_frame</ignoredLink>
+    <ignoredLink>multisense/head_imu_link</ignoredLink>
 </regressor>

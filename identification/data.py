@@ -522,7 +522,7 @@ class Data(object):
 
 
                 grav_norm = np.mean(la.norm(IMUlinAccWorld, axis=1))
-                if grav_norm < 9.80:
+                if grav_norm < 9.81:
                     print('Warning: base acceleration is smaller than gravity ({})! Scaling'.format(grav_norm))
                     #scale up/down
                     IMUlinAccWorld *= 9.81/grav_norm

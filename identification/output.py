@@ -357,13 +357,15 @@ class OutputMatplotlib(object):
     def render(self, filename='output.html'):
         if self.html:
             # write matplotlib/d3 plots to html file
-            import matplotlib.pyplot as plt,mpld3
+            import matplotlib.pyplot as plt, mpld3
+            import matplotlib.axes
             from mpld3 import plugins
             from jinja2 import Environment, FileSystemLoader
         else:
             # show plots in separate matplotlib windows
             import matplotlib
             import matplotlib.pyplot as plt
+            import matplotlib.axes
         figures = list()
         for group in self.datasets:
             fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True)
@@ -378,7 +380,11 @@ class OutputMatplotlib(object):
             #plot each group of data
             for d_i in range(len(group['dataset'])):
                 d = group['dataset'][d_i]
-                ax = axes[d_i]
+                if not issubclass(type(axes), matplotlib.axes.SubplotBase):
+                    ax = axes[d_i]
+                else:
+                    ax = axes
+                    axes = [axes]
                 ax.set_title(d['title'])
                 if group['unified_scaling']:
                     ax.set_ylim([ymin, ymax])
@@ -411,7 +417,10 @@ class OutputMatplotlib(object):
                 #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
                 leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':7})
             else:
-                font_size = 12
+                if idf.opt['plotPerJoint']:
+                    font_size = 30
+                else:
+                    font_size = 12
                 matplotlib.rcParams.update({'font.size': font_size})
                 matplotlib.rcParams.update({'axes.labelsize': font_size - 2})
                 matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})

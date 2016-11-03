@@ -49,11 +49,26 @@ def readCSV(dir, config, plot):
     #                      16, 17, 18, 19, 20, 21,  28, 29, 30]
     # idyntree urdf joint order (generator and dynComp class)
     # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat, RHipLat, RHipYaw, RHipSag, RKneeSag,
-    # RAnkSag, RAnkLat, WaistLat, WaistSag, WaistYaw, LShSag LShLat, LShYaw, LElbj, LForearmPlate,
+    # RAnkSag, RAnkLat, WaistLat, WaistSag, WaistYaw, LShSag, LShLat, LShYaw, LElbj, LForearmPlate,
     # LWrj1, LWrj2, NeckYawj, NeckPitchj, RShSag, RShLat, RShYaw, RElbj, RForearmPlate, RWrj1, RWrj2
     # mapping to urdf joints in indices:
     csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+
+    joint_signs = np.array([-1, 1, 1, 1, -1, -1,      #LHipLat -
+                            -1, 1, 1, 1, -1, -1,      #RHipLat -
+                            1, 1, -1,                 #WaistLat -
+                            1, 1, -1, 1, 1, -1, -1,   #LShSag -
+                            1, 1,                     #NeckYawj -
+                            -1, 1, 1, -1, 1, 1, -1])  #RShSag -
+    joint_offsets = np.array([0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0, 0,
+                              0, 0, 0])
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -82,6 +97,9 @@ def readCSV(dir, config, plot):
         out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*4]   #torque sensors
         ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
         ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
+
+    #correct signs and offsets (for now)
+    out['torques'] = out['torques']*joint_signs + joint_offsets
 
     file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
     f = np.loadtxt(file)

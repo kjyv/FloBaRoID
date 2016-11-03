@@ -1067,6 +1067,7 @@ class Identification(object):
 
         if self.opt['plotPerJoint']:
             datasets = []
+            #add plots for each joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
                     { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': ['Measured', 'Estimated', 'CAD'],
@@ -1078,6 +1079,7 @@ class Identification(object):
                     }
                 )
 
+            #add state data combined
             datasets.append(
                 { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
                   [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],

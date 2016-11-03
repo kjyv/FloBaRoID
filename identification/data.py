@@ -12,7 +12,7 @@ from . import helpers
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
-
+from IPython import embed
 
 class Data(object):
     def __init__(self, opt):

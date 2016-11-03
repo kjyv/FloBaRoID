@@ -311,12 +311,12 @@ class Identification(object):
                     tauDiff = self.tauEstimated
                 pham_percent = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
                 error_increase_pham = pham_percent_start - pham_percent
-                print("error delta {}").format(error_increase_pham)
+                print("error delta {}".format(error_increase_pham))
 
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
                 # if error is to large at that point, advise to get more/better data
-                if ratio < 21:
+                if ratio < 30:
                     break
                 if use_error_criterion and error_increase_pham > 3.5:
                     break
@@ -434,7 +434,7 @@ class Identification(object):
                 for p in self.xStdEssential:
                     if p == 0:
                         v = 0.1
-                        p_start = idx/10*10
+                        p_start = idx//10*10
                         if idx % 10 in [1,2,3]:   #com value
                             v = np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1
                         elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
@@ -1079,12 +1079,20 @@ class Identification(object):
                     }
                 )
 
-            #add state data combined
+            # positions per joint
+            for i in range(self.model.N_DOFS):
+                datasets.append(
+                    { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Positions'], 'dataset':
+                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i]],
+                        'time': rel_time, 'title': self.model.jointNames[i]},
+                      ]
+                    }
+                )
+
+            # vel and acc combined
             datasets.append(
-                { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
-                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
-                    'time': rel_time, 'title': 'Positions'},
-                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                { 'unified_scaling': False, 'y_label': 'rad/s (/s2)', 'labels': self.model.jointNames, 'dataset':
+                  [{'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
                     'time': rel_time, 'title': 'Velocities'},
                    {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
                     'time': rel_time, 'title': 'Accelerations'},

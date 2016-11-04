@@ -530,10 +530,6 @@ class Data(object):
                 # subtract gravity vector
                 #IMUlinAccWorld -= np.array([0,0,-9.81])
 
-                if la.norm(IMUlinAccWorld[:, 0]) > 0.1:
-                    print("Warning: proper base acceleration not zero at time 0 " \
-                          "(assuming start at zero, integrated velocity will be wrong)!")
-
                 #try to skip initial values until close to 0 acceleration time is found
                 if self.opt['waitForZeroAcc']:
                     means = np.mean(IMUlinAccWorld, axis=0)
@@ -549,6 +545,10 @@ class Data(object):
 
                     IMUlinAccWorld[:start, :] = 0
                     IMUlinAccWorld += means
+                else:
+                    if la.norm(IMUlinAccWorld[:, 0]) > 0.1:
+                        print("Warning: proper base acceleration not zero at time 0 " \
+                              "(assuming start at zero, integrated velocity will be wrong)!")
 
                 # subtract means, includes wrong gravity offset and other static offsets
                 IMUlinAccWorld -= np.mean(IMUlinAccWorld, axis=0)
@@ -563,6 +563,7 @@ class Data(object):
                 # integrate linear acceleration to get velocity
                 for j in range(0, 3):
                     IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAcc[:, j], T, initial=0)
+                    IMUlinVel[:, j] -= np.mean(IMUlinVel[:, j])   #indefinite integral, better constant correction?
                     #IMUlinVel[j, :] = R.T.dot(IMUlinVel[j, :])
 
             # get rotational acceleration as simple derivative of velocity

@@ -28,10 +28,64 @@ from identification.model import Model
 
 from IPython import embed
 
-sampleTime = 0.005   #200 Hz
 is_hw = 1
 
-def readCSV(dir, config, plot):
+def readCentauroCSV(dir, config, plot):
+    #names in order of the supplied data
+    jointNames = ['torso_yaw', 'j_arm2_1', 'j_arm2_2', 'j_arm2_3', 'j_arm2_4', 'j_arm2_5', 'j_arm2_6', 'j_arm2_7', 'j_arm1_1', 'j_arm1_2', 'j_arm1_3', 'j_arm1_4', 'j_arm1_5', 'j_arm1_6', 'j_arm1_7']
+    urdf_jointOrder = [0, 8,9,10,11,12,13,14, 1,2,3,4,5,6,7]
+
+    config['N_DOFS'] = len(jointNames)
+
+    out = {}
+
+    if plot:
+        fig = plt.figure()
+        ax1 = fig.add_subplot(2,1,1) # three rows, two columns, first plot
+        ax2 = fig.add_subplot(2,1,2)
+
+    #read one file per joint
+    for dof in urdf_jointOrder:
+        file = os.path.join(dir, 'CentAcESC_{}_log.txt'.format(dof+1))
+        f = np.loadtxt(file)
+
+        if dof == 0:
+            # generate some empty arrays, will be calculated in preprocess()
+            out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
+            out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
+            out['torques'] = np.empty( (f.shape[0], config['N_DOFS']) )
+            out['velocities'] = np.zeros_like(out['positions'])
+            out['accelerations'] = np.zeros_like(out['positions'])
+            out['times'] = np.empty( f.shape[0] )
+            #out['times'][:] = np.arange(0, f.shape[0])*sampleTime
+            out['times'][:] = f[:, 0]/1e9
+
+        #read data
+        out['target_positions'][:, dof] = f[:, 17]       #position reference
+        out['positions'][:, dof] = f[:, 8]  #link encoders
+        out['torques'][:, dof] = f[:, 12]    #torque sensors
+
+        if plot:
+            ax1.plot(out['times'][::4], out['positions'][::4, dof], label=jointNames[dof])
+            ax2.plot(out['times'][::4], out['torques'][::4, dof], label=jointNames[dof])
+
+    #correct signs and offsets (for now)
+    #out['torques'] = out['torques']*joint_signs + joint_offsets
+
+    if plot:
+        #set titles and enable legends for each subplot
+        t = ['positions', 'torques']
+        for i in range(0,2):
+            plt.subplot(211+i)
+            eval('ax{}'.format(1+i)).legend(fancybox=True, fontsize=10, title='')
+            plt.title(t[i])
+
+        fig.tight_layout()
+        plt.show()
+
+    return out
+
+def readWalkmanCSV(dir, config, plot):
     out = {}
     #field order in csv file
     jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R',
@@ -86,9 +140,10 @@ def readCSV(dir, config, plot):
     out['velocities'] = np.zeros_like(out['positions'])
     out['accelerations'] = np.zeros_like(out['positions'])
 
-    fig = plt.figure()
-    ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
-    ax2 = fig.add_subplot(3,2,2)
+    if plot:
+        fig = plt.figure()
+        ax1 = fig.add_subplot(3,2,1) # three rows, two columns, first plot
+        ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])//7
 
     for dof in range(0, config['N_DOFS']):
@@ -110,10 +165,11 @@ def readCSV(dir, config, plot):
     out['IMUlinAcc2'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
     out['IMUrotVel'] = np.empty( (f.shape[0], 3) ) #IMU rotational velocity
 
-    ax3 = fig.add_subplot(3,2,3)
-    ax4 = fig.add_subplot(3,2,4)
-    rpy_labels = ['r','p', 'y']
-    acc_labels = ['x', 'y', 'z']
+    if plot:
+        ax3 = fig.add_subplot(3,2,3)
+        ax4 = fig.add_subplot(3,2,4)
+        rpy_labels = ['r','p', 'y']
+        acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         if is_hw:
             #use data fields for first IMU (IMUrpy)
@@ -151,12 +207,14 @@ def readCSV(dir, config, plot):
         '''
         out['IMUlinAcc'] = out['IMUlinAcc2']
 
-        ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
-        ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
+        if plot:
+            ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
+            ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
 
-    ax5 = fig.add_subplot(3,2,5)
-    ax6 = fig.add_subplot(3,2,6)
-    ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
+    if plot:
+        ax5 = fig.add_subplot(3,2,5)
+        ax6 = fig.add_subplot(3,2,6)
+        ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
     #hardware and gazebo seem to have different sign
     if is_hw:
@@ -184,20 +242,20 @@ def readCSV(dir, config, plot):
         out['FTleft'][:, 0:6] = f[:, 3:9]
         out['FTright'][:, 0:6] = f[:, 9:15]
 
-    for i in range(0,6):
-        ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
-        ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
-
-    #set titles and enable legends for each subplot
-    t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right', 'FT left']
-    for i in range(0,5):
-        plt.subplot(321+i)
-        eval('ax{}'.format(1+i)).legend(fancybox=True, fontsize=10, title='')
-        plt.title(t[i])
-
-    fig.tight_layout()
-
     if plot:
+        for i in range(0,6):
+            ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
+            ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
+
+        #set titles and enable legends for each subplot
+        t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right', 'FT left']
+        for i in range(0,5):
+            plt.subplot(321+i)
+            eval('ax{}'.format(1+i)).legend(fancybox=True, fontsize=10, title='')
+            plt.title(t[i])
+
+        fig.tight_layout()
+
         plt.show()
 
     return out
@@ -209,6 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--outfile', type=str, help='the filename to save the measurements to')
     parser.add_argument('--plot', help='whether to plot the data', action='store_true')
+    parser.add_argument('--robot', required=True, help='which robot to import data for (walkman, centauro)', type=str)
     parser.set_defaults(outfile='measurements.npz', plot=False)
     args = parser.parse_args()
 
@@ -221,51 +280,63 @@ if __name__ == '__main__':
     config['useDeg'] = 0
     config['model'] = args.model
 
-    out = readCSV(args.measurements, config, args.plot)
+    if args.robot == 'centauro':
+        out = readCentauroCSV(args.measurements, config, args.plot)
+        sampleTime = np.mean(np.diff(out['times']))
+    elif args.robot == 'walkman':
+        sampleTime = 0.005   #200 Hz
+        out = readWalkmanCSV(args.measurements, config, args.plot)
     out['frequency'] = 1.0/sampleTime
     data = Data(config)
 
     #init empty arrays for preprocess
     out['torques_raw'] = np.empty_like( out['torques'])
-    out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
-    out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
 
     #filter, diff, integrate
-    data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
-                    Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
-                    Fs=out['frequency'], IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'],
-                    IMUlinAcc=out['IMUlinAcc'], IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'],
-                    FT=[out['FTright']])
+    if config['floating_base']:
+        out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
+        out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
+        data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
+                        Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
+                        Fs=out['frequency'], IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'],
+                        IMUlinAcc=out['IMUlinAcc'], IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'],
+                        FT=[out['FTright']])
 
-    if args.plot:
-        fig = plt.figure()
-        ax1 = fig.add_subplot(2,1,1)
-        ax1.plot(out['times'], out['IMUlinAcc'])
-        plt.subplot(211)
-        plt.title("linear accelerations (w/o gravity)")
-        ax2 = fig.add_subplot(2,1,2)
-        ax2.plot(out['times'], out['IMUlinVel'])
-        plt.subplot(212)
-        plt.title("linear velocities")
-        fig.tight_layout()
-        plt.show()
+        if args.plot:
+            fig = plt.figure()
+            ax1 = fig.add_subplot(2,1,1)
+            ax1.plot(out['times'], out['IMUlinAcc'])
+            plt.subplot(211)
+            plt.title("linear accelerations (w/o gravity)")
+            ax2 = fig.add_subplot(2,1,2)
+            ax2.plot(out['times'], out['IMUlinVel'])
+            plt.subplot(212)
+            plt.title("linear velocities")
+            fig.tight_layout()
+            plt.show()
 
-        fig = plt.figure()
-        ax1 = fig.add_subplot(2,1,1)
-        ax1.plot(out['times'], out['IMUrotVel'])
-        plt.subplot(211)
-        plt.title("rotational velocities")
-        ax2 = fig.add_subplot(2,1,2)
-        ax2.plot(out['times'], out['IMUrotAcc'])
-        plt.subplot(212)
-        plt.title("rotational accelerations")
-        fig.tight_layout()
-        plt.show()
+            fig = plt.figure()
+            ax1 = fig.add_subplot(2,1,1)
+            ax1.plot(out['times'], out['IMUrotVel'])
+            plt.subplot(211)
+            plt.title("rotational velocities")
+            ax2 = fig.add_subplot(2,1,2)
+            ax2.plot(out['times'], out['IMUrotAcc'])
+            plt.subplot(212)
+            plt.title("rotational accelerations")
+            fig.tight_layout()
+            plt.show()
 
-    out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
-    out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )
-    out['contacts'] = np.array({'r_leg_ft': out['FTright']})
-    out['base_rpy'] = out['IMUrpy']
+        out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
+        out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )
+        out['contacts'] = np.array({'r_leg_ft': out['FTright']})
+        out['base_rpy'] = out['IMUrpy']
+
+    else:
+        #fixed base
+        data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
+                        Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
+                        Fs=out['frequency'])
 
     #simulate with iDynTree if we're using gazebo data
     if not is_hw:
@@ -284,11 +355,19 @@ if __name__ == '__main__':
         config['start_offset'] = old_offset
         config['simulateTorques'] = old_sim
 
-    np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
-             velocities=out['velocities'], velocities_raw=out['velocities'],
-             accelerations=out['accelerations'], torques=out['torques'],
-             torques_raw=out['torques_raw'], base_velocity=out['base_velocity'],
-             base_acceleration=out['base_acceleration'], base_rpy=out['base_rpy'],
-             contacts=out['contacts'], times=out['times'], frequency=out['frequency'])
+
+    if config['floating_base']:
+        np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
+                 velocities=out['velocities'], velocities_raw=out['velocities'],
+                 accelerations=out['accelerations'], torques=out['torques'],
+                 torques_raw=out['torques_raw'], base_velocity=out['base_velocity'],
+                 base_acceleration=out['base_acceleration'], base_rpy=out['base_rpy'],
+                 contacts=out['contacts'], times=out['times'], frequency=out['frequency'])
+    else:
+        np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
+                 velocities=out['velocities'], velocities_raw=out['velocities'],
+                 accelerations=out['accelerations'], torques=out['torques'],
+                 torques_raw=out['torques_raw'], times=out['times'], frequency=out['frequency'])
+
     print("Saved csv data as {}".format(args.outfile))
     print("Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency']))

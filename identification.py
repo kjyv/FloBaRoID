@@ -1038,7 +1038,7 @@ class Identification(object):
                 self.identifyStandardParameters()
 
 
-    def plot(self):
+    def plot(self, text=None):
         """Create state and torque plots."""
 
         rel_time = self.model.T-self.model.T[0]
@@ -1150,10 +1150,10 @@ class Identification(object):
         from identification.output import OutputMatplotlib
         if self.opt['outputModule'] == 'matplotlib':
             output = OutputMatplotlib(datasets, html=False)
-            output.render()
+            output.render(self)
         elif self.opt['outputModule'] == 'html':
-            output = OutputMatplotlib(datasets, html=True)
-            output.render()
+            output = OutputMatplotlib(datasets, html=True, text=text)
+            output.render(self)
             #output.runServer()
         else:
             print('No known output module given. Not creating plots!')
@@ -1200,52 +1200,71 @@ def main():
         except yaml.YAMLError as exc:
             print(exc)
 
-    idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
+    # capture console output
+    import contextlib
+    @contextlib.contextmanager
+    def capture():
+        import sys
+        from io import StringIO
+        oldout,olderr = sys.stdout, sys.stderr
+        try:
+            out=[StringIO(), StringIO()]
+            sys.stdout,sys.stderr = out
+            yield out
+        finally:
+            sys.stdout,sys.stderr = oldout, olderr
+            out[0] = out[0].getvalue()
+            out[1] = out[1].getvalue()
 
-    if idf.opt['selectBlocksFromMeasurements']:
-        idf.opt['selectingBlocks'] = 1
-        old_essential_option = idf.opt['useEssentialParams']
-        idf.opt['useEssentialParams'] = 0
+    with capture() as out:
+        idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 
-        old_feasible_option = idf.opt['useConsistencyConstraints']
-        idf.opt['useConsistencyConstraints'] = 0
+        if idf.opt['selectBlocksFromMeasurements']:
+            idf.opt['selectingBlocks'] = 1
+            old_essential_option = idf.opt['useEssentialParams']
+            idf.opt['useEssentialParams'] = 0
 
-        # loop over input blocks and select good ones
-        while 1:
-            idf.estimateParameters()
-            idf.data.getBlockStats(idf.model)
-            idf.estimateRegressorTorques()
-            OutputConsole.render(idf, summary_only=True)
+            old_feasible_option = idf.opt['useConsistencyConstraints']
+            idf.opt['useConsistencyConstraints'] = 0
 
-            if idf.data.hasMoreSamples():
-                idf.data.getNextSampleBlock()
+            # loop over input blocks and select good ones
+            while 1:
+                idf.estimateParameters()
+                idf.data.getBlockStats(idf.model)
+                idf.estimateRegressorTorques()
+                OutputConsole.render(idf, summary_only=True)
+
+                if idf.data.hasMoreSamples():
+                    idf.data.getNextSampleBlock()
+                else:
+                    break
+
+            idf.data.selectBlocks()
+            idf.data.assembleSelectedBlocks()
+            idf.opt['selectingBlocks'] = 0
+            idf.opt['useEssentialParams'] = old_essential_option
+            idf.opt['useConsistencyConstraints'] = old_feasible_option
+
+        if idf.opt['removeNearZero']:
+            idf.data.removeNearZeroSamples()
+
+        if idf.opt['verbose']:
+            print("estimating output parameters...")
+        idf.estimateParameters()
+        idf.estimateRegressorTorques()
+
+        if args.model_output:
+            if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
+                print("can't create urdf file with estimated parameters since they are not physical consistent.")
             else:
-                break
+                idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
+                                            new_params=idf.model.xStd, link_names=idf.model.linkNames)
 
-        idf.data.selectBlocks()
-        idf.data.assembleSelectedBlocks()
-        idf.opt['selectingBlocks'] = 0
-        idf.opt['useEssentialParams'] = old_essential_option
-        idf.opt['useConsistencyConstraints'] = old_feasible_option
+        OutputConsole.render(idf)
+        if args.validation: idf.estimateValidationTorques()
+    #end capture
 
-    if idf.opt['removeNearZero']:
-        idf.data.removeNearZeroSamples()
-
-    if idf.opt['verbose']:
-        print("estimating output parameters...")
-    idf.estimateParameters()
-    idf.estimateRegressorTorques()
-
-    if args.model_output:
-        if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
-            print("can't create urdf file with estimated parameters since they are not physical consistent.")
-        else:
-            idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
-                                        new_params=idf.model.xStd, link_names=idf.model.linkNames)
-
-    OutputConsole.render(idf)
-    if args.validation: idf.estimateValidationTorques()
-    if idf.opt['createPlots']: idf.plot()
+    if idf.opt['createPlots']: idf.plot(text=out[0])
     if idf.opt['showMemUsage']: idf.printMemUsage()
 
 if __name__ == '__main__':

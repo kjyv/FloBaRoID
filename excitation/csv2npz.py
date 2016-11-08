@@ -110,7 +110,7 @@ def readWalkmanCSV(dir, config, plot):
 
     joint_signs = np.array([-1, 1, 1, 1, -1, -1,      #LHipLat -
                             -1, 1, 1, 1, -1, -1,      #RHipLat -
-                            1, 1, -1,                 #WaistLat -
+                            1, 1, 1,                  #WaistLat -
                             1, 1, -1, 1, 1, -1, -1,   #LShSag -
                             1, 1,                     #NeckYawj -
                             -1, 1, 1, -1, 1, 1, -1])  #RShSag -
@@ -149,8 +149,9 @@ def readWalkmanCSV(dir, config, plot):
         out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof]]   #position reference
         out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*2]   #motor encoders
         out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*4]   #torque sensors
-        ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
-        ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
+        if plot:
+            ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
+            ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
     #correct signs and offsets (for now)
     out['torques'] = out['torques']*joint_signs + joint_offsets

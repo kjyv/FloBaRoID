@@ -461,7 +461,7 @@ class OutputMatplotlib(object):
                                                loader=FileSystemLoader(os.path.join(path, '../output')),
                                                trim_blocks=False)
 
-            context = { 'figures': figures, 'text': self.text }
+            context = { 'figures': figures, 'text': self.text}
             outfile = os.path.join(path, '..', 'output', filename)
             with open(outfile, 'w') as f:
                 html = template_environment.get_template("templates/index.html").render(context)

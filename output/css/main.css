@@ -61,8 +61,10 @@ div {
     float: left;
 }
 
-pre {
+div#console {
+    white-space: pre;
     font-size: 0.7em;
+    font-family: monospace;
 }
 
 g.mpld3-baseaxes text.mpld3-text:first-of-type {

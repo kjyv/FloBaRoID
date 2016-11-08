@@ -61,6 +61,10 @@ div {
     float: left;
 }
 
+pre {
+    font-size: 0.7em;
+}
+
 g.mpld3-baseaxes text.mpld3-text:first-of-type {
     font-size: 15px;
 }

@@ -1082,7 +1082,7 @@ class Identification(object):
             # positions per joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
-                    { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Positions'], 'dataset':
+                    { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
                       [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i]],
                         'time': rel_time, 'title': self.model.jointNames[i]},
                       ]

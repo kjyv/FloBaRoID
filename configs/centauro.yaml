@@ -60,8 +60,8 @@ min_tol: 0.00001
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
-start_offset: 6000    #how many samples from the beginning of the (first) measurement are skipped
-skip_samples: 9    #how many values to skip before using the next sample
+start_offset: 6000    #how many samples from the beginning of each measurement file are skipped
+skip_samples: 6    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
@@ -140,6 +140,7 @@ filterRegressor: 0
 
 createPlots: 1               #create or show plots of measurements and estimated values
 outputModule: 'html'         # how to output plots and other stuff ['matplotlib', 'html]
+outputFilename: 'output_centauro.html'    #specify custom filename for html output
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint with error in one graph
 

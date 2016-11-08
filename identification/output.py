@@ -307,6 +307,8 @@ class OutputConsole(object):
             #print "unused blocks: {}".format(idf.unusedBlocks)
             print("condition number: {}".format(la.cond(idf.model.YBase)))
 
+        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
+
         if idf.opt['showStandardParams']:
             cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
             print("Per-link physical consistency (a priori): {}".format(cons_apriori))
@@ -319,8 +321,6 @@ class OutputConsole(object):
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
             print("Per-link full physical consistency (identified): {}".format(consistency))
-
-        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
 
         if idf.urdf_file_real:
             if idf.opt['showStandardParams']:
@@ -342,25 +342,35 @@ class OutputConsole(object):
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))
 
+        print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
+        # get percentual error (i.e. how big is the error relative to the measured magnitudes)
         idf.estimateRegressorTorques(estimateWith='urdf')   #estimate torques with CAD params
         idf.estimateRegressorTorques()   #estimate torques again with identified parameters
         idf.apriori_error = sla.norm(idf.tauAPriori-idf.model.tauMeasured)*100/sla.norm(idf.model.tauMeasured)
         idf.res_error = sla.norm(idf.tauEstimated-idf.model.tauMeasured)*100/sla.norm(idf.model.tauMeasured)
-        print("Relative residual error (torque prediction): {}% vs. A priori error: {}%".\
+        print("Relative mean residual error: {}% vs. A priori: {}%".\
                 format(idf.res_error, idf.apriori_error))
 
+        idf.abs_apriori_error = np.mean(sla.norm(idf.tauAPriori-idf.model.tauMeasured, axis=1))
+        idf.abs_res_error = np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
+        # get absolute error (i.e. how big is the mean torque prediction error in Nm)
+        print("Absolute mean residual error: {} Nm vs. A priori: {} Nm".format(idf.abs_res_error, idf.abs_apriori_error))
+
 class OutputMatplotlib(object):
-    def __init__(self, datasets, html=True):
+    def __init__(self, datasets, html=True, text=None):
         self.datasets = datasets
         self.html = html
+        self.text = text
 
-    def render(self, filename='output.html'):
+    def render(self, idf, filename='output.html'):
         if self.html:
             # write matplotlib/d3 plots to html file
             import matplotlib.pyplot as plt, mpld3
             import matplotlib.axes
             from mpld3 import plugins
             from jinja2 import Environment, FileSystemLoader
+            if idf.opt['outputFilename']:
+                filename = idf.opt['outputFilename']
         else:
             # show plots in separate matplotlib windows
             import matplotlib
@@ -451,8 +461,8 @@ class OutputMatplotlib(object):
                                                loader=FileSystemLoader(os.path.join(path, '../output')),
                                                trim_blocks=False)
 
-            context = { 'figures': figures }
-            outfile = os.path.join(path, '..', 'output', 'output.html')
+            context = { 'figures': figures, 'text': self.text }
+            outfile = os.path.join(path, '..', 'output', filename)
             with open(outfile, 'w') as f:
                 html = template_environment.get_template("templates/index.html").render(context)
                 f.write(html)

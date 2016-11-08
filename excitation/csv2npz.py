@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 #-*- coding: utf-8 -*-
 
-#read data from Przemek's Walk-Man walking csv files
-# (atm only one leg)
+#read data from different csv data files
 
 from __future__ import division
 from __future__ import print_function
@@ -188,7 +187,7 @@ def readWalkmanCSV(dir, config, plot):
 
         if is_hw:
             #rotate VNrpy vals to robot frame (as it is physically rotated)
-            #TODO: should be pi,0,0 according to Przemek but 0,0,pi seems to be better?
+            #TODO: should be pi,0,0 according to printed coordinate systems but 0,0,pi seems better?
             robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
             for j in range(0, out['IMUlinAcc2'].shape[0]):
                 out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])

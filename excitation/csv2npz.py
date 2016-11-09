@@ -92,6 +92,8 @@ def readWalkmanCSV(dir, config, plot):
                   'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1',
                   'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj',
                   'RForearmPlate', 'RWrj1', 'RWrj2']
+    #fields to leave out
+    ignoreJoints = [jointNames.index('WaistLat'), jointNames.index('NeckYawj'), jointNames.index('NeckPitchj')]
 
     # idyntree urdf joint order (model class):
     # WaistLat, WaistSag, WaistYaw, NeckYawj, NeckPitchj, RHipLat, RHipYaw, RHipSag, RKneeSag,
@@ -110,22 +112,22 @@ def readWalkmanCSV(dir, config, plot):
 
     joint_signs = np.array([-1, 1, 1, 1, -1, -1,      #LHipLat -
                             -1, 1, 1, 1, -1, -1,      #RHipLat -
-                            1, 1, 1,                  #WaistLat -
+                            #1,                       #WaistLat
+                            1, 1,                     #WaistSag -
                             1, 1, -1, 1, 1, -1, -1,   #LShSag -
-                            1, 1,                     #NeckYawj -
+                            #1, 1,                     #NeckYawj -
                             -1, 1, 1, -1, 1, 1, -1])  #RShSag -
-    joint_offsets = np.array([0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0, 0,
-                              0, 0, 0])
+    joint_offsets = np.array([0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0,
+                              #-370,                  #WaistLat
+                              0, 0,
+                              0, 0, 0, 0, 0, 0, 0,
+                              #0, 0,
+                              0, 0, 0, 0, 0, 0, 0])
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
-    config['N_DOFS'] = len(jointNames)
+    config['N_DOFS'] = len(jointNames) - len(ignoreJoints)
 
     file = os.path.join(dir, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(file)
@@ -145,10 +147,14 @@ def readWalkmanCSV(dir, config, plot):
         ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])//7
 
+    skip=0
     for dof in range(0, config['N_DOFS']):
-        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof]]   #position reference
-        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*2]   #motor encoders
-        out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof]+dofs_file*4]   #torque sensors
+        if dof in ignoreJoints:
+            skip+=1
+
+        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]]   #position reference
+        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #motor encoders
+        out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
         if plot:
             ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
             ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])

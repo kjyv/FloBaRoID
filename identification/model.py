@@ -106,6 +106,8 @@ class Model(object):
 
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
+        self.num_inertial_params = self.num_params   #counted without offset params
+        if self.opt['identifyTorqueOffsets']: self.num_params += self.N_DOFS
         if self.opt['verbose']:
             print('# params: {}'.format(self.num_params))
 
@@ -118,9 +120,11 @@ class Model(object):
             self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
         # get model parameters
-        xStdModel = iDynTree.VectorDynSize(self.num_params)
+        xStdModel = iDynTree.VectorDynSize(self.num_inertial_params)
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
+        if self.opt['identifyTorqueOffsets']:
+            self.xStdModel = np.concatenate( (self.xStdModel, np.zeros(self.N_DOFS)) )
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -273,17 +277,23 @@ class Model(object):
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
 
                 # get (standard) regressor
-                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
+                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_inertial_params)
                 knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print("Error during numeric computation of regressor")
 
                 regressor = regressor.toNumPy()
-                #the base forces are expressed in the base frame for the regressor, so transform them
+                # the base forces are expressed in the base frame for the regressor, so transform them
+                # (inverse dynamics use world frame)
                 if self.opt['floating_base']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
+
+                # append unitary matrix to regressor so offsets can be identified separately
+                if self.opt['identifyTorqueOffsets']:
+                    offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), np.identity(self.N_DOFS)))
+                    regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
                 # stack on previous regressors
                 np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor)
@@ -406,8 +416,8 @@ class Model(object):
 
             if not n_samples:
                 n_samples = self.N_DOFS * 5000
-            R = np.array((self.N_OUT, self.num_params))
-            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_params)
+            R = np.array((self.N_OUT, self.num_inertial_params))
+            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_inertial_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
             if len(limits) > 0:
@@ -452,7 +462,12 @@ class Model(object):
                     A[0:3, :] = to_world.dot(A[0:3, :])
                     A[3:6, :] = to_world.dot(A[3:6, :])
 
-                # add to previous regressors, linear dependency doesn't change
+                # append unitary matrix to regressor so offsets can be identified separately
+                if self.opt['identifyTorqueOffsets']:
+                    offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), np.identity(self.N_DOFS)))
+                    A = np.concatenate((A, offset_regressor), axis=1)
+
+                # add to previous regressors, linear dependencies don't change
                 # (if too many, saturation or accuracy problems?)
                 if i==0:
                     R = A.T.dot(A)
@@ -560,6 +575,10 @@ class Model(object):
                     symbols(p+'xz'), symbols(p+'yz'), symbols(p+'zz')
                    ]
             self.param_syms.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
+
+        if self.opt['identifyTorqueOffsets']:
+            for i in range(0,self.N_DOFS):
+                self.param_syms.extend([symbols('off_{}'.format(i))])
 
         #create symbolic equations for base param dependencies
         self.base_deps = np.dot(self.param_syms, self.B)

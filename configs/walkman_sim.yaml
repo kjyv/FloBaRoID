@@ -63,6 +63,9 @@ minVelocityPercentage: 0.1
 floating_base: 1
 base_link_name: 'Waist'
 
+# identify torque offsets as additional parameters
+identifyTorqueOffsets: 1
+
 # simulate torques from target values, don't use both
 simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques

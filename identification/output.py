@@ -90,6 +90,12 @@ class OutputConsole(object):
 
             # collect values for parameters
             description = idf.model.generator.getDescriptionOfParameters()
+            if idf.opt['identifyTorqueOffsets']:
+                for i in range(0, idf.model.N_DOFS):
+                    description += "Parameter {}: Torque offset of joint {}\n".format(
+                            i+idf.model.num_inertial_params,
+                            idf.model.jointNames[i]
+                    )
             idx_p = 0   #count (std) params
             idx_ep = 0  #count essential params
             lines = list()
@@ -104,7 +110,7 @@ class OutputConsole(object):
                 d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p]))
 
                 #print beginning of each link block in green
-                if idx_p % 10 == 0:
+                if idx_p % 10 == 0 and idx_p < idf.model.num_inertial_params:
                     d = Fore.GREEN + d
 
                 #get some error values for each parameter
@@ -319,16 +325,16 @@ class OutputConsole(object):
 
             consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
             if False in list(consistency.values()):
-                print("Identified parameters are not physical consistent")
-                print("Per-link physical consistency (identified): {}".format(consistency))
+                print("Identified parameters are not physical consistent,")
+                print("per-link physical consistency (identified): {}".format(consistency))
             else:
                 print("Identified parameters are physical consistent")
 
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
             if False in list(consistency.values()):
-                print("A priori parameters (w/ triangle inequality) are not physical consistent")
-                print("Per-link full physical consistency (identified): {}".format(consistency))
+                print("A priori parameters (w/ triangle inequality) are not physical consistent,")
+                print("per-link full physical consistency (identified): {}".format(consistency))
             else:
                 print("A priori parameters (w/ triangle inequality) are physical consistent")
 

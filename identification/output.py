@@ -307,20 +307,30 @@ class OutputConsole(object):
             #print "unused blocks: {}".format(idf.unusedBlocks)
             print("condition number: {}".format(la.cond(idf.model.YBase)))
 
-        print("Estimated overall mass: {} vs. apriori {}".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
+        print("Estimated overall mass: {} kg vs. apriori {} kg".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
 
         if idf.opt['showStandardParams']:
             cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
-            print("Per-link physical consistency (a priori): {}".format(cons_apriori))
             if False in list(cons_apriori.values()):
-                print(Fore.RED + "a priori parameters not consistent!" + Fore.RESET)
+                print(Fore.RED + "A priori parameters are not physical consistent!" + Fore.RESET)
+                print("Per-link physical consistency (a priori): {}".format(cons_apriori))
+            else:
+                print("A priori parameters are physical consistent")
 
             consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
-            print("Per-link physical consistency (identified): {}".format(consistency))
+            if False in list(consistency.values()):
+                print("Identified parameters are not physical consistent")
+                print("Per-link physical consistency (identified): {}".format(consistency))
+            else:
+                print("Identified parameters are physical consistent")
 
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
-            print("Per-link full physical consistency (identified): {}".format(consistency))
+            if False in list(consistency.values()):
+                print("A priori parameters (w/ triangle inequality) are not physical consistent")
+                print("Per-link full physical consistency (identified): {}".format(consistency))
+            else:
+                print("A priori parameters (w/ triangle inequality) are physical consistent")
 
         if idf.urdf_file_real:
             if idf.opt['showStandardParams']:
@@ -450,7 +460,7 @@ class OutputMatplotlib(object):
             if self.html:
                 plugins.clear(fig)
                 plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
-                                plugins.MousePosition(fontsize=14))
+                                plugins.MousePosition(fontsize=14, fmt=".5g"))
                 figures.append(mpld3.fig_to_html(fig))
             else:
                 plt.show()

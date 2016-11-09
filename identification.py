@@ -641,7 +641,7 @@ class Identification(object):
 
                 #for links that have too high condition number, don't change params
                 if self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']:
-                    print(Fore.YELLOW + 'skipping identification of link {}!'.format(i) + Fore.RESET)
+                    print(Fore.YELLOW + 'skipping identification of link {} ({})!'.format(i, self.model.linkNames[i]) + Fore.RESET)
                     # don't change mass
                     D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
                     D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
@@ -1089,7 +1089,8 @@ class Identification(object):
             for i in range(self.model.N_DOFS):
                 datasets.append(
                     { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
-                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i]],
+                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i],
+                                 self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i]],
                         'time': rel_time, 'title': self.model.jointNames[i]},
                       ]
                     }

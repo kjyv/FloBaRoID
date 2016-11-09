@@ -19,7 +19,7 @@
             <joint>RAnkLat</joint>
 
             <!-- waist -->
-            <joint>WaistLat</joint>
+            <!-- <joint>WaistLat</joint> locked so not revolute! -->
             <joint>WaistSag</joint>
             <joint>WaistYaw</joint>
 
@@ -33,8 +33,8 @@
             <joint>LWrj2</joint>
 
             <!-- head -->
-            <joint>NeckYawj</joint>
-            <joint>NeckPitchj</joint>
+            <!-- <joint>NeckYawj</joint>
+            <joint>NeckPitchj</joint> also locked -->
 
             <!-- right arm -->
             <joint>RShSag</joint>

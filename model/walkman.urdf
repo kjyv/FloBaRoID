@@ -302,7 +302,7 @@ and to define the end effectors of the robot-->
     <child link="torso"/>
     <origin rpy="0 0 0" xyz="0.0 0 0.0"/>
   </joint>
-  <joint name="WaistLat" type="revolute">
+  <joint name="WaistLat" type="fixed">
     <parent link="Waist"/>
     <child link="DWL"/>
     <origin rpy="0 0 0" xyz="0.1115 0 0.195982"/>
@@ -369,7 +369,7 @@ and to define the end effectors of the robot-->
     </collision>
   </link>
   <!-- JOINTS -->
-  <joint name="NeckYawj" type="revolute">
+  <joint name="NeckYawj" type="fixed">
     <parent link="DWYTorso"/>
     <child link="NeckYaw"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -378,7 +378,7 @@ and to define the end effectors of the robot-->
     <limit effort="120" lower="-0.610865238196" upper="0.610865238196" velocity="6.283"/>
     <dynamics damping="3.0" friction="0"/>
   </joint>
-  <joint name="NeckPitchj" type="revolute">
+  <joint name="NeckPitchj" type="fixed">
     <parent link="NeckYaw"/>
     <child link="NeckPitch"/>
     <origin rpy="0 0 0" xyz="0 0 0.117"/>

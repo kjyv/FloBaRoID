@@ -75,7 +75,7 @@ class Identification(object):
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
 
-        self.paramHelpers = helpers.ParamHelpers(self.model.num_params)
+        self.paramHelpers = helpers.ParamHelpers(self.model.num_inertial_params)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames)
 
         self.tauEstimated = list()

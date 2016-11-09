@@ -364,6 +364,7 @@ if __name__ == '__main__':
 
     if config['floating_base']:
         np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
+                 target_positions=out['target_positions'],
                  velocities=out['velocities'], velocities_raw=out['velocities'],
                  accelerations=out['accelerations'], torques=out['torques'],
                  torques_raw=out['torques_raw'], base_velocity=out['base_velocity'],

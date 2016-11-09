@@ -723,6 +723,12 @@ class Identification(object):
                             D_other_blocks.append( ub )
                             D_other_blocks.append( lb )
 
+            # symmetry constraints
+            if self.opt['symmetryConstraints']:
+                for (a, b, sign) in self.opt['symmetryConstraints']:
+                    D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]]))
+                    D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]]))
+
             """
             #friction constraints
             for i in range(dof):
@@ -816,7 +822,7 @@ class Identification(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with distance {} from OLS solution".format(u_star))
+                print("found std solution with distance {} from optimal OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -1200,71 +1206,68 @@ def main():
         except yaml.YAMLError as exc:
             print(exc)
 
-    # capture console output
-    import contextlib
-    @contextlib.contextmanager
-    def capture():
-        import sys
-        from io import StringIO
-        oldout,olderr = sys.stdout, sys.stderr
-        try:
-            out=[StringIO(), StringIO()]
-            sys.stdout,sys.stderr = out
-            yield out
-        finally:
-            sys.stdout,sys.stderr = oldout, olderr
-            out[0] = out[0].getvalue()
-            out[1] = out[1].getvalue()
+    #capture stdout and print
+    class Logger(object):
+        def __init__(self):
+            self.terminal = sys.stdout
+            self.log = ""
 
-    with capture() as out:
-        idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
+        def write(self, message):
+            self.terminal.write(message)
+            self.log += message
 
-        if idf.opt['selectBlocksFromMeasurements']:
-            idf.opt['selectingBlocks'] = 1
-            old_essential_option = idf.opt['useEssentialParams']
-            idf.opt['useEssentialParams'] = 0
+        def flush(self):
+            self.terminal.flush()
 
-            old_feasible_option = idf.opt['useConsistencyConstraints']
-            idf.opt['useConsistencyConstraints'] = 0
+    sys.stdout = Logger()
 
-            # loop over input blocks and select good ones
-            while 1:
-                idf.estimateParameters()
-                idf.data.getBlockStats(idf.model)
-                idf.estimateRegressorTorques()
-                OutputConsole.render(idf, summary_only=True)
+    idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 
-                if idf.data.hasMoreSamples():
-                    idf.data.getNextSampleBlock()
-                else:
-                    break
+    if idf.opt['selectBlocksFromMeasurements']:
+        idf.opt['selectingBlocks'] = 1
+        old_essential_option = idf.opt['useEssentialParams']
+        idf.opt['useEssentialParams'] = 0
 
-            idf.data.selectBlocks()
-            idf.data.assembleSelectedBlocks()
-            idf.opt['selectingBlocks'] = 0
-            idf.opt['useEssentialParams'] = old_essential_option
-            idf.opt['useConsistencyConstraints'] = old_feasible_option
+        old_feasible_option = idf.opt['useConsistencyConstraints']
+        idf.opt['useConsistencyConstraints'] = 0
 
-        if idf.opt['removeNearZero']:
-            idf.data.removeNearZeroSamples()
+        # loop over input blocks and select good ones
+        while 1:
+            idf.estimateParameters()
+            idf.data.getBlockStats(idf.model)
+            idf.estimateRegressorTorques()
+            OutputConsole.render(idf, summary_only=True)
 
-        if idf.opt['verbose']:
-            print("estimating output parameters...")
-        idf.estimateParameters()
-        idf.estimateRegressorTorques()
-
-        if args.model_output:
-            if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
-                print("can't create urdf file with estimated parameters since they are not physical consistent.")
+            if idf.data.hasMoreSamples():
+                idf.data.getNextSampleBlock()
             else:
-                idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
-                                            new_params=idf.model.xStd, link_names=idf.model.linkNames)
+                break
 
-        OutputConsole.render(idf)
-        if args.validation: idf.estimateValidationTorques()
-    #end capture
+        idf.data.selectBlocks()
+        idf.data.assembleSelectedBlocks()
+        idf.opt['selectingBlocks'] = 0
+        idf.opt['useEssentialParams'] = old_essential_option
+        idf.opt['useConsistencyConstraints'] = old_feasible_option
 
-    if idf.opt['createPlots']: idf.plot(text=out[0])
+    if idf.opt['removeNearZero']:
+        idf.data.removeNearZeroSamples()
+
+    if idf.opt['verbose']:
+        print("estimating output parameters...")
+    idf.estimateParameters()
+    idf.estimateRegressorTorques()
+
+    if args.model_output:
+        if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
+            print("can't create urdf file with estimated parameters since they are not physical consistent.")
+        else:
+            idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
+                                        new_params=idf.model.xStd, link_names=idf.model.linkNames)
+
+    OutputConsole.render(idf)
+    if args.validation: idf.estimateValidationTorques()
+
+    if idf.opt['createPlots']: idf.plot(text=sys.stdout.log)
     if idf.opt['showMemUsage']: idf.printMemUsage()
 
 if __name__ == '__main__':

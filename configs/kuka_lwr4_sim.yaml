@@ -112,6 +112,10 @@ limitMassAprioriBoundary: 1.0     #percentage of CAD value in both +- directions
 # (essential params or when using feasability constraints)
 dontIdentifyMasses: 0
 
+# define constraints for link symmetries (e.g. left and right arm),
+# tuples of two parameters ids each that should be equal and 1/-1 to allow negative symmetric
+symmetryConstraints: []
+
 ## other forms of OLS
 
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to

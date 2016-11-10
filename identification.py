@@ -1221,6 +1221,7 @@ def main():
             self.terminal.flush()
 
     sys.stdout = Logger()
+    logger = sys.stdout
 
     idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 
@@ -1268,7 +1269,7 @@ def main():
     OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques()
 
-    if idf.opt['createPlots']: idf.plot(text=sys.stdout.log)
+    if idf.opt['createPlots']: idf.plot(text=logger.log)
     if idf.opt['showMemUsage']: idf.printMemUsage()
 
 if __name__ == '__main__':

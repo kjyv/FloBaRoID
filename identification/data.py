@@ -48,7 +48,12 @@ class Data(object):
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
-                    m = np.load(fn, encoding='latin1', fix_imports=True)
+                    try:
+                        #python3
+                        m = np.load(fn, encoding='latin1', fix_imports=True)
+                    except:
+                        #python2.7
+                        m = np.load(fn)
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]
@@ -59,7 +64,8 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
+                                        if c != 'dummy_sim':
+                                            contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     self.measurements[k] = m[k]

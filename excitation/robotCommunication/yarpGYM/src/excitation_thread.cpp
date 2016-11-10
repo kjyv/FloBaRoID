@@ -19,10 +19,13 @@ excitation_thread::excitation_thread(   std::string module_prefix,
                                             command_interface( module_prefix ),
                                             generic_thread( module_prefix, rf, ph )
 {
-    chain_interface = new walkman::yarp_single_chain_interface("right_leg", module_prefix, get_robot_name());
-    num_joints = chain_interface->getNumberOfJoints();
-    // position mode on chain interface
-    chain_interface->setPositionDirectMode();   //sets setpoint directly, uses maximum speed all the time
+    right_leg_chain_if = new walkman::yarp_single_chain_interface("right_leg", module_prefix, get_robot_name());
+    left_leg_chain_if = new walkman::yarp_single_chain_interface("left_leg", module_prefix, get_robot_name());
+    num_joints = right_leg_chain_if->getNumberOfJoints() + left_leg_chain_if->getNumberOfJoints();
+
+    // set controller mode on chain interface
+    right_leg_chain_if->setPositionDirectMode();   //sets setpoint directly, uses maximum speed all the time
+    left_leg_chain_if->setPositionDirectMode();
     //chain_interface->setPositionMode();   //generate trajectories, allows setting velocities
     //chain_interface->setVelocityMode();
 
@@ -41,30 +44,23 @@ excitation_thread::~excitation_thread()
     //save(&tmpLog, "log.csv");
 }
 
-void excitation_thread::link_tutorial_params()
+bool excitation_thread::custom_init()
 {
     // get a shared pointer to param helper
     std::shared_ptr<paramHelp::ParamHelperServer> ph = get_param_helper();
     // link parameters (single value linking)
     //ph->linkParam( PARAM_ID_N_DOFS, &n_dofs );
-}
-
-bool excitation_thread::custom_init()
-{
-    // link the tutorial additional params to param helper
-    link_tutorial_params();
 
     return true;
 }
 
 void excitation_thread::run()
 {
-    static yarp::sig::Vector pos;
-    if(pos.size()!=num_joints) pos.resize(num_joints);
-    static yarp::sig::Vector vels;
-    if(vels.size()!=num_joints) vels.resize(num_joints);
+    static yarp::sig::Vector pos; pos.resize(num_joints);
+    //static yarp::sig::Vector vels;
+    //if(vels.size()!=num_joints) vels.resize(num_joints);
 
-    static yarp::sig::Vector q, qdot, tau;
+    static yarp::sig::Vector q_r, q_l, qdot_r, qdot_l, tau_r, tau_l;
     double t = yarp::os::Time::now();
 
     /*
@@ -87,43 +83,49 @@ void excitation_thread::run()
     excitation_cmd.command = "";
     command_interface.getCommand(excitation_cmd, seq_num);
 
-    if( excitation_cmd.command == "set_left_leg" || excitation_cmd.command == "set_right_leg") {
-        // position move to desired configuration
+    if( excitation_cmd.command == "set_legs_refs") {
+        //read right leg refs
         pos[0] = excitation_cmd.angle0;
         pos[1] = excitation_cmd.angle1;
         pos[2] = excitation_cmd.angle2;
         pos[3] = excitation_cmd.angle3;
         pos[4] = excitation_cmd.angle4;
         pos[5] = excitation_cmd.angle5;
-        //pos[6] = excitation_cmd.angle6;
 
-        vels[0] = excitation_cmd.velocity0;
-        vels[1] = excitation_cmd.velocity1;
-        vels[2] = excitation_cmd.velocity2;
-        vels[3] = excitation_cmd.velocity3;
-        vels[4] = excitation_cmd.velocity4;
-        vels[5] = excitation_cmd.velocity5;
-        //vels[6] = excitation_cmd.velocity6;
+        //read left leg refs
+        pos[6] = excitation_cmd.angle6;
+        pos[7] = excitation_cmd.angle7;
+        pos[8] = excitation_cmd.angle8;
+        pos[9] = excitation_cmd.angle9;
+        pos[10] = excitation_cmd.angle10;
+        pos[11] = excitation_cmd.angle11;
 
         //chain_interface->setReferenceSpeeds(vels);
-        chain_interface->move(pos);
+        right_leg_chain_if->move(pos.subVector(0,5));
+        left_leg_chain_if->move(pos.subVector(6,11));
 
         //chain_interface->move(vels);
 
         // get state data and send
-        chain_interface->sensePosition(q);     //get positions in deg
-        chain_interface->senseVelocity(qdot);  //get velocities in deg/s
-        chain_interface->senseTorque(tau);     //get torques in Nm
+        right_leg_chain_if->sensePosition(q_r);     //get positions in deg
+        left_leg_chain_if->sensePosition(q_l);
+        right_leg_chain_if->senseVelocity(qdot_r);  //get velocities in deg/s
+        left_leg_chain_if->senseVelocity(qdot_l);
+        right_leg_chain_if->senseTorque(tau_r);     //get torques in Nm
+        left_leg_chain_if->senseTorque(tau_l);
 
         yarp::os::Bottle out_bottle;
         yarp::os::Bottle &out0 = out_bottle.addList();
         yarp::os::Bottle &out1 = out_bottle.addList();
         yarp::os::Bottle &out2 = out_bottle.addList();
 
-        for(int i=0; i<q.size(); i++){
-            out0.addDouble(q[i]);
-            out1.addDouble(qdot[i]);
-            out2.addDouble(tau[i]);
+        for(int i=0; i<q_r.size(); i++){
+            out0.addDouble(q_r[i]);
+            out0.addDouble(q_l[i]);
+            out1.addDouble(qdot_r[i]);
+            out1.addDouble(qdot_l[i]);
+            out2.addDouble(tau_r[i]);
+            out2.addDouble(tau_l[i]);
         }
         out_bottle.addDouble(t);
 

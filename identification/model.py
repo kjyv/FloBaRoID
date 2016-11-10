@@ -396,6 +396,8 @@ class Model(object):
 
         regr_filename = self.urdf_file + '.regressor.npz'
         generate_new = False
+        fb = self.opt['floating_base']
+
         try:
             regr_file = np.load(regr_filename)
             R = regr_file['R']

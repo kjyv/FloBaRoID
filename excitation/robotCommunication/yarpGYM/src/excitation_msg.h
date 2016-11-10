@@ -24,25 +24,25 @@ class excitation_msg
 public:
     excitation_msg() {
       command = "";
+      //right
       angle0 = 0.0;
       angle1 = 0.0;
       angle2 = 0.0;
       angle3 = 0.0;
       angle4 = 0.0;
       angle5 = 0.0;
+      //left
       angle6 = 0.0;
-      velocity0 = 0.0;
-      velocity1 = 0.0;
-      velocity2 = 0.0;
-      velocity3 = 0.0;
-      velocity4 = 0.0;
-      velocity5 = 0.0;
-      velocity6 = 0.0;
+      angle7 = 0.0;
+      angle8 = 0.0;
+      angle9 = 0.0;
+      angle10 = 0.0;
+      angle11 = 0.0;
     }
 
     std::string command;
-    double angle0, angle1, angle2, angle3, angle4, angle5, angle6;
-    double velocity0, velocity1, velocity2, velocity3, velocity4, velocity5, velocity6;
+    double angle0, angle1, angle2, angle3, angle4, angle5;
+    double angle6, angle7, angle8, angle9, angle10, angle11;
 
     yarp::os::Bottle toBottle() {
         yarp::os::Bottle temp;
@@ -50,7 +50,7 @@ public:
 
         list.addString(command);
 
-        if(command == "set_left_leg" || command == "set_right_leg")
+        if(command == "set_legs_refs")
         {
             list.addDouble(angle0);
             list.addDouble(angle1);
@@ -58,14 +58,12 @@ public:
             list.addDouble(angle3);
             list.addDouble(angle4);
             list.addDouble(angle5);
-            //list.addDouble(angle6);
-            list.addDouble(velocity0);
-            list.addDouble(velocity1);
-            list.addDouble(velocity2);
-            list.addDouble(velocity3);
-            list.addDouble(velocity4);
-            list.addDouble(velocity5);
-            //list.addDouble(velocity6);
+            list.addDouble(angle6);
+            list.addDouble(angle7);
+            list.addDouble(angle8);
+            list.addDouble(angle9);
+            list.addDouble(angle10);
+            list.addDouble(angle11);
         }
 
         return temp;
@@ -90,7 +88,7 @@ public:
             return;
         }
 
-        //TODO: check that list has enough entries and otherwise give message
+        //TODO: check that list has enough entries and otherwise give error message
         if(list->size() < 6*2) {
             std::cout << "warning: not enough parameters given in Bottle!" << std::endl;
             return;
@@ -98,7 +96,7 @@ public:
 
         command = list->get(0).asString();
         int index = 1;
-        if(command == "set_left_leg" || command == "set_right_leg")
+        if(command == "set_legs_refs")
         {
             angle0 = list->get(index++).asDouble();
             angle1 = list->get(index++).asDouble();
@@ -106,14 +104,12 @@ public:
             angle3 = list->get(index++).asDouble();
             angle4 = list->get(index++).asDouble();
             angle5 = list->get(index++).asDouble();
-            //angle6 = list->get(index++).asDouble();
-            velocity0 = list->get(index++).asDouble();
-            velocity1 = list->get(index++).asDouble();
-            velocity2 = list->get(index++).asDouble();
-            velocity3 = list->get(index++).asDouble();
-            velocity4 = list->get(index++).asDouble();
-            velocity5 = list->get(index++).asDouble();
-            //velocity6 = list->get(index++).asDouble();
+            angle6 = list->get(index++).asDouble();
+            angle7 = list->get(index++).asDouble();
+            angle8 = list->get(index++).asDouble();
+            angle9 = list->get(index++).asDouble();
+            angle10 = list->get(index++).asDouble();
+            angle11 = list->get(index++).asDouble();
         }
 
         return;

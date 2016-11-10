@@ -243,6 +243,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
 def main():
     traj_file = config['model'] + '.trajectory.npz'
     if config['optimizeTrajectory']:
+        # find trajectory params by optimization
         trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
         if config['showOptimizationTrajs']:
             trajectory = trajectoryOptimizer.optimizeTrajectory(plot_func=plot)
@@ -252,16 +253,49 @@ def main():
                  q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
     else:
         try:
+            # replay optimized trajectory if found
             tf = np.load(traj_file)
             trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=tf['use_deg'])
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
         except IOError:
+            # otherwise use some random params
             trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=config['useDeg']).initWithRandomParams()
             print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
             print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
             print("q {}".format(trajectory.q.tolist()))
             print("nf {}".format(trajectory.nf.tolist()))
             print("wf {}".format(trajectory.w_f_global))
+
+    # testing stuff
+    class FixedPositionTrajectory(object):
+        def __init__(self):
+            self.time = 0
+
+        def getAngle(self, dof):
+            """ get angle at current time for joint dof """
+            return [0.0, 0.0, -90.0, 90.0, 0.0, 0.0,  #right leg
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0][dof]
+
+        def getVelocity(self, dof):
+            """ get velocity at current time for joint dof """
+            return 0.0
+
+        def getAcceleration(self, dof):
+            """ get acceleration at current time for joint dof """
+            return 0.0
+
+        def getPeriodLength(self):
+            ''' get the period length of the oscillation in seconds '''
+            return 5
+
+        def setTime(self, time):
+            '''set current time in seconds'''
+            self.time = time
+
+        def wait_for_zero_vel(self, t_elapsed):
+            return True
+
+    trajectory = FixedPositionTrajectory()
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
 

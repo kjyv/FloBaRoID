@@ -18,8 +18,9 @@
 class excitation_thread : public generic_thread
 {
 private:
-     // walkman chain interface
-    walkman::yarp_single_chain_interface *chain_interface;
+     // walkman chain interfaces
+    walkman::yarp_single_chain_interface *right_leg_chain_if;
+    walkman::yarp_single_chain_interface *left_leg_chain_if;
     // chain configuration vector
     yarp::sig::Vector chain_configuration;
     // joints number
@@ -33,9 +34,6 @@ private:
     //data output
     yarp::os::Bottle outgoingData;
     yarp::os::Port outgoingPort;
-
-    // link the tutorial optional params
-    void link_tutorial_params();
 
 public:
 

@@ -228,7 +228,6 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         trajectory_data['accelerations'] = measurements['Vdot']
         trajectory_data['measured_frequency'] = measurements['measured_frequency']
 
-
     old_skip = config['skip_samples']
     config['skip_samples'] = 0
     old_offset = config['start_offset']
@@ -257,7 +256,7 @@ def main():
             trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=tf['use_deg'])
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
         except IOError:
-            trajectory = TrajectoryGenerator(config['N_DOFS']).initWithRandomParams()
+            trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=config['useDeg']).initWithRandomParams()
             print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
             print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
             print("q {}".format(trajectory.q.tolist()))
@@ -267,10 +266,10 @@ def main():
     traj_data, data, model = simulateTrajectory(config, trajectory)
 
     if config['exciteMethod'] == 'yarp':
-        from robotCommunication import yarp_gym
+        from excitation.robotCommunication import yarp_gym
         yarp_gym.main(config, trajectory, traj_data)
     elif config['exciteMethod'] == 'ros':
-        from robotCommunication import ros_moveit
+        from excitation.robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, traj_data, move_group="full_lwr")
     else:
         print("No excitation method given! Only doing simulation")
@@ -305,7 +304,7 @@ def main():
     #simulate again with measured/filtered data
     if config['excitationSimulate']:
         traj_data_sim, data, model = simulateTrajectory(config, trajectory, measurements=traj_data)
-        traj_data['Tau'] = traj_data_sim['torques'][0:traj_data['Tau'].shape[0]]
+        traj_data['Tau'] = data.measurements['torques'][0:traj_data['Tau'].shape[0]]
 
     saveMeasurements(args.filename, traj_data)
 

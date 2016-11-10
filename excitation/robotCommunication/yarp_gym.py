@@ -6,10 +6,11 @@ import sys
 import yarp
 import numpy as np
 
-def gen_position_msg(msg_port, angles, velocities):
+def gen_position_msg(msg_port, angles):
     bottle = msg_port.prepare()
     bottle.clear()
-    bottle.fromString("(set_right_leg {} {}) 0".format(' '.join(map(str, angles)), ' '.join(map(str, velocities)) ))
+    angles_right, angles_left = angles[0:6], angles[6:]
+    bottle.fromString("(set_legs_refs {} {}) 0".format(' '.join(map(str, angles_right)), ' '.join(map(str, angles_left)) ))
     return bottle
 
 def gen_command(msg_port, command):
@@ -73,7 +74,7 @@ def main(config, trajectory, out):
 
             if started:
                 # set angles and wait one period to have settled at zero velocity position
-                gen_position_msg(command_port, target_angles, target_velocities)
+                gen_position_msg(command_port, target_angles)
                 command_port.write()
 
                 print("waiting to arrive at an initial position...", end=' ')
@@ -85,7 +86,7 @@ def main(config, trajectory, out):
             continue
 
         # set target angles
-        gen_position_msg(command_port, target_angles, target_velocities)
+        gen_position_msg(command_port, target_angles)
         command_port.write()
 
         sent_positions.append(target_angles)

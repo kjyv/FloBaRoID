@@ -30,8 +30,9 @@ run `./excitation`
 The control thread is now started and accepts commands.
 
 Using $ yarp write ... /excitation/command:i
-it is then possible to manually set arm positions, e.g. by writing
-`(set_left_arm -50 40 40 -30 20 10 10) 0`
+it is then possible to manually set positions, e.g. by writing
+`(set_legs_refs 0 0 0 0 0 0 0 0 0 0 0 0) 0`
+
 
 To generate excitation trajectories and send them to the robot, set 
 the option exciteMethod to 'yarp' and run `./excite.py [...]`.

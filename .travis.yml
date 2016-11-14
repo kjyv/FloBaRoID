@@ -7,6 +7,11 @@ python:
   - "3.3"
   - "3.4"
   - "3.5"
+
+before_install: 
+    - sudo apt-get -qq update
+    - sudo apt-get install -y libatlas-dev
+
 # command to install dependencies
 install: "pip install -r requirements.txt"
 
@@ -21,7 +26,7 @@ before_script:
     - mkdir build
     - cd build
     - export CMAKE_PREFIX_PATH=`pwd`/install
-    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_SUPERBUILD_USES_YARP:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_ICUB:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_PYTHON:BOOL=ON ..
+    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_SUPERBUILD_USES_YARP:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_ICUB:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_PYTHON:BOOL=ON -DCODYCO_TRAVIS_CI:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=TRUE ..
     - cmake --build . --config ${TRAVIS_BUILD_TYPE}
     - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
       #TODO: add python module dir variables to env

@@ -9,8 +9,7 @@ python:
 before_install: 
     #- sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
     - sudo apt-get -qq update
-    - sudo apt-get install -y cmake
-      #cmake-data
+    #- sudo apt-get install -y cmake cmake-data
     #cvxopt dependencies
     - sudo apt-get install -y liblapack3 liblapack-dev
     - sudo apt-get install -y libblas3 libblas-dev
@@ -30,7 +29,7 @@ before_script:
     - mkdir build
     - cd build
     - export CMAKE_PREFIX_PATH=`pwd`/install
-    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_SUPERBUILD_USES_YARP:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_ICUB_MAIN:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_PYTHON:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=ON ..
+    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_USES_YARP:BOOL=OFF -DIDYNTREE_USES_ICUB_MAIN:BOOL=OFF -DIDYNTREE_USES_PYTHON:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=ON ..
     - cmake --build . --config ${TRAVIS_BUILD_TYPE}
     - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
 

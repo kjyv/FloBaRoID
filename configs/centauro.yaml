@@ -12,7 +12,7 @@ useGlobalOptimization: 1       #do global optimization before using local refine
 globalOptIterations: 5
 localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                    #limit objective function evaluations to this value (not used currently)
-min_tol_constr: 0.01           #threshold for being within constraints (only used for display)
+minTolConstr: 0.01           #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
@@ -31,7 +31,7 @@ trajectoryAngleRanges:
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
 # should be used (or leave completely empty)
-ovr_pos_limit:
+ovrPosLimit:
     - null
     - [-60.0, 60.0]
     - null
@@ -47,7 +47,7 @@ minVelocityConstraint: 0
 #### identification
 
 # fixed or floating-base dynamics
-floating_base: 0
+floatingBase: 0
 
 # identify torque offsets as additional parameters
 identifyTorqueOffsets: 0
@@ -57,21 +57,21 @@ simulateTorques: 0 # simulate torque for measured angles etc using idyntree (ins
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
-min_tol: 0.00001
+minTol: 0.00001
 
 ## data selection
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
-start_offset: 6000    #how many samples from the beginning of each measurement file are skipped
-skip_samples: 6    #how many values to skip before using the next sample
+startOffset: 6000    #how many samples from the beginning of each measurement file are skipped
+skipSamples: 6    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
-block_size: 250  # needs to be at least as much as parameters so regressor is square or higher
+blockSize: 250  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
 
-removeNearZero: 1  #remove samples that have almost zero velocity
+removeNearZero: 0  #remove samples that have almost zero velocity
 minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
 
 # IMU processing (floating base)

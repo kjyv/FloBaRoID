@@ -299,7 +299,7 @@ if __name__ == '__main__':
     out['torques_raw'] = np.empty_like( out['torques'])
 
     #filter, diff, integrate
-    if config['floating_base']:
+    if config['floatingBase']:
         out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
         out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
         data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
@@ -347,22 +347,22 @@ if __name__ == '__main__':
     #simulate with iDynTree if we're using gazebo data
     if not is_hw:
         #use all data
-        old_skip = config['skip_samples']
-        config['skip_samples'] = 0
-        old_offset = config['start_offset']
-        config['start_offset'] = 0
+        old_skip = config['skipSamples']
+        config['skipSamples'] = 0
+        old_offset = config['startOffset']
+        config['startOffset'] = 0
         old_sim = config['simulateTorques']
         config['simulateTorques'] = 1
         data.init_from_data(out)
         model = Model(config, config['model'])
         model.computeRegressors(data)
         out['torques'] = out['torques_raw'] = model.data.samples['torques']
-        config['skip_samples'] = old_skip
-        config['start_offset'] = old_offset
+        config['skipSamples'] = old_skip
+        config['startOffset'] = old_offset
         config['simulateTorques'] = old_sim
 
 
-    if config['floating_base']:
+    if config['floatingBase']:
         np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
                  target_positions=out['target_positions'],
                  velocities=out['velocities'], velocities_raw=out['velocities'],

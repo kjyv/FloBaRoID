@@ -55,7 +55,7 @@ class Model(object):
             self.N_DOFS = len(self.jointNames)
         else:
             # (default for all joints)
-            if self.opt['floating_base']:
+            if self.opt['floatingBase']:
                 regrXml = '''
                 <regressor>
                   <baseLinkDynamics/>
@@ -91,7 +91,7 @@ class Model(object):
         # (should eq #dofs + #base vals)
         self.N_OUT = self.generator.getNrOfOutputs()
         if self.opt['verbose']:
-            if self.opt['floating_base']:
+            if self.opt['floatingBase']:
                 print('# outputs: {} (DOFs + 6 base)'.format(self.N_OUT))
             else:
                 print('# outputs: {}'.format(self.N_OUT))
@@ -115,7 +115,7 @@ class Model(object):
 
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
-        if opt['simulateTorques'] or opt['useAPriori'] or opt['floating_base']:
+        if opt['simulateTorques'] or opt['useAPriori'] or opt['floatingBase']:
             self.dynComp = iDynTree.DynamicsComputations()
             self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
@@ -146,7 +146,7 @@ class Model(object):
         vel = samples['velocities'][sample_idx]
         acc = samples['accelerations'][sample_idx]
         torq = samples['torques'][sample_idx]
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
             base_vel = samples['base_velocity'][sample_idx]
@@ -164,7 +164,7 @@ class Model(object):
         ddq = iDynTree.VectorDynSize.fromList(acc)
 
         # calc torques and forces with iDynTree dynamicsComputation class
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             # get the homogeneous transformation that transforms vectors expressed
             # in the base reference frame to frames expressed in the world
             # reference frame, i.e. pos_world = world_T_base*pos_base
@@ -186,7 +186,7 @@ class Model(object):
         baseReactionForce = iDynTree.Wrench()
         dynComp.inverseDynamics(torques, baseReactionForce)
 
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             return np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
         else:
             return torques.toNumPy()
@@ -203,12 +203,12 @@ class Model(object):
         simulate_time = 0
 
         #extra regressor rows for floating base
-        if self.opt['floating_base']: fb = 6
+        if self.opt['floatingBase']: fb = 6
         else: fb = 0
         self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_params))
         self.torques_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
         self.torquesAP_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             self.contacts_stack = np.zeros(shape=(len(data.samples['contacts'].item().keys()), 6*data.num_used_samples))
             self.contactForcesSum = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
 
@@ -220,14 +220,14 @@ class Model(object):
         """
         contacts = {}
         for sample_index in range(0, data.num_used_samples):
-            m_idx = sample_index*(self.opt['skip_samples'])+sample_index
+            m_idx = sample_index*(self.opt['skipSamples'])+sample_index
             with helpers.Timer() as t:
                 # read samples
                 pos = data.samples['positions'][m_idx]
                 vel = data.samples['velocities'][m_idx]
                 acc = data.samples['accelerations'][m_idx]
                 torq = data.samples['torques'][m_idx]
-                if self.opt['floating_base']:
+                if self.opt['floatingBase']:
                     for frame in data.samples['contacts'].item(0).keys():
                         #TODO: define proper sign for input data
                         contacts[frame] = data.samples['contacts'].item(0)[frame][m_idx]
@@ -239,7 +239,7 @@ class Model(object):
 
                 # in case that we simulate the torque measurements, need torque estimation for a priori parameters
                 # or that we need to simulate the base reaction forces for floating base
-                if self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floating_base']:
+                if self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floatingBase']:
                     torques = self.simulateDynamics(data.samples, m_idx)
 
                     if self.opt['useAPriori']:
@@ -249,7 +249,7 @@ class Model(object):
                     if self.opt['simulateTorques']:
                         torq = np.nan_to_num(torques)
                     else:
-                        if self.opt['floating_base']:
+                        if self.opt['floatingBase']:
                             #add estimated base forces to measured torq vector from file
                             torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
 
@@ -263,7 +263,7 @@ class Model(object):
             # get numerical regressor (std)
             row_index = (self.N_DOFS+fb)*sample_index   # index for current row in stacked regressor matrix
             with helpers.Timer() as t:
-                if self.opt['floating_base']:
+                if self.opt['floatingBase']:
                     vel = data.samples['base_velocity'][m_idx]
                     acc = data.samples['base_acceleration'][m_idx]
                     rpy = data.samples['base_rpy'][m_idx]
@@ -285,7 +285,7 @@ class Model(object):
                 regressor = regressor.toNumPy()
                 # the base forces are expressed in the base frame for the regressor, so transform them
                 # (inverse dynamics use world frame)
-                if self.opt['floating_base']:
+                if self.opt['floatingBase']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
@@ -305,12 +305,12 @@ class Model(object):
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.N_DOFS+fb], torqAP)
 
             contact_idx = (sample_index*6)
-            if self.opt['floating_base']:
+            if self.opt['floatingBase']:
                 for i in range(self.contacts_stack.shape[0]):
                     frame = list(contacts.keys())[i]
                     np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
-        if self.opt['floating_base'] and len(contacts.keys()):
+        if self.opt['floatingBase'] and len(contacts.keys()):
             #TODO: if robot does not have contact sensors, use HyQ null-space method (only for static positions?)
 
             #convert contact forces into torque contribution
@@ -373,12 +373,12 @@ class Model(object):
                     self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
 
         self.sample_end = data.samples['positions'].shape[0]
-        if self.opt['skip_samples'] > 0: self.sample_end -= (self.opt['skip_samples'])
+        if self.opt['skipSamples'] > 0: self.sample_end -= (self.opt['skipSamples'])
 
         # keep absolute torques (self.tau can be relative)
         self.tauMeasured = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
 
-        self.T = data.samples['times'][0:self.sample_end:self.opt['skip_samples']+1]
+        self.T = data.samples['times'][0:self.sample_end:self.opt['skipSamples']+1]
 
         if self.opt['showTiming']:
             print('Simulation for regressors took %.03f sec.' % simulate_time)
@@ -396,7 +396,7 @@ class Model(object):
 
         regr_filename = self.urdf_file + '.regressor.npz'
         generate_new = False
-        fb = self.opt['floating_base']
+        fb = self.opt['floatingBase']
 
         try:
             regr_file = np.load(regr_filename)
@@ -405,7 +405,7 @@ class Model(object):
             fb = regr_file['fb']  #floating base flag
             if self.opt['verbose']:
                 print("loaded random regressor from {}".format(regr_filename))
-            if n != n_samples or fb != self.opt['floating_base'] or R.shape[0] != self.num_params:
+            if n != n_samples or fb != self.opt['floatingBase'] or R.shape[0] != self.num_params:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
         except (IOError, KeyError):
@@ -442,7 +442,7 @@ class Model(object):
 
                 # TODO: make work with fixed dofs (set vel and acc to zero, look at iDynTree method)
 
-                if self.opt['floating_base']:
+                if self.opt['floatingBase']:
                     base_velocity = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
                     base_acceleration = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
                     rpy = np.random.ranf(3)*0.05
@@ -459,7 +459,7 @@ class Model(object):
 
                 A = regressor.toNumPy()
                 #the base forces are expressed in the base frame for the regressor, so transform them
-                if self.opt['floating_base']:
+                if self.opt['floatingBase']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
                     A[0:3, :] = to_world.dot(A[0:3, :])
                     A[3:6, :] = to_world.dot(A[3:6, :])
@@ -476,7 +476,7 @@ class Model(object):
                 else:
                     R += A.T.dot(A)
 
-            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floating_base'])
+            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floatingBase'])
 
         if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
@@ -502,7 +502,7 @@ class Model(object):
         Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
         #get rank
-        r = np.where(np.abs(Rt.diagonal()) > self.opt['min_tol'])[0].size
+        r = np.where(np.abs(Rt.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
 
         #get basis projection matrix
@@ -514,7 +514,7 @@ class Model(object):
         self.Q, self.R, self.P = Q,R,P
 
         #get rank
-        r = np.where(np.abs(R.diagonal()) > self.opt['min_tol'])[0].size
+        r = np.where(np.abs(R.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
 
         #create proper permutation matrix from vector
@@ -531,7 +531,7 @@ class Model(object):
         R1 = R[0:r, 0:r]
         R2 = R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
-        self.linear_deps[np.abs(self.linear_deps) < self.opt['min_tol']] = 0
+        self.linear_deps[np.abs(self.linear_deps) < self.opt['minTol']] = 0
 
         # collect grouped columns for each independent column
         # build base matrix
@@ -541,13 +541,13 @@ class Model(object):
             for i in range(0, self.linear_deps.shape[1]):
                 for k in range(r, P.size):
                     fact = round(self.linear_deps[j, k-r], 5)
-                    if np.abs(fact)>self.opt['min_tol']: self.B[P[k],j] = fact
+                    if np.abs(fact)>self.opt['minTol']: self.B[P[k],j] = fact
             self.B[indep_idx,j] = 1
 
         if 'orthogonalizeBasis' in self.opt and self.opt['orthogonalizeBasis']:
             #orthogonalize, so linear relationships can be inverted
             Q_B_qr, R_B_qr = la.qr(self.B)
-            Q_B_qr[np.abs(Q_B_qr) < self.opt['min_tol']] = 0
+            Q_B_qr[np.abs(Q_B_qr) < self.opt['minTol']] = 0
             self.B = Q_B_qr
             self.Binv = self.B.T
         else:
@@ -606,7 +606,7 @@ class Model(object):
             #self.generator.generate_random_regressors(A, False, True, 2000)
             #Yrand = A.toNumPy()
             U, s, Vh = la.svd(Yrand, full_matrices=False)
-            r = np.sum(s>self.opt['min_tol'])
+            r = np.sum(s>self.opt['minTol'])
             self.B = -Vh.T[:, 0:r]
             self.num_base_params = r
 
@@ -639,7 +639,7 @@ class Model(object):
 
             #add dependent columns (not really correct, see getting self.B)
             #for j in range(0, self.num_base_params):
-            #    for dep in np.where(np.abs(self.linear_deps[j, :])>self.opt['min_tol'])[0]:
+            #    for dep in np.where(np.abs(self.linear_deps[j, :])>self.opt['minTol'])[0]:
             #        if dep in range(i*10, i*10+9):
             #            base_columns.append(j)
             if not len(base_columns):

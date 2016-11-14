@@ -34,7 +34,7 @@ class Data(object):
 
         self.samples = self.measurements = data.copy()
         self.num_loaded_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_loaded_samples//(self.opt['skip_samples']+1)
+        self.num_used_samples = self.num_loaded_samples//(self.opt['skipSamples']+1)
         if self.opt['verbose']:
             print('loaded {} data samples (using {})'.format(
                 self.num_loaded_samples, self.num_used_samples))
@@ -65,14 +65,14 @@ class Data(object):
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
                                         if c != 'dummy_sim':
-                                            contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
+                                            contact_dict[c] = m[k].item(0)[c][self.opt['startOffset']:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
-                                self.measurements[k] = m[k][self.opt['start_offset']:]
+                                self.measurements[k] = m[k][self.opt['startOffset']:]
                             else:
-                                self.measurements[k] = m[k][self.opt['start_offset']:, :]
+                                self.measurements[k] = m[k][self.opt['startOffset']:, :]
                         else:
                             # following files, append data
                             if m[k].ndim == 0:
@@ -80,29 +80,29 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][self.opt['start_offset']:, :]
+                                        contact_dict[c] = m[k].item(0)[c][self.opt['startOffset']:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     #TODO: get mean value of scalar values (needs to count how many values then)
                                     self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
                                 if k == 'times':
-                                    #TODO: use start_offset in here
+                                    #TODO: use startOffset in here
                                     # shift new values to start at 0 plus first time diff
                                     mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0])
                                     # add after last timestamp of previous data
                                     mv[k] = mv[k] + self.measurements[k][-1]
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
-                                                                        mv[k][self.opt['start_offset']:]),
+                                                                        mv[k][self.opt['startOffset']:]),
                                                                         axis=0)
                             else:
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
-                                                                        mv[k][self.opt['start_offset']:, :]),
+                                                                        mv[k][self.opt['startOffset']:, :]),
                                                                         axis=0)
                     m.close()
 
             self.num_loaded_samples = self.measurements['positions'].shape[0]
-            self.num_used_samples = self.num_loaded_samples//(self.opt['skip_samples']+1)
+            self.num_used_samples = self.num_loaded_samples//(self.opt['skipSamples']+1)
             if self.opt['verbose']:
                 print('loaded {} measurement samples (using {})'.format(
                     self.num_loaded_samples, self.num_used_samples))
@@ -116,12 +116,12 @@ class Data(object):
                     if self.measurements[k].ndim == 0:
                         self.samples[k] = self.measurements[k]
                     elif self.measurements[k].ndim == 1:
-                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.opt['block_size']]
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.opt['blockSize']]
                     else:
-                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.opt['block_size'], :]
+                        self.samples[k] = self.measurements[k][self.block_pos:self.block_pos + self.opt['blockSize'], :]
 
                 self.num_selected_samples = self.samples['positions'].shape[0]
-                self.num_used_samples = self.num_selected_samples//(self.opt['skip_samples']+1)
+                self.num_used_samples = self.num_selected_samples//(self.opt['skipSamples']+1)
             else:
                 # simply use all data
                 self.samples = self.measurements
@@ -139,20 +139,20 @@ class Data(object):
         if not self.opt['selectBlocksFromMeasurements']:
             return False
 
-        if self.block_pos + self.opt['block_size'] >= self.num_loaded_samples:
+        if self.block_pos + self.opt['blockSize'] >= self.num_loaded_samples:
             return False
 
         return True
 
     def updateNumSamples(self):
         self.num_selected_samples = self.samples['positions'].shape[0]
-        self.num_used_samples = self.num_selected_samples//(self.opt['skip_samples']+1)
+        self.num_used_samples = self.num_selected_samples//(self.opt['skipSamples']+1)
 
     def removeLastSampleBlock(self):
         if self.opt['verbose']:
             print("removing block starting at {}".format(self.block_pos))
         for k in self.measurements.keys():
-            self.samples[k] = np.delete(self.samples[k], list(range(self.num_selected_samples - self.opt['block_size'],
+            self.samples[k] = np.delete(self.samples[k], list(range(self.num_selected_samples - self.opt['blockSize'],
                                                                self.num_selected_samples)), axis=0)
         self.updateNumSamples()
         if self.opt['verbose']:
@@ -162,10 +162,10 @@ class Data(object):
         """ fill samples with next measurements block """
 
         # advance to next block or end of data
-        self.block_pos += self.opt['block_size']
+        self.block_pos += self.opt['blockSize']
 
-        if self.block_pos + self.opt['block_size'] > self.num_loaded_samples:
-            self.opt['block_size'] = self.num_loaded_samples - self.block_pos
+        if self.block_pos + self.opt['blockSize'] > self.num_loaded_samples:
+            self.opt['blockSize'] = self.num_loaded_samples - self.block_pos
 
         if self.opt['verbose']:
             print("getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples))
@@ -174,9 +174,9 @@ class Data(object):
             if self.measurements[k].ndim == 0:
                 mv = self.measurements[k]
             elif self.measurements[k].ndim == 1:
-                mv = self.measurements[k][self.block_pos:self.block_pos + self.opt['block_size']]
+                mv = self.measurements[k][self.block_pos:self.block_pos + self.opt['blockSize']]
             else:
-                mv = self.measurements[k][self.block_pos:self.block_pos + self.opt['block_size'],:]
+                mv = self.measurements[k][self.block_pos:self.block_pos + self.opt['blockSize'],:]
             self.samples[k] = mv
 
         self.updateNumSamples()
@@ -228,7 +228,7 @@ class Data(object):
         new_condition_number = np.max(p_sigma_x)/np.min(p_sigma_x)
         """
 
-        self.seenBlocks.append((self.block_pos, self.opt['block_size'], new_condition_number, linkConds))
+        self.seenBlocks.append((self.block_pos, self.opt['blockSize'], new_condition_number, linkConds))
 
     def selectBlocks(self):
         """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""

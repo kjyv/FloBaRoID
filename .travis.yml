@@ -6,11 +6,18 @@ python:
   - "2.7"
   - "3.5"
 
-before_install: 
-    #cvxopt dependencies
-    - sudo apt-get -qq update
-    - sudo apt-get install -y liblapack3 liblapack-dev
-    - sudo apt-get install -y libblas3 libblas-dev
+addons:
+  apt:
+    sources:
+      - george-edison55-cmake-3.x
+    packages:
+      - cmake
+      - cmake-data
+      - dsdp
+      - liblapack3
+      - liblapack-dev
+      - libblas3
+      - libblas-dev
 
 # command to install dependencies
 install: "pip install -r requirements.txt"
@@ -35,7 +42,7 @@ before_script:
       #TODO: add python module dir variables to env
 
     #install dsdp5
-    - sudo apt-get install dsdp
+    #- sudo apt-get install dsdp
 
 # command to run tests
 script: pytest

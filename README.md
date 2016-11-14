@@ -46,15 +46,15 @@ known issues:
 * using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
 * COM constraints need stl mesh files for the model to compute the enclosing hull
 
-(mode or less) Quick start :
+(more or less) Quick start :
 
 * copy one of the existing .yaml configuration files and customize for your setup
 
-* get joint torque measurements from your robotic system   
+* get joint torque measurements from your robotic system
    possible e.g. by using the excite.py script which filters the measurements as well as getting velocity and acceleration from position measurements.
-   If using some other means of movement and data recording, the data files of the numpy data files need to have the expected data fields (see source) and data needs to be filtered
+   If using some other means of movement and data recording, the data files of the numpy data files need to have the expected data fields (see source) and data needs to be filtered. There is also a csv2npz script that can be customized to load data from csv text files.
 
-* run identification.py, at least supplying the measurement data file and the corresponding kinematic model in a .urdf file with some physically consistent CAD parameters    
+* run identification.py, at least supplying the measurement data file and the corresponding kinematic model in a .urdf file with some physically consistent CAD parameters
    optionally supply an output .urdf file path (which will be the input model with the identified
    parameters), a separate measurement file for validation
    (options are in mostly in .yaml file, others can be seens when calling with -h)

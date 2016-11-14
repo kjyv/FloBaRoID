@@ -1,0 +1,14 @@
+numpy
+scipy
+sympy
+pyyaml
+numpy-stl
+cvxopt
+pylmi-sdp
+matplotlib
+colorama
+palettable
+humanize
+future
+mpld3
+jinja2

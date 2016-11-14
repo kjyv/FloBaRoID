@@ -45,6 +45,7 @@ class Data(object):
         '''load data from measurements_files, optionally skipping some values'''
 
         with helpers.Timer() as t:
+            so = self.opt['startOffset']
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
@@ -65,14 +66,14 @@ class Data(object):
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
                                         if c != 'dummy_sim':
-                                            contact_dict[c] = m[k].item(0)[c][self.opt['startOffset']:, :]
+                                            contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
-                                self.measurements[k] = m[k][self.opt['startOffset']:]
+                                self.measurements[k] = m[k][so:]
                             else:
-                                self.measurements[k] = m[k][self.opt['startOffset']:, :]
+                                self.measurements[k] = m[k][so:, :]
                         else:
                             # following files, append data
                             if m[k].ndim == 0:
@@ -80,24 +81,23 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][self.opt['startOffset']:, :]
+                                        contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     #TODO: get mean value of scalar values (needs to count how many values then)
                                     self.measurements[k] = m[k]
                             elif m[k].ndim == 1:
                                 if k == 'times':
-                                    #TODO: use startOffset in here
                                     # shift new values to start at 0 plus first time diff
-                                    mv[k] = m[k] - m[k][0] + (m[k][1]-m[k][0])
+                                    mv[k] = m[k] - m[k][so] + (m[k][so+1]-m[k][so])
                                     # add after last timestamp of previous data
                                     mv[k] = mv[k] + self.measurements[k][-1]
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
-                                                                        mv[k][self.opt['startOffset']:]),
+                                                                        mv[k][so:]),
                                                                         axis=0)
                             else:
                                 self.measurements[k] = np.concatenate( (self.measurements[k],
-                                                                        mv[k][self.opt['startOffset']:, :]),
+                                                                        mv[k][so:, :]),
                                                                         axis=0)
                     m.close()
 

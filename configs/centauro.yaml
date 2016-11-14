@@ -96,6 +96,8 @@ restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
+# name of the directory after the package base name (as in package://basename/)
+meshBaseDir: 'meshes'
 
 # constrain overall mass
 limitOverallMass: 0

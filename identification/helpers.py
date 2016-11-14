@@ -191,10 +191,11 @@ class ParamHelpers(object):
         return params
 
 class URDFHelpers(object):
-    def __init__(self, paramHelpers, link_names):
+    def __init__(self, paramHelpers, link_names, opt):
         self.n_params = paramHelpers.n_params
         self.paramHelpers = paramHelpers
         self.link_names = link_names
+        self.opt = opt
 
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params, link_names):
         """ set new inertia parameters from params and urdf_file, write to new temp file """
@@ -254,8 +255,9 @@ class URDFHelpers(object):
                 #r.read() #get file into memory
             except ImportError:
                 #if no ros installed, try to get stl files from 'meshes' dir relative to urdf files
-                filename = filepath.split('/')[-1]
-                filepath = '/'.join(input_urdf.split('/')[:-1] + ['meshes'] + [filename])
+                filename = filepath.split('/')
+                filename = filename[filename.index(self.opt['meshBaseDir']):]
+                filepath = '/'.join(input_urdf.split('/')[:-1] + filename)
 
         return filepath
 

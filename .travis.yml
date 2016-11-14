@@ -1,0 +1,33 @@
+dist: trusty
+sudo: required
+language: python
+python:
+  - "2.7"
+  - "3.2"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+# command to install dependencies
+install: "pip install -r requirements.txt"
+
+before_script:
+    #install iDynTree
+    - git clone https://github.com/robotology/idyntree-superbuild
+    - cd idyntree-superbuild
+    - chmod +x ./.ci/travis-deps.sh
+      #- chmod +x ./.ci/travis-build.sh
+    - sh .ci/travis-deps.sh
+
+    - mkdir build
+    - cd build
+    - export CMAKE_PREFIX_PATH=`pwd`/install
+    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_SUPERBUILD_USES_YARP:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_ICUB:BOOL=OFF -DIDYNTREE_SUPERBUILD_USES_PYTHON:BOOL=ON ..
+    - cmake --build . --config ${TRAVIS_BUILD_TYPE}
+    - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
+      #TODO: add python module dir variables to env
+
+    #install dsdp5
+    - sudo apt-get install dsdp5
+
+# command to run tests
+script: pytest

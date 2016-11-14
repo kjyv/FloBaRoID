@@ -1,5 +1,6 @@
 dist: trusty
 sudo: required
+env: "TRAVIS_CMAKE_GENERATOR=\"Unix Makefiles\", TRAVIS_BUILD_TYPE=\"Debug\""
 language: python
 python:
   - "2.7"

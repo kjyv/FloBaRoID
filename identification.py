@@ -76,7 +76,7 @@ class Identification(object):
         self.data.init_from_files(measurements_files)
 
         self.paramHelpers = helpers.ParamHelpers(self.model.num_inertial_params)
-        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames)
+        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
 
         self.tauEstimated = list()
         self.res_error = 100
@@ -102,7 +102,7 @@ class Identification(object):
         else:
             print("unknown type of parameters: {}".format(self.opt['estimateWith']))
 
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             fb = 6
             tauEst -= self.model.contactForcesSum
         else:
@@ -110,7 +110,7 @@ class Identification(object):
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
 
-        #if self.opt['floating_base']:
+        #if self.opt['floatingBase']:
         #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
         if self.opt['showErrorHistogram'] == 1:
@@ -143,11 +143,11 @@ class Identification(object):
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 
-        old_skip = self.opt['skip_samples']
-        self.opt['skip_samples'] = 8
+        old_skip = self.opt['skipSamples']
+        self.opt['skipSamples'] = 8
 
         self.tauEstimatedValidation = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.opt['skip_samples']+1):
+        for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples']+1):
             torques = self.model.simulateDynamics(v_data, m_idx, dynComp)
 
             if self.tauEstimatedValidation is None:
@@ -155,20 +155,20 @@ class Identification(object):
             else:
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques))
 
-        if self.opt['skip_samples'] > 0:
-            self.tauMeasuredValidation = v_data['torques'][::self.opt['skip_samples']+1]
-            self.Tv = v_data['times'][::self.opt['skip_samples']+1]
+        if self.opt['skipSamples'] > 0:
+            self.tauMeasuredValidation = v_data['torques'][::self.opt['skipSamples']+1]
+            self.Tv = v_data['times'][::self.opt['skipSamples']+1]
         else:
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
 
         # add simulated base forces also to measurements
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             self.tauMeasuredValidation = np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
 
         #TODO: add contact forces to estimation
 
-        self.opt['skip_samples'] = old_skip
+        self.opt['skipSamples'] = old_skip
 
         self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
@@ -477,7 +477,7 @@ class Identification(object):
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(self.model.YBase)
 
-        if self.opt['floating_base']:
+        if self.opt['floatingBase']:
             self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
         else:
             self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
@@ -503,7 +503,7 @@ class Identification(object):
             self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
                                        (self.data.num_used_samples-self.model.num_base_params)
 
-            if self.opt['floating_base']: fb = 6
+            if self.opt['floatingBase']: fb = 6
             else: fb = 0
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
@@ -784,7 +784,7 @@ class Identification(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            if self.opt['floating_base']:
+            if self.opt['floatingBase']:
                 contactForces = Q.T.dot(self.model.contactForcesSum)
             else:
                 contactForces = zeros(self.model.num_base_params, 1)
@@ -882,7 +882,7 @@ class Identification(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            if self.opt['floating_base']:
+            if self.opt['floatingBase']:
                 contactForces = Q.T.dot(self.model.contactForcesSum)
             else:
                 contactForces = zeros(self.model.num_base_params, 1)
@@ -1054,12 +1054,12 @@ class Identification(object):
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
 
-        if self.opt['floating_base'] and self.opt['plotBaseDynamics']:
+        if self.opt['floatingBase'] and self.opt['plotBaseDynamics']:
             torque_labels = self.model.baseNames + self.model.jointNames
         else:
             torque_labels = self.model.jointNames
 
-        if self.opt['floating_base'] and not self.opt['plotBaseDynamics']:
+        if self.opt['floatingBase'] and not self.opt['plotBaseDynamics']:
             tauMeasured = self.model.tauMeasured[:, 6:]
             tauEstimated = self.tauEstimated[:, 6:]
             tauAPriori = self.tauAPriori[:, 6:]
@@ -1080,7 +1080,7 @@ class Identification(object):
             for i in range(self.model.N_DOFS):
                 datasets.append(
                     { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': ['Measured', 'Estimated', 'CAD'],
-                      'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                      'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                       'dataset': [
                         {'data':[np.vstack((tauMeasured[:,i], tauEstimated[:,i], tauAPriori[:,i])).T],
                          'time': rel_time, 'title': torque_labels[i]}
@@ -1092,8 +1092,8 @@ class Identification(object):
             for i in range(self.model.N_DOFS):
                 datasets.append(
                     { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
-                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i],
-                                 self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skip_samples']+1, i]],
+                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i],
+                                 self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]],
                         'time': rel_time, 'title': self.model.jointNames[i]},
                       ]
                     }
@@ -1102,9 +1102,9 @@ class Identification(object):
             # vel and acc combined
             datasets.append(
                 { 'unified_scaling': False, 'y_label': 'rad/s (/s2)', 'labels': self.model.jointNames, 'dataset':
-                  [{'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                  [{'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
                     'time': rel_time, 'title': 'Velocities'},
-                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
                     'time': rel_time, 'title': 'Accelerations'},
                   ]
                 }
@@ -1112,7 +1112,7 @@ class Identification(object):
         else:
             datasets = [
                 { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                  'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                   'dataset':
                   [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
                    {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
@@ -1120,32 +1120,32 @@ class Identification(object):
                   ]
                 },
                 { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                  'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                   'dataset':
                   [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
                    {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
                   ]
                 },
                 { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
-                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1]],
                     'time': rel_time, 'title': 'Positions'},
-                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
                     'time': rel_time, 'title': 'Velocities'},
-                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skip_samples']+1]],
+                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
                     'time': rel_time, 'title': 'Accelerations'},
                   ]
                 }
             ]
 
             if 'positions_raw' in self.data.samples:
-                datasets[2]['dataset'][0]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+                datasets[2]['dataset'][0]['data'].append(self.data.samples['positions_raw'][0:self.model.sample_end:self.opt['skipSamples']+1])
             if 'velocities_raw' in self.data.samples:
-                datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skip_samples']+1])
+                datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skipSamples']+1])
 
         if self.validation_file:
             datasets.append(
                 { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                    'contains_base': self.opt['floating_base'] and self.opt['plotBaseDynamics'],
+                    'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                     'dataset':
                     [#{'data': [self.tauMeasuredValidation],
                      # 'time': rel_vtime, 'title': 'Measured Validation'},

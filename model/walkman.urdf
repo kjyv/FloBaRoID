@@ -160,14 +160,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="Waist_visual">
-        <mesh filename="package://bigman_urdf/meshes/Waist.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Waist.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="Waist_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Waist.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Waist.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -178,7 +178,7 @@ The coordinate frame called base_link is rigidly attached to the robot root body
   </joint>
   <!-- ********************TORSO******************** -->
   <!-- first real link of the robot, inertial reference frame -->
-  <!-- Scale factor for meshes -->
+  <!-- Scale factor for meshes/walkman -->
   <!-- LINKS -->
   <!-- This links are defined in order to be compliant with http://www.ros.org/reps/rep-0120.html#coordinate-frames
 and to define the end effectors of the robot-->
@@ -193,14 +193,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWL_visual">
-        <mesh filename="package://bigman_urdf/meshes/TorsoRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/TorsoRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWL_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/TorsoRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/TorsoRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -213,14 +213,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWS_visual">
-        <mesh filename="package://bigman_urdf/meshes/TorsoYawPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/TorsoYawPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWS_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/TorsoYawPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/TorsoYawPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -233,14 +233,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWYTorso_visual">
-        <mesh filename="package://bigman_urdf/meshes/NewChest.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NewChest.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="blue"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="DWYTorso_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/NewChest.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/NewChest.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -254,14 +254,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="TorsoProtections_visual">
-        <mesh filename="package://bigman_urdf/meshes/ProtectionSystem.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ProtectionSystem.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="TorsoProtections_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ProtectionSystem.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ProtectionSystem.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -337,14 +337,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="NeckYaw_visual">
-        <mesh filename="package://bigman_urdf/meshes/NeckYaw.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NeckYaw.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="NeckYaw_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/NeckYaw.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/NeckYaw.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -357,14 +357,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="NeckPitch_visual">
-        <mesh filename="package://bigman_urdf/meshes/NeckPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NeckPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry name="NeckPitch_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/NeckPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/NeckPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -410,14 +410,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RHipMot_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RHipMot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -430,14 +430,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RThighUpLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipYaw.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipYaw.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RThighUpLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipYaw.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipYaw.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -450,14 +450,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RThighLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RThighLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -470,14 +470,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/KneePitchCalf.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/KneePitchCalf.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/KneePitchCalf.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/KneePitchCalf.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -490,14 +490,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RFootmot_visual">
-        <mesh filename="package://bigman_urdf/meshes/AnklePitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/AnklePitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RFootmot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/AnklePitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/AnklePitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -510,14 +510,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RFoot_visual">
-        <mesh filename="package://bigman_urdf/meshes/NewFoot.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NewFoot.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <!--<origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry name="RFoot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Foot.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Foot.STL" scale="0.001 -0.001 0.001"/>
       </geometry>-->
       <origin rpy="0 0 0" xyz="0.005 -0.01 -0.1359"/>
       <geometry>
@@ -535,14 +535,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LHipMot_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LHipMot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -555,14 +555,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighUpLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipYaw.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipYaw.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighUpLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipYaw.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipYaw.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -575,14 +575,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -595,14 +595,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -615,14 +615,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFootmot_visual">
-        <mesh filename="package://bigman_urdf/meshes/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFootmot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -635,7 +635,7 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFoot_visual">
-        <mesh filename="package://bigman_urdf/meshes/NewFoot.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NewFoot.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
@@ -643,7 +643,7 @@ and to define the end effectors of the robot-->
       <!--
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry name="LFoot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Foot.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Foot.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       -->
       <origin rpy="0 0 0" xyz="0.005 0.01 -0.1359"/>
@@ -852,14 +852,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShp_visual">
-        <mesh filename="package://bigman_urdf/meshes/ShoulderPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ShoulderPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShp_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ShoulderPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ShoulderPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -872,14 +872,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShr_visual">
-        <mesh filename="package://bigman_urdf/meshes/TopUpperArm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/TopUpperArm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShr_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/TopUpperArm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/TopUpperArm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -892,14 +892,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShy_visual">
-        <mesh filename="package://bigman_urdf/meshes/BottomUpperArm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/BottomUpperArm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RShy_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/BottomUpperArm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/BottomUpperArm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -912,14 +912,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RElb_visual">
-        <mesh filename="package://bigman_urdf/meshes/Elbow.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Elbow.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RElb_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Elbow.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Elbow.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -933,14 +933,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShp_visual">
-        <mesh filename="package://bigman_urdf/meshes/ShoulderPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ShoulderPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShp_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ShoulderPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ShoulderPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -953,14 +953,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShr_visual">
-        <mesh filename="package://bigman_urdf/meshes/TopUpperArm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/TopUpperArm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShr_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/TopUpperArm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/TopUpperArm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -973,14 +973,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShy_visual">
-        <mesh filename="package://bigman_urdf/meshes/BottomUpperArm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/BottomUpperArm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LShy_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/BottomUpperArm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/BottomUpperArm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -993,14 +993,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LElb_visual">
-        <mesh filename="package://bigman_urdf/meshes/Elbow.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Elbow.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LElb_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Elbow.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Elbow.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1113,14 +1113,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LForearm_visual">
-        <mesh filename="package://bigman_urdf/meshes/Forearm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Forearm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LForearm_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Forearm.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Forearm.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1133,14 +1133,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LWrMot2_visual">
-        <mesh filename="package://bigman_urdf/meshes/ForearmPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ForearmPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LWrMot2_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ForearmPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ForearmPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1153,14 +1153,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LWrMot3_visual">
-        <mesh filename="package://bigman_urdf/meshes/ForearmRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ForearmRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="blue"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LWrMot3_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ForearmRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ForearmRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1174,14 +1174,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RForearm_visual">
-        <mesh filename="package://bigman_urdf/meshes/Forearm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Forearm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RForearm_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Forearm.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Forearm.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1194,14 +1194,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RWrMot2_visual">
-        <mesh filename="package://bigman_urdf/meshes/ForearmPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ForearmPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RWrMot2_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ForearmPitch.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ForearmPitch.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1214,14 +1214,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RWrMot3_visual">
-        <mesh filename="package://bigman_urdf/meshes/ForearmRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/ForearmRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="blue"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="RWrMot3_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/ForearmRoll.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/ForearmRoll.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1300,14 +1300,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry name="RSoftHandLink_visual">
-        <mesh filename="package://bigman_urdf/meshes/SoftHandOpen.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/SoftHandOpen.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry name="RSoftHandLink_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/SoftHandOpen.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/SoftHandOpen.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1326,14 +1326,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry name="LSoftHandLink_visual">
-        <mesh filename="package://bigman_urdf/meshes/SoftHandOpen.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/SoftHandOpen.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry name="LSoftHandLink_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/SoftHandOpen.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/SoftHandOpen.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1421,7 +1421,7 @@ and to define the end effectors of the robot-->
   <!-- 
        Based on multisense_sl_v4.urdf in multisense_sl_description (DRCSIM) 
 -->
-  <!-- Head Link Simple Collision Meshes -->
+  <!-- Head Link Simple Collision meshes/walkman -->
   <link name="multisense/head">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.075493 3.3383E-05 0.02774"/>
@@ -1431,14 +1431,14 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bigman_urdf/meshes/Head.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/Head.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bigman_urdf/meshes/simple/Head.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Head.STL" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -1451,7 +1451,7 @@ and to define the end effectors of the robot-->
     <visual>
       <origin rpy="1.5707963267949 0 1.5707963267949" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bigman_urdf/meshes/hokuyo_link.STL"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/hokuyo_link.STL"/>
       </geometry>
       <material name="black"/>
     </visual>

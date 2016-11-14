@@ -113,6 +113,15 @@ class Identification(object):
         #if self.opt['floating_base']:
         #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
+        if self.opt['showErrorHistogram'] == 1:
+            error = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
+            h = plt.hist(error, 50)
+            plt.title("error histogram")
+            plt.draw()
+            plt.show()
+            # don't show again if we come here later
+            self.opt['showErrorHistogram'] = 2
+
         # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
         if estimateWith == 'urdf':
             self.tauAPriori = self.tauEstimated
@@ -263,12 +272,6 @@ class Identification(object):
                     print("error is normal distributed")
                 else:
                     print("error is not normal distributed (p={})".format(p))
-
-            if self.opt['showErrorHistogram']:
-                h = plt.hist(error_start, 50)
-                plt.title("error probability")
-                plt.draw()
-                plt.show()
 
             pham_percent_start = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))

@@ -330,14 +330,14 @@ class TrajectoryOptimizer(object):
 
         old_verbose = self.config['verbose']
         self.config['verbose'] = 0
-        old_floating_base = self.config['floating_base']
-        self.config['floating_base'] = 0
+        old_floatingBase = self.config['floatingBase']
+        self.config['floatingBase'] = 0
         if 'model' in locals():
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory, model)
         else:
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory)
         self.config['verbose'] = old_verbose
-        self.config['floating_base'] = old_floating_base
+        self.config['floatingBase'] = old_floatingBase
 
         self.last_trajectory_data = trajectory_data
         if self.plot_func: self.plot_func(trajectory_data)
@@ -363,13 +363,13 @@ class TrajectoryOptimizer(object):
         jn = self.config['jointNames']
         for n in range(self.dofs):
             # joint pos lower
-            if len(self.config['ovr_pos_limit'])>=n and self.config['ovr_pos_limit'][n]:
-                g[n] = np.deg2rad(self.config['ovr_pos_limit'][n][0]) - np.min(trajectory_data['positions'][:, n])
+            if len(self.config['ovrPosLimit'])>=n and self.config['ovrPosLimit'][n]:
+                g[n] = np.deg2rad(self.config['ovrPosLimit'][n][0]) - np.min(trajectory_data['positions'][:, n])
             else:
                 g[n] = self.limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
             # joint pos upper
-            if len(self.config['ovr_pos_limit'])>=n and self.config['ovr_pos_limit'][n]:
-                g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - np.deg2rad(self.config['ovr_pos_limit'][n][1])
+            if len(self.config['ovrPosLimit'])>=n and self.config['ovrPosLimit'][n]:
+                g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - np.deg2rad(self.config['ovrPosLimit'][n][1])
             else:
                 g[self.dofs+n] = np.max(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']
             # max joint vel
@@ -429,22 +429,22 @@ class TrajectoryOptimizer(object):
         return res
 
     def testConstraints(self, g):
-        res = np.all(np.array(g) <= self.config['min_tol_constr'])
+        res = np.all(np.array(g) <= self.config['minTolConstr'])
         if not res:
             print("constraints violated:")
-            if True in np.in1d(list(range(1,2*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+            if True in np.in1d(list(range(1,2*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
                 print("angle limits")
                 print(np.array(g)[list(range(1,2*self.dofs))])
-            if True in np.in1d(list(range(2*self.dofs,3*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+            if True in np.in1d(list(range(2*self.dofs,3*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
                 print("max velocity limits")
                 #print np.array(g)[range(2*self.dofs,3*self.dofs)]
-            if True in np.in1d(list(range(3*self.dofs,4*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+            if True in np.in1d(list(range(3*self.dofs,4*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
                 print("max torque limits")
 
             if self.config['minVelocityConstraint']:
-                if True in np.in1d(list(range(4*self.dofs,5*self.dofs)), np.where(np.array(g) >= self.config['min_tol_constr'])):
+                if True in np.in1d(list(range(4*self.dofs,5*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
                     print("min velocity limits")
-            #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['min_tol_constr'])):
+            #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['minTolConstr'])):
             #    print "min torque limits"
             #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
         return res

@@ -12,7 +12,7 @@ useGlobalOptimization: 1     #do global optimization before using local refineme
 globalOptIterations: 10
 localOptIterations: 2        #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                  #limit objective function evaluations to this value (not used currently)
-min_tol_constr: 0.01         #threshold for being within constraints (only used for display)
+minTolConstr: 0.01         #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75    #determines length of one period of trajectory (smaller=longer)
@@ -44,7 +44,7 @@ trajectoryAngleRanges:
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
 # (or leave completely empty)
-ovr_pos_limit:
+ovrPosLimit:
     - null
     - null 
     - null
@@ -60,8 +60,8 @@ minVelocityPercentage: 0.1
 #### identification
 
 # fixed or floating-base dynamics
-floating_base: 1
-base_link_name: 'Waist'
+floatingBase: 1
+baseLinkName: 'Waist'
 
 # identify torque offsets as additional parameters
 identifyTorqueOffsets: 1
@@ -71,18 +71,18 @@ simulateTorques: 0    #simulate torque for measured angles etc using idyntree (i
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
-min_tol: 0.001
+minTol: 0.001
 
 ## data processing and selection
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify)
-start_offset: 650    #how many samples from the beginning of each measurement file are skipped
-skip_samples: 5    #how many values to skip before using the next sample
+startOffset: 650    #how many samples from the beginning of each measurement file are skipped
+skipSamples: 5    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
-block_size: 50  # needs to be at least as much as parameters so regressor is square or higher
+blockSize: 50  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
 
 removeNearZero: 0  #remove samples that have almost zero velocity

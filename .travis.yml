@@ -7,14 +7,15 @@ python:
   - "3.5"
 
 before_install: 
-    - sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
+    #- sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
     - sudo apt-get -qq update
-    - sudo apt-get install -y cmake cmake-data
+    - sudo apt-get install -y cmake
+      #cmake-data
     #cvxopt dependencies
     - sudo apt-get install -y liblapack3 liblapack-dev
     - sudo apt-get install -y libblas3 libblas-dev
     #install dsdp solver
-    - sudo apt-get instsall -y dsdp
+    - sudo apt-get install -y dsdp
 
 # command to install dependencies
 install: "pip install -r requirements.txt"

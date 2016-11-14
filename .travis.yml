@@ -9,8 +9,10 @@ python:
   - "3.5"
 
 before_install: 
+    #cvxopt dependencies
     - sudo apt-get -qq update
-    - sudo apt-get install -y libatlas-dev
+    - sudo apt-get install -y liblapack liblapack-dev
+    - sudo apt-get install -y libblas libblas-dev
 
 # command to install dependencies
 install: "pip install -r requirements.txt"

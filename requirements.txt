@@ -12,3 +12,4 @@ humanize
 future
 mpld3
 jinja2
+IPython

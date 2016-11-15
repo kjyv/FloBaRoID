@@ -35,8 +35,9 @@ before_script:
     - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
 
     #add python module dir variables to env
-    - sudo /bin/su -c "echo '`pwd`/install/lib/python2.7/site-packages' > /usr/lib/python2.7/dist-packages/iDynTree.pth"
-    - sudo /bin/su -c "echo '`pwd`/install/lib/python3.5/site-packages' > /usr/lib/python3.5/dist-packages/iDynTree.pth"
+    #- sudo /bin/su -c "echo '`pwd`/install/lib/python2.7/site-packages' > /usr/lib/python2.7/dist-packages/iDynTree.pth"
+    #- sudo /bin/su -c "echo '`pwd`/install/lib/python3.5/site-packages' > /usr/lib/python3.5/dist-packages/iDynTree.pth"
+    - export PYTHONPATH=$PYTHONPATH:`pwd`/install/lib/python2.7/site-packages:`pwd`/install/lib/python3.5/site-packages
 
 # command to run tests
 script: pytest

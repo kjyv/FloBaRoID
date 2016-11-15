@@ -4,12 +4,15 @@ env: "TRAVIS_CMAKE_GENERATOR=\"Unix Makefiles\", TRAVIS_BUILD_TYPE=\"Release\""
 language: python
 python:
   - "2.7"
-  - "3.5"
+  - "3.4"
+cache: pip
+before_cache:
+  - rm -f $HOME/.cache/pip/log/debug.log
 
 before_install: 
-    #- sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
+    - sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
     - sudo apt-get -qq update
-    #- sudo apt-get install -y cmake cmake-data
+    - sudo apt-get install -y cmake cmake-data
     - sudo apt-get install -y python-dev python3-dev
     - sudo apt-get install -y gfortran
     #cvxopt dependencies
@@ -31,7 +34,11 @@ before_script:
     - mkdir build
     - cd build
     - export CMAKE_PREFIX_PATH=`pwd`/install
-    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_USES_YARP:BOOL=OFF -DIDYNTREE_USES_ICUB_MAIN:BOOL=OFF -DIDYNTREE_USES_PYTHON:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=ON -DPYTHON_LIBRARIES=`~/virtualenv/bin/python-config --prefix`/lib -DPYTHON_INCLUDE_DIR=`~/virtualenv/bin/python-config --prefix`/include ..
+
+    if [[$TRAVIS_PYTHON_VERSION == 2.7 ]] then export PYTHON_INCLUDE_DIR=/usr/include/python2.7; export PYTHON_LIBRARY=/usr/lib/python2.7/config/libpython2.7.so; fi
+    if [[$TRAVIS_PYTHON_VERSION == 3.4 ]] then export PYTHON_INCLUDE_DIR=/usr/include/python3.4; export PYTHON_LIBRARY=/usr/lib/python3.4/config/libpython3.4.so; fi
+    - 
+    - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_USES_YARP:BOOL=OFF -DIDYNTREE_USES_ICUB_MAIN:BOOL=OFF -DIDYNTREE_USES_PYTHON:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=ON ..
     - cmake --build . --config ${TRAVIS_BUILD_TYPE}
     - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
 

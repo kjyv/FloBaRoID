@@ -3,6 +3,7 @@
 
 import subprocess
 import os
+import sys
 
 def test_identification():
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
@@ -10,7 +11,7 @@ def test_identification():
         output = subprocess.check_output('./examples/identify_kuka_lwr4.sh', cwd=path, shell=True, env=os.environ.copy())
     except subprocess.CalledProcessError as e:
         print (e.output)
-        return (e.returncode)
+        sys.exit(e.returncode)
 
 if __name__ == '__main__':
     test_identification()

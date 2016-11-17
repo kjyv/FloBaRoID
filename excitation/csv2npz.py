@@ -126,7 +126,7 @@ def readWalkmanCSV(dir, config, plot):
                               0, 0, 0, 0, 0, 0, 0])
 
     # shift measured torques backwards by this many samples
-    time_offset = round(200*0.08)
+    time_offset = round(200*0.09)
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -226,6 +226,7 @@ def readWalkmanCSV(dir, config, plot):
         ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
     #hardware and gazebo seem to have different sign
+    #hw sensors are unreliable in x any axes for now
     if is_hw:
         out['FTleft'][:, 0] = f[:, 3]*0
         out['FTleft'][:, 1] = f[:, 4]*0
@@ -257,7 +258,7 @@ def readWalkmanCSV(dir, config, plot):
             ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
 
         #set titles and enable legends for each subplot
-        t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT right', 'FT left']
+        t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT left', 'FT right']
         for i in range(0,5):
             plt.subplot(321+i)
             eval('ax{}'.format(1+i)).legend(fancybox=True, fontsize=10, title='')

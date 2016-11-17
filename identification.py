@@ -1091,7 +1091,8 @@ class Identification(object):
                 datasets.append(
                     { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
                       [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i],
-                                 self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]],
+                                 #self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]
+                                ],
                         'time': rel_time, 'title': self.model.jointNames[i]},
                       ]
                     }

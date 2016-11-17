@@ -171,7 +171,7 @@ class Model(object):
             # for identification purposes, the position does not matter but rotation is taken
             # from IMU estimation. The gravity, base velocity and acceleration all need to be
             # expressed in world frame then
-            dynComp.setFloatingBase(self.opt['base_link_name'])
+            dynComp.setFloatingBase(self.opt['baseLinkName'])
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)

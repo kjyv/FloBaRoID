@@ -637,6 +637,8 @@ class Identification(object):
 
             D_other_blocks = []
 
+            params_to_skip = []
+
             linkConds = self.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
             for i in range(0, self.model.N_LINKS):
@@ -646,37 +648,33 @@ class Identification(object):
                 if self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']:
                     print(Fore.YELLOW + 'skipping identification of link {} ({})!'.format(i, self.model.linkNames[i]) + Fore.RESET)
                     # don't change mass
-                    D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
-                    D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
+                    params_to_skip.append(i*10)
 
                     # don't change COM
-                    D_other_blocks.append(Matrix([compare[i*10+1] - self.model.param_syms[i*10+1]]))
-                    D_other_blocks.append(Matrix([compare[i*10+2] - self.model.param_syms[i*10+2]]))
-                    D_other_blocks.append(Matrix([compare[i*10+3] - self.model.param_syms[i*10+3]]))
-
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+1] - compare[i*10+1]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+2] - compare[i*10+2]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+3] - compare[i*10+3]]))
+                    params_to_skip.append(i*10+1)
+                    params_to_skip.append(i*10+2)
+                    params_to_skip.append(i*10+3)
 
                     # don't change inertia
-                    D_other_blocks.append(Matrix([compare[i*10+4] - self.model.param_syms[i*10+4]]))
-                    D_other_blocks.append(Matrix([compare[i*10+5] - self.model.param_syms[i*10+5]]))
-                    D_other_blocks.append(Matrix([compare[i*10+6] - self.model.param_syms[i*10+6]]))
-                    D_other_blocks.append(Matrix([compare[i*10+7] - self.model.param_syms[i*10+7]]))
-                    D_other_blocks.append(Matrix([compare[i*10+8] - self.model.param_syms[i*10+8]]))
-                    D_other_blocks.append(Matrix([compare[i*10+9] - self.model.param_syms[i*10+9]]))
-
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+4] - compare[i*10+4]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+5] - compare[i*10+5]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+6] - compare[i*10+6]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+7] - compare[i*10+7]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+8] - compare[i*10+8]]))
-                    D_other_blocks.append(Matrix([self.model.param_syms[i*10+9] - compare[i*10+9]]))
+                    params_to_skip.append(i*10+4)
+                    params_to_skip.append(i*10+5)
+                    params_to_skip.append(i*10+6)
+                    params_to_skip.append(i*10+7)
+                    params_to_skip.append(i*10+8)
+                    params_to_skip.append(i*10+9)
                 else:
-                    # all other links
+                    # constraints for all other links
                     if self.opt['dontIdentifyMasses']:
-                        D_other_blocks.append(Matrix([compare[i*10] - self.model.mass_syms[i]]))
-                        D_other_blocks.append(Matrix([self.model.mass_syms[i] - compare[i*10]]))
+                        params_to_skip.append(i*10)
+
+            # manual fixed params
+            for p in self.opt['dontChangeParams']:
+                params_to_skip.append(p)
+
+            # create actual don't-change constraints
+            for p in set(params_to_skip):
+                D_other_blocks.append(Matrix([compare[p] - self.model.param_syms[p]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[p] - compare[p]]))
 
             # constrain overall mass within bounds
             if self.opt['limitOverallMass']:

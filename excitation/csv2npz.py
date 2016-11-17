@@ -110,13 +110,13 @@ def readWalkmanCSV(dir, config, plot):
     csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 
-    joint_signs = np.array([-1, 1, 1, 1, -1, -1,      #LHipLat -
-                            -1, 1, 1, 1, -1, -1,      #RHipLat -
+    joint_signs = np.array([1, 1, -1, 1, -1, -1,      #LHipLat -
+                            1, 1, 1, 1, -1, -1,      #RHipLat -
                             #1,                       #WaistLat
-                            1, 1,                     #WaistSag -
+                            1, -1,                     #WaistSag -
                             1, 1, -1, 1, 1, -1, -1,   #LShSag -
                             #1, 1,                     #NeckYawj -
-                            -1, 1, 1, -1, 1, 1, -1])  #RShSag -
+                            -1, 1, -1, -1, 1, 1, -1])  #RShSag -
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
                               #-370,                  #WaistLat
@@ -125,6 +125,9 @@ def readWalkmanCSV(dir, config, plot):
                               #0, 0,
                               0, 0, 0, 0, 0, 0, 0])
 
+    # shift measured torques backwards by this many samples
+    time_offset = round(200*0.08)
+
     print(np.array(jointNames)[csv_T_urdf_indices])
 
     config['N_DOFS'] = len(jointNames) - len(ignoreJoints)
@@ -132,7 +135,7 @@ def readWalkmanCSV(dir, config, plot):
     file = os.path.join(dir, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(file)
     out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
-    out['torques'] = np.empty( (f.shape[0], config['N_DOFS']) )
+    out['torques'] = np.zeros( (f.shape[0], config['N_DOFS']) )
     out['times'] = np.empty( f.shape[0] )
     out['times'][:] = np.arange(0, f.shape[0])*sampleTime
     out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
@@ -154,7 +157,7 @@ def readWalkmanCSV(dir, config, plot):
 
         out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]]   #position reference
         out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #motor encoders
-        out['torques'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
+        out['torques'][time_offset:, dof] = f[:-time_offset, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
         if plot:
             ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
             ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])

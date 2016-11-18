@@ -381,8 +381,11 @@ class OutputMatplotlib(object):
     def render(self, idf, filename='output.html'):
         if self.html:
             # write matplotlib/d3 plots to html file
+            import matplotlib
+            matplotlib.use('Agg')
             import matplotlib.pyplot as plt, mpld3
             import matplotlib.axes
+
             from mpld3 import plugins
             from jinja2 import Environment, FileSystemLoader
             if idf.opt['outputFilename']:

@@ -50,7 +50,7 @@ minVelocityConstraint: 0
 floatingBase: 0
 
 # identify torque offsets as additional parameters
-identifyTorqueOffsets: 0
+identifyTorqueOffsets: 1
 
 # simulate torques from target values, don't use both
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)

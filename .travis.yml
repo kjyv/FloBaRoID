@@ -44,7 +44,7 @@ before_script:
     - if [[$TRAVIS_PYTHON_VERSION == 2.7 ]]; then
         export PYTHON_INCLUDE_DIR=/usr/include/python2.7;
         export PYTHON_LIBRARY=/usr/lib/python2.7/config/libpython2.7.so;
-        export PYTHONPATH=$PYTHONPATH:~/virtualenv/python2.7/lib/python2.7/site-packages
+        export PYTHONPATH=$PYTHONPATH:~/virtualenv/python2.7/lib/python2.7/site-packages;
       fi
     - if [[$TRAVIS_PYTHON_VERSION == 3.4 ]]; then
         export PYTHON_INCLUDE_DIR=/usr/include/python3.4;

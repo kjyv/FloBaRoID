@@ -62,4 +62,5 @@ before_script:
 # command to run tests
 script:
     - cd ../..
+    - export MPLBACKEND="agg"
     - pytest tests

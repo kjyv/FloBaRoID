@@ -382,7 +382,6 @@ class OutputMatplotlib(object):
         if self.html:
             # write matplotlib/d3 plots to html file
             import matplotlib
-            matplotlib.use('Agg')
             import matplotlib.pyplot as plt, mpld3
             import matplotlib.axes
 

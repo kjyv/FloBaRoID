@@ -3,13 +3,13 @@ sudo: required
 env: "TRAVIS_CMAKE_GENERATOR=\"Unix Makefiles\", TRAVIS_BUILD_TYPE=\"Release\""
 language: python
 python:
-  - "2.7"
-  - "3.4"
+    - "3.4"
+#  - "2.7"
 cache:
     - pip
     - ccache
 before_cache:
-  - rm -f $HOME/.cache/pip/log/debug.log
+    - rm -f $HOME/.cache/pip/log/debug.log
 
 before_install: 
     - sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes

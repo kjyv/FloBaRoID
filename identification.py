@@ -1074,13 +1074,15 @@ class Identification(object):
 
         if self.opt['plotPerJoint']:
             datasets = []
-            #add plots for each joint
+            # add plots for each joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
-                    { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': ['Measured', 'Estimated', 'CAD'],
-                      'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
+                    { 'unified_scaling': True, 'y_label': 'Torque (Nm)',
+                      'labels': ['Measured', 'Estimated', 'CAD', 'Error M/E'], 'contains_base': False,
                       'dataset': [
-                        {'data':[np.vstack((tauMeasured[:,i], tauEstimated[:,i], tauAPriori[:,i])).T],
+                        {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i], tauAPriori[:,i],
+                            #tauMeasured[:,i]-tauEstimated[:,i]   #plot error
+                            )).T],
                          'time': rel_time, 'title': torque_labels[i]}
                       ]
                     }

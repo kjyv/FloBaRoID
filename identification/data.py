@@ -526,15 +526,14 @@ class Data(object):
                     IMUrotVelWorld[i, :] = R.dot(IMUrotVel[i, :])
                 np.copyto(IMUrotVel, IMUrotVelWorld)
 
-
                 grav_norm = np.mean(la.norm(IMUlinAccWorld, axis=1))
-                if grav_norm < 9.81:
-                    print('Warning: base acceleration is smaller than gravity ({})! Scaling'.format(grav_norm))
+                if grav_norm < 9.81 or grav_norm > 9.82:
+                    print('Warning: mean base acceleration is different than gravity ({})! Scaling'.format(grav_norm))
                     #scale up/down
                     IMUlinAccWorld *= 9.81/grav_norm
 
                 # subtract gravity vector
-                #IMUlinAccWorld -= np.array([0,0,-9.81])
+                IMUlinAccWorld -= np.array([0,0,-9.81])
 
                 #try to skip initial values until close to 0 acceleration time is found
                 if self.opt['waitForZeroAcc']:
@@ -558,12 +557,6 @@ class Data(object):
 
                 # subtract means, includes wrong gravity offset and other static offsets
                 IMUlinAccWorld -= np.mean(IMUlinAccWorld, axis=0)
-
-                # rotate back (save proper linear acceleration without gravity)
-                #for i in range(0, IMUlinAcc.shape[0]):
-                #    rot = IMUrpy[i, :]
-                #    R = iDynTree.Rotation.RPY(-rot[0], -rot[1], -rot[2]).toNumPy()
-                #    IMUlinAcc[i, :] = R.T.dot(IMUlinAccWorld[i, :])
                 np.copyto(IMUlinAcc, IMUlinAccWorld)
 
                 # integrate linear acceleration to get velocity

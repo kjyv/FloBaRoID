@@ -53,6 +53,7 @@ def readCentauroCSV(dir, config, plot):
             out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
             out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
             out['torques'] = np.empty( (f.shape[0], config['N_DOFS']) )
+#            out['currents'] = np.empty( (f.shape[0], config['N_DOFS']) )
             out['velocities'] = np.zeros_like(out['positions'])
             out['accelerations'] = np.zeros_like(out['positions'])
             out['times'] = np.empty( f.shape[0] )
@@ -110,10 +111,10 @@ def readWalkmanCSV(dir, config, plot):
     csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 
-    joint_signs = np.array([1, 1, -1, 1, -1, -1,      #LHipLat -
+    joint_signs = np.array([-1, -1, -1, 1, -1, -1,      #LHipLat -
                             1, 1, 1, 1, -1, -1,      #RHipLat -
                             #1,                       #WaistLat
-                            1, -1,                     #WaistSag -
+                            1, 1,                     #WaistSag -
                             1, 1, -1, 1, 1, -1, -1,   #LShSag -
                             #1, 1,                     #NeckYawj -
                             -1, 1, -1, -1, 1, 1, -1])  #RShSag -
@@ -163,16 +164,16 @@ def readWalkmanCSV(dir, config, plot):
             ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
     #correct signs and offsets (for now)
-    out['torques'] = out['torques']*joint_signs + joint_offsets
+    out['torques'] = out['torques'] * joint_signs + joint_offsets
 
-    file = os.path.join(dir, 'feedbackData.csv')   #force torque and IMU
+    file = os.path.join(dir, 'feedbackData.csv')    # force torque and IMU
     f = np.loadtxt(file)
-    out['FTleft'] = np.empty( (f.shape[0], 6) )   #FT left foot, 3 force, 3 torque values
-    out['FTright'] = np.empty( (f.shape[0], 6) )   #FT right foot, 3 force, 3 torque values
-    out['IMUrpy'] = np.empty( (f.shape[0], 3) )    #IMU orientation, r,p,y
-    out['IMUlinAcc'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
-    out['IMUlinAcc2'] = np.empty( (f.shape[0], 3) ) #IMU linear acceleration
-    out['IMUrotVel'] = np.empty( (f.shape[0], 3) ) #IMU rotational velocity
+    out['FTleft'] = np.empty((f.shape[0], 6))       # FT left foot, 3 force, 3 torque values
+    out['FTright'] = np.empty((f.shape[0], 6))      # FT right foot, 3 force, 3 torque values
+    out['IMUrpy'] = np.empty((f.shape[0], 3))       # IMU orientation, r,p,y
+    out['IMUlinAcc'] = np.zeros((f.shape[0], 3))    # IMU linear acceleration
+    out['IMUlinAcc2'] = np.zeros((f.shape[0], 3))   # IMU linear acceleration
+    out['IMUrotVel'] = np.zeros((f.shape[0], 3))    # IMU rotational velocity
 
     if plot:
         ax3 = fig.add_subplot(3,2,3)
@@ -181,44 +182,61 @@ def readWalkmanCSV(dir, config, plot):
         acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
         if is_hw:
-            #use data fields for first IMU (IMUrpy)
-            #out['IMUrpy'][:, i] = f[:, i]
-            out['IMUlinAcc'][:, i] = f[:, 18+i]*9.81
-            out['IMUrotVel'][:, i] = f[:, 21+i]
-            #use data fields for second IMU (VNrpy)
-            out['IMUrpy'][:, i] = f[:, 15+i]
-            out['IMUlinAcc2'][:, i] = f[:, 24+i]
-            #out['IMUrotVel'][:, i] = f[:, 27+i]
+            # use data fields of LPMS IMU (LPMS-CU)
+            #out['IMUrpy'][:, i] = np.deg2rad(f[:, i])    # data in deg
+            out['IMUlinAcc'][:, i] = f[:, 18+i] * 9.81   # data in g -> (m/s2)/9.81
+            #out['IMUrotVel'][:, i] = np.deg2rad(f[:, 21+i])   # data in deg/s
+
+            # use data fields of VN IMU (VectorNav VN-100)
+            out['IMUrpy'][:, i] = f[:, 15+i]       # rad
+            out['IMUlinAcc2'][:, i] = np.copy(f[:, 24+i])  #m/s2
+            #out['IMUrotVel'][:, i] = f[:, 27+i]   # rad/s, but has some constant offsets
+            #out['IMUrotVel'][:, i] -= np.mean(out['IMUrotVel'][:, i])  #remove those offsets
         else:
-            #sim
+            # sim
             out['IMUrpy'][:, i] = f[:, i]
             out['IMUlinAcc'][:, i] = f[:, 18+i]
             out['IMUrotVel'][:, i] = f[:, 21+i]
 
-        if is_hw:
-            #rotate VNrpy vals to robot frame (as it is physically rotated)
-            #TODO: should be pi,0,0 according to printed coordinate systems but 0,0,pi seems better?
-            robotToIMU = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
-            for j in range(0, out['IMUlinAcc2'].shape[0]):
-                out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
+    if is_hw:
+        # rotate VN-100 vals to robot frame (as it is physically rotated)
+        #robotToIMU = iDynTree.Rotation.RPY(np.pi, 0, 0).toNumPy()
+        #for j in range(0, out['IMUlinAcc2'].shape[0]):
+        #    out['IMUlinAcc2'][j, :] = robotToIMU.dot(out['IMUlinAcc2'][j, :])
+        # can also just flip y and z to get rotation
+        out['IMUlinAcc2'][:, 1] *= -1
+        out['IMUlinAcc2'][:, 2] *= -1
 
-            #rotate rotational velocity
-            #for j in range(0, out['IMUrotVel'].shape[0]):
-            #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
+        # rotate rotational velocity (if using VN-100)
+        #for j in range(0, out['IMUrotVel'].shape[0]):
+        #    out['IMUrotVel'][j, :] = robotToIMU.dot(out['IMUrotVel'][j, :])
 
-            #correct rotation estimation as well
-            #for j in range(0, out['IMUrpy'].shape[0]):
-            #    out['IMUrpy'][j, 0] += np.pi
+        # correct rotation estimation (should have roll +- 180 deg but doesn't?)
+        #out['IMUrpy'][:, 0] -= np.pi
 
-        '''
-        #use other IMU and take average
-        out['IMUlinAcc'] = np.mean([out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
-        '''
-        out['IMUlinAcc'] = out['IMUlinAcc2']
-
-        if plot:
+    if plot:
+        for i in range(0,3):
             ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
             ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
+
+    '''
+    # use both IMUs and take average
+    grav_norm = np.mean(la.norm(out['IMUlinAcc'], axis=1))
+    if grav_norm < 9.81 or grav_norm > 9.82:
+        #print('Warning: mean base acceleration is different than gravity ({})! Scaling'.format(grav_norm))
+        #scale up/down
+        out['IMUlinAcc'] *= 9.81/grav_norm
+    grav_norm = np.mean(la.norm(out['IMUlinAcc2'], axis=1))
+    if grav_norm < 9.81 or grav_norm > 9.82:
+        #print('Warning: mean base acceleration is different than gravity ({})! Scaling'.format(grav_norm))
+        #scale up/down
+        out['IMUlinAcc2'] *= 9.81/grav_norm
+
+    out['IMUlinAcc'] = np.mean([-out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
+    '''
+
+    # use second IMU
+    out['IMUlinAcc'] = out['IMUlinAcc2']
 
     if plot:
         ax5 = fig.add_subplot(3,2,5)
@@ -226,7 +244,7 @@ def readWalkmanCSV(dir, config, plot):
         ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
     #hardware and gazebo seem to have different sign
-    #hw sensors are unreliable in x any axes for now
+    #hw sensors are unreliable in linear x and y axes for now
     if is_hw:
         out['FTleft'][:, 0] = f[:, 3]*0
         out['FTleft'][:, 1] = f[:, 4]*0

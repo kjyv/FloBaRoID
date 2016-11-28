@@ -18,7 +18,7 @@ import scipy.linalg as sla
 import scipy.stats as stats
 
 import sympy
-from sympy import Symbol, symbols, solve, Eq, Matrix, BlockMatrix, Identity, sympify, eye, zeros
+from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, Identity, eye, zeros
 from distutils.version import LooseVersion
 is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
 
@@ -54,6 +54,7 @@ from IPython import embed
 # Sousa, 2014: Physical feasibility of robot base inertial parameter identification: A linear matrix
 # inequality approach
 
+
 class Identification(object):
     def __init__(self, opt, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
         self.opt = opt
@@ -63,7 +64,7 @@ class Identification(object):
         # orthogonalize basis matrix (uglier linear relationships, should not change results)
         self.opt['orthogonalizeBasis'] = 0
 
-        #project a priori to solution subspace
+        # project a priori to solution subspace
         self.opt['projectToAPriori'] = 0
 
         #### end additional config flags
@@ -88,7 +89,7 @@ class Identification(object):
         """ get torque estimations using regressors, prepare for plotting """
 
         if not estimateWith:
-            #use global parameter choice if none is given specifically
+            # use global parameter choice if none is given specifically
             estimateWith = self.opt['estimateWith']
         # estimate torques with idyntree regressor and different params
         if estimateWith == 'urdf':
@@ -108,14 +109,14 @@ class Identification(object):
         else:
             fb = 0
 
-        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS+fb))
+        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS + fb))
 
         #if self.opt['floatingBase']:
         #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
         if self.opt['showErrorHistogram'] == 1:
             error = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
-            h = plt.hist(error, 50)
+            plt.hist(error, 50)
             plt.title("error histogram")
             plt.draw()
             plt.show()
@@ -147,7 +148,7 @@ class Identification(object):
         self.opt['skipSamples'] = 8
 
         self.tauEstimatedValidation = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples']+1):
+        for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1):
             torques = self.model.simulateDynamics(v_data, m_idx, dynComp)
 
             if self.tauEstimatedValidation is None:
@@ -156,8 +157,8 @@ class Identification(object):
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques))
 
         if self.opt['skipSamples'] > 0:
-            self.tauMeasuredValidation = v_data['torques'][::self.opt['skipSamples']+1]
-            self.Tv = v_data['times'][::self.opt['skipSamples']+1]
+            self.tauMeasuredValidation = v_data['torques'][::self.opt['skipSamples'] + 1]
+            self.Tv = v_data['times'][::self.opt['skipSamples'] + 1]
         else:
             self.tauMeasuredValidation = v_data['torques']
             self.Tv = v_data['times']
@@ -170,13 +171,13 @@ class Identification(object):
 
         self.opt['skipSamples'] = old_skip
 
-        self.val_error = sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation) \
+        self.val_error = sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
 
 
     def getBaseParamsFromParamError(self):
-        self.model.xBase += self.model.xBaseModel   #both param vecs link relative linearized
+        self.model.xBase += self.model.xBaseModel   # both param vecs link relative linearized
 
         if self.opt['useEssentialParams']:
             self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[self.baseEssentialIdx]
@@ -194,13 +195,13 @@ class Identification(object):
         if self.opt['useAPriori']:
             self.model.xStd += self.model.xStdModel
         elif self.opt['projectToAPriori']:
-            #add a priori parameters projected on non-identifiable subspace
-            self.model.xStd += (np.eye(self.model.B.shape[0])-self.model.B.dot(self.model.Binv)).dot(self.model.xStdModel)
+            # add a priori parameters projected on non-identifiable subspace
+            self.model.xStd += (np.eye(self.model.B.shape[0]) - self.model.B.dot(self.model.Binv)).dot(self.model.xStdModel)
 
-            #do projection algebraically
-            #for each identified base param,
+            # do projection algebraically
+            # for each identified base param,
             base_deps_vals = []
-            for idx in range(0,self.model.num_base_params):
+            for idx in range(0, self.model.num_base_params):
                 base_deps_vals.append(Eq(self.model.base_deps[idx], self.model.xBase[idx]))
 
             prev_eq = base_deps_vals[0].lhs - base_deps_vals[0].rhs
@@ -210,16 +211,16 @@ class Identification(object):
 
             print("solution space: {}".format(prev_eq2))
 
-            #get some point in the affine subspace (set all but one var then solve)
+            # get some point in the affine subspace (set all but one var then solve)
             p_on_eq = []
-            rns = np.random.rand(len(self.model.param_syms)-1)
+            rns = np.random.rand(len(self.model.param_syms) - 1)
             #rns = np.zeros(len(syms)-1)
             #rns[0] = 1
             eq = prev_eq2.subs(list(zip(self.model.param_syms, rns)))   #replace vars with values
             p_on_eq[0:len(rns)] = rns   #collect values
-            p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms)-1])[0])   #solve for remaining (last) symbol
+            p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms) - 1])[0])   #solve for remaining (last) symbol
             print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
-            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq))*100/sla.norm(self.model.tauMeasured)
+            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq)) * 100 / sla.norm(self.model.tauMeasured)
             print(pham_percent)
 
 
@@ -273,10 +274,10 @@ class Identification(object):
                 else:
                     print("error is not normal distributed (p={})".format(p))
 
-            pham_percent_start = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
+            pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
             print("starting percentual error {}".format(pham_percent_start))
 
-            rho_start = np.square(sla.norm(tauDiff))
+            #rho_start = np.square(sla.norm(tauDiff))
             p_sigma_x = 0
 
             has_run_once = 0
@@ -287,10 +288,10 @@ class Identification(object):
 
                 # get standard deviation of measurement and modeling error \sigma_{rho}^2
                 rho = np.square(sla.norm(tauDiff))
-                sigma_rho = rho/(self.data.num_used_samples-self.model.num_base_params)
+                sigma_rho = rho/(self.data.num_used_samples - self.model.num_base_params)
 
                 # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-                C_xx = sigma_rho*(sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
+                C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
                 sigma_x = np.diag(C_xx)
 
                 # get relative standard deviation
@@ -300,10 +301,9 @@ class Identification(object):
                     if self.model.xBase[i] != 0:
                         p_sigma_x[i] /= np.abs(self.model.xBase[i])
 
-                print("{} params|".format(self.model.num_base_params-b_c), end=' ')
+                print("{} params|".format(self.model.num_base_params - b_c), end=' ')
 
-                old_ratio = ratio
-                ratio = np.max(p_sigma_x)/np.min(p_sigma_x)
+                ratio = np.max(p_sigma_x) / np.min(p_sigma_x)
                 print("min-max ratio of relative stddevs: {},".format(ratio), end=' ')
 
                 print("cond(YBase):{},".format(la.cond(self.model.YBase)), end=' ')
@@ -312,7 +312,7 @@ class Identification(object):
                     tauDiff = self.model.tauMeasured - self.tauEstimated
                 else:
                     tauDiff = self.tauEstimated
-                pham_percent = sla.norm(tauDiff)*100/sla.norm(self.model.tauMeasured)
+                pham_percent = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
                 error_increase_pham = pham_percent_start - pham_percent
                 print("error delta {}".format(error_increase_pham))
 
@@ -327,7 +327,7 @@ class Identification(object):
                 if has_run_once and self.opt['showEssentialSteps']:
                     # put some values into global variable for output
                     self.baseNonEssentialIdx = not_essential_idx
-                    self.baseEssentialIdx = [x for x in range(0,self.model.num_base_params) if x not in not_essential_idx]
+                    self.baseEssentialIdx = [x for x in range(0, self.model.num_base_params) if x not in not_essential_idx]
                     self.num_essential_params = len(self.baseEssentialIdx)
                     self.xBase_essential = np.zeros_like(xBase_orig)
 
@@ -350,9 +350,9 @@ class Identification(object):
                 else:
                     has_run_once = 1
 
-                #cancel the parameter with largest deviation
+                # cancel the parameter with largest deviation
                 param_idx = np.argmax(p_sigma_x)
-                #get its index among the base params (otherwise it doesnt take deletion into account)
+                # get its index among the base params (otherwise it doesnt take deletion into account)
                 param_base_idx = base_idx[param_idx]
                 if param_base_idx not in not_essential_idx:
                     not_essential_idx.append(param_base_idx)
@@ -373,7 +373,7 @@ class Identification(object):
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
-            self.baseEssentialIdx = [x for x in range(0,self.model.num_base_params) if x not in not_essential_idx]
+            self.baseEssentialIdx = [x for x in range(0, self.model.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
 
             # leave previous base params and regressor unchanged
@@ -391,73 +391,73 @@ class Identification(object):
     def findStdFromBaseEssParameters(self):
         """ Find essential standard parameters from previously determined base essential parameters. """
 
-        with helpers.Timer() as t:
-            # get the choice of indices into the std params of the independent columns.
-            # Of those, only select the std parameters that are essential
-            self.stdEssentialIdx = self.model.independent_cols[self.baseEssentialIdx]
+        # get the choice of indices into the std params of the independent columns.
+        # Of those, only select the std parameters that are essential
+        self.stdEssentialIdx = self.model.independent_cols[self.baseEssentialIdx]
 
-            # intuitively, also the dependent columns should be essential as the linear combination
-            # is used to identify and calc the error
-            useCADWeighting = 0   # usually produces exact same result, but might be good for some tests
-            if self.opt['useDependents']:
-                # also get the ones that are linearly dependent on them -> base params
-                dependents = []
-                #to_delete = []
-                for i in range(0, self.model.linear_deps.shape[0]):
-                    if i in self.baseEssentialIdx:
-                        for s in self.model.base_deps[i].free_symbols:
-                            idx = self.model.param_syms.index(s)
-                            if idx not in dependents:
-                                dependents.append(idx)
+        # intuitively, also the dependent columns should be essential as the linear combination
+        # is used to identify and calc the error
+        useCADWeighting = 0   # usually produces exact same result, but might be good for some tests
+        if self.opt['useDependents']:
+            # also get the ones that are linearly dependent on them -> base params
+            dependents = []
+            #to_delete = []
+            for i in range(0, self.model.linear_deps.shape[0]):
+                if i in self.baseEssentialIdx:
+                    for s in self.model.base_deps[i].free_symbols:
+                        idx = self.model.param_syms.index(s)
+                        if idx not in dependents:
+                            dependents.append(idx)
 
-                #print self.stdEssentialIdx
-                #print len(dependents)
-                print(dependents)
-                self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
+            #print self.stdEssentialIdx
+            #print len(dependents)
+            print(dependents)
+            self.stdEssentialIdx = np.concatenate((self.stdEssentialIdx, dependents))
 
-            #np.delete(self.stdEssentialIdx, to_delete, 0)
+        #np.delete(self.stdEssentialIdx, to_delete, 0)
 
-            # remove mass params if present
-            if self.opt['dontIdentifyMasses']:
-                ps = list(range(0,self.model.num_params, 10))
-                self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
+        # remove mass params if present
+        if self.opt['dontIdentifyMasses']:
+            ps = list(range(0, self.model.num_params, 10))
+            self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
 
-            self.stdNonEssentialIdx = [x for x in range(0, self.model.num_params) if x not in self.stdEssentialIdx]
+        self.stdNonEssentialIdx = [x for x in range(0, self.model.num_params) if x not in self.stdEssentialIdx]
 
-            ## get \hat{x_e}, set zeros for non-essential params
-            if self.opt['useDependents'] or useCADWeighting:
-                # we don't really know what the weights are if we have more std essential than base
-                # essentials, so use CAD/previous params for weighting
-                self.xStdEssential = self.model.xStdModel.copy()
+        # get \hat{x_e}, set zeros for non-essential params
+        if self.opt['useDependents'] or useCADWeighting:
+            # we don't really know what the weights are if we have more std essential than base
+            # essentials, so use CAD/previous params for weighting
+            self.xStdEssential = self.model.xStdModel.copy()
 
-                # set essential but zero cad values to small values that are in possible range of those parameters
-                # so something can be estimated
-                #self.xStdEssential[np.where(self.xStdEssential == 0)[0]] = .1
-                idx = 0
-                for p in self.xStdEssential:
-                    if p == 0:
+            # set essential but zero cad values to small values that are in possible range of those parameters
+            # so something can be estimated
+            #self.xStdEssential[np.where(self.xStdEssential == 0)[0]] = .1
+            idx = 0
+            for p in self.xStdEssential:
+                if p == 0:
+                    v = 0.1
+                    p_start = idx // 10 * 10
+                    if idx % 10 in [1,2,3]:   #com value
+                        v = np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1
+                    elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
+                        inertia_range = np.array([4,5,6,7,8,9])+p_start
+                        v = np.mean(self.model.xStdModel[np.where(self.model.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1
+                    if v == 0:
                         v = 0.1
-                        p_start = idx//10*10
-                        if idx % 10 in [1,2,3]:   #com value
-                            v = np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1
-                        elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
-                            inertia_range = np.array([4,5,6,7,8,9])+p_start
-                            v = np.mean(self.model.xStdModel[np.where(self.model.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1
-                        if v == 0: v = 0.1
-                        self.xStdEssential[idx] = v
-                        #print idx, idx % 10, v
-                    idx += 1
+                    self.xStdEssential[idx] = v
+                    #print idx, idx % 10, v
+                idx += 1
 
-                # cancel non-essential std params so they are not identified
-                self.xStdEssential[self.stdNonEssentialIdx] = 0
-            else:
-                # weighting using base essential params (like in Gautier, 2013)
-                self.xStdEssential = np.zeros_like(self.model.xStdModel)
-                #if self.opt['useAPriori']:
-                #    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
-                #        + self.xBaseModel[self.baseEssentialIdx]
-                #else:
-                self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
+            # cancel non-essential std params so they are not identified
+            self.xStdEssential[self.stdNonEssentialIdx] = 0
+        else:
+            # weighting using base essential params (like in Gautier, 2013)
+            self.xStdEssential = np.zeros_like(self.model.xStdModel)
+            #if self.opt['useAPriori']:
+            #    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
+            #        + self.xBaseModel[self.baseEssentialIdx]
+            #else:
+            self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
 
     def identifyBaseParameters(self, YBase=None, tau=None):
@@ -478,14 +478,14 @@ class Identification(object):
         self.model.YBaseInv = la.pinv(self.model.YBase)
 
         if self.opt['floatingBase']:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot( self.model.contactForcesSum )
+            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
         else:
             self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
 
-        #ordinary least squares with numpy method (might be better in noisy situations)
+        # ordinary least squares with numpy method (might be better in noisy situations)
         #self.model.xBase = la.lstsq(YBase, tau)[0]
 
-        #damped least squares
+        # damped least squares
         #from scipy.sparse.linalg import lsqr
         #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
 
@@ -500,7 +500,7 @@ class Identification(object):
 
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(sla.norm(self.tauEstimated))/ \
+            self.sigma_rho = np.square(sla.norm(self.tauEstimated)) / \
                                        (self.data.num_used_samples-self.model.num_base_params)
 
             if self.opt['floatingBase']: fb = 6
@@ -536,13 +536,13 @@ class Identification(object):
             U, s, VH = la.svd(self.model.YStd, full_matrices=False)
             nb = self.model.num_base_params
 
-            #identify standard parameters directly
+            # identify standard parameters directly
             V_1 = VH.T[:, 0:nb]
             U_1 = U[:, 0:nb]
             s_1 = np.diag(s[0:nb])
             s_1_inv = la.inv(s_1)
             W_st_pinv = V_1.dot(s_1_inv).dot(U_1.T)
-            W_st = la.pinv(W_st_pinv)
+            #W_st = la.pinv(W_st_pinv)
 
             x_est = W_st_pinv.dot(self.model.tau)
 
@@ -572,14 +572,14 @@ class Identification(object):
         with helpers.Timer() as t:
             # weighting with previously determined essential params
             # calculates V_1e, U_1e etc. (Gautier, 2013)
-            Yst_e = self.model.YStd.dot(np.diag(self.xStdEssential))   #= W_st^e
+            Yst_e = self.model.YStd.dot(np.diag(self.xStdEssential))   # = W_st^e
             Ue, se, VHe = sla.svd(Yst_e, full_matrices=False)
-            ne = self.num_essential_params  #nr. of essential params among base params
+            ne = self.num_essential_params  # nr. of essential params among base params
             V_1e = VHe.T[:, 0:ne]
             U_1e = Ue[:, 0:ne]
             s_1e_inv = sla.inv(np.diag(se[0:ne]))
             W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
-            W_st_e = la.pinv(W_st_e_pinv)
+            #W_st_e = la.pinv(W_st_e_pinv)
 
             x_tmp = W_st_e_pinv.dot(self.model.tau)
 
@@ -902,7 +902,7 @@ class Identification(object):
             lmis = [LMI_PSD(U_rho)] + self.DB_LMIs_marg
             variables = [u] + list(beta_symbs) + list(delta_d)
 
-            #solve SDP
+            # solve SDP
             objective_func = u
 
             if self.opt['verbose']:
@@ -918,7 +918,7 @@ class Identification(object):
             if u_star:
                 print("found feasible base solution with distance {} from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+self.model.num_base_params])
-            delta_d_star = np.matrix(solution[1+self.model.num_base_params:])
+            #delta_d_star = np.matrix(solution[1+self.model.num_base_params:])
             self.model.xBase = np.squeeze(np.asarray(beta_star))
 
         if self.opt['showTiming']:
@@ -1086,53 +1086,64 @@ class Identification(object):
                     }
                 )
 
+            """
+            i = 10
+            datasets.append(
+                { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position', 'Torq Meas', 'Torq Est'], 'dataset':
+                  [{'data': [np.vstack((self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]*100, tauMeasured[:,i], tauEstimated[:,i])).T],
+                    'time': rel_time, 'title': self.model.jointNames[i]},
+                  ]
+                }
+            )
+            """
+
             # positions per joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
-                    { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
-                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i],
-                                 #self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]
-                                ],
-                        'time': rel_time, 'title': self.model.jointNames[i]},
+                    {'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
+                     [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i],
+                               #self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]
+                               ],
+                       'time': rel_time, 'title': self.model.jointNames[i]},
                       ]
                     }
                 )
 
             # vel and acc combined
             datasets.append(
-                { 'unified_scaling': False, 'y_label': 'rad/s (/s2)', 'labels': self.model.jointNames, 'dataset':
-                  [{'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
-                    'time': rel_time, 'title': 'Velocities'},
-                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
-                    'time': rel_time, 'title': 'Accelerations'},
-                  ]
+                {'unified_scaling': False, 'y_label': 'rad/s (/s2)', 'labels': self.model.jointNames, 'dataset':
+                 [{'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
+                   'time': rel_time, 'title': 'Velocities'},
+                  {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
+                   'time': rel_time, 'title': 'Accelerations'},
+                 ]
                 }
             )
         else:
             datasets = [
-                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
-                  'dataset':
-                  [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
-                   {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
-                   {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
-                  ]
+                {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                 'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
+                 'dataset':
+                 [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
+                  {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
+                  {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
+                 ]
                 },
-                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
-                  'dataset':
-                  [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
-                   {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
-                  ]
+                {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                 'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
+                 'dataset':
+                 [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
+                  {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
+                 ]
                 },
-                { 'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
-                  [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1]],
-                    'time': rel_time, 'title': 'Positions'},
-                   {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
-                    'time': rel_time, 'title': 'Velocities'},
-                   {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
-                    'time': rel_time, 'title': 'Accelerations'},
-                  ]
+                {'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':
+                 [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1]],
+                   'time': rel_time, 'title': 'Positions'},
+                  {'data': [self.data.samples['velocities'][0:self.model.sample_end:self.opt['skipSamples']+1]],
+                   'time': rel_time, 'title': 'Velocities'},
+                  {'data': [self.data.samples['accelerations'][0:self.model.sample_end:self.opt['skipSamples']+1]],
+                   'time': rel_time, 'title': 'Accelerations'},
+                 ]
                 }
             ]
 

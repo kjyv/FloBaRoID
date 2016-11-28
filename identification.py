@@ -638,6 +638,9 @@ class Identification(object):
             D_other_blocks = []
 
             params_to_skip = []
+            self.constr_per_param = {}
+            for i in range(self.model.num_params):
+                self.constr_per_param[i] = []
 
             linkConds = self.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
@@ -675,6 +678,7 @@ class Identification(object):
             for p in set(params_to_skip):
                 D_other_blocks.append(Matrix([compare[p] - self.model.param_syms[p]]))
                 D_other_blocks.append(Matrix([self.model.param_syms[p] - compare[p]]))
+                self.constr_per_param[p].append('cad')
 
             # constrain overall mass within bounds
             if self.opt['limitOverallMass']:
@@ -698,6 +702,7 @@ class Identification(object):
                     if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
                         c = Matrix([self.opt['limitMassValPerLink'] - self.model.mass_syms[i]])
                         D_other_blocks.append(c)
+                        self.constr_per_param[i*10].append('mF')
             elif self.opt['limitMassToApriori']:
                 # constrain each mass to env of a priori value
                 for i in range(self.model.N_LINKS):
@@ -708,6 +713,7 @@ class Identification(object):
                                      compare[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
                         D_other_blocks.append(ub)
                         D_other_blocks.append(lb)
+                        self.constr_per_param[i*10].append('mA')
 
             if self.opt['restrictCOMtoHull']:
                 link_cuboid_hulls = np.zeros((self.model.N_LINKS, 3, 2))
@@ -723,12 +729,15 @@ class Identification(object):
                             lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
                             D_other_blocks.append( ub )
                             D_other_blocks.append( lb )
+                            self.constr_per_param[i*10+1+j].append('hull')
 
             # symmetry constraints
             if self.opt['symmetryConstraints']:
                 for (a, b, sign) in self.opt['symmetryConstraints']:
                     D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]]))
                     D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]]))
+                    self.constr_per_param[a].append('sym')
+                    self.constr_per_param[b].append('sym')
 
             """
             #friction constraints
@@ -990,7 +999,7 @@ class Identification(object):
 
         u_star = solution[0,0]
         if u_star:
-            print("found std solution with distance {} from OLS solution".format(u_star))
+            print("found std solution with distance {} from previous solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 

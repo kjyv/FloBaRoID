@@ -156,8 +156,8 @@ def readWalkmanCSV(dir, config, plot):
         if dof in ignoreJoints:
             skip+=1
 
-        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]]   #position reference
-        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #motor encoders
+        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*0]   #position reference
+        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #link encoders
         out['torques'][time_offset:, dof] = f[:-time_offset, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
         if plot:
             ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
@@ -172,7 +172,7 @@ def readWalkmanCSV(dir, config, plot):
     out['FTright'] = np.empty((f.shape[0], 6))      # FT right foot, 3 force, 3 torque values
     out['IMUrpy'] = np.empty((f.shape[0], 3))       # IMU orientation, r,p,y
     out['IMUlinAcc'] = np.zeros((f.shape[0], 3))    # IMU linear acceleration
-    out['IMUlinAcc2'] = np.zeros((f.shape[0], 3))   # IMU linear acceleration
+    out['IMUlinAcc2'] = np.zeros((f.shape[0], 3))   # IMU linear acceleration 2nd IMU
     out['IMUrotVel'] = np.zeros((f.shape[0], 3))    # IMU rotational velocity
 
     if plot:
@@ -185,7 +185,7 @@ def readWalkmanCSV(dir, config, plot):
             # use data fields of LPMS IMU (LPMS-CU)
             #out['IMUrpy'][:, i] = np.deg2rad(f[:, i])    # data in deg
             out['IMUlinAcc'][:, i] = f[:, 18+i] * 9.81   # data in g -> (m/s2)/9.81
-            #out['IMUrotVel'][:, i] = np.deg2rad(f[:, 21+i])   # data in deg/s
+            out['IMUrotVel'][:, i] = np.deg2rad(f[:, 21+i])   # data in deg/s
 
             # use data fields of VN IMU (VectorNav VN-100)
             out['IMUrpy'][:, i] = f[:, 15+i]       # rad

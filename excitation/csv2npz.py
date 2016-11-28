@@ -158,7 +158,8 @@ def readWalkmanCSV(dir, config, plot):
 
         out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*0]   #position reference
         out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #link encoders
-        out['torques'][time_offset:, dof] = f[:-time_offset, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
+        f_len = f.shape[0]
+        out['torques'][time_offset:, dof] = f[:f_len-time_offset, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
         if plot:
             ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
             ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])

@@ -106,14 +106,14 @@ class OutputConsole(object):
             for d in description.replace(r'Parameter ', '#').split('\n'):
                 if idf.opt['outputBarycentric']:
                     d = d.replace(r'first moment', 'center')
-                #add symbol for each parameter
+                # add symbol for each parameter
                 d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p]))
 
-                #print beginning of each link block in green
+                # print beginning of each link block in green
                 if idx_p % 10 == 0 and idx_p < idf.model.num_inertial_params:
                     d = Fore.GREEN + d
 
-                #get some error values for each parameter
+                # get some error values for each parameter
                 approx = xStd[idx_p]
                 apriori = xStdModel[idx_p]
                 diff = approx - apriori
@@ -127,11 +127,11 @@ class OutputConsole(object):
                     # so if 100% are the real value, how big is the error
                     diff_real = approx - real
                     if real != 0:
-                        diff_r_pc = (100*diff_real)/real
+                        diff_r_pc = (100 * diff_real) / real
                     else:
-                        diff_r_pc = (100*diff_real)/0.01
+                        diff_r_pc = (100 * diff_real) / 0.01
 
-                    #add to final error percent sum
+                    # add to final error percent sum
                     sum_diff_r_pc_all += np.abs(diff_r_pc)
                     if idx_p in idf.stdEssentialIdx:
                         sum_diff_r_pc_ess += np.abs(diff_r_pc)
@@ -142,11 +142,11 @@ class OutputConsole(object):
                     if diff_apriori != 0:
                         pc_delta = np.abs((100/diff_apriori)*diff_real)
                     elif np.abs(diff_real) > 0:
-                        #if there was no error between apriori and real
+                        # if there was no error between apriori and real
                         #pc_delta = np.abs((100/0.01)*diff_real)
                         pc_delta = 100 + np.abs(diff_r_pc)
                     else:
-                        #both real and a priori are zero, error is still at 100% (of zero error)
+                        # both real and a priori are zero, error is still at 100% (of zero error)
                         pc_delta = 100
                     sum_pc_delta_all += pc_delta
                     if idx_p in idf.stdEssentialIdx:
@@ -155,9 +155,9 @@ class OutputConsole(object):
                     # get percentage difference between apriori and identified values
                     # (shown when real values are not known)
                     if apriori != 0:
-                        diff_pc = (100*diff)/apriori
+                        diff_pc = (100 * diff) / apriori
                     else:
-                        diff_pc = (100*diff)/0.01
+                        diff_pc = (100 * diff) / 0.01
 
                 #values for each line
                 if idf.opt['useEssentialParams'] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
@@ -167,22 +167,30 @@ class OutputConsole(object):
 
                 if idf.urdf_file_real:
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
+                elif idf.opt['useConsistencyConstraints']:
+                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.constr_per_param[idx_p]), d]
                 else:
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
                 lines.append(vals)
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
-                    idx_ep+=1
-                idx_p+=1
+                    idx_ep += 1
+                idx_p += 1
                 if idx_p == len(xStd):
                     break
 
             if idf.urdf_file_real:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0]
-            else:
+            elif idf.opt['useConsistencyConstraints']:
+                column_widths = [13, 13, 7, 7, 6, 45]
+                precisions = [8, 8, 4, 1, 0, 0]
+            elif idf.opt['useEssentialParams']:
                 column_widths = [13, 13, 7, 7, 6, 45]
                 precisions = [8, 8, 4, 1, 3, 0]
+            else:
+                column_widths = [13, 13, 7, 7, 45]
+                precisions = [8, 8, 4, 1, 0]
 
             if not summary_only:
                 # print column header
@@ -190,14 +198,18 @@ class OutputConsole(object):
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if idf.urdf_file_real:
-                    print(template.format("'Real'", "A priori", "Approx", "Change", "%e", "Δ%e", "%σ", "Description"))
+                    print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Description"))
+                elif idf.opt['useConsistencyConstraints']:
+                    print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))
+                elif idf.opt['useEssentialParams']:
+                    print(template.format("A priori", "Ident", "Change", "%e", "%σ", "Description"))
                 else:
-                    print(template.format("A priori", "Approx", "Change", "%e", "%σ", "Description"))
+                    print(template.format("A priori", "Ident", "Change", "%e", "Description"))
 
                 # print values/description
                 template = ''
                 for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) == str):
+                    if(type(lines[0][w]) in [str, list]):
                         # strings don't have precision
                         template += '|{{{}:{}}}'.format(w, column_widths[w])
                     else:
@@ -210,7 +222,7 @@ class OutputConsole(object):
                     if idx_p in idf.stdEssentialIdx:
                         t = Style.BRIGHT + t
                     print(t, end=' ')
-                    idx_p+=1
+                    idx_p += 1
                     print(Style.RESET_ALL)
                 print("\n")
 
@@ -259,8 +271,10 @@ class OutputConsole(object):
 
                 if idf.urdf_file_real:
                     lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
-                else:
+                elif idf.opt['useEssentialParams']:
                     lines.append((idx_p, old, new, diff, sigma, param_columns))
+                else:
+                    lines.append((idx_p, old, new, diff, param_columns))
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     idx_ep+=1
@@ -268,9 +282,12 @@ class OutputConsole(object):
             if idf.urdf_file_real:
                 column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
                 precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
-            else:
+            elif idf.opt['useEssentialParams']:
                 column_widths = [3, 13, 13, 7, 6, 30]   # widths of the columns
                 precisions = [0, 8, 8, 4, 3, 0]         # numerical precision
+            else:
+                column_widths = [3, 13, 13, 7, 30]   # widths of the columns
+                precisions = [0, 8, 8, 4, 0]         # numerical precision
 
             if not summary_only:
                 # print column header
@@ -278,9 +295,11 @@ class OutputConsole(object):
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if idf.urdf_file_real:
-                    print(template.format("\#", "Real", "Model", "Approx", "Change", "Error", "%σ", "Description"))
+                    print(template.format("\#", "Real", "A priori", "Ident", "Change", "Error", "%σ", "Description"))
+                elif idf.opt['useEssentialParams']:
+                    print(template.format("\#", "A priori", "Ident", "Change", "%σ", "Description"))
                 else:
-                    print(template.format("\#", "Model", "Approx", "Change", "%σ", "Description"))
+                    print(template.format("\#", "A priori", "Ident", "Change", "Description"))
 
                 # print values/description
                 template = ''

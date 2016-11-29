@@ -169,8 +169,10 @@ class OutputConsole(object):
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
                 elif idf.opt['useConsistencyConstraints']:
                     vals = [apriori, approx, diff, diff_pc, ' '.join(idf.constr_per_param[idx_p]), d]
-                else:
+                elif idf.opt['useEssentialParams']:
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
+                else:
+                    vals = [apriori, approx, diff, diff_pc, d]
                 lines.append(vals)
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:

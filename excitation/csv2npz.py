@@ -111,6 +111,8 @@ def readWalkmanCSV(dir, config, plot):
     csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 
+    ## apply some data correction, should be temporary
+
     joint_signs = np.array([-1, -1, -1, 1, -1, -1,      #LHipLat -
                             1, 1, 1, 1, -1, -1,      #RHipLat -
                             #1,                       #WaistLat
@@ -128,6 +130,12 @@ def readWalkmanCSV(dir, config, plot):
 
     # shift measured torques backwards by this many samples
     time_offset = round(200*0.09)
+
+    # scale feet F/T sensors so zero value is force corresponding to weight
+    # walkman whole weight is 143.06 kg (could be a little wrong)
+    scale = 0.8
+    ft_left_scale = 0.98 * scale
+    ft_right_scale = 1.18 * scale
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -270,6 +278,10 @@ def readWalkmanCSV(dir, config, plot):
     else:
         out['FTleft'][:, 0:6] = f[:, 3:9]
         out['FTright'][:, 0:6] = f[:, 9:15]
+
+
+    out['FTleft'] *= ft_left_scale
+    out['FTright'] *= ft_right_scale
 
     if plot:
         for i in range(0,6):

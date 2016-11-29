@@ -53,7 +53,7 @@ before_script:
       # -DPYTHON_LIBRARY=$(python-config --prefix)/lib/libpython2.7.so -DPYTHON_INCLUDE_DIR=$(python-config --prefix)/include/python2.7
       # -DPYTHON_LIBRARY=$(python-config --prefix)/lib/libpython3.5.so -DPYTHON_INCLUDE_DIR=$(python-config --prefix)/include/python3.5
     - cmake -G"${TRAVIS_CMAKE_GENERATOR}" -DCMAKE_BUILD_TYPE=${TRAVIS_BUILD_TYPE} -DIDYNTREE_USES_YARP:BOOL=OFF -DIDYNTREE_USES_ICUB_MAIN:BOOL=OFF -DIDYNTREE_USES_PYTHON:BOOL=ON -DNON_INTERACTIVE_BUILD:BOOL=ON ..
-    - cmake --build . --config ${TRAVIS_BUILD_TYPE}
+    - cmake --build . --config ${TRAVIS_BUILD_TYPE} -- -j5
     - sudo cmake --build . --config ${TRAVIS_BUILD_TYPE} --target install
 
     #add python module dir variables to env

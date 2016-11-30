@@ -260,23 +260,24 @@ class OutputConsole(object):
                 #deps = np.where(np.abs(idf.linear_deps[idx_p, :])>0.1)[0]
                 #dep_factors = idf.linear_deps[idx_p, deps]
 
-                param_columns = " = "
-                param_columns += "{}".format(idf.model.base_deps[idx_p])
-                #for p in range(0, len(deps)):
-                #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
+                if idf.opt['showBaseEqns']:
+                    param_columns = " = "
+                    param_columns += "{}".format(idf.model.base_deps[idx_p])
+                    #for p in range(0, len(deps)):
+                    #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
+                else:
+                    param_columns = ""
 
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     sigma = idf.p_sigma_x[idx_ep]
                 else:
-                    sigma = 0.0
+                    sigma = idf.p_sigma_x[idx_p]
 
                 if idf.urdf_file_real:
                     lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
-                elif idf.opt['useEssentialParams']:
-                    lines.append((idx_p, old, new, diff, sigma, param_columns))
                 else:
-                    lines.append((idx_p, old, new, diff, param_columns))
+                    lines.append((idx_p, old, new, diff, sigma, param_columns))
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     idx_ep+=1
@@ -284,12 +285,9 @@ class OutputConsole(object):
             if idf.urdf_file_real:
                 column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
                 precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
-            elif idf.opt['useEssentialParams']:
+            else:
                 column_widths = [3, 13, 13, 7, 6, 30]   # widths of the columns
                 precisions = [0, 8, 8, 4, 3, 0]         # numerical precision
-            else:
-                column_widths = [3, 13, 13, 7, 30]   # widths of the columns
-                precisions = [0, 8, 8, 4, 0]         # numerical precision
 
             if not summary_only:
                 # print column header
@@ -298,10 +296,8 @@ class OutputConsole(object):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
                 if idf.urdf_file_real:
                     print(template.format("\#", "Real", "A priori", "Ident", "Change", "Error", "%σ", "Description"))
-                elif idf.opt['useEssentialParams']:
-                    print(template.format("\#", "A priori", "Ident", "Change", "%σ", "Description"))
                 else:
-                    print(template.format("\#", "A priori", "Ident", "Change", "Description"))
+                    print(template.format("\#", "A priori", "Ident", "Change", "%σ", "Description"))
 
                 # print values/description
                 template = ''

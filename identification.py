@@ -482,12 +482,35 @@ class Identification(object):
         else:
             self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
 
+        """
         # ordinary least squares with numpy method (might be better in noisy situations)
-        #self.model.xBase = la.lstsq(YBase, tau)[0]
+        if self.opt['floatingBase']:
+            self.model.xBase = la.lstsq(YBase, tau)[0] + self.model.YBaseInv.dot(self.model.contactForcesSum)
+        else:
+            self.model.xBase = la.lstsq(YBase, tau)[0]
+        """
 
         # damped least squares
         #from scipy.sparse.linalg import lsqr
         #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
+
+        if self.opt['showBaseParams']:
+            # get estimation once with previous ordinary LS solution parameters
+            self.estimateRegressorTorques('base')
+
+            # get standard deviation of measurement and modeling error \sigma_{rho}^2
+            rho = np.square(sla.norm(self.model.tauMeasured - self.tauEstimated))
+            sigma_rho = rho/(self.data.num_used_samples - self.model.num_base_params)
+
+            # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+            C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
+            sigma_x = np.diag(C_xx)
+
+            # get relative standard deviation
+            self.p_sigma_x = np.sqrt(sigma_x)
+            for i in range(0, self.p_sigma_x.size):
+                if self.model.xBase[i] != 0:
+                    self.p_sigma_x[i] /= np.abs(self.model.xBase[i])
 
         if self.opt['useWLS']:
             """

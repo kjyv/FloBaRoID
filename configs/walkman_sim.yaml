@@ -271,6 +271,7 @@ showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
 showBaseParams: 0            #display a list of identified base params (if appliable)
+showBaseEqns: 1              #show which std params are combined for each base param
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
 verbose: 1                   #show more messages
 

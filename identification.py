@@ -484,12 +484,12 @@ class Identification(object):
         # should always try to avoid inversion if possible
 
         # invert equation to get parameter vector from measurements and model + system state values
-        self.model.YBaseInv = la.pinv(self.model.YBase)
+        self.model.YBaseInv = la.pinv(YBase)
 
         if self.opt['floatingBase']:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
+            self.model.xBase = self.model.YBaseInv.dot(tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
         else:
-            self.model.xBase = self.model.YBaseInv.dot(self.model.tau.T)
+            self.model.xBase = self.model.YBaseInv.dot(tau.T)
 
         """
         # ordinary least squares with numpy method (might be better in noisy situations)

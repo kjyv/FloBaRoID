@@ -359,7 +359,7 @@ class OutputConsole(object):
             if idf.opt['showStandardParams']:
                 if idf.opt['useEssentialParams']:
                     print("Mean relative error of essential std params: {}%".\
-                            format(old_div(sum_diff_r_pc_ess,len(idf.stdEssentialIdx))))
+                            format(sum_diff_r_pc_ess / len(idf.stdEssentialIdx)))
                 print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.model.xStd)))
 
                 if idf.opt['useEssentialParams']:

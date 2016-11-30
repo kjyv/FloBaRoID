@@ -107,7 +107,7 @@ class Model(object):
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
         self.num_inertial_params = self.num_params   #counted without offset params
-        if self.opt['identifyTorqueOffsets']: self.num_params += self.N_DOFS
+        if self.opt['identifyTorqueOffsets']: self.num_params += self.N_DOFS   #add N offset params
         if self.opt['verbose']:
             print('# params: {}'.format(self.num_params))
 
@@ -367,7 +367,7 @@ class Model(object):
             order = 6                       #Filter order
             fs = self.data.samples['frequency']  #Sampling freq
             fc = 5                          #Cut-off frequency (Hz)
-            b, a = signal.butter(order, old_div(fc, (old_div(fs,2))), btype='low', analog=False)
+            b, a = signal.butter(order, fc / (fs/2), btype='low', analog=False)
             for j in range(0, self.num_base_params):
                 for i in range(0, self.N_DOFS):
                     self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])

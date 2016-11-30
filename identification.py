@@ -69,6 +69,9 @@ class Identification(object):
 
         #### end additional config flags
 
+        if self.opt['useConsistencyConstraints']:
+            self.opt['useAPriori'] = 0
+
         # load model description and initialize
         self.model = Model(self.opt, urdf_file, regressor_file)
 
@@ -274,7 +277,11 @@ class Identification(object):
                 else:
                     print("error is not normal distributed (p={})".format(p))
 
-            pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
+            if not self.opt['useAPriori']:
+                pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.tauEstimated)
+            else:
+                pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
+
             print("starting percentual error {}".format(pham_percent_start))
 
             #rho_start = np.square(sla.norm(tauDiff))
@@ -447,6 +454,8 @@ class Identification(object):
                     self.xStdEssential[idx] = v
                     #print idx, idx % 10, v
                 idx += 1
+                if idx > self.model.num_inertial_params:
+                    break
 
             # cancel non-essential std params so they are not identified
             self.xStdEssential[self.stdNonEssentialIdx] = 0
@@ -515,7 +524,7 @@ class Identification(object):
         if self.opt['useWLS']:
             """
             additionally do weighted least squares IDIM-WLS, cf. Zak, 1991 and Gautier, 1997.
-            adds weighting with standard dev of estimation error on base regressor and params.
+            adds weighting with standard dev of estimation error on OLS base regressor and params.
             """
 
             # get estimation once with previous ordinary LS solution parameters
@@ -532,7 +541,7 @@ class Identification(object):
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             G = scipy.sparse.spdiags(np.repeat(1/self.sigma_rho, self.data.num_used_samples), 0,
-                               (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
+                    (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
             #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
             #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
 

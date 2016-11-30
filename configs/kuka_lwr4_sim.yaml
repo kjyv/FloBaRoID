@@ -140,12 +140,13 @@ useDependents: 1
 
 # use weighted least squares(WLS) instead of ordinary least squares
 # needs small condition number, otherwise might amplify some parameters too much as the
-# covariance estimation can be off (also assumes that error is zero mean and normal
+# covariance estimation can be wrong (also assumes that error is zero mean and normal
 # distributed)
 useWLS: 0
 
 # whether to filter the regressor columns (cutoff frequency is system dependent)
-# mostly not improving results
+# possibly increases accuracy when torque ripples are present. also supposedly decreases
+# correlation between (observation) regressor and measured torques
 filterRegressor: 0
 
 ## output and debugging

@@ -364,11 +364,11 @@ class Model(object):
             print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
         if self.opt['filterRegressor']:
-            order = 6                       #Filter order
-            fs = self.data.samples['frequency']  #Sampling freq
-            fc = 5                          #Cut-off frequency (Hz)
-            b, a = signal.butter(order, fc / (fs/2), btype='low', analog=False)
-            for j in range(0, self.num_base_params):
+            order = 5                            # Filter order
+            fs = self.data.samples['frequency']  # Sampling freq
+            fc = self.opt['filterRegCutoff']     # Cut-off frequency (Hz)
+            b, a = signal.butter(order, fc / (fs / 2), btype='low', analog=False)
+            for j in range(0, self.num_base_inertial_params):
                 for i in range(0, self.N_DOFS):
                     self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
 
@@ -516,6 +516,7 @@ class Model(object):
         #get rank
         r = np.where(np.abs(R.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
+        self.num_base_inertial_params = r - self.N_DOFS
 
         #create proper permutation matrix from vector
         self.Pp = np.zeros((P.size, P.size))

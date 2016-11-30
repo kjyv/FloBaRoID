@@ -469,7 +469,7 @@ class Identification(object):
             self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
 
-    def identifyBaseParameters(self, YBase=None, tau=None):
+    def identifyBaseParameters(self, YBase=None, tau=None, id_only=False):
         """use previously computed regressors and identify base parameter vector using ordinary or
            weighted least squares."""
 
@@ -503,6 +503,10 @@ class Identification(object):
         #from scipy.sparse.linalg import lsqr
         #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
 
+        # stop here if called recursively
+        if id_only:
+            return
+
         if self.opt['showBaseParams']:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
@@ -523,17 +527,18 @@ class Identification(object):
 
         if self.opt['useWLS']:
             """
-            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991 and Gautier, 1997.
+            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991, Gautier, 1997 and Khalil, 2007.
             adds weighting with standard dev of estimation error on OLS base regressor and params.
             """
 
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
 
+            tauDiff = self.model.tauMeasured - self.tauEstimated
+
             # get standard deviation of measurement and modeling error \sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(sla.norm(self.tauEstimated)) / \
-                                       (self.data.num_used_samples-self.model.num_base_params)
+            self.sigma_rho = np.square(sla.norm(tauDiff)) / (self.data.num_used_samples-self.model.num_base_params)
 
             if self.opt['floatingBase']: fb = 6
             else: fb = 0
@@ -556,9 +561,7 @@ class Identification(object):
                 print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
 
             # get identified values using weighted matrices without weighing them again
-            self.opt['useWLS'] = 0
-            self.identifyBaseParameters(YBase, tau)
-            self.opt['useWLS'] = 1
+            self.identifyBaseParameters(YBase, tau, id_only=True)
 
 
     def identifyStandardParameters(self):

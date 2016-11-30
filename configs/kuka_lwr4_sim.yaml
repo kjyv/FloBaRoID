@@ -129,8 +129,8 @@ symmetryConstraints: []
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
-# (don't use with constrained SDP solver)
-useAPriori: 0
+# (not used with constrained SDP solver)
+useAPriori: 1
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0
@@ -148,6 +148,7 @@ useWLS: 0
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
 # correlation between (observation) regressor and measured torques
 filterRegressor: 0
+filterRegCutoff: 5   #frequency in Hz
 
 ## output and debugging
 

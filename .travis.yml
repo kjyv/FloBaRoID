@@ -20,6 +20,7 @@ before_install:
     #cvxopt dependencies
     - sudo apt-get install -y liblapack3 liblapack-dev
     - sudo apt-get install -y libblas3 libblas-dev
+    - sudo apt-get install -y libsuitesparse-dev
     #install dsdp solver
     - sudo apt-get install -y dsdp
 

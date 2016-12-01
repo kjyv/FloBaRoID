@@ -7,12 +7,14 @@ standard_library.install_aliases()
 from builtins import range
 from builtins import object
 import os
-from IPython import embed
 import numpy as np
 import numpy.linalg as la
 import scipy.linalg as sla
 import colorama
 from colorama import Fore, Back, Style
+
+from IPython import embed
+np.core.arrayprint._line_width = 160
 
 #plot colors
 colors = []
@@ -90,12 +92,19 @@ class OutputConsole(object):
 
             # collect values for parameters
             description = idf.model.generator.getDescriptionOfParameters()
-            if idf.opt['identifyTorqueOffsets']:
+            if idf.opt['identifyTorqueOffsets'] or idf.opt['identifyFriction']:
                 for i in range(0, idf.model.N_DOFS):
-                    description += "Parameter {}: Torque offset of joint {}\n".format(
+                    description += "Parameter {}: Dry friction / offset of joint {}\n".format(
                             i+idf.model.num_inertial_params,
                             idf.model.jointNames[i]
                     )
+            if idf.opt['identifyFriction']:
+                for i in range(0, idf.model.N_DOFS*2):
+                    description += "Parameter {}: Viscous friction joint {}\n".format(
+                            i+idf.model.N_DOFS+idf.model.num_inertial_params,
+                            idf.model.jointNames[i%idf.model.N_DOFS]
+                    )
+
             idx_p = 0   #count (std) params
             idx_ep = 0  #count essential params
             lines = list()

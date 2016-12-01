@@ -11,9 +11,10 @@ import scipy.linalg as sla
 import sympy
 from sympy import symbols
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from IPython import embed
-
 from . import helpers
+
+from IPython import embed
+np.core.arrayprint._line_width = 160
 
 class Model(object):
     def __init__(self, opt, urdf_file, regressor_file=None):
@@ -106,8 +107,13 @@ class Model(object):
 
         # get initial inertia params (from urdf)
         self.num_params = self.generator.getNrOfParameters()
-        self.num_inertial_params = self.num_params   #counted without offset params
-        if self.opt['identifyTorqueOffsets']: self.num_params += self.N_DOFS   #add N offset params
+        # params counted without offset params
+        self.num_inertial_params = self.num_params
+        # add N offset params (offsets or dry friction)
+        if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']: self.num_params += self.N_DOFS
+        # add 2*N viscous friction params (velocity +- for asymmetrical friction)
+        if self.opt['identifyFriction']: self.num_params += 2*self.N_DOFS
+
         if self.opt['verbose']:
             print('# params: {}'.format(self.num_params))
 
@@ -123,8 +129,10 @@ class Model(object):
         xStdModel = iDynTree.VectorDynSize(self.num_inertial_params)
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
-        if self.opt['identifyTorqueOffsets']:
-            self.xStdModel = np.concatenate( (self.xStdModel, np.zeros(self.N_DOFS)) )
+        if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
+            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.N_DOFS)))
+        if self.opt['identifyFriction']:
+            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.N_DOFS)))
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -290,10 +298,20 @@ class Model(object):
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
-                # append unitary matrix to regressor so offsets can be identified separately
-                if self.opt['identifyTorqueOffsets']:
+                # append unitary matrix to regressor for offsets/dry friction
+                if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
                     offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), np.identity(self.N_DOFS)))
                     regressor = np.concatenate((regressor, offset_regressor), axis=1)
+
+                # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                if self.opt['identifyFriction']:
+                    dq_p = dq.toNumPy().copy()
+                    dq_p[dq_p < 0] = 0 #set to zero where v < 0
+                    dq_m = dq.toNumPy().copy()
+                    dq_m[dq_m > 0] = 0 #set to zero where v > 0
+                    vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
+                    friction_regressor = np.vstack( (np.zeros((fb, self.N_DOFS*2)), vel_diag))   # add base dynamics rows
+                    regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
                 # stack on previous regressors
                 np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor)
@@ -464,10 +482,20 @@ class Model(object):
                     A[0:3, :] = to_world.dot(A[0:3, :])
                     A[3:6, :] = to_world.dot(A[3:6, :])
 
-                # append unitary matrix to regressor so offsets can be identified separately
-                if self.opt['identifyTorqueOffsets']:
+                # append unitary matrix to regressor for offsets/dry friction
+                if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
                     offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), np.identity(self.N_DOFS)))
                     A = np.concatenate((A, offset_regressor), axis=1)
+
+                # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                if self.opt['identifyFriction']:
+                    dq_p = dq.toNumPy().copy()
+                    dq_p[dq_p < 0] = 0 #set to zero where <0
+                    dq_m = dq.toNumPy().copy()
+                    dq_m[dq_m > 0] = 0 #set to zero where >0
+                    vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
+                    friction_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS*2)), vel_diag))
+                    A = np.concatenate((A, friction_regressor), axis=1)
 
                 # add to previous regressors, linear dependencies don't change
                 # (if too many, saturation or accuracy problems?)
@@ -581,7 +609,16 @@ class Model(object):
 
         if self.opt['identifyTorqueOffsets']:
             for i in range(0,self.N_DOFS):
-                self.param_syms.extend([symbols('off_{}'.format(i))])
+                if self.opt['identifyFriction']:
+                    self.param_syms.extend([symbols('Fd_{}'.format(i))])
+                else:
+                    self.param_syms.extend([symbols('off_{}'.format(i))])
+
+        if self.opt['identifyFriction']:
+            for i in range(0,self.N_DOFS):
+                self.param_syms.extend([symbols('Fv+_{}'.format(i))])
+            for i in range(0,self.N_DOFS):
+                self.param_syms.extend([symbols('Fv-_{}'.format(i))])
 
         #create symbolic equations for base param dependencies
         self.base_deps = np.dot(self.param_syms, self.B)

@@ -227,6 +227,32 @@ class Identification(object):
             print(pham_percent)
 
 
+    def getStdDevForParams(self):
+        if self.opt['useAPriori']:
+            tauDiff = self.model.tauMeasured - self.tauEstimated
+        else:
+            tauDiff = self.tauEstimated
+
+        if self.opt['floatingBase']: fb = 6
+        else: fb = 0
+
+        # get relative standard deviation of measurement and modeling error \sigma_{rho}^2
+        r = self.data.num_used_samples*(self.model.N_DOFS+fb)
+        rho = np.square(sla.norm(tauDiff))
+        sigma_rho = rho/(r - self.model.num_base_params)
+
+        # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+        C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
+        sigma_x = np.diag(C_xx)
+
+        # get relative standard deviation
+        p_sigma_x = np.sqrt(sigma_x)
+        for i in range(0, p_sigma_x.size):
+            if self.model.xBase[i] != 0:
+                p_sigma_x[i] /= np.abs(self.model.xBase[i])
+
+        return p_sigma_x
+
     def findBaseEssentialParameters(self):
         """
         iteratively get essential parameters from previously identified base parameters.
@@ -293,20 +319,7 @@ class Identification(object):
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
 
-                # get standard deviation of measurement and modeling error \sigma_{rho}^2
-                rho = np.square(sla.norm(tauDiff))
-                sigma_rho = rho/(self.data.num_used_samples - self.model.num_base_params)
-
-                # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-                C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
-                sigma_x = np.diag(C_xx)
-
-                # get relative standard deviation
-                prev_p_sigma_x = p_sigma_x
-                p_sigma_x = np.sqrt(sigma_x)
-                for i in range(0, p_sigma_x.size):
-                    if self.model.xBase[i] != 0:
-                        p_sigma_x[i] /= np.abs(self.model.xBase[i])
+                p_sigma_x = self.getStdDevForParams()
 
                 print("{} params|".format(self.model.num_base_params - b_c), end=' ')
 
@@ -510,58 +523,53 @@ class Identification(object):
         if self.opt['showBaseParams']:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
-
-            # get standard deviation of measurement and modeling error \sigma_{rho}^2
-            rho = np.square(sla.norm(self.model.tauMeasured - self.tauEstimated))
-            sigma_rho = rho/(self.data.num_used_samples - self.model.num_base_params)
-
-            # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-            C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
-            sigma_x = np.diag(C_xx)
-
-            # get relative standard deviation
-            self.p_sigma_x = np.sqrt(sigma_x)
-            for i in range(0, self.p_sigma_x.size):
-                if self.model.xBase[i] != 0:
-                    self.p_sigma_x[i] /= np.abs(self.model.xBase[i])
+            self.p_sigma_x = self.getStdDevForParams()
 
         if self.opt['useWLS']:
             """
             additionally do weighted least squares IDIM-WLS, cf. Zak, 1991, Gautier, 1997 and Khalil, 2007.
-            adds weighting with standard dev of estimation error on OLS base regressor and params.
+            adds weighting with relative standard dev of estimation error on OLS base regressor and params.
+            (includes reducing effect of different units of parameters)
             """
 
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
-
-            tauDiff = self.model.tauMeasured - self.tauEstimated
-
-            # get standard deviation of measurement and modeling error \sigma_{rho}^2
-            # for each joint subsystem (rho is assumed zero mean independent noise)
-            self.sigma_rho = np.square(sla.norm(tauDiff)) / (self.data.num_used_samples-self.model.num_base_params)
+            self.p_sigma_x = self.getStdDevForParams()
 
             if self.opt['floatingBase']: fb = 6
             else: fb = 0
+            r = self.data.num_used_samples*(self.model.N_DOFS+fb)
+
+            '''
+            if self.opt['useAPriori']:
+                tauDiff = self.model.tauMeasured - self.tauEstimated
+            else:
+                tauDiff = self.tauEstimated
+
+            # get standard deviation of measurement and modeling error \sigma_{rho}^2
+            # for each joint subsystem (rho is assumed zero mean independent noise)
+            self.sigma_rho = np.square(sla.norm(tauDiff)) / (r-self.model.num_base_params)
+            '''
             # repeat stddev values for each measurement block (n_joints * num_samples)
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
-            G = scipy.sparse.spdiags(np.repeat(1/self.sigma_rho, self.data.num_used_samples), 0,
-                    (self.model.N_DOFS+fb)*self.data.num_used_samples, (self.model.N_DOFS+fb)*self.data.num_used_samples)
             #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
-            #                   self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #        self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #G = scipy.sparse.spdiags(np.repeat(1/np.sqrt(self.sigma_rho), self.data.num_used_samples), 0, r, r)
+            G = scipy.sparse.spdiags(np.repeat(1/self.p_sigma_x, self.data.num_used_samples), 0, r, r)
 
-            # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-            #C_xx = la.norm(self.sigma_rho)*(la.inv(self.YBase.T.dot(self.YBase)))
-            #sigma_x = np.sqrt(np.diag(C_xx))
-
-            # weight Y and tau with deviations, identify params
-            YBase = G.dot(self.model.YBase)
-            tau = G.dot(self.model.tau)
+            # weigh Y and tau with deviations
+            self.model.YBase = G.dot(self.model.YBase)
+            if self.opt['useAPriori']:
+                #if identifying parameter error, weigh full tau
+                self.model.tau = G.dot(self.model.torques_stack) - G.dot(self.model.torquesAP_stack)
+            else:
+                self.model.tau = G.dot(self.model.tau)
             if self.opt['verbose']:
-                print("Condition number of WLS YBase: {}".format(la.cond(YBase)))
+                print("Condition number of WLS YBase: {}".format(la.cond(self.model.YBase)))
 
             # get identified values using weighted matrices without weighing them again
-            self.identifyBaseParameters(YBase, tau, id_only=True)
+            self.identifyBaseParameters(self.model.YBase, tau, id_only=True)
 
 
     def identifyStandardParameters(self):

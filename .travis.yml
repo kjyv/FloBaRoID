@@ -29,8 +29,8 @@ install:
     - wget http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.5.3.tar.gz
     - echo '2403007be38266e3607edfbf3833bee7f6bcb0f1  SuiteSparse-4.5.3.tar.gz' | shasum -c -
     - if [ $? -eq 0 ]; then
-       tar -xf SuiteSparse-4.5.3.tar.gz
-       CVXOPT_SUITESPARSE_SRC_DIR=$(pwd)/SuiteSparse pip install cvxopt
+       tar -xf SuiteSparse-4.5.3.tar.gz;
+       CVXOPT_SUITESPARSE_SRC_DIR=$(pwd)/SuiteSparse pip install cvxopt;
       fi
     - pip install -r requirements.txt
 

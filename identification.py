@@ -320,6 +320,7 @@ class Identification(object):
                 # get new torque estimation to calc error norm (new estimation with updated parameters)
                 self.estimateRegressorTorques('base')
 
+                prev_p_sigma_x = p_sigma_x
                 p_sigma_x = self.getStdDevForParams()
 
                 print("{} params|".format(self.model.num_base_params - b_c), end=' ')
@@ -783,13 +784,14 @@ class Identification(object):
                     self.constr_per_param[a].append('sym')
                     self.constr_per_param[b].append('sym')
 
-            """
-            #friction constraints
-            for i in range(dof):
-                D_other_blocks.append( Matrix([rbt.rbtdef.fv[i]]) )
-                D_other_blocks.append( Matrix([rbt.rbtdef.fc[i]]) )
+            if self.opt['identifyFriction']:
+                #friction constraints
+                for i in range(self.model.N_DOFS):
+                    #Fc > 0
+                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+i]]) )
+                    #Fv > 0
+                    #D_other_blocks.append( Matrix([rbt.rbtdef.fv[i]]) )
 
-            """
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
             epsilon_safemargin = 1e-30

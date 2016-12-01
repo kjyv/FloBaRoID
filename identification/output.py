@@ -277,9 +277,11 @@ class OutputConsole(object):
                 else:
                     param_columns = ""
 
-
-                if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
-                    sigma = idf.p_sigma_x[idx_ep]
+                if idf.opt['useEssentialParams']:
+                    if idx_p in idf.baseEssentialIdx:
+                        sigma = idf.p_sigma_x[idx_ep]
+                    else:
+                        sigma = 0
                 else:
                     sigma = idf.p_sigma_x[idx_p]
 

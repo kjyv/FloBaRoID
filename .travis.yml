@@ -20,13 +20,18 @@ before_install:
     #cvxopt dependencies
     - sudo apt-get install -y liblapack3 liblapack-dev
     - sudo apt-get install -y libblas3 libblas-dev
-    - sudo apt-get install -y libsuitesparse-dev
     #install dsdp solver
     - sudo apt-get install -y dsdp
 
 # command to install dependencies
 install:
-    - pip install --global-option=build_ext --global-option="-I/usr/include/suitesparse" cvxopt
+    #- pip install --global-option=build_ext --global-option="-I/usr/include/suitesparse" cvxopt
+    - wget http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.5.3.tar.gz
+    - echo '2403007be38266e3607edfbf3833bee7f6bcb0f1  SuiteSparse-4.5.3.tar.gz' | shasum -c -
+    - if [ $? -eq 0 ]; then
+       tar -xf SuiteSparse-4.5.3.tar.gz
+       CVXOPT_SUITESPARSE_SRC_DIR=$(pwd)/SuiteSparse pip install cvxopt
+      fi
     - pip install -r requirements.txt
 
 before_script:

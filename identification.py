@@ -41,6 +41,7 @@ from identification import optimization
 from identification.optimization import LMI_PSD, LMI_PD
 
 from IPython import embed
+np.core.arrayprint._line_width = 160
 
 # Referenced papers:
 # Gautier, 1991: Numerical Calculation of the base Inertial Parameters of Robots

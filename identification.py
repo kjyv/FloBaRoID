@@ -69,8 +69,8 @@ class Identification(object):
 
         #### end additional config flags
 
-        if self.opt['useConsistencyConstraints']:
-            self.opt['useAPriori'] = 0
+        #if self.opt['useConsistencyConstraints']:
+        #    self.opt['useAPriori'] = 0
 
         # load model description and initialize
         self.model = Model(self.opt, urdf_file, regressor_file)
@@ -804,9 +804,9 @@ class Identification(object):
             feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
         '''
         with helpers.Timer() as t:
-            if self.opt['useAPriori']:
-                print("Please disable using a priori parameters when using constrained optimization.")
-                sys.exit(1)
+            #if self.opt['useAPriori']:
+            #    print("Please disable using a priori parameters when using constrained optimization.")
+            #    sys.exit(1)
 
             if self.opt['verbose']:
                 print("Preparing SDP...")
@@ -818,7 +818,7 @@ class Identification(object):
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
             #Q2 = Q[:, self.model.num_base_params:]
-            rho1 = Q1.T.dot(self.model.tau)
+            rho1 = Q1.T.dot(self.model.torques_stack)
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
 
             #projection matrix so that xBase = K*xStd
@@ -829,7 +829,6 @@ class Identification(object):
             Kd = self.model.linear_deps
             K = (Pb.T + Kd * Pd.T)
             """
-            import time
             K = Matrix(self.model.Binv)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -844,7 +843,7 @@ class Identification(object):
             else:
                 e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
 
-            rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
+            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1, I(self.model.num_base_params)]])
@@ -888,10 +887,6 @@ class Identification(object):
             which a consistent std solution exists), based on code from Sousa, 2014
         '''
         with helpers.Timer() as t:
-            if self.opt['useAPriori']:
-                print("Please disable using a priori parameters when using constrained optimization.")
-                sys.exit(1)
-
             if self.opt['verbose']:
                 print("Preparing SDP...")
 
@@ -927,7 +922,7 @@ class Identification(object):
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
             #Q2 = Q[:, self.model.num_base_params:]
-            rho1 = Q1.T.dot(self.model.tau)
+            rho1 = Q1.T.dot(self.model.torques_stack)
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -942,7 +937,7 @@ class Identification(object):
             else:
                 e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
 
-            rho2_norm_sqr = la.norm( self.model.tau - self.model.YBase.dot(self.model.xBase) )**2
+            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1, I(self.model.num_base_params)]])
@@ -980,10 +975,6 @@ class Identification(object):
     def findFeasibleStdFromFeasibleBase(self, xBase):
         ''' find a std feasible solution for feasible base solution (exists per definition?)'''
 
-        if self.opt['useAPriori']:
-            print("Please disable using a priori parameters when using constrained optimization.")
-            sys.exit(1)
-
         I = Identity
         def mrepl(m,repl):
             return m.applyfunc(lambda x: x.xreplace(repl))
@@ -1015,10 +1006,6 @@ class Identification(object):
 
     def findFeasibleStdFromStd(self, xStd):
         ''' find closest feasible std solution for some std parameters (increases error) '''
-
-        if self.opt['useAPriori']:
-            print("Please disable using a priori parameters when using constrained optimization.")
-            sys.exit(1)
 
         delta = Matrix(self.model.param_syms)
         I = Identity
@@ -1073,9 +1060,15 @@ class Identification(object):
             self.identifyStandardEssentialParameters()
         else:
             if self.opt['estimateWith'] in ['base', 'std']:
+                #need to identify OLS base params in any case
                 self.identifyBaseParameters()
+
+                #do SDP constrained identification using base params
                 if self.opt['useConsistencyConstraints']:
                     self.initSDP_LMIs()
+
+                    if self.opt['useAPriori']:
+                        self.getBaseParamsFromParamError()
 
                     #self.identifyFeasibleBaseParameters()
                     #self.model.xStd = self.findFeasibleStdFromFeasibleBase(self.model.xBaseModel)
@@ -1089,9 +1082,11 @@ class Identification(object):
                         print("Correcting solution to feasible std (non-optimal)")
                         self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
                 else:
+                    #get standard params from estimated base param error
                     self.findStdFromBaseParameters()
-                if self.opt['useAPriori']:
-                    self.getBaseParamsFromParamError()
+                    #only then go back to absolute base params
+                    if self.opt['useAPriori']:
+                        self.getBaseParamsFromParamError()
 
             elif self.opt['estimateWith'] == 'std_direct':
                 self.identifyStandardParameters()

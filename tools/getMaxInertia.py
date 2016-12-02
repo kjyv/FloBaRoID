@@ -16,10 +16,11 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification import helpers
 
 if __name__ == '__main__':
-    urdf_file = '../model/centauro.urdf'
+    #urdf_file = '../model/centauro.urdf'
+    urdf_file = '../model/walkman.urdf'
     dynamics = iDynTree.DynamicsComputations()
     dynamics.loadRobotModelFromFile(urdf_file)
-    dynamics.setFloatingBase('pelvis')
+    dynamics.setFloatingBase('LFoot')
     n_dofs = dynamics.getNrOfDegreesOfFreedom()
     jointNames = []
     for i in range(n_dofs):

@@ -68,10 +68,15 @@ class Identification(object):
         # project a priori to solution subspace
         self.opt['projectToAPriori'] = 0
 
-        #### end additional config flags
+        # use RBDL for simulation
+        self.opt['useRBDL'] = 0
 
         #if self.opt['useConsistencyConstraints']:
         #    self.opt['useAPriori'] = 0
+        #
+        #
+        #### end additional config flags
+
 
         # load model description and initialize
         self.model = Model(self.opt, urdf_file, regressor_file)

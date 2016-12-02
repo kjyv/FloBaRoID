@@ -74,7 +74,7 @@ selectBlocksFromMeasurements: 0
 blockSize: 250  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
 
-removeNearZero: 1  #remove samples that have almost zero velocity
+removeNearZero: 0  #remove samples that have almost zero velocity
 minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
 
 # IMU processing (floating base)
@@ -113,7 +113,7 @@ limitMassValPerLink: null #3
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 1.0     #percentage of CAD value in both +- directions
+limitMassAprioriBoundary: 0.05     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # whether to take out masses to be identified because they are e.g.
 # well known or introduce problems
@@ -139,7 +139,7 @@ useAPriori: 1
 useEssentialParams: 0
 
 # whether to include linear dependent columns in essential params or not
-useDependents: 1
+useDependents: 0
 
 # use weighted least squares(WLS) instead of ordinary least squares
 # needs small condition number, otherwise might amplify some parameters too much as the

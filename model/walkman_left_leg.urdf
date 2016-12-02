@@ -196,14 +196,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LHipMot_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LHipMot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipRoll.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipRoll.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -216,14 +216,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighUpLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipYaw.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipYaw.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighUpLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipYaw.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipYaw.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -236,14 +236,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/HipPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/HipPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LThighLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/HipPitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/HipPitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -256,14 +256,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LLowLeg_visual">
-        <mesh filename="package://bigman_urdf/meshes/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LLowLeg_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/KneePitchCalf.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -276,14 +276,14 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFootmot_visual">
-        <mesh filename="package://bigman_urdf/meshes/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFootmot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/AnklePitch.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -296,7 +296,7 @@ The coordinate frame called base_link is rigidly attached to the robot root body
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry name="LFoot_visual">
-        <mesh filename="package://bigman_urdf/meshes/NewFoot.STL" scale="0.001 -0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/NewFoot.STL" scale="0.001 -0.001 0.001"/>
       </geometry>
       <material name="dark_grey"/>
     </visual>
@@ -304,7 +304,7 @@ The coordinate frame called base_link is rigidly attached to the robot root body
       <!--
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry name="LFoot_collision">
-        <mesh filename="package://bigman_urdf/meshes/simple/Foot.STL" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://bigman_urdf/meshes/walkman/simple/Foot.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       -->
       <origin rpy="0 0 0" xyz="0.005 0.01 -0.1359"/>

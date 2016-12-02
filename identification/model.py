@@ -122,6 +122,10 @@ class Model(object):
         self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
 
         if opt['simulateTorques'] or opt['useAPriori'] or opt['floatingBase']:
+            if self.opt['useRBDL']:
+                import rbdl
+                self.rbdlModel = rbdl.loadModel(self.urdf_file, floating_base=self.opt['floatingBase'], verbose=False)
+                self.rbdlModel.gravity = np.array([0, 0, -9.81])
             self.dynComp = iDynTree.DynamicsComputations()
             self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
@@ -141,6 +145,44 @@ class Model(object):
         # (put here so it's only done once for the loaded model)
         self.computeRegressorLinDepsQR()
 
+    def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None):
+        import rbdl
+
+        # read sample data
+        q = samples['positions'][sample_idx]
+        qdot = samples['velocities'][sample_idx]
+        qddot = samples['accelerations'][sample_idx]
+        tau = samples['torques'][sample_idx].copy()
+
+        if self.opt['floatingBase']:
+            # The twist (linear/angular velocity) of the base, expressed in the world
+            # orientation frame and with respect to the base origin
+            base_velocity = samples['base_velocity'][sample_idx]
+            # The 6d classical acceleration (linear/angular acceleration) of the base
+            # expressed in the world orientation frame and with respect to the base
+            # origin
+            base_acceleration = samples['base_acceleration'][sample_idx]
+            rpy = samples['base_rpy'][sample_idx]
+
+        # calc torques and forces with iDynTree dynamicsComputation class
+        if self.opt['floatingBase']:
+            # get the homogeneous transformation that transforms vectors expressed
+            # in the base reference frame to frames expressed in the world
+            # reference frame, i.e. pos_world = world_T_base*pos_base
+            # for identification purposes, the position does not matter but rotation is taken
+            # from IMU estimation. The gravity, base velocity and acceleration all need to be
+            # expressed in world frame then
+            rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+            pos = iDynTree.Position.Zero()
+            world_T_base = iDynTree.Transform(rot, pos)
+
+            #dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
+            #                      world_gravity)
+
+        # compute inverse dynamics with idyntree (simulate)
+        rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
+        return tau
+
 
     def simulateDynamics(self, samples, sample_idx, dynComp=None):
         """ compute torques for one time step of measurements """
@@ -153,7 +195,7 @@ class Model(object):
         pos = samples['positions'][sample_idx]
         vel = samples['velocities'][sample_idx]
         acc = samples['accelerations'][sample_idx]
-        torq = samples['torques'][sample_idx]
+
         if self.opt['floatingBase']:
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
@@ -237,7 +279,6 @@ class Model(object):
                 torq = data.samples['torques'][m_idx]
                 if self.opt['floatingBase']:
                     for frame in data.samples['contacts'].item(0).keys():
-                        #TODO: define proper sign for input data
                         contacts[frame] = data.samples['contacts'].item(0)[frame][m_idx]
 
                 # system state for iDynTree
@@ -248,7 +289,10 @@ class Model(object):
                 # in case that we simulate the torque measurements, need torque estimation for a priori parameters
                 # or that we need to simulate the base reaction forces for floating base
                 if self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floatingBase']:
-                    torques = self.simulateDynamics(data.samples, m_idx)
+                    if self.opt['useRBDL']:
+                        torques = self.simulateDynamicsRBDL(data.samples, m_idx)
+                    else:
+                        torques = self.simulateDynamics(data.samples, m_idx)
 
                     if self.opt['useAPriori']:
                         # torques sometimes contain nans, just a very small C number that gets converted to nan?

@@ -785,7 +785,9 @@ class Identification(object):
                     self.constr_per_param[b].append('sym')
 
             if self.opt['identifyFriction']:
-                #friction constraints
+                # friction constraints
+                # (only makes sense when no offsets on torque measurements, otherwise can be
+                # negative)
                 for i in range(self.model.N_DOFS):
                     #Fc > 0
                     D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+i]]) )

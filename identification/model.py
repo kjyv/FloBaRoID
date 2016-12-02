@@ -612,7 +612,7 @@ class Model(object):
         if self.opt['identifyTorqueOffsets']:
             for i in range(0,self.N_DOFS):
                 if self.opt['identifyFriction']:
-                    self.param_syms.extend([symbols('Fd_{}'.format(i))])
+                    self.param_syms.extend([symbols('Fc_{}'.format(i))])
                 else:
                     self.param_syms.extend([symbols('off_{}'.format(i))])
 

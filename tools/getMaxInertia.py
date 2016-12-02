@@ -10,10 +10,13 @@ import sympy
 from sympy import symbols
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from IPython import embed
+
+import os
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification import helpers
 
 if __name__ == '__main__':
-    urdf_file = 'model/centauro.urdf'
+    urdf_file = '../model/centauro.urdf'
     dynamics = iDynTree.DynamicsComputations()
     dynamics.loadRobotModelFromFile(urdf_file)
     dynamics.setFloatingBase('pelvis')

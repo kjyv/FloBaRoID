@@ -113,28 +113,30 @@ def readWalkmanCSV(dir, config, plot):
 
     ## apply some data correction, should be temporary
 
-    joint_signs = np.array([-1, -1, -1, 1, -1, -1,      #LHipLat -
+    joint_signs = np.array([-1, 1, -1, -1, 1, -1,      #LHipLat -
                             1, 1, 1, 1, -1, -1,      #RHipLat -
                             #1,                       #WaistLat
                             1, 1,                     #WaistSag -
                             1, 1, -1, 1, 1, -1, -1,   #LShSag -
                             #1, 1,                     #NeckYawj -
-                            -1, 1, -1, -1, 1, 1, -1])  #RShSag -
+                            -1, 1, -1, -1, 1, 1, -1  #RShSag -
+                           ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
                               #-370,                  #WaistLat
                               0, 0,
                               0, 0, 0, 0, 0, 0, 0,
                               #0, 0,
-                              0, 0, 0, 0, 0, 0, 0])
+                              0, 0, 0, 0, 0, 0, 0
+                             ])
 
     # shift measured torques backwards by this many samples
     time_offset = round(200*0.09)
 
     # scale feet F/T sensors so zero value is force corresponding to weight
     # walkman whole weight is 143.06 kg (could be a little wrong)
-    scale = 0.8
-    ft_left_scale = 0.98 * scale
+    scale = 0.7
+    ft_left_scale = 0.90 * scale
     ft_right_scale = 1.18 * scale
 
     print(np.array(jointNames)[csv_T_urdf_indices])
@@ -341,7 +343,7 @@ if __name__ == '__main__':
                         Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
                         Fs=out['frequency'], IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'],
                         IMUlinAcc=out['IMUlinAcc'], IMUrotAcc=out['IMUrotAcc'], IMUrpy=out['IMUrpy'],
-                        FT=[out['FTright']])
+                        FT=[out['FTleft'], out['FTright']])
 
         if args.plot:
             fig = plt.figure()
@@ -370,7 +372,7 @@ if __name__ == '__main__':
 
         out['base_velocity'] = np.hstack( (out['IMUlinVel'], out['IMUrotVel']) )
         out['base_acceleration'] = np.hstack( (out['IMUlinAcc'], out['IMUrotAcc']) )
-        out['contacts'] = np.array({'r_leg_ft': out['FTright']})
+        out['contacts'] = np.array({'l_leg_ft': out['FTleft'], 'r_leg_ft': out['FTright']})
         out['base_rpy'] = out['IMUrpy']
 
     else:

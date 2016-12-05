@@ -231,7 +231,7 @@ class Model(object):
         else:
             dynComp.setRobotState(q, dq, ddq, world_gravity)
 
-        # compute inverse dynamics with idyntree (simulate)
+        # compute inverse dynamics
         torques = iDynTree.VectorDynSize(self.N_DOFS)
         baseReactionForce = iDynTree.Wrench()
         dynComp.inverseDynamics(torques, baseReactionForce)

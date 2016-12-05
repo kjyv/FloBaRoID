@@ -284,6 +284,7 @@ class URDFHelpers(object):
             # of its parent, get position from Model::getFrameTransform
             return [[100,100], [100,100], [100,100]]
 
+    #replace with new idyntree method
     @classmethod
     def getJointLimits(self, input_urdf, use_deg=True):
         import xml.etree.ElementTree as ET

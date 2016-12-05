@@ -63,3 +63,7 @@ documentation/.ipynb_checkpoints
 model/kuka_lwr4.urdf.regressor.npz
 model/kuka_lwr4.urdf.tmp
 data/KUKA/SIM/old
+output/output_*.html
+model/*.urdf.regressor.npz
+model/*.urdf.trajectory.npz
+identification/sdpa_dat

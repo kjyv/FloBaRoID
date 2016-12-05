@@ -43,17 +43,35 @@ if __name__ == '__main__':
     rot = iDynTree.Rotation.RPY(0, 0, 0)
     pos = iDynTree.Position.Zero()
     world_T_base = iDynTree.Transform(rot, pos)
+    torques = iDynTree.VectorDynSize(n_dofs)
+    baseReactionForce = iDynTree.Wrench()
 
     m = iDynTree.MatrixDynSize(n_dofs, n_dofs)
     maxima = [0]*n_dofs
     for i in range(n_dofs):
-        for pos in np.arange(limits[jointNames[i]]['lower'], limits[jointNames[i]]['upper'], 0.05):
+        for pos in np.arange(limits[jointNames[i]]['lower'], limits[jointNames[i]]['upper'], 0.01):
             q.zero()
             q[i] = pos
+
+            '''
+            # get only gravity vector for q (qdot = qddot = 0)
             dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
+            dynamics.inverseDynamics(torques, baseReactionForce)
+            gravity = torques.toNumPy()
+
+            # get mass matrix for q, qddot
+            ddq[i] = 1
+            dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
+            dynamics.inverseDynamics(torques, baseReactionForce)
+            massVector = torques.toNumPy() - gravity
+            ddq.zero()
+
+            maxima[i] = np.max((massVector[i], maxima[i]))
+            '''
+
             dynamics.getFreeFloatingMassMatrix(m)
             i_j = np.diag(m.toNumPy())
-            maxima[i] = np.max((i_j[i], maxima[i]))
+            maxima[i] = np.max((i_j[i+6], maxima[i]))
 
     for l in map(lambda j: "{}: {}".format(jointNames[j], maxima[j]), range(len(maxima))):
         print(l)

@@ -848,6 +848,9 @@ class Identification(object):
             else:
                 contactForces = zeros(self.model.num_base_params, 1)
 
+            # minimize estimation error of to-be-found parameters delta
+            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
+            # (this takes ages for large matrices...)
             if is_old_sympy:
                 e_rho1 = Matrix(rho1).T - (R1*K*delta - contactForces)
             else:
@@ -893,7 +896,7 @@ class Identification(object):
 
 
     def identifyFeasibleBaseParameters(self):
-        ''' use SDP optimzation to solve OLS to find physically feasible base parameters (i.e. for
+        ''' use SDP optimization to solve OLS to find physically feasible base parameters (i.e. for
             which a consistent std solution exists), based on code from Sousa, 2014
         '''
         with helpers.Timer() as t:
@@ -985,13 +988,28 @@ class Identification(object):
     def findFeasibleStdFromFeasibleBase(self, xBase):
         ''' find a std feasible solution for feasible base solution (exists per definition?)'''
 
-        I = Identity
-        def mrepl(m,repl):
+        def mrepl(m, repl):
             return m.applyfunc(lambda x: x.xreplace(repl))
+        I = Identity
 
-        #replace base vars with estimated vales
+        delta = Matrix(self.model.param_syms)
+        beta_symbs = self.model.base_syms
+
+        beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
+        delta_b = Matrix(np.array(delta)[self.model.independent_cols])
+
+        delta_d = Matrix(np.array(delta)[self.model.P[self.model.num_base_params:]])
+        n_delta_d = len(delta_d)
+        self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+
+        #rewrite LMIs for base params
+        DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
+        epsilon_safemargin = 1e-30
+        self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
+
+        # replace base vars with estimated values
         dict_subs = dict(zip(self.model.base_syms, xBase))
-        lmis = [ LMI_PD(mrepl(lmi.canonical.gts, dict_subs)) for lmi in self.DB_LMIs_marg]
+        lmis = [LMI_PD(mrepl(lmi.canonical.gts, dict_subs)) for lmi in self.DB_LMIs_marg]
 
         sol_cad_dist = Matrix(self.model.xStdModel - self.model.param_syms)
         u = Symbol('u')
@@ -1001,13 +1019,13 @@ class Identification(object):
 
         lmis = [LMI_PSD(U_rho)] + lmis
         variables = [u] + list(self.model.param_syms)
-        objective_func = u   #'find' problem
+        objective_func = u   # 'find' problem
 
         # start at CAD data to find closer solution
         prime = self.model.xStdModel
         solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u = solution[0,0]
+        u = solution[0, 0]
         print("found feasible std solution with distance {} from CAD solution".format(u))
         xStd = np.squeeze(np.asarray(solution[1:]))
 

@@ -239,7 +239,7 @@ class URDFHelpers(object):
                         self.mesh_scaling = '1 1 1'
 
         if not link_found or m is None:
-            print(Fore.LIGHTRED_EX + "No mesh information specified for {} in URDF! Using approximation.".format(link_name) + Fore.RESET)
+            print(Fore.LIGHTRED_EX + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
             filepath = None
         else:
             if not filepath.lower().endswith('stl'):

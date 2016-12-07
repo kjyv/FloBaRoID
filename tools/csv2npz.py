@@ -27,7 +27,8 @@ from identification.model import Model
 
 from IPython import embed
 
-is_hw = 1
+#set to simulate torques with iDynTree and override wrong torques from gazebo
+is_gazebo = 1
 
 def readCentauroCSV(dir, config, plot):
     #names in order of the supplied data
@@ -192,7 +193,7 @@ def readWalkmanCSV(dir, config, plot):
         rpy_labels = ['r','p', 'y']
         acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
-        if is_hw:
+        if is_gazebo:
             # use data fields of LPMS IMU (LPMS-CU)
             #out['IMUrpy'][:, i] = np.deg2rad(f[:, i])    # data in deg
             out['IMUlinAcc'][:, i] = f[:, 18+i] * 9.81   # data in g -> (m/s2)/9.81
@@ -209,7 +210,7 @@ def readWalkmanCSV(dir, config, plot):
             out['IMUlinAcc'][:, i] = f[:, 18+i]
             out['IMUrotVel'][:, i] = f[:, 21+i]
 
-    if is_hw:
+    if is_gazebo:
         # rotate VN-100 vals to robot frame (as it is physically rotated)
         #robotToIMU = iDynTree.Rotation.RPY(np.pi, 0, 0).toNumPy()
         #for j in range(0, out['IMUlinAcc2'].shape[0]):
@@ -256,7 +257,7 @@ def readWalkmanCSV(dir, config, plot):
 
     #hardware and gazebo seem to have different sign
     #hw sensors are unreliable in linear x and y axes for now
-    if is_hw:
+    if is_gazebo:
         out['FTleft'][:, 0] = f[:, 3]*0
         out['FTleft'][:, 1] = f[:, 4]*0
         out['FTleft'][:, 2] = f[:, 5]
@@ -336,7 +337,7 @@ if __name__ == '__main__':
     out['torques_raw'] = np.empty_like( out['torques'])
 
     #filter, diff, integrate
-    if config['floatingBase']:
+    if args.robot == 'walkman' and config['floatingBase']:
         out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
         out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
         data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
@@ -382,7 +383,7 @@ if __name__ == '__main__':
                         Fs=out['frequency'])
 
     #simulate with iDynTree if we're using gazebo data
-    if not is_hw:
+    if not is_gazebo:
         #use all data
         old_skip = config['skipSamples']
         config['skipSamples'] = 0

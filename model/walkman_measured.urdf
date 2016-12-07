@@ -269,6 +269,7 @@ and to define the end effectors of the robot-->
   <link name="backpack">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 -0.065"/>
+      <mass value="15.0"/>
       <inertia ixx="0.13362499999995" ixy="0.0" ixz="0.0" iyy="0.05312500000005" iyz="0.0" izz="0.14449999999995"/>
     </inertial>
     <visual>
@@ -330,7 +331,7 @@ and to define the end effectors of the robot-->
   <link name="NeckYaw">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.1155"/>
-      <mass value="0.35"/>
+      <mass value="0.555"/>
       <inertia ixx="0.0005207504584285728" ixy="0.0" ixz="0.0" iyy="0.00011158937035714315" iyz="0.0" izz="0.0005207503315714301"/>
     </inertial>
     <visual>
@@ -1107,7 +1108,7 @@ and to define the end effectors of the robot-->
     <inertial>
       <origin rpy="0 0 0" xyz="1.2625599e-05 0.0042975381 0.044717986"/>
       <mass value="2.17"/>
-      <inertia ixx="0.00641637623382761" ixy="-4.040070814001968e-4.90335952887256" ixz="3.2094714241697018e-5.884031434647072" iyy="0.005479826914572086" iyz="0.0004127517425907072" izz="0.0024304014396263566"/>
+      <inertia ixx="0.00641637623382761" ixy="-4.0400708140019685e-05" ixz="3.2094714241697014e-06" iyy="0.005479826914572086" iyz="0.0004127517425907072" izz="0.0024304014396263566"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1424,8 +1425,8 @@ and to define the end effectors of the robot-->
   <link name="multisense/head">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.075493 3.3383E-05 0.02774"/>
-      <mass value="1.41984"/>
-      <inertia ixx="0.0039688" ixy="-1.5797E-06" ixz="-0.00089293" iyy="0.0041178" iyz="-6.8415E-07" izz="0.0035243"/>
+      <mass value="4.105"/>
+      <inertia ixx="0.011474478814514301" ixy="-4.567182569867024e-06" ixz="-0.0025816131747239107" iyy="0.011905263269100734" iyz="-1.977994527552399e-06" izz="0.010189353377845383"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>

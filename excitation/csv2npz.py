@@ -117,9 +117,9 @@ def readWalkmanCSV(dir, config, plot):
                             1, 1, 1, 1, -1, -1,      #RHipLat -
                             #1,                       #WaistLat
                             1, 1,                     #WaistSag -
-                            1, 1, -1, 1, 1, -1, -1,   #LShSag -
+                            1, -1, -1, 1, 1, -1, -1,   #LShSag -
                             #1, 1,                     #NeckYawj -
-                            -1, 1, -1, -1, 1, 1, -1  #RShSag -
+                            1, -1, -1, -1, 1, 1, 1  #RShSag -
                            ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,

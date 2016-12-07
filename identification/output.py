@@ -70,11 +70,13 @@ class OutputConsole(object):
             dc = iDynTree.DynamicsRegressorGenerator()
             if not dc.loadRobotAndSensorsModelFromFile(idf.urdf_file_real):
                 sys.exit()
-            tmp = iDynTree.VectorDynSize(idf.model.num_params)
+            tmp = iDynTree.VectorDynSize(idf.model.num_inertial_params)
             #set regressor, otherwise getModelParameters segfaults
             dc.loadRegressorStructureFromString(idf.model.regrXml)
             dc.getModelParameters(tmp)
             xStdReal = tmp.toNumPy()
+            #add some zeros for friction etc.
+            xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_params-idf.model.num_inertial_params)))
             xBaseReal = np.dot(idf.model.Binv, xStdReal)
 
         if idf.opt['showStandardParams']:

@@ -17,7 +17,7 @@ from identification import helpers
 
 if __name__ == '__main__':
     #urdf_file = '../model/centauro.urdf'
-    urdf_file = '../model/walkman.urdf'
+    urdf_file = '../model/walkman_orig.urdf'
     dynamics = iDynTree.DynamicsComputations()
     dynamics.loadRobotModelFromFile(urdf_file)
     dynamics.setFloatingBase('LFoot')
@@ -48,10 +48,59 @@ if __name__ == '__main__':
 
     m = iDynTree.MatrixDynSize(n_dofs, n_dofs)
     maxima = [0]*n_dofs
+    minima = [99999]*n_dofs
+    getMaxima = 1
+
     for i in range(n_dofs):
         for pos in np.arange(limits[jointNames[i]]['lower'], limits[jointNames[i]]['upper'], 0.01):
             q.zero()
+
             q[i] = pos
+            if getMaxima:
+                # saggital = pitch, transversal = yaw, lateral = roll
+                if i == jointNames.index('LHipYaw'):
+                    # lift right leg up 90 deg
+                    q[jointNames.index('RHipYaw')] = np.deg2rad(-90)
+                    q[jointNames.index('RHipSag')] = np.deg2rad(-90)
+
+                elif i == jointNames.index('RHipYaw'):
+                    # lift left leg up 90 deg, turn outside
+                    q[jointNames.index('LHipYaw')] = np.deg2rad(90)
+                    q[jointNames.index('LHipSag')] = np.deg2rad(-90)
+
+                elif i == jointNames.index('WaistSag'):
+                    # lift both arms up
+                    q[jointNames.index('LShSag')] = np.deg2rad(-162)
+                    q[jointNames.index('LShLat')] = np.deg2rad(85)
+
+                    q[jointNames.index('RShSag')] = np.deg2rad(-162)
+                    q[jointNames.index('RShLat')] = np.deg2rad(-85)
+
+                elif i == jointNames.index('WaistYaw'):
+                    # lift arms up to 90 deg
+                    q[jointNames.index('LShSag')] = np.deg2rad(25)
+                    q[jointNames.index('LShLat')] = np.deg2rad(85)
+
+                    q[jointNames.index('RShSag')] = np.deg2rad(25)
+                    q[jointNames.index('RShLat')] = np.deg2rad(-85)
+
+                #    print ("{} {}".format(i, jointNames[i]))
+
+            dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
+            dynamics.getFreeFloatingMassMatrix(m)
+            I = m.toNumPy()
+
+            # subtract inertia that results from floating base link having zero acceleration (it
+            # should actually react to acceleration of current joint)
+            I_qq = I[6:, 6:]
+            I_xx = I[:6, :6]
+            I_qx = I[6:, :6]
+            I_xq = I[:6, 6:]
+            I_eff = I_qq - I_qx.dot(la.inv(I_xx).dot(I_xq))
+            i_j = np.diag(I_eff)
+
+            maxima[i] = np.max((i_j[i], maxima[i]))
+            minima[i] = np.min((i_j[i], minima[i]))
 
             '''
             # get only gravity vector for q (qdot = qddot = 0)
@@ -69,9 +118,11 @@ if __name__ == '__main__':
             maxima[i] = np.max((massVector[i], maxima[i]))
             '''
 
-            dynamics.getFreeFloatingMassMatrix(m)
-            i_j = np.diag(m.toNumPy())
-            maxima[i] = np.max((i_j[i+6], maxima[i]))
-
-    for l in map(lambda j: "{}: {}".format(jointNames[j], maxima[j]), range(len(maxima))):
-        print(l)
+    if getMaxima:
+        print("maxima {}".format(dynamics.getFloatingBase()))
+        for l in map(lambda j: "{}: {}".format(jointNames[j], maxima[j]), range(len(maxima))):
+            print(l)
+    else:
+        print("minima {}".format(dynamics.getFloatingBase()))
+        for l in map(lambda j: "{}: {}".format(jointNames[j], minima[j]), range(len(minima))):
+            print(l)

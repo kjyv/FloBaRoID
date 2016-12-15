@@ -164,8 +164,6 @@ class Model(object):
             base_acceleration = samples['base_acceleration'][sample_idx]
             rpy = samples['base_rpy'][sample_idx]
 
-        # calc torques and forces with iDynTree dynamicsComputation class
-        if self.opt['floatingBase']:
             # get the homogeneous transformation that transforms vectors expressed
             # in the base reference frame to frames expressed in the world
             # reference frame, i.e. pos_world = world_T_base*pos_base
@@ -179,6 +177,7 @@ class Model(object):
             #dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
             #                      world_gravity)
 
+        #TODO: how to set base vel,acc and rotation with rbdl?
         # compute inverse dynamics with idyntree (simulate)
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
         return tau

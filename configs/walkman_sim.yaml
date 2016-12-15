@@ -119,7 +119,7 @@ meshBaseDir: 'meshes'
 # constrain overall mass
 limitOverallMass: 0
 # if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: null #16
+limitMassVal: 139.15
 
 # enforce the same upper limit for each link mass
 limitMassValPerLink: null #3

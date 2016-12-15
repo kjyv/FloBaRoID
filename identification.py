@@ -1027,7 +1027,7 @@ class Identification(object):
 
         u = solution[0, 0]
         print("found feasible std solution with distance {} from CAD solution".format(u))
-        xStd = np.squeeze(np.asarray(solution[1:]))
+        xStd = np.squeeze(np.asarray(solution))
 
         return xStd
 

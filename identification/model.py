@@ -176,14 +176,14 @@ class Model(object):
 
             #dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
             #                      world_gravity)
+            #TODO: how to set base vel,acc and rotation with rbdl?
 
-        #TODO: how to set base vel,acc and rotation with rbdl?
-        # compute inverse dynamics with idyntree (simulate)
+        # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
         return tau
 
 
-    def simulateDynamics(self, samples, sample_idx, dynComp=None):
+    def simulateDynamicsIDynTree(self, samples, sample_idx, dynComp=None):
         """ compute torques for one time step of measurements """
 
         if not dynComp:
@@ -291,7 +291,7 @@ class Model(object):
                     if self.opt['useRBDL']:
                         torques = self.simulateDynamicsRBDL(data.samples, m_idx)
                     else:
-                        torques = self.simulateDynamics(data.samples, m_idx)
+                        torques = self.simulateDynamicsIDynTree(data.samples, m_idx)
 
                     if self.opt['useAPriori']:
                         # torques sometimes contain nans, just a very small C number that gets converted to nan?

@@ -66,7 +66,7 @@
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/base.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/base.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -107,7 +107,7 @@
         <visual>
             <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_1.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_1.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -148,7 +148,7 @@
         <visual>
             <origin rpy="3.14159265359 0 3.14159265359" xyz="0 0 0.2" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_2.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_2.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -189,7 +189,7 @@
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_3.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_3.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -230,7 +230,7 @@
         <visual>
             <origin rpy="0 3.14159265359 3.14159265359" xyz="0 0 0.2" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_4.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_4.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -271,7 +271,7 @@
         <visual>
             <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
             <geometry name="lwr_arm_5_geom">
-                <mesh filename="package://lwr_description/meshes/link_5.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_5.STL" />
             </geometry>
             <material name="Orange" />
         </visual>
@@ -312,7 +312,7 @@
         <visual>
             <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_6.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_6.STL" />
             </geometry>
             <material name="Grey" />
         </visual>
@@ -353,7 +353,7 @@
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0" />
             <geometry>
-                <mesh filename="package://lwr_description/meshes/link_7.STL" />
+                <mesh filename="package://lwr_description/meshes/kuka/link_7.STL" />
             </geometry>
             <material name="Grey" />
         </visual>

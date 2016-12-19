@@ -135,19 +135,7 @@ limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- direct
 dontIdentifyMasses: 0
 
 # specify single params that will be constrained to the CAD values
-dontChangeParams:
-    - 10          #left leg
-    - 20
-    - 30
-    - 40
-    - 50
-    - 60
-    - 70          #right leg
-    - 80
-    - 90
-    - 100
-    - 110
-    - 120
+dontChangeParams: []
 
 # define constraints for link symmetries (e.g. left and right arm),
 # tuples of two parameters ids each that should be equal and 1/-1 to allow negative symmetric

@@ -343,7 +343,7 @@ class OutputConsole(object):
             #print "unused blocks: {}".format(idf.unusedBlocks)
             print("condition number: {}".format(la.cond(idf.model.YBase)))
 
-        print("Estimated overall mass: {} kg vs. apriori {} kg".format(np.sum(idf.model.xStd[0::10]), np.sum(idf.model.xStdModel[0::10])))
+        print("Estimated overall mass: {} kg vs. apriori {} kg".format(np.sum(idf.model.xStd[0:idf.model.num_inertial_params:10]), np.sum(idf.model.xStdModel[0:idf.model.num_inertial_params:10])))
 
         if idf.opt['showStandardParams']:
             cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)

@@ -67,3 +67,6 @@ output/output_*.html
 model/*.urdf.regressor.npz
 model/*.urdf.trajectory.npz
 identification/sdpa_dat
+.swl
+.swm
+.swn

@@ -73,8 +73,8 @@ class Identification(object):
 
         #if self.opt['useConsistencyConstraints']:
         #    self.opt['useAPriori'] = 0
-        #
-        #
+
+
         #### end additional config flags
 
 
@@ -158,7 +158,7 @@ class Identification(object):
 
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1):
-            torques = self.model.simulateDynamics(v_data, m_idx, dynComp)
+            torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp)
 
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques
@@ -986,7 +986,7 @@ class Identification(object):
 
 
     def findFeasibleStdFromFeasibleBase(self, xBase):
-        ''' find a std feasible solution for feasible base solution (exists per definition?)'''
+        ''' find a std feasible solution for feasible base solution (exists by definition)'''
 
         def mrepl(m, repl):
             return m.applyfunc(lambda x: x.xreplace(repl))
@@ -1022,14 +1022,18 @@ class Identification(object):
         objective_func = u   # 'find' problem
 
         # start at CAD data to find closer solution
-        prime = self.model.xStdModel
+        prime = np.concatenate(([0],self.model.xStdModel))
         solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u = solution[0, 0]
-        print("found feasible std solution with distance {} from CAD solution".format(u))
-        xStd = np.squeeze(np.asarray(solution))
+        #try again with wider bounds and dsdp5 cmd line
+        if state is not 'optimal':
+            print("Trying again with dsdp5 solver")
+            optimization.solve_sdp = optimization.dsdp5
+            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
 
-        return xStd
+        u = solution[0, 0]
+        print("found std solution with distance {} from CAD solution".format(u))
+        self.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
 
     def findFeasibleStdFromStd(self, xStd):
@@ -1099,7 +1103,7 @@ class Identification(object):
                         self.getBaseParamsFromParamError()
 
                     #self.identifyFeasibleBaseParameters()
-                    #self.model.xStd = self.findFeasibleStdFromFeasibleBase(self.model.xBaseModel)
+                    #self.model.xStd = self.findFeasibleStdFromFeasibleBase(self.model.xBase)
 
                     self.identifyFeasibleStandardParameters()
 
@@ -1265,6 +1269,7 @@ class Identification(object):
                 size = self.__dict__[v].nbytes
                 total += size
                 print("{}: {} ".format( v, (humanize.naturalsize(size, binary=True)) ), end=' ')
+            #TODO: extend for builtins
         print("- total: {}".format(humanize.naturalsize(total, binary=True)))
 
 def main():

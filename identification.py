@@ -46,7 +46,7 @@ np.core.arrayprint._line_width = 160
 # Referenced papers:
 # Gautier, 1991: Numerical Calculation of the base Inertial Parameters of Robots
 # Pham, 1991: Essential Parameters of Robots
-# Zag et. al, 1991: Application of the Weighted Least Squares Parameter Estimation Method to the
+# Zak et. al, 1994: Application of the Weighted Least Squares Parameter Estimation Method to the
 # Robot Calibration
 # Venture et al, 2009: A numerical method for choosing motions with optimal excitation properties
 # for identification of biped dynamics
@@ -70,10 +70,6 @@ class Identification(object):
 
         # use RBDL for simulation
         self.opt['useRBDL'] = 0
-
-        #if self.opt['useConsistencyConstraints']:
-        #    self.opt['useAPriori'] = 0
-
 
         #### end additional config flags
 
@@ -498,7 +494,7 @@ class Identification(object):
         if tau is None:
             tau = self.model.tau
 
-        self.model.xBaseModel = np.dot(self.model.Binv, self.model.xStdModel)
+        self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
@@ -534,7 +530,7 @@ class Identification(object):
 
         if self.opt['useWLS']:
             """
-            additionally do weighted least squares IDIM-WLS, cf. Zak, 1991, Gautier, 1997 and Khalil, 2007.
+            additionally do weighted least squares IDIM-WLS, cf. Zak, 1994, Gautier, 1997 and Khalil, 2007.
             adds weighting with relative standard dev of estimation error on OLS base regressor and params.
             (includes reducing effect of different units of parameters)
             """
@@ -924,7 +920,6 @@ class Identification(object):
 
             #delta_d = Pd.T*delta
             delta_d = Matrix(np.array(delta)[self.model.P[self.model.num_base_params:]])
-            n_delta_d = len(delta_d)
             self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
 
             #rewrite LMIs for base params
@@ -974,9 +969,15 @@ class Identification(object):
             prime = np.concatenate((self.model.xBaseModel, np.array(Pd.T*self.model.xStdModel)[:,0]))
             solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
+            #try again with wider bounds and dsdp5 cmd line
+            if state is not 'optimal':
+                print("Trying again with dsdp5 solver")
+                optimization.solve_sdp = optimization.dsdp5
+                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
+
             u_star = solution[0,0]
             if u_star:
-                print("found feasible base solution with distance {} from OLS solution".format(u_star))
+                print("found base solution with distance {} from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+self.model.num_base_params])
 
             self.model.xBase = np.squeeze(np.asarray(beta_star))
@@ -986,7 +987,9 @@ class Identification(object):
 
 
     def findFeasibleStdFromFeasibleBase(self, xBase):
-        ''' find a std feasible solution for feasible base solution (exists by definition)'''
+        ''' find a std feasible solution for feasible base solution (exists by definition) while
+            minimizing param distance to a-priori parameters
+        '''
 
         def mrepl(m, repl):
             return m.applyfunc(lambda x: x.xreplace(repl))
@@ -1044,7 +1047,6 @@ class Identification(object):
         # correct a std solution to be feasible
         Pd = self.model.Pp[:, self.model.num_base_params:]
         delta_d = (Pd.T*delta)
-        n_delta_d = len(delta_d)
 
         u = Symbol('u')
         U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
@@ -1101,11 +1103,16 @@ class Identification(object):
                     if self.opt['useAPriori']:
                         self.getBaseParamsFromParamError()
 
-                    #self.identifyFeasibleBaseParameters()
-                    #self.model.xStd = self.findFeasibleStdFromFeasibleBase(self.model.xBase)
+                    if self.opt['identifyClosestToCAD']:
+                        # first estimate feasible base params, then find corresponding feasible std
+                        # params while minimizing distance to CAD
+                        self.identifyFeasibleBaseParameters()
+                        self.findFeasibleStdFromFeasibleBase(self.model.xBase)
+                    else:
+                        # directly estimate constrained std params, distance to CAD not minimized
+                        self.identifyFeasibleStandardParameters()
 
-                    self.identifyFeasibleStandardParameters()
-
+                    # get feasible base params, then project back to std. distance to CAD not minimized and std not feasible
                     #self.identifyFeasibleBaseParameters()
                     #self.findStdFromBaseParameters()
 

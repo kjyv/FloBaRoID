@@ -33,7 +33,7 @@ def LMI_PSD(lhs, rhs=0):
         lmi = lhs >= sympify(rhs)
     return lmi
 
-##copied some methods from lmi_sdp here for compat changes
+##copied some methods from lmi_sdp here for compatibility changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):
     if old_sympy:
         return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
@@ -175,15 +175,16 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
-    cvxopt.solvers.options['maxiters'] = 200
+    cvxopt.solvers.options['maxiters'] = 100
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     toc = time.time()
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
         print("(does not necessarily mean feasible)")
-    else:
+    elif primalstart is not None:
+        # return primalstart if no solution was found
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
-        sdpout['x'] = np.reshape(primalstart, (len(primalstart),1))
+        sdpout['x'] = np.reshape( np.concatenate(([0], primalstart)), (len(primalstart)+1, 1) )
     print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x']), state
 
@@ -256,9 +257,13 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
             error.append(s)
         if 'DSDP Primal Unbounded, Dual Infeasible' in s:
             error.append(s)
+        if 'DSDP Converged' in s:
+            break
+    if error:
         state = 'infeasible'
-    if error: print(Fore.RED + error[0] + Fore.RESET)
-
+        print(Fore.RED + error[0] + Fore.RESET)
+    else:
+        print(state)
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
     return np.matrix(sol).T, state

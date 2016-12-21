@@ -627,7 +627,7 @@ class Model(object):
         else:
             # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
             # (using QR on B yields orthonormal base if necessary)
-            # in general, pinv is always working
+            # in general, pinv is always working (but is numerically a bit different)
             self.Binv = la.pinv(self.B)
 
         # define sympy symbols for each std column

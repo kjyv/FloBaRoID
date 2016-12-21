@@ -67,7 +67,7 @@ minTol: 0.00001
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
 startOffset: 500    #how many samples from the beginning of each measurement file are skipped
-skipSamples: 0    #how many values to skip before using the next sample
+skipSamples: 2    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
@@ -88,6 +88,10 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 # if only torque estimation is desired, not using this self.option might give a better model
 # accuracy with approriate parameters
 useConsistencyConstraints: 1
+
+# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
+# finding feasible standard parameters
+identifyClosestToCAD: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
@@ -112,8 +116,8 @@ limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
-limitMassToApriori: 1
-limitMassAprioriBoundary: 0.05     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassToApriori: 0
+limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # whether to take out masses to be identified because they are e.g.
 # well known or introduce problems

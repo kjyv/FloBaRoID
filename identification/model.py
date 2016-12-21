@@ -614,11 +614,12 @@ class Model(object):
             indep_idx = self.independent_cols[j]
             for i in range(0, self.linear_deps.shape[1]):
                 for k in range(r, P.size):
-                    fact = round(self.linear_deps[j, k-r], 5)
-                    if np.abs(fact)>self.opt['minTol']: self.B[P[k],j] = fact
+                    factor = round(self.linear_deps[j, k-r], 5)
+                    #factor = self.linear_deps[j, k-r]
+                    if np.abs(factor)>self.opt['minTol']: self.B[P[k],j] = factor
             self.B[indep_idx,j] = 1
 
-        if 'orthogonalizeBasis' in self.opt and self.opt['orthogonalizeBasis']:
+        if self.opt['orthogonalizeBasis']:
             #orthogonalize, so linear relationships can be inverted
             Q_B_qr, R_B_qr = la.qr(self.B)
             Q_B_qr[np.abs(Q_B_qr) < self.opt['minTol']] = 0
@@ -665,19 +666,15 @@ class Model(object):
             for i in range(0,self.N_DOFS):
                 self.param_syms.extend([symbols('Fv-_{}'.format(i))])
 
-        #create symbolic equations for base param dependencies
-        self.base_deps = np.dot(self.param_syms, self.B)
-
-        '''
-        #use reduced row echelon form to get basis for identifiable subspace
-        #(rrf does not get minimal reduced space though)
-        Ew = Matrix(Yrand).rref()
-        Ew_np = np.array(Ew[0].tolist(), dtype=float)
-        # B in Paper:
-        self.R = Ew_np[~np.all(Ew_np==0, axis=1)]    #remove rows that are all zero
-        self.Rpinv = la.pinv(self.R)   # == P in Paper
-        '''
-
+        #symbolic equations for base param dependencies
+        if self.opt['orthogonalizeBasis']:
+            #this is only correct if basis is orthogonal
+            self.base_deps = np.dot(self.param_syms, self.B)
+        else:
+            #otherwise, we need to get realtionships from the inverse
+            B_qr_inv_z = la.pinv(self.B)
+            B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
+            self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""

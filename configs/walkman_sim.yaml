@@ -88,8 +88,8 @@ selectBlocksFromMeasurements: 0
 blockSize: 50  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
 
-minVel: 0.05        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 removeNearZero: 0   #remove samples that have almost zero velocity (could be better for friction estimation)
+minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 
 # IMU processing (floating base)
 waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity

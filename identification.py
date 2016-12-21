@@ -876,7 +876,7 @@ class Identification(object):
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
             # otherwise returns primal as solution when failing)
             # TODO: get success or fail status and use it (e.g. use other method if failing)
-            prime = np.concatenate(([0],self.model.xStdModel))
+            prime = self.model.xStdModel
             solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             #try again with wider bounds and dsdp5 cmd line
@@ -897,7 +897,7 @@ class Identification(object):
 
     def identifyFeasibleBaseParameters(self):
         ''' use SDP optimization to solve OLS to find physically feasible base parameters (i.e. for
-            which a consistent std solution exists), based on code from Sousa, 2014
+            which a consistent std solution exists), based on code from github.com/cdsousa/wam7_dyn_ident
         '''
         with helpers.Timer() as t:
             if self.opt['verbose']:
@@ -978,7 +978,7 @@ class Identification(object):
             if u_star:
                 print("found feasible base solution with distance {} from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+self.model.num_base_params])
-            #delta_d_star = np.matrix(solution[1+self.model.num_base_params:])
+
             self.model.xBase = np.squeeze(np.asarray(beta_star))
 
         if self.opt['showTiming']:
@@ -1021,9 +1021,8 @@ class Identification(object):
         variables = [u] + list(self.model.param_syms)
         objective_func = u   # 'find' problem
 
-        # start at CAD data to find closer solution
-        prime = np.concatenate(([0],self.model.xStdModel))
-        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+        # start at CAD data to find solution faster
+        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel)
 
         #try again with wider bounds and dsdp5 cmd line
         if state is not 'optimal':
@@ -1056,7 +1055,7 @@ class Identification(object):
         objective_func = u
 
         # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
-        prime = np.concatenate(([0],self.model.xStdModel))
+        prime = self.model.xStdModel
         solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]

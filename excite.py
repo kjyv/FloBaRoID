@@ -68,7 +68,7 @@ def plot(data=None):
     else:
         # set some fixed colors
         colors = []
-        """colors = [[ 0.97254902,  0.62745098,  0.40784314],
+        colors = [[ 0.97254902,  0.62745098,  0.40784314],
                   [ 0.0627451 ,  0.53333333,  0.84705882],
                   [ 0.15686275,  0.75294118,  0.37647059],
                   [ 0.90980392,  0.37647059,  0.84705882],
@@ -76,14 +76,14 @@ def plot(data=None):
                   [ 0.18823529,  0.31372549,  0.09411765],
                   [ 0.50196078,  0.40784314,  0.15686275]
                  ]
-        """
+
         from palettable.tableau import Tableau_10, Tableau_20
-        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
+        #colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
+        colors += Tableau_20.mpl_colors
 
     if not data:
-        # python measurements
         # reload measurements from this or last run (if run dry)
-        measurements = np.load('measurements.npz')
+        measurements = np.load(args.filename)
         Q = measurements['positions']
         Qraw = measurements['positions_raw']
         V = measurements['velocities']
@@ -136,12 +136,20 @@ def plot(data=None):
             ([dV_t,], 'Target Accelerations')
             ]
     else:   #plot measurements and raw data (from measurements file)
-        datasets = [
-            ([Q, Qraw], 'Positions'),
-            ([V, Vraw],'Velocities'),
-            ([dV,], 'Accelerations'),
-            ([Tau, TauRaw],'Measured Torques')
-            ]
+        if np.sum(Qraw - Q) != 0:
+            datasets = [
+                ([Q, Qraw], 'Positions'),
+                ([V, Vraw],'Velocities'),
+                ([dV,], 'Accelerations'),
+                ([Tau, TauRaw],'Measured Torques')
+                ]
+        else:
+            datasets = [
+                ([Q], 'Positions'),
+                ([V],'Velocities'),
+                ([dV,], 'Accelerations'),
+                ([Tau],'Measured Torques')
+                ]
 
     d = 0
     cols = 2.0

@@ -239,7 +239,7 @@ class URDFHelpers(object):
                         self.mesh_scaling = '1 1 1'
 
         if not link_found or m is None:
-            print(Fore.LIGHTRED_EX + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
+            print(Fore.RED + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
             filepath = None
         else:
             if not filepath.lower().endswith('stl'):
@@ -263,18 +263,24 @@ class URDFHelpers(object):
 
     def getBoundingBox(self, input_urdf, link_nr, scale=1):
         from stl import mesh   #using numpy-stl
+        link_name = self.link_names[link_nr]
+        filename = self.getMeshPath(input_urdf, link_name)
 
-        filename = self.getMeshPath(input_urdf, self.link_names[link_nr])
         if filename:
-            stl_mesh = mesh.Mesh.from_file(filename)
+            try:
+                stl_mesh = mesh.Mesh.from_file(filename)
 
-            #gazebo and urdf use 1m for 1 stl unit
-            scale_x = float(self.mesh_scaling.split()[0])
-            scale_y = float(self.mesh_scaling.split()[1])
-            scale_z = float(self.mesh_scaling.split()[2])
-            return [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
-                    [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
-                    [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+                #gazebo and urdf use 1m for 1 stl unit
+                scale_x = float(self.mesh_scaling.split()[0])
+                scale_y = float(self.mesh_scaling.split()[1])
+                scale_z = float(self.mesh_scaling.split()[2])
+                return [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
+                        [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
+                        [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+            except FileNotFoundError:
+                print(Fore.RED + "Mesh file {} not found for link '{}'! Using a very large box.".format(filename, link_name)
+                      + Fore.RESET)
+                return [[100,100], [100,100], [100,100]]
         else:
             #TODO: in case we have no stl files:
             # take length of link (distance to next link, last one?) and assume width and height from it (proper

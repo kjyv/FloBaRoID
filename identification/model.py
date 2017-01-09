@@ -608,7 +608,7 @@ class Model(object):
         self.linear_deps[np.abs(self.linear_deps) < self.opt['minTol']] = 0
 
         # collect grouped columns for each independent column
-        # build base matrix
+        # and build base matrix
         self.B = np.zeros((self.num_params, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
@@ -671,10 +671,12 @@ class Model(object):
             #this is only correct if basis is orthogonal
             self.base_deps = np.dot(self.param_syms, self.B)
         else:
-            #otherwise, we need to get realtionships from the inverse
+            #otherwise, we need to get relationships from the inverse
             B_qr_inv_z = la.pinv(self.B)
             B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
             self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
+
+        self.base_deps = np.dot(self.param_syms, self.B)
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
@@ -708,29 +710,17 @@ class Model(object):
         linkConds = list()
         for i in range(0, self.N_LINKS):
             #get columns of base regressor that are dependent on std parameters of link i
-            #TODO: check if this is a sound approach
             #TODO: try going further down to e.g. condition number of link mass, com, inertial
 
             #get parts of base regressor with only independent columns (identifiable space)
 
             #get all independent std columns for link i
             base_columns = [j for j in range(0, self.num_base_params) \
-                                  if self.independent_cols[j] in range(i*10, i*10+9)]
-
-            #add dependent columns (not really correct, see getting self.B)
-            #for j in range(0, self.num_base_params):
-            #    for dep in np.where(np.abs(self.linear_deps[j, :])>self.opt['minTol'])[0]:
-            #        if dep in range(i*10, i*10+9):
-            #            base_columns.append(j)
-            if not len(base_columns):
-                linkConds.append(10e15)
-            else:
-                linkConds.append(la.cond(self.YBase[:, base_columns]))
+                                  if self.independent_cols[j] in range(i*10, i*10+9+1)]
 
             #use base column dependencies to get parts of base regressor with influence on each each link
-            '''
             base_columns = list()
-            for k in range(i*10, i*10+9):
+            for k in range(i*10, i*10+9+1):
                 for j in range(0, self.num_base_params):
                     if self.param_syms[k] in self.base_deps[j].free_symbols:
                         if not j in base_columns:
@@ -738,19 +728,9 @@ class Model(object):
                         continue
 
             if not len(base_columns):
-                linkConds.append(10e15)
+                linkConds.append(1e16)
             else:
                 linkConds.append(la.cond(self.YBase[:, base_columns]))
-            '''
-
-            #use std regressor directly
-            '''
-            c = la.cond(self.YStd[:, i*10:i*10+9])
-            if np.isfinite(c):
-                linkConds.append(c)
-            else:
-                linkConds.append(10e15)
-            '''
 
         print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds))))
 

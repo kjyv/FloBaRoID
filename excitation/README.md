@@ -3,12 +3,22 @@
 
 ## Trajectory optimization
 
-Using global non-linear optimization (particle swarm optimization), parameters for trajectories can be found that minimize the condition number of the regressor retrieved through the generated trajectory (in simulation of course). Set the option `optimizeTrajectory` in your .yaml file. It is important to set good bounds to narrow the search space and to have proper joint angle, velocity and torque limits in the URDF model file. See further comments in the sample configuration files.
+Using global non-linear optimization (particle swarm optimization), parameters for trajectories can
+be found that minimize the condition number of the regressor retrieved through the generated
+trajectory (in simulation of course). Set the option `optimizeTrajectory` in your .yaml file to
+enable this. It is important to set good bounds to narrow the search space and to have proper joint
+angle, velocity and torque limits in the URDF model file. See further comments in the sample
+configuration files.
 
+## Show trajectory data
+
+In order to show curves of an optimized or previously recorded trajectory again, 
+`excite.py --plot --dryrun --filename <measurement file>` can be used.
 
 ## Excitation modules
 
-Existing modules that will send commands to a robot and record measurements can be used with slight modifications or as template for other robot command interfaces.
+Existing modules that will send commands to a robot and record measurements can be used with slight
+modifications or as template for other robot command interfaces.
 
 ## Generate excitation for Walk-Man
 
@@ -36,7 +46,8 @@ it is then possible to manually set positions, e.g. by writing
 
 To generate excitation trajectories and send them to the robot, set 
 the option exciteMethod to 'yarp' and run `./excite.py [...]`.
-This will also read the resulting joint torques measurements and write them to a file measurements.npz
+This will also read the resulting joint torques measurements and write them to a file
+measurements.npz
 
 ## Generate excitation for Kuka LWR4+
 
@@ -53,8 +64,9 @@ the option exciteMethod to 'ros' and run `./excite.py [...]`.
 
 ## Measurements data file structure
 
-The measurements retrieved from excitation are saved in a numpy .npz binary file archive which includes multiple data streams. All
-data fields have the same amount of samples S relative to the time in field 'times'. The same structure is expected by identification.py.
+The measurements retrieved from excitation are saved in a numpy .npz binary file archive which
+includes multiple data streams. All data fields have the same amount of samples S relative to the
+time in field 'times'. The same structure is expected by identification.py.
 
 |field name|content|
 |---|---|
@@ -75,8 +87,13 @@ data fields have the same amount of samples S relative to the time in field 'tim
 Values in [] are optional.
 Values with * only need to be specified when using floating base dynamics.
 
-All data is expected by identification.py to already be cleaned and low-pass filtered and to not include any big measurement errors. The noise should ideally be gaussian and have zero mean.
+All data is expected by identification.py to already be cleaned and low-pass filtered and to not
+include any big measurement errors. The noise should ideally be gaussian and have zero mean.
 
 The sampling frequency should be sufficiently high (at least 100 Hz) to get reasonably good position and velocity derivatives.
 
-The amount of samples should also be high enough for identification to take place. It depends on how many samples are later removed (zero velocity) and how many parameters are to be identified. 10 times the amount of parameters is possibly a good rule of thumb, more is always better. The higher the sampling frequency, the less information there is in successive samples, so the number should be higher at e.g. 1000 Hz.
+The amount of samples should also be high enough for identification to take place. It depends on how
+many samples are later removed (zero velocity) and how many parameters are to be identified. 10
+times the amount of parameters is possibly a good rule of thumb, more is always better. The higher
+the sampling frequency, the less information there is in successive samples, so the number should be
+higher at e.g. 1000 Hz.

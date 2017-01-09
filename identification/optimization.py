@@ -180,7 +180,8 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     toc = time.time()
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
-        print("(does not necessarily mean feasible)")
+        #print("(does not necessarily mean feasible)")
+        pass
     elif primalstart is not None:
         # return primalstart if no solution was found
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
@@ -203,7 +204,8 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     toc = time.time()
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
-        print("{} (does not necessarily mean feasible)".format(sdpout['status']))
+        print("{}".format(sdpout['status']))
+        #print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
     print('Elapsed time: %.2f s'%(toc-tic))

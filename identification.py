@@ -63,7 +63,7 @@ class Identification(object):
         ## some additional options (experiments)
 
         # orthogonalize basis matrix (uglier linear relationships, should not change results)
-        self.opt['orthogonalizeBasis'] = 0
+        self.opt['orthogonalizeBasis'] = 1
 
         # project a priori to solution subspace
         self.opt['projectToAPriori'] = 0
@@ -883,7 +883,7 @@ class Identification(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with distance {} from optimal OLS solution".format(u_star))
+                print("found std solution with distance {} from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -1031,7 +1031,7 @@ class Identification(object):
         if state is not 'optimal':
             print("Trying again with dsdp5 solver")
             optimization.solve_sdp = optimization.dsdp5
-            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
+            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel, wide_bounds=True)
 
         u = solution[0, 0]
         print("found std solution with distance {} from CAD solution".format(u))

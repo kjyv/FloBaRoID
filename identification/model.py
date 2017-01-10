@@ -9,7 +9,8 @@ import numpy.linalg as la
 from scipy import signal
 import scipy.linalg as sla
 import sympy
-from sympy import symbols
+from sympy import symbols, Matrix
+
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
 
@@ -419,7 +420,8 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
+        #self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
+        self.YBase = np.dot(self.YStd, self.Pb)   # regressor following Sousa, 2014
 
         if self.opt['verbose']:
             print("YStd: {}".format(self.YStd.shape), end=' ')
@@ -572,15 +574,30 @@ class Model(object):
         #TODO: save all this following stuff into regressor file as well
 
         """
+        # get basis directly from regressor matrix using QR
         Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
 
         #get rank
         r = np.where(np.abs(Rt.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
 
+        Qt[np.abs(Qt) < self.opt['minTol']] = 0
+
         #get basis projection matrix
-        self.B = Qt[:, 0:r]
+        S = np.zeros_like(Rt)
+        for i in range(Rt.shape[0]):
+            if np.abs(Rt[i,i]) < self.opt['minTol']:
+                continue
+            if Rt[i,i] < 0:
+                S[i,i] = -1
+            if Rt[i,i] > 0:
+                S[i,i] = 1
+        self.B = Qt.dot(S)[:, :r]
+        #self.B = Qt[:, 0:r]
+
         """
+
+        #get basis use Gautier, 1990 way, also using QR decomposition
 
         # get column space dependencies
         Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
@@ -595,6 +612,8 @@ class Model(object):
         self.Pp = np.zeros((P.size, P.size))
         for i in P:
             self.Pp[i, P[i]] = 1
+        self.Pb = self.Pp.T[:, 0:self.num_base_params]
+        self.Pd = self.Pp.T[:, self.num_base_params:]
 
         # get the choice of indices of "independent" columns of the regressor matrix
         # (representants chosen from each separate interdependent group of columns)
@@ -607,6 +626,9 @@ class Model(object):
         self.linear_deps = sla.inv(R1).dot(R2)
         self.linear_deps[np.abs(self.linear_deps) < self.opt['minTol']] = 0
 
+        self.Kd = self.linear_deps
+        self.K = self.Pb.T + self.Kd.dot(self.Pd.T)
+
         # collect grouped columns for each independent column
         # and build base matrix
         self.B = np.zeros((self.num_params, self.num_base_params))
@@ -614,16 +636,25 @@ class Model(object):
             indep_idx = self.independent_cols[j]
             for i in range(0, self.linear_deps.shape[1]):
                 for k in range(r, P.size):
-                    factor = round(self.linear_deps[j, k-r], 5)
-                    #factor = self.linear_deps[j, k-r]
+                    #factor = round(self.linear_deps[j, k-r], 5)
+                    factor = self.linear_deps[j, k-r]
                     if np.abs(factor)>self.opt['minTol']: self.B[P[k],j] = factor
             self.B[indep_idx,j] = 1
 
         if self.opt['orthogonalizeBasis']:
-            #orthogonalize, so linear relationships can be inverted
+            #orthogonalize, so linear relationships can be inverted (if B is square, will orthonormalize)
             Q_B_qr, R_B_qr = la.qr(self.B)
             Q_B_qr[np.abs(Q_B_qr) < self.opt['minTol']] = 0
-            self.B = Q_B_qr
+            S = np.zeros_like(R_B_qr)
+            for i in range(R_B_qr.shape[0]):
+                if np.abs(R_B_qr[i,i]) < self.opt['minTol']:
+                    continue
+                if R_B_qr[i,i] < 0:
+                    S[i,i] = -1
+                if R_B_qr[i,i] > 0:
+                    S[i,i] = 1
+            self.B = Q_B_qr.dot(S)
+            #self.B = Q_B_qr
             self.Binv = self.B.T
         else:
             # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
@@ -666,7 +697,9 @@ class Model(object):
             for i in range(0,self.N_DOFS):
                 self.param_syms.extend([symbols('Fv-_{}'.format(i))])
 
-        #symbolic equations for base param dependencies
+        ## get symbolic equations for base param dependencies
+        # Each dependent parameter can be ignored (non-identifiable) or it can be
+        # represented by grouping some base and/or dependent parameters.
         if self.opt['orthogonalizeBasis']:
             #this is only correct if basis is orthogonal
             self.base_deps = np.dot(self.param_syms, self.B)
@@ -675,8 +708,10 @@ class Model(object):
             B_qr_inv_z = la.pinv(self.B)
             B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
             self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
+            #self.base_deps = np.dot(self.param_syms, self.B)
 
-        self.base_deps = np.dot(self.param_syms, self.B)
+        #not using projection matrix B atm
+        self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""

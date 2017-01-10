@@ -44,25 +44,7 @@ ovrPosLimit:
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 
-#### identification
-
-# fixed or floating-base dynamics
-floatingBase: 0
-
-# identify torque offsets as additional parameters
-identifyTorqueOffsets: 1
-
-# identify motor friction
-identifyFriction: 1
-
-# simulate torques from target values, don't use both
-simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
-addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
-
-# almost zero threshold for QR, SVD and other things
-minTol: 0.00001
-
-## data selection
+#### data selection
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
@@ -81,13 +63,35 @@ minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
 waitForZeroAcc: 0   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
 zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
 
-## use constrained SDP to solve OLS
+#### identification
+
+# fixed or floating-base dynamics
+floatingBase: 0
+
+# identify torque offsets as additional parameters
+identifyTorqueOffsets: 1
+
+# identify motor friction
+identifyFriction: 1
+
+# simulate torques from target values, don't use both
+simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
+
+# almost zero threshold for QR, SVD and other things
+minTol: 0.00001
+
+## constrained SDP to solve OLS
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters
 # (currently this also does the estimation, so previously selecting another method has no effect)
 # if only torque estimation is desired, not using this self.option might give a better model
 # accuracy with approriate parameters
-useConsistencyConstraints: 1
+useConsistencyConstraints: 0
+
+# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
+# finding feasible standard parameters
+identifyClosestToCAD: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)

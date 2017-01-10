@@ -57,6 +57,25 @@ ovrPosLimit:
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
+#### data processing and selection
+
+# determine number of samples to use
+# (Khalil recommends about 500 times number of parameters to identify)
+startOffset: 650    #how many samples from the beginning of each measurement file are skipped
+skipSamples: 5    #how many values to skip before using the next sample
+
+# whether only "good" data is being selected or simply all is used (selected by condition number)
+selectBlocksFromMeasurements: 0
+blockSize: 50  # needs to be at least as much as parameters so regressor is square or higher
+selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
+
+removeNearZero: 0   #remove samples that have almost zero velocity (could be better for friction estimation)
+minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
+
+# IMU processing (floating base)
+waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
+zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
+
 #### identification
 
 # fixed or floating-base dynamics
@@ -76,32 +95,17 @@ addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated
 # almost zero threshold for QR, SVD and other things
 minTol: 0.001
 
-## data processing and selection
-
-# determine number of samples to use
-# (Khalil recommends about 500 times number of parameters to identify)
-startOffset: 650    #how many samples from the beginning of each measurement file are skipped
-skipSamples: 5    #how many values to skip before using the next sample
-
-# whether only "good" data is being selected or simply all is used (selected by condition number)
-selectBlocksFromMeasurements: 0
-blockSize: 50  # needs to be at least as much as parameters so regressor is square or higher
-selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
-
-removeNearZero: 0   #remove samples that have almost zero velocity (could be better for friction estimation)
-minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
-
-# IMU processing (floating base)
-waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
-zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
-
-## use constrained SDP to solve OLS
+## constrained SDP to solve OLS
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters
 # (currently this also does the estimation, so previously selecting another method has no effect)
 # if only torque estimation is desired, not using this self.option might give a better model
 # accuracy with approriate parameters
 useConsistencyConstraints: 0
+
+# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
+# finding feasible standard parameters
+identifyClosestToCAD: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
@@ -117,7 +121,7 @@ hullScaling: 1.0
 meshBaseDir: 'meshes'
 
 # constrain overall mass
-limitOverallMass: 0
+limitOverallMass: 1
 # if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 139.15
 
@@ -126,7 +130,7 @@ limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
-limitMassToApriori: 1
+limitMassToApriori: 0
 limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # whether to take out masses to be identified because they are e.g.
@@ -139,100 +143,100 @@ dontChangeParams: []
 
 # define constraints for link symmetries (e.g. left and right arm),
 # tuples of two parameters ids each that should be equal and 1/-1 to allow negative symmetric
-symmetryConstraints:
-    - [160,280, 1]  #'L/RShp'
-    - [161,281, 1]
-    - [162,282, -1]
-    - [163,283, 1]
-    - [164,284, 1]
-    - [165,285, -1]
-    - [166,286, 1]
-    - [167,287, 1]
-    - [168,288, -1]
-    - [169,289, 1]
-    - [170,290, 1]  #'L/RShr'
-    - [171,291, 1]
-    - [172,292, -1]
-    - [173,293, 1]
-    - [174,294, 1]
-    - [175,295, -1]
-    - [176,296, 1]
-    - [177,297, 1]
-    - [178,298, -1]
-    - [179,299, 1]
-    - [180,300, 1]  #'L/RShy'
-    - [181,301, 1]
-    - [182,302, -1]
-    - [183,303, 1]
-    - [184,304, 1]
-    - [185,305, -1]
-    - [186,306, 1]
-    - [187,307, 1]
-    - [188,308, -1]
-    - [189,309, 1]
-    - [190,310, 1]  #'L/RElb'
-    - [191,311, 1]
-    - [192,312, -1]
-    - [193,313, 1]
-    - [194,314, 1]
-    - [195,315, -1]
-    - [196,316, 1]
-    - [197,317, 1]
-    - [198,318, -1]
-    - [199,319, 1]
-    - [200,320, 1]  #'L/RForearm'
-    - [201,321, 1]
-    - [202,322, -1]
-    - [203,323, 1]
-    - [204,324, 1]
-    - [205,325, -1]
-    - [206,326, 1]
-    - [207,327, 1]
-    - [208,328, -1]
-    - [209,329, 1]
-    - [210,330, 1]  #'L/RWrMot2'
-    - [211,331, 1]
-    - [212,332, -1]
-    - [213,333, 1]
-    - [214,334, 1]
-    - [215,335, -1]
-    - [216,336, 1]
-    - [217,337, 1]
-    - [218,338, -1]
-    - [219,339, 1]
-    - [220,340, 1]  #'L/RWrMot3'
-    - [221,341, 1]
-    - [222,342, -1]
-    - [223,343, 1]
-    - [224,344, 1]
-    - [225,345, -1]
-    - [226,346, 1]
-    - [227,347, 1]
-    - [228,348, -1]
-    - [229,349, 1]
-    - [230,350, 1] #'L/RSoftHandLink'
-    - [231,351, 1]
-    - [232,352, 1]
-    - [233,353, 1]
-    - [234,354, 1]
-    - [235,355, 1]
-    - [236,356, 1]
-    - [237,357, 1]
-    - [238,358, 1]
-    - [239,359, 1]
+symmetryConstraints: []
+#    - [160,280, 1]  #'L/RShp'
+#    - [161,281, 1]
+#    - [162,282, -1]
+#    - [163,283, 1]
+#    - [164,284, 1]
+#    - [165,285, -1]
+#    - [166,286, 1]
+#    - [167,287, 1]
+#    - [168,288, -1]
+#    - [169,289, 1]
+#    - [170,290, 1]  #'L/RShr'
+#    - [171,291, 1]
+#    - [172,292, -1]
+#    - [173,293, 1]
+#    - [174,294, 1]
+#    - [175,295, -1]
+#    - [176,296, 1]
+#    - [177,297, 1]
+#    - [178,298, -1]
+#    - [179,299, 1]
+#    - [180,300, 1]  #'L/RShy'
+#    - [181,301, 1]
+#    - [182,302, -1]
+#    - [183,303, 1]
+#    - [184,304, 1]
+#    - [185,305, -1]
+#    - [186,306, 1]
+#    - [187,307, 1]
+#    - [188,308, -1]
+#    - [189,309, 1]
+#    - [190,310, 1]  #'L/RElb'
+#    - [191,311, 1]
+#    - [192,312, -1]
+#    - [193,313, 1]
+#    - [194,314, 1]
+#    - [195,315, -1]
+#    - [196,316, 1]
+#    - [197,317, 1]
+#    - [198,318, -1]
+#    - [199,319, 1]
+#    - [200,320, 1]  #'L/RForearm'
+#    - [201,321, 1]
+#    - [202,322, -1]
+#    - [203,323, 1]
+#    - [204,324, 1]
+#    - [205,325, -1]
+#    - [206,326, 1]
+#    - [207,327, 1]
+#    - [208,328, -1]
+#    - [209,329, 1]
+#    - [210,330, 1]  #'L/RWrMot2'
+#    - [211,331, 1]
+#    - [212,332, -1]
+#    - [213,333, 1]
+#    - [214,334, 1]
+#    - [215,335, -1]
+#    - [216,336, 1]
+#    - [217,337, 1]
+#    - [218,338, -1]
+#    - [219,339, 1]
+#    - [220,340, 1]  #'L/RWrMot3'
+#    - [221,341, 1]
+#    - [222,342, -1]
+#    - [223,343, 1]
+#    - [224,344, 1]
+#    - [225,345, -1]
+#    - [226,346, 1]
+#    - [227,347, 1]
+#    - [228,348, -1]
+#    - [229,349, 1]
+#    - [230,350, 1] #'L/RSoftHandLink'
+#    - [231,351, 1]
+#    - [232,352, 1]
+#    - [233,353, 1]
+#    - [234,354, 1]
+#    - [235,355, 1]
+#    - [236,356, 1]
+#    - [237,357, 1]
+#    - [238,358, 1]
+#    - [239,359, 1]
 
 ## other forms of OLS
 
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
-useAPriori: 1
+useAPriori: 0
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0
 
 # whether to include linear dependent columns in essential params or not
-useDependents: 1
+useDependents: 0
 
 # use weighted least squares(WLS) instead of ordinary least squares
 # needs small condition number, otherwise might amplify some parameters too much as the

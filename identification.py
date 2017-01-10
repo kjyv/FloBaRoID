@@ -63,10 +63,7 @@ class Identification(object):
         ## some additional options (experiments)
 
         # orthogonalize basis matrix (uglier linear relationships, should not change results)
-        self.opt['orthogonalizeBasis'] = 1
-
-        # project a priori to solution subspace
-        self.opt['projectToAPriori'] = 0
+        self.opt['orthogonalizeBasis'] = 0
 
         # use RBDL for simulation
         self.opt['useRBDL'] = 0
@@ -194,40 +191,12 @@ class Identification(object):
         # i.e. don't call after getBaseParamsFromParamError
 
         # project back to standard parameters
-        self.model.xStd = self.model.B.dot(self.model.xBase)
+        #self.model.xStd = self.model.B.dot(self.model.xBase)
+        self.model.xStd = la.pinv(self.model.K).dot(self.model.xBase)
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.opt['useAPriori']:
             self.model.xStd += self.model.xStdModel
-        elif self.opt['projectToAPriori']:
-            # add a priori parameters projected on non-identifiable subspace
-            self.model.xStd += (np.eye(self.model.B.shape[0]) - self.model.B.dot(self.model.Binv)).dot(self.model.xStdModel)
-
-            # do projection algebraically
-            # for each identified base param,
-            base_deps_vals = []
-            for idx in range(0, self.model.num_base_params):
-                base_deps_vals.append(Eq(self.model.base_deps[idx], self.model.xBase[idx]))
-
-            prev_eq = base_deps_vals[0].lhs - base_deps_vals[0].rhs
-            prev_eq2 = prev_eq.copy()
-            for eq in base_deps_vals[1:]:
-                prev_eq2 -= eq.lhs - eq.rhs
-
-            print("solution space: {}".format(prev_eq2))
-
-            # get some point in the affine subspace (set all but one var then solve)
-            p_on_eq = []
-            rns = np.random.rand(len(self.model.param_syms) - 1)
-            #rns = np.zeros(len(syms)-1)
-            #rns[0] = 1
-            eq = prev_eq2.subs(list(zip(self.model.param_syms, rns)))   #replace vars with values
-            p_on_eq[0:len(rns)] = rns   #collect values
-            p_on_eq.append(solve(eq, self.model.param_syms[len(self.model.param_syms) - 1])[0])   #solve for remaining (last) symbol
-            print("p_on_eq\t", np.array(p_on_eq, dtype=np.float64))
-            pham_percent = sla.norm(self.model.YStd.dot(p_on_eq)) * 100 / sla.norm(self.model.tauMeasured)
-            print(pham_percent)
-
 
     def getStdDevForParams(self):
         if self.opt['useAPriori']:
@@ -425,7 +394,7 @@ class Identification(object):
             # also get the ones that are linearly dependent on them -> base params
             dependents = []
             #to_delete = []
-            for i in range(0, self.model.linear_deps.shape[0]):
+            for i in range(0, self.model.base_deps.shape[0]):
                 if i in self.baseEssentialIdx:
                     for s in self.model.base_deps[i].free_symbols:
                         idx = self.model.param_syms.index(s)
@@ -494,7 +463,8 @@ class Identification(object):
         if tau is None:
             tau = self.model.tau
 
-        self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
+        #self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
+        self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel)
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
@@ -797,7 +767,7 @@ class Identification(object):
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
-            epsilon_safemargin = 1e-30
+            epsilon_safemargin = 1e-6
             #LMIs = list(map(LMI_PD, D_blocks))
             self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
@@ -828,14 +798,11 @@ class Identification(object):
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
 
             #projection matrix so that xBase = K*xStd
-            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, self.P == [Pb Pd])
-            """
-            Pb = Matrix(self.model.Pp.T[:, 0:self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
-            Pd = Matrix(self.model.Pp.T[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
-            Kd = self.model.linear_deps
-            K = (Pb.T + Kd * Pd.T)
-            """
-            K = Matrix(self.model.Binv)
+            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
+            Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
+            Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
+            K = Matrix(self.model.K) #(Pb.T + Kd * Pd.T)
+            #K = Matrix(self.model.Binv)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
@@ -880,6 +847,7 @@ class Identification(object):
                 print("Trying again with dsdp5 solver")
                 optimization.solve_sdp = optimization.dsdp5
                 solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
+                optimization.solve_sdp = optimization.cvxopt_conelp
 
             u_star = solution[0,0]
             if u_star:
@@ -899,32 +867,64 @@ class Identification(object):
             if self.opt['verbose']:
                 print("Preparing SDP...")
 
-            #build OLS matrix
+            # build OLS matrix
             I = Identity
             def mrepl(m,repl):
                 return m.applyfunc(lambda x: x.xreplace(repl))
 
-            #base and standard parameter symbols
+            # base and standard parameter symbols
             delta = Matrix(self.model.param_syms)
             beta_symbs = self.model.base_syms
 
-            #permutation for base projection
-            #Pb = Matrix(self.model.Pp.T[:, :self.model.num_base_params]).applyfunc(lambda x: x.nsimplify())
-            Pd = Matrix(self.model.Pp.T[:, self.model.num_base_params:]).applyfunc(lambda x: x.nsimplify())
-            #get base parameter equations
-            #Kd = self.model.linear_deps
-            #beta = (Pb.T + Kd * Pd.T) * delta
-            #delta_b = Pb.T*delta
-            beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
-            delta_b = Matrix(np.array(delta)[self.model.independent_cols])
+            # permutation of std to base columns projection
+            # (simplify to reduce 1.0 to 1 etc., important for replacement)
+            Pb = Matrix(self.model.Pb).applyfunc(lambda x: x.nsimplify())
+            # permutation of std to non-identifiable columns (dependents)
+            Pd = Matrix(self.model.Pd).applyfunc(lambda x: x.nsimplify())
 
-            #delta_d = Pd.T*delta
-            delta_d = Matrix(np.array(delta)[self.model.P[self.model.num_base_params:]])
-            self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+            # projection matrix from independents to dependents
+            #Kd = Matrix(self.model.linear_deps)
+            #K = Matrix(self.model.K).applyfunc(lambda x: x.nsimplify()) #(Pb.T + Kd * Pd.T)
+
+            # equations for base parameters expressed in independent std param symbols
+            #beta = K * delta
+            beta = self.model.base_deps #.applyfunc(lambda x: x.nsimplify())
+
+            ## std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
+            #determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            delta_b = Pb.T*delta
+
+            #determined through base matrix, which included other variables too
+            '''
+            delta_b_syms = []
+            for i in range(self.model.base_deps.shape[0]):
+                for s in self.model.base_deps[i].free_symbols:
+                    if s not in delta_b_syms:
+                        delta_b_syms.append(s)
+                        break
+            delta_b = Matrix(delta_b_syms)
+            '''
+
+            ## std variables that are dependent, i.e. their value is a combination of independent columns
+            # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            delta_d = Pd.T*delta
+
+            #determined from base eqns
+            '''
+            delta_not_d = self.model.base_deps[0].free_symbols
+            for e in self.model.base_deps:
+                delta_not_d = delta_not_d.union(e.free_symbols)
+            delta_d = []
+            for s in delta:
+                if s not in delta_not_d:
+                    delta_d.append(s)
+            delta_d = Matrix(delta_d)
+            '''
 
             #rewrite LMIs for base params
+            self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
             DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
-            epsilon_safemargin = 1e-30
+            epsilon_safemargin = 1e-6
             self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
             Q, R = la.qr(self.model.YBase)
@@ -974,6 +974,7 @@ class Identification(object):
                 print("Trying again with dsdp5 solver")
                 optimization.solve_sdp = optimization.dsdp5
                 solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
+                optimization.solve_sdp = optimization.cvxopt_conelp
 
             u_star = solution[0,0]
             if u_star:
@@ -995,24 +996,23 @@ class Identification(object):
             return m.applyfunc(lambda x: x.xreplace(repl))
         I = Identity
 
+        #symbols for std params
         delta = Matrix(self.model.param_syms)
-        beta_symbs = self.model.base_syms
 
-        beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
-        delta_b = Matrix(np.array(delta)[self.model.independent_cols])
+        # equations for base parameters expressed in independent std param symbols
+        #beta = K * delta
+        beta = self.model.base_deps #.applyfunc(lambda x: x.nsimplify())
 
-        delta_d = Matrix(np.array(delta)[self.model.P[self.model.num_base_params:]])
-        n_delta_d = len(delta_d)
-        self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+        #add explicit constraints for each base param equation and estimated value
+        #TODO: check if this is correct
+        D_base_val_blocks = []
+        for i in range(self.model.num_base_params):
+            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] + 0.0001]) )
+            D_base_val_blocks.append( Matrix([xBase[i] - 0.0001 - beta[i]]) )
+        self.D_blocks += D_base_val_blocks
 
-        #rewrite LMIs for base params
-        DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
-        epsilon_safemargin = 1e-30
-        self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
-
-        # replace base vars with estimated values
-        dict_subs = dict(zip(self.model.base_syms, xBase))
-        lmis = [LMI_PD(mrepl(lmi.canonical.gts, dict_subs)) for lmi in self.DB_LMIs_marg]
+        epsilon_safemargin = 1e-6
+        self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
         sol_cad_dist = Matrix(self.model.xStdModel - self.model.param_syms)
         u = Symbol('u')
@@ -1020,18 +1020,19 @@ class Identification(object):
                              [sol_cad_dist, I(self.model.num_params)]])
         U_rho = U_rho.as_explicit()
 
-        lmis = [LMI_PSD(U_rho)] + lmis
+        lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
         variables = [u] + list(self.model.param_syms)
         objective_func = u   # 'find' problem
 
-        # start at CAD data to find solution faster
         solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel)
 
         #try again with wider bounds and dsdp5 cmd line
         if state is not 'optimal':
             print("Trying again with dsdp5 solver")
             optimization.solve_sdp = optimization.dsdp5
+            # start at CAD data to find solution faster
             solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel, wide_bounds=True)
+            optimization.solve_sdp = optimization.cvxopt_conelp
 
         u = solution[0, 0]
         print("found std solution with distance {} from CAD solution".format(u))
@@ -1044,8 +1045,7 @@ class Identification(object):
         delta = Matrix(self.model.param_syms)
         I = Identity
 
-        # correct a std solution to be feasible
-        Pd = self.model.Pp[:, self.model.num_base_params:]
+        Pd = Matrix(self.model.Pd)
         delta_d = (Pd.T*delta)
 
         u = Symbol('u')
@@ -1056,7 +1056,6 @@ class Identification(object):
         variables = [u] + list(delta)
         objective_func = u
 
-        # start at CAD data, might increase convergence speed (atm only easy to use with dsdp5)
         prime = self.model.xStdModel
         solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
@@ -1115,6 +1114,11 @@ class Identification(object):
                     # get feasible base params, then project back to std. distance to CAD not minimized and std not feasible
                     #self.identifyFeasibleBaseParameters()
                     #self.findStdFromBaseParameters()
+
+                    #get OLS standard parameters (with a priori), then correct to feasible
+                    #self.findStdFromBaseParameters()
+                    #if self.opt['useAPriori']:
+                    #    self.getBaseParamsFromParamError()
 
                     if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
                         print("Correcting solution to feasible std (non-optimal)")

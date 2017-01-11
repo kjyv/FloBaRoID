@@ -420,8 +420,10 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
-        #self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
-        self.YBase = np.dot(self.YStd, self.Pb)   # regressor following Sousa, 2014
+        if self.opt['useBasisProjection']:
+            self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
+        else:
+            self.YBase = np.dot(self.YStd, self.Pb)  # regressor following Sousa, 2014
 
         if self.opt['verbose']:
             print("YStd: {}".format(self.YStd.shape), end=' ')
@@ -663,7 +665,7 @@ class Model(object):
             self.Binv = la.pinv(self.B)
 
         # define sympy symbols for each std column
-        self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i+1),real=True) for i in range(self.num_base_params)])
+        self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i),real=True) for i in range(self.num_base_params)])
         self.param_syms = list()
         self.mass_syms = list()
         for i in range(0,self.N_LINKS):
@@ -700,18 +702,19 @@ class Model(object):
         ## get symbolic equations for base param dependencies
         # Each dependent parameter can be ignored (non-identifiable) or it can be
         # represented by grouping some base and/or dependent parameters.
-        if self.opt['orthogonalizeBasis']:
-            #this is only correct if basis is orthogonal
-            self.base_deps = np.dot(self.param_syms, self.B)
+        if self.opt['useBasisProjection']:
+            if self.opt['orthogonalizeBasis']:
+                #this is only correct if basis is orthogonal
+                self.base_deps = np.dot(self.param_syms, self.B)
+            else:
+                #otherwise, we need to get relationships from the inverse
+                B_qr_inv_z = la.pinv(self.B)
+                B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
+                self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
+                #self.base_deps = np.dot(self.param_syms, self.B)
         else:
-            #otherwise, we need to get relationships from the inverse
-            B_qr_inv_z = la.pinv(self.B)
-            B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
-            self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
-            #self.base_deps = np.dot(self.param_syms, self.B)
-
-        #not using projection matrix B atm
-        self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
+            # using projection matrix from Gautier/Sousa method for base eqns
+            self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
@@ -745,15 +748,17 @@ class Model(object):
         linkConds = list()
         for i in range(0, self.N_LINKS):
             #get columns of base regressor that are dependent on std parameters of link i
-            #TODO: try going further down to e.g. condition number of link mass, com, inertial
+            # TODO: try going further down to e.g. condition number of link mass, com, inertial
+            # and ignore those groups of params
 
-            #get parts of base regressor with only independent columns (identifiable space)
+            ## get parts of base regressor with only independent columns (identifiable space)
 
             #get all independent std columns for link i
             base_columns = [j for j in range(0, self.num_base_params) \
                                   if self.independent_cols[j] in range(i*10, i*10+9+1)]
 
-            #use base column dependencies to get parts of base regressor with influence on each each link
+            # use base column dependencies to get combined params of base regressor with
+            # coontribution on each each link (a bit inexact I guess)
             base_columns = list()
             for k in range(i*10, i*10+9+1):
                 for j in range(0, self.num_base_params):

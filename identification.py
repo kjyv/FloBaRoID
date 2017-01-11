@@ -62,7 +62,7 @@ class Identification(object):
 
         ## some additional options (experiments)
 
-        # orthogonalize basis matrix
+        # orthogonalize basis matrix (some SDP estimations seem to work more stable that way)
         self.opt['orthogonalizeBasis'] = 1
 
         # in order ot get regressor and base equations, use basis projection matrix or use
@@ -810,8 +810,8 @@ class Identification(object):
                 K = Matrix(self.model.Binv)
             else:
                 #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
-                Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
-                Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
+                #Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
+                #Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
                 K = Matrix(self.model.K) #(Pb.T + Kd * Pd.T)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2

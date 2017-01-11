@@ -122,10 +122,10 @@ meshBaseDir: 'meshes'
 
 # constrain overall mass
 limitOverallMass: 1
-# if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
+# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 139.15
 
-# enforce the same upper limit for each link mass
+# enforce the limiting for each link mass
 limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
@@ -230,7 +230,7 @@ symmetryConstraints: []
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
-useAPriori: 0
+useAPriori: 1
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0
@@ -272,5 +272,5 @@ showTriangleConsistency: 0   #show per-link consistency including triangle inequ
 verbose: 1                   #show more messages
 
 # which parameters to use when estimating torques for validation. Set to one of
-# ['base', 'std', 'std_direct', 'urdf']
+# ['base', 'std', 'urdf']
 estimateWith: 'std'

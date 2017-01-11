@@ -79,7 +79,7 @@ simulateTorques: 0 # simulate torque for measured angles etc using idyntree (ins
 addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
-minTol: 0.00001
+minTol: 0.0001
 
 ## constrained SDP to solve OLS
 
@@ -108,15 +108,15 @@ meshBaseDir: 'meshes'
 
 # constrain overall mass
 limitOverallMass: 1
-# if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
+# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 16.5
 
-# enforce the same upper limit for each link mass
+# enforce the limiting for each link mass
 limitMassValPerLink: null #3
 
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
-limitMassToApriori: 0
+limitMassToApriori: 1
 limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # whether to take out masses to be identified because they are e.g.
@@ -182,5 +182,5 @@ showTriangleConsistency: 0   #show per-link consistency including triangle inequ
 verbose: 1                   #show more messages
 
 # which parameters to use when estimating torques for validation. Set to one of
-# ['base', 'std', 'std_direct', 'urdf
+# ['base', 'std', 'urdf
 estimateWith: 'std'

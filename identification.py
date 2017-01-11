@@ -62,8 +62,12 @@ class Identification(object):
 
         ## some additional options (experiments)
 
-        # orthogonalize basis matrix (uglier linear relationships, should not change results)
-        self.opt['orthogonalizeBasis'] = 0
+        # orthogonalize basis matrix
+        self.opt['orthogonalizeBasis'] = 1
+
+        # in order ot get regressor and base equations, use basis projection matrix or use
+        # permutation from QR directly (Gautier/Sousa method)
+        self.opt['useBasisProjection'] = 1
 
         # use RBDL for simulation
         self.opt['useRBDL'] = 0
@@ -191,8 +195,10 @@ class Identification(object):
         # i.e. don't call after getBaseParamsFromParamError
 
         # project back to standard parameters
-        #self.model.xStd = self.model.B.dot(self.model.xBase)
-        self.model.xStd = la.pinv(self.model.K).dot(self.model.xBase)
+        if self.opt['useBasisProjection']:
+            self.model.xStd = self.model.B.dot(self.model.xBase)
+        else:
+            self.model.xStd = la.pinv(self.model.K).dot(self.model.xBase)
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.opt['useAPriori']:
@@ -463,8 +469,10 @@ class Identification(object):
         if tau is None:
             tau = self.model.tau
 
-        #self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
-        self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel)
+        if self.opt['useBasisProjection']:
+            self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
+        else:
+            self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel)
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
@@ -701,8 +709,8 @@ class Identification(object):
                 #use given overall mass else use overall mass from CAD
                 if self.opt['limitMassVal']:
                     robotmaxmass = self.opt['limitMassVal']
-                    robotmaxmass_ub = robotmaxmass * 1.05
-                    robotmaxmass_lb = robotmaxmass * 0.95
+                    robotmaxmass_ub = robotmaxmass * 1.01
+                    robotmaxmass_lb = robotmaxmass * 0.99
                 else:
                     robotmaxmass = robotmass_apriori
                     # constrain with a bit of space around
@@ -797,12 +805,14 @@ class Identification(object):
             rho1 = Q1.T.dot(self.model.torques_stack)
             R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
 
-            #projection matrix so that xBase = K*xStd
-            #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
-            Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
-            Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
-            K = Matrix(self.model.K) #(Pb.T + Kd * Pd.T)
-            #K = Matrix(self.model.Binv)
+            # get projection matrix so that xBase = K*xStd
+            if self.opt['useBasisProjection']:
+                K = Matrix(self.model.Binv)
+            else:
+                #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
+                Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
+                Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
+                K = Matrix(self.model.K) #(Pb.T + Kd * Pd.T)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
@@ -838,7 +848,6 @@ class Identification(object):
 
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
             # otherwise returns primal as solution when failing)
-            # TODO: get success or fail status and use it (e.g. use other method if failing)
             prime = self.model.xStdModel
             solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
@@ -888,44 +897,62 @@ class Identification(object):
 
             # equations for base parameters expressed in independent std param symbols
             #beta = K * delta
-            beta = self.model.base_deps #.applyfunc(lambda x: x.nsimplify())
+            beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
 
             ## std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
-            #determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+
+            if self.opt['useBasisProjection']:
+                # determined through base matrix, which included other variables too
+                # (find first variable in eq, chosen as independent here)
+                delta_b_syms = []
+                for i in range(self.model.base_deps.shape[0]):
+                    for s in self.model.base_deps[i].free_symbols:
+                        if s not in delta_b_syms:
+                            delta_b_syms.append(s)
+                            break
+                delta_b = Matrix(delta_b_syms)
+            #else:
+                #determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
             delta_b = Pb.T*delta
 
-            #determined through base matrix, which included other variables too
-            '''
-            delta_b_syms = []
-            for i in range(self.model.base_deps.shape[0]):
-                for s in self.model.base_deps[i].free_symbols:
-                    if s not in delta_b_syms:
-                        delta_b_syms.append(s)
-                        break
-            delta_b = Matrix(delta_b_syms)
-            '''
-
             ## std variables that are dependent, i.e. their value is a combination of independent columns
-            # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            if self.opt['useBasisProjection']:
+                #determined from base eqns
+                delta_not_d = self.model.base_deps[0].free_symbols
+                for e in self.model.base_deps:
+                    delta_not_d = delta_not_d.union(e.free_symbols)
+                delta_d = []
+                for s in delta:
+                    if s not in delta_not_d:
+                        delta_d.append(s)
+                delta_d = Matrix(delta_d)
+            #else:
+                # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
             delta_d = Pd.T*delta
 
-            #determined from base eqns
-            '''
-            delta_not_d = self.model.base_deps[0].free_symbols
-            for e in self.model.base_deps:
-                delta_not_d = delta_not_d.union(e.free_symbols)
-            delta_d = []
-            for s in delta:
-                if s not in delta_not_d:
-                    delta_d.append(s)
-            delta_d = Matrix(delta_d)
-            '''
+            # rewrite LMIs for base params
 
-            #rewrite LMIs for base params
-            self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+            if self.opt['useBasisProjection']:
+                # (Sousa code is assuming that delta_b for each eq has factor 1.0 in equations beta.
+                # this is true if using Gautier dependency matrix, otherwise
+                # correct is to properly transpose eqn base_n = a1*x1 + a2*x2 + ... +an*xn to
+                # 1*xi = a1*x1/ai + a2*x2/ai + ... + an*xn/ai - base_n/ai )
+                transposed_beta = Matrix([solve(beta[i], delta_b[i])[0] for i in range(len(beta))])
+                self.varchange_dict = dict(zip(delta_b,  beta_symbs + transposed_beta))
+
+                #add free vars to variables for optimization
+                for eq in transposed_beta:
+                    for s in eq.free_symbols:
+                        if s not in delta_d:
+                            delta_d = delta_d.col_join(Matrix([s]))
+            else:
+                self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
             DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             epsilon_safemargin = 1e-6
             self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
+
+            #import ipdb; ipdb.set_trace()
+            #embed()
 
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
@@ -1004,11 +1031,10 @@ class Identification(object):
         beta = self.model.base_deps #.applyfunc(lambda x: x.nsimplify())
 
         #add explicit constraints for each base param equation and estimated value
-        #TODO: check if this is correct
         D_base_val_blocks = []
         for i in range(self.model.num_base_params):
-            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] + 0.0001]) )
-            D_base_val_blocks.append( Matrix([xBase[i] - 0.0001 - beta[i]]) )
+            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] - 0.0001]) )
+            D_base_val_blocks.append( Matrix([xBase[i] + 0.0001 - beta[i]]) )
         self.D_blocks += D_base_val_blocks
 
         epsilon_safemargin = 1e-6

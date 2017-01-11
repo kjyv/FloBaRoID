@@ -77,8 +77,10 @@ class OutputConsole(object):
             xStdReal = tmp.toNumPy()
             #add some zeros for friction etc.
             xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_params-idf.model.num_inertial_params)))
-            #xBaseReal = np.dot(idf.model.Binv, xStdReal)
-            xBaseReal = idf.model.K.dot(xStdReal)
+            if idf.opt['useBasisProjection']:
+                xBaseReal = np.dot(idf.model.Binv, xStdReal)
+            else:
+                xBaseReal = idf.model.K.dot(xStdReal)
 
         if idf.opt['showStandardParams']:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)

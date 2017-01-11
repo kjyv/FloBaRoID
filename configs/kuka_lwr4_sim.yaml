@@ -95,11 +95,11 @@ identifyClosestToCAD: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
-noChange: 1
-noChangeThresh: 200
+noChange: 0
+noChangeThresh: 250
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 1
+restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
@@ -109,7 +109,7 @@ meshBaseDir: 'meshes'
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 17
+limitMassVal: 16.5
 
 # enforce the same upper limit for each link mass
 limitMassValPerLink: null #3
@@ -125,7 +125,10 @@ limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions
 dontIdentifyMasses: 0
 
 # specify single params that will be constrained to the CAD values
-dontChangeParams: []
+#dontChangeParams: []
+dontChangeParams: [0,1,2,3,4,5,6,7,8,9]
+#dontChangeParams: [10,11,12,13,14,15,16,17,18,19]
+#dontChangeParams:  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
 
 # define constraints for link symmetries (e.g. left and right arm),
 # tuples of two parameters ids each that should be equal and 1/-1 to allow negative symmetric

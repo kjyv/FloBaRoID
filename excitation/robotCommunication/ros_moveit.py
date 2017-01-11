@@ -13,7 +13,7 @@ from moveit_msgs.msg import RobotTrajectory, DisplayTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 
-from trajectoryGenerator import TrajectoryGenerator
+from .. trajectoryGenerator import TrajectoryGenerator
 
 # records the states obtained from joint_states messages
 class RecordJointStates(object):

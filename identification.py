@@ -1100,8 +1100,8 @@ class Identification(object):
         if not self.data.num_used_samples > self.model.num_params*2 \
             and 'selectingBlocks' in self.opt and not self.opt['selectingBlocks']:
             print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
-            if self.opt['start_offset'] > 0:
-                print("(start_offset is at {})".format(self.opt['start_offset']))
+            if self.opt['startOffset'] > 0:
+                print("(startOffset is at {})".format(self.opt['startOffset']))
             sys.exit(1)
 
         if self.opt['verbose']:

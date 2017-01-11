@@ -40,7 +40,7 @@ if not iDynTree.dofsListFromURDF(args.model, config['jointNames']):
     sys.exit()
 config['N_DOFS'] = len(config['jointNames'])
 config['useAPriori'] = 0
-config['skip_samples'] = 0
+config['skipSamples'] = 0
 
 traj_data = {}   #hold some global data vars in here
 
@@ -236,14 +236,14 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         trajectory_data['accelerations'] = measurements['Vdot']
         trajectory_data['measured_frequency'] = measurements['measured_frequency']
 
-    old_skip = config['skip_samples']
-    config['skip_samples'] = 0
-    old_offset = config['start_offset']
-    config['start_offset'] = 0
+    old_skip = config['skipSamples']
+    config['skipSamples'] = 0
+    old_offset = config['startOffset']
+    config['startOffset'] = 0
     data.init_from_data(trajectory_data)
     model.computeRegressors(data) #TODO: this needlessly also computes regressors in addition to simulation
-    config['skip_samples'] = old_skip
-    config['start_offset'] = old_offset
+    config['skipSamples'] = old_skip
+    config['startOffset'] = old_offset
     config['simulateTorques'] = old_sim
 
     return trajectory_data, data, model

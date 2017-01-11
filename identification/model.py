@@ -22,6 +22,15 @@ class Model(object):
         self.urdf_file = urdf_file
         self.opt = opt
 
+        if 'orthogonalizeBasis' not in self.opt:
+            self.opt['orthogonalizeBasis'] = 1
+
+        if 'useBasisProjection' not in self.opt:
+            self.opt['useBasisProjection'] = 1
+
+        if 'useRBDL' not in self.opt:
+            self.opt['useRBDL'] = 0
+
         # create generator instance and load model
         self.generator = iDynTree.DynamicsRegressorGenerator()
         ret = self.generator.loadRobotAndSensorsModelFromFile(urdf_file)

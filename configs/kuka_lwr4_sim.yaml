@@ -12,7 +12,7 @@ useGlobalOptimization: 1       #do global optimization before using local refine
 globalOptIterations: 5
 localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 maxFun: 250                    #limit objective function evaluations to this value (not used currently)
-minTolConstr: 0.01           #threshold for being within constraints (only used for display)
+minTolConstr: 0.01             #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
@@ -125,8 +125,8 @@ limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions
 dontIdentifyMasses: 0
 
 # specify single params that will be constrained to the CAD values
-#dontChangeParams: []
-dontChangeParams: [0,1,2,3,4,5,6,7,8,9]
+dontChangeParams: []
+#dontChangeParams: [0,1,2,3,4,5,6,7,8,9]
 #dontChangeParams: [10,11,12,13,14,15,16,17,18,19]
 #dontChangeParams:  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
 
@@ -140,7 +140,7 @@ symmetryConstraints: []
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
 # (not used with constrained SDP solver)
-useAPriori: 1
+useAPriori: 0
 
 # identify and use direct standard with essential parameters
 useEssentialParams: 0

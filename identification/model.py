@@ -711,9 +711,9 @@ class Model(object):
                 B_qr_inv_z = la.pinv(self.B)
                 B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
                 self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
-                #self.base_deps = np.dot(self.param_syms, self.B)
         else:
             # using projection matrix from Gautier/Sousa method for base eqns
+            # (seems K is orthogonal)
             self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
 
     def computeRegressorLinDepsSVD(self):
@@ -754,8 +754,8 @@ class Model(object):
             ## get parts of base regressor with only independent columns (identifiable space)
 
             #get all independent std columns for link i
-            base_columns = [j for j in range(0, self.num_base_params) \
-                                  if self.independent_cols[j] in range(i*10, i*10+9+1)]
+            #base_columns = [j for j in range(0, self.num_base_params) \
+            #                      if self.independent_cols[j] in range(i*10, i*10+9+1)]
 
             # use base column dependencies to get combined params of base regressor with
             # coontribution on each each link (a bit inexact I guess)

@@ -265,8 +265,10 @@ def main():
             tf = np.load(traj_file)
             trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=tf['use_deg'])
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
+            print("using trajectory from file {}".format(traj_file))
         except IOError:
             # otherwise use some random params
+            print("using random trajectory")
             trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=config['useDeg']).initWithRandomParams()
             print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
             print("b {}".format([t_b.tolist() for t_b in trajectory.b]))

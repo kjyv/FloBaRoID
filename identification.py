@@ -553,7 +553,7 @@ class Identification(object):
             self.identifyBaseParameters(self.model.YBase, tau, id_only=True)
 
 
-    def identifyStandardParameters(self):
+    def identifyStandardParametersDirect(self):
         """Identify standard parameters directly with non-singular standard regressor."""
 
         with helpers.Timer() as t:
@@ -566,7 +566,8 @@ class Identification(object):
             s_1 = np.diag(s[0:nb])
             s_1_inv = la.inv(s_1)
             W_st_pinv = V_1.dot(s_1_inv).dot(U_1.T)
-            #W_st = la.pinv(W_st_pinv)
+            W_st = la.pinv(W_st_pinv)
+            self.YStd_nonsing = W_st
 
             x_est = W_st_pinv.dot(self.model.tau)
 
@@ -823,7 +824,6 @@ class Identification(object):
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contatcs should be close to measured torques)
-            # (this takes ages for large matrices...)
             if is_old_sympy:
                 e_rho1 = Matrix(rho1).T - (R1*K*delta - contactForces)
             else:
@@ -861,6 +861,92 @@ class Identification(object):
             u_star = solution[0,0]
             if u_star:
                 print("found std solution with distance {} from OLS solution".format(u_star))
+            delta_star = np.matrix(solution[1:])
+            self.model.xStd = np.squeeze(np.asarray(delta_star))
+
+        if self.opt['showTiming']:
+            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+
+
+    def identifyFeasibleStandardParametersDirect(self):
+        ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
+            feasible std parameters. Based on code from Sousa, 2014, using direct regressor from Gautier, 2013
+        '''
+        with helpers.Timer() as t:
+            #if self.opt['useAPriori']:
+            #    print("Please disable using a priori parameters when using constrained optimization.")
+            #    sys.exit(1)
+
+            if self.opt['verbose']:
+                print("Preparing SDP...")
+
+            #build OLS matrix
+            I = Identity
+            delta = Matrix(self.model.param_syms)
+
+            Q, R = la.qr(self.YStd_nonsing)
+            Q1 = Q[:, 0:self.model.num_params]
+            #Q2 = Q[:, self.model.num_base_params:]
+            rho1 = Q1.T.dot(self.model.torques_stack)
+            R1 = np.matrix(R[:self.model.num_params, :self.model.num_params])
+
+            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
+            # sub contact forces
+            if self.opt['floatingBase']:
+                contactForces = Q.T.dot(self.model.contactForcesSum)
+            else:
+                contactForces = zeros(self.model.num_params, 1)
+
+            import time
+            print("Step 1...", time.ctime())
+
+            # minimize estimation error of to-be-found parameters delta
+            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
+            if is_old_sympy:
+                e_rho1 = Matrix(rho1).T - (R1*delta - contactForces)
+            else:
+                e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
+
+            print("Step 2...", time.ctime())
+
+            # calc estimation error of previous OLS parameter solution
+            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
+            print("rho2_norm_sqr: ", rho2_norm_sqr)
+
+            # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
+            u = Symbol('u')
+            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
+                                 [e_rho1, I(self.model.num_params)]])
+            print("Step 3...", time.ctime())
+            U_rho = U_rho.as_explicit()
+            print("Step 4...", time.ctime())
+
+            if self.opt['verbose']:
+                print("Add constraint LMIs")
+            lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
+            variables = [u] + list(delta)
+
+            #solve SDP
+            objective_func = u
+
+            if self.opt['verbose']:
+                print("Solving constrained OLS as SDP")
+
+            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
+            # otherwise returns primal as solution when failing)
+            prime = self.model.xStdModel
+            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+
+            #try again with wider bounds and dsdp5 cmd line
+            if state is not 'optimal':
+                print("Trying again with dsdp5 solver")
+                optimization.solve_sdp = optimization.dsdp5
+                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
+                optimization.solve_sdp = optimization.cvxopt_conelp
+
+            u_star = solution[0,0]
+            if u_star:
+                print("found std solution with {} of error increase from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -1005,7 +1091,7 @@ class Identification(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found base solution with distance {} from OLS solution".format(u_star))
+                print("found base solution with {} error increase from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+self.model.num_base_params])
 
             self.model.xBase = np.squeeze(np.asarray(beta_star))
@@ -1061,7 +1147,7 @@ class Identification(object):
             optimization.solve_sdp = optimization.cvxopt_conelp
 
         u = solution[0, 0]
-        print("found std solution with distance {} from CAD solution".format(u))
+        print("found std solution with {} error increase from CAD solution".format(u))
         self.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
 
@@ -1087,7 +1173,7 @@ class Identification(object):
 
         u_star = solution[0,0]
         if u_star:
-            print("found std solution with distance {} from previous solution".format(u_star))
+            print("found std solution with {} error increase from previous solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 
@@ -1117,47 +1203,53 @@ class Identification(object):
             self.findStdFromBaseEssParameters()
             self.identifyStandardEssentialParameters()
         else:
-            if self.opt['estimateWith'] in ['base', 'std']:
-                #need to identify OLS base params in any case
-                self.identifyBaseParameters()
+            #need to identify OLS base params in any case
+            self.identifyBaseParameters()
 
-                #do SDP constrained identification using base params
-                if self.opt['useConsistencyConstraints']:
-                    self.initSDP_LMIs()
+            if self.opt['useConsistencyConstraints']:
+                #do SDP constrained OLS identification
+                self.initSDP_LMIs()
 
-                    if self.opt['useAPriori']:
-                        self.getBaseParamsFromParamError()
+                if self.opt['useAPriori']:
+                    self.getBaseParamsFromParamError()
 
-                    if self.opt['identifyClosestToCAD']:
-                        # first estimate feasible base params, then find corresponding feasible std
-                        # params while minimizing distance to CAD
-                        self.identifyFeasibleBaseParameters()
-                        self.findFeasibleStdFromFeasibleBase(self.model.xBase)
+                if self.opt['identifyClosestToCAD']:
+                    # first estimate feasible base params, then find corresponding feasible std
+                    # params while minimizing distance to CAD
+                    self.identifyFeasibleBaseParameters()
+                    self.findFeasibleStdFromFeasibleBase(self.model.xBase)
+                else:
+                    # directly estimate constrained std params, distance to CAD not minimized
+                    if self.opt['estimateWith'] is 'std_direct':
+                        self.identifyStandardParametersDirect()
+                        self.identifyFeasibleStandardParametersDirect()
                     else:
-                        # directly estimate constrained std params, distance to CAD not minimized
                         self.identifyFeasibleStandardParameters()
 
-                    # get feasible base params, then project back to std. distance to CAD not minimized and std not feasible
-                    #self.identifyFeasibleBaseParameters()
-                    #self.findStdFromBaseParameters()
+                # get feasible base params, then project back to std. distance to CAD not minimized and std not feasible
+                #self.identifyFeasibleBaseParameters()
+                #self.findStdFromBaseParameters()
 
-                    #get OLS standard parameters (with a priori), then correct to feasible
-                    #self.findStdFromBaseParameters()
-                    #if self.opt['useAPriori']:
-                    #    self.getBaseParamsFromParamError()
+                #get OLS standard parameters (with a priori), then correct to feasible
+                #self.findStdFromBaseParameters()
+                #if self.opt['useAPriori']:
+                #    self.getBaseParamsFromParamError()
 
-                    if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
-                        print("Correcting solution to feasible std (non-optimal)")
-                        self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
+                if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
+                    print("Correcting solution to feasible std (non-optimal)")
+                    self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
+            else:
+                #identify with OLS only
+
+                #get standard params from estimated base param error
+                if self.opt['estimateWith'] == 'std_direct':
+                    self.identifyStandardParametersDirect()
                 else:
-                    #get standard params from estimated base param error
                     self.findStdFromBaseParameters()
                     #only then go back to absolute base params
                     if self.opt['useAPriori']:
                         self.getBaseParamsFromParamError()
 
-            elif self.opt['estimateWith'] == 'std_direct':
-                self.identifyStandardParameters()
 
 
     def plot(self, text=None):

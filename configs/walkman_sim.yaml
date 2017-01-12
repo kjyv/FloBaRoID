@@ -131,7 +131,7 @@ limitMassValPerLink: null #3
 # or enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
 limitMassToApriori: 0
-limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.01     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # whether to take out masses to be identified because they are e.g.
 # well known from measurements or introduce problems

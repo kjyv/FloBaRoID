@@ -94,7 +94,7 @@ useConsistencyConstraints: 1
 identifyClosestToCAD: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
-# (to prevent very big changes for parameters that are not expressed in the data)
+# (to prevent very big changes for parameters that are not expressed well in the data)
 noChange: 0
 noChangeThresh: 400
 

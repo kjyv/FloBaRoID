@@ -725,6 +725,15 @@ class Model(object):
             # (seems K is orthogonal)
             self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
 
+        # find std parameters that have no effect on estimation (not single or contributing to base
+        # equations)
+        base_deps_syms = []
+        for i in range(self.base_deps.shape[0]):
+            for s in self.base_deps[i].free_symbols:
+                if s not in base_deps_syms:
+                    base_deps_syms.append(s)
+        self.non_identifiable = [p for p in range(self.num_params) if self.param_syms[p] not in base_deps_syms]
+
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
 

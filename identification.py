@@ -946,7 +946,7 @@ class Identification(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with {} of error increase from OLS solution".format(u_star))
+                print("found std solution with {} error increase from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -987,6 +987,7 @@ class Identification(object):
 
             ## std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
 
+            '''
             if self.opt['useBasisProjection']:
                 # determined through base matrix, which included other variables too
                 # (find first variable in eq, chosen as independent here)
@@ -997,11 +998,13 @@ class Identification(object):
                             delta_b_syms.append(s)
                             break
                 delta_b = Matrix(delta_b_syms)
-            #else:
-                #determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            else:
+                # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            '''
             delta_b = Pb.T*delta
 
             ## std variables that are dependent, i.e. their value is a combination of independent columns
+            '''
             if self.opt['useBasisProjection']:
                 #determined from base eqns
                 delta_not_d = self.model.base_deps[0].free_symbols
@@ -1012,8 +1015,9 @@ class Identification(object):
                     if s not in delta_not_d:
                         delta_d.append(s)
                 delta_d = Matrix(delta_d)
-            #else:
+            else:
                 # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
+            '''
             delta_d = Pd.T*delta
 
             # rewrite LMIs for base params

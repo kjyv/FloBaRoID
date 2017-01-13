@@ -684,11 +684,11 @@ class Model(object):
             self.mass_syms.append(m)
 
             #first moment of mass
-            p = 'l_{}'.format(i)  #symbol prefix
+            p = 'c_{}'.format(i)  #symbol prefix
             syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
             self.param_syms.extend(syms)
             #3x3 inertia tensor about link-frame (for link i)
-            p = 'L_{}'.format(i)
+            p = 'I_{}'.format(i)
             syms = [symbols(p+'xx'), symbols(p+'xy'), symbols(p+'xz'),
                     symbols(p+'xy'), symbols(p+'yy'), symbols(p+'yz'),
                     symbols(p+'xz'), symbols(p+'yz'), symbols(p+'zz')
@@ -707,6 +707,7 @@ class Model(object):
                 self.param_syms.extend([symbols('Fv+_{}'.format(i))])
             for i in range(0,self.N_DOFS):
                 self.param_syms.extend([symbols('Fv-_{}'.format(i))])
+        self.param_syms = np.array(self.param_syms)
 
         ## get symbolic equations for base param dependencies
         # Each dependent parameter can be ignored (non-identifiable) or it can be
@@ -733,6 +734,7 @@ class Model(object):
                 if s not in base_deps_syms:
                     base_deps_syms.append(s)
         self.non_identifiable = [p for p in range(self.num_params) if self.param_syms[p] not in base_deps_syms]
+        self.identifiable = [p for p in range(self.num_params) if p not in self.non_identifiable]
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""

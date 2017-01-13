@@ -383,7 +383,8 @@ class Model(object):
                     np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
         if self.opt['floatingBase'] and len(contacts.keys()):
-            #TODO: if robot does not have contact sensors, use HyQ null-space method (only for static positions?)
+            # TODO: if robot does not have contact sensors, use HyQ null-space method (only for
+            # static positions?)
 
             #convert contact forces into torque contribution
             for i in range(self.contacts_stack.shape[0]):
@@ -419,6 +420,10 @@ class Model(object):
                 torques_stack_2dim[:, :6] -= self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
             self.data.samples['torques'] = torques_stack_2dim[:, 6:]
+        else:
+            # also write back torques if simulating and fixed-base
+            if self.opt['simulateTorques']:
+                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:

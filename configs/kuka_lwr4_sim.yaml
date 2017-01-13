@@ -96,7 +96,7 @@ identifyClosestToCAD: 0
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
 noChange: 0
-noChangeThresh: 250
+noChangeThresh: 400
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
 restrictCOMtoHull: 0

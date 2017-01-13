@@ -236,6 +236,7 @@ class TrajectoryOptimizer(object):
 
     def updateGraph(self):
         # draw all optimization steps so far (yes, no updating)
+
         if self.iter_cnt % self.updateGraphEveryVals == 0:
             # go through list of constraint states and draw next line with other color if changed
             i = last_i = 0
@@ -263,6 +264,7 @@ class TrajectoryOptimizer(object):
         if self.iter_cnt == 1: plt.show(block=False)
         plt.pause(0.01)
 
+
     def vecToParams(self, x):
         # convert vector of all solution variables to separate parameter variables
         wf = x[0]
@@ -271,6 +273,7 @@ class TrajectoryOptimizer(object):
         a = np.array(np.split(x[self.dofs+1:self.dofs+1+ab_len], self.dofs))
         b = np.array(np.split(x[self.dofs+1+ab_len:self.dofs+1+ab_len*2], self.dofs))
         return wf, q, a, b
+
 
     def approx_jacobian(self, f, x, epsilon, *args):
         """Approximate the Jacobian matrix of callable function func
@@ -335,7 +338,9 @@ class TrajectoryOptimizer(object):
         if 'model' in locals():
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory, model)
         else:
+            # get model at first run, then reuse
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory)
+
         self.config['verbose'] = old_verbose
         self.config['floatingBase'] = old_floatingBase
 
@@ -375,7 +380,7 @@ class TrajectoryOptimizer(object):
             # max joint vel
             g[2*self.dofs+n] = np.max(np.abs(trajectory_data['velocities'][:, n])) - self.limits[jn[n]]['velocity']
             # max torques
-            g[3*self.dofs+n] = np.nanmax(np.abs(trajectory_data['torques'][:, n])) - self.limits[jn[n]]['torque']
+            g[3*self.dofs+n] = np.nanmax(np.abs(data.samples['torques'][:, n])) - self.limits[jn[n]]['torque']
 
             if self.config['minVelocityConstraint']:
                 # max joint vel of trajectory should at least be 10% of joint limit
@@ -383,8 +388,8 @@ class TrajectoryOptimizer(object):
                                     np.max(np.abs(trajectory_data['velocities'][:, n]))
 
             # highest joint torque should at least be 10% of joint limit
-            #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
-            f_tmp = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(trajectory_data['torques'][:, n]))
+            #g[5*self.dofs+n] = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(data.samples['torques'][:, n]))
+            f_tmp = self.limits[jn[n]]['torque']*0.1 - np.max(np.abs(data.samples['torques'][:, n]))
             if f_tmp > 0:
                 f1+=f_tmp
         self.last_g = g

@@ -663,6 +663,10 @@ class Identification(object):
             D_other_blocks = []
 
             params_to_skip = []
+
+            if self.opt['limitNonIdentifiable']:
+                params_to_skip.extend(self.model.non_identifiable)
+
             self.constr_per_param = {}
             for i in range(self.model.num_params):
                 self.constr_per_param[i] = []
@@ -852,7 +856,7 @@ class Identification(object):
             solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':
+            if state is not 'optimal' or not self.paramHelpers.isPhysicalConsistent(np.squeeze(np.asarray(solution[1:]))):
                 print("Trying again with dsdp5 solver")
                 optimization.solve_sdp = optimization.dsdp5
                 solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)

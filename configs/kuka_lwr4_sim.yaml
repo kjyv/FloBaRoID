@@ -93,6 +93,8 @@ useConsistencyConstraints: 1
 # finding feasible standard parameters
 identifyClosestToCAD: 0
 
+limitNonIdentifiable: 0
+
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
 noChange: 0

@@ -216,6 +216,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
 
     num_samples = len(trajectory_data['times'])
 
+    #convert lists to numpy arrays
     trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
     trajectory_data['positions'] = trajectory_data['target_positions']
     trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
@@ -228,6 +229,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
+    #TODO: add proper contacts (from e.g. gazebo) for floating-base
     trajectory_data['contacts'] = np.array({'dummy_sim': np.zeros( num_samples )})
 
     if measurements:
@@ -242,6 +244,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     config['startOffset'] = 0
     data.init_from_data(trajectory_data)
     model.computeRegressors(data) #TODO: this needlessly also computes regressors in addition to simulation
+    trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
     config['skipSamples'] = old_skip
     config['startOffset'] = old_offset
     config['simulateTorques'] = old_sim
@@ -276,36 +279,37 @@ def main():
             print("nf {}".format(trajectory.nf.tolist()))
             print("wf {}".format(trajectory.w_f_global))
 
-    # testing stuff
-    class FixedPositionTrajectory(object):
-        def __init__(self):
-            self.time = 0
-
-        def getAngle(self, dof):
-            """ get angle at current time for joint dof """
-            return [0.0, 0.0, -90.0, 90.0, 0.0, 0.0,  #right leg
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0][dof]
-
-        def getVelocity(self, dof):
-            """ get velocity at current time for joint dof """
-            return 0.0
-
-        def getAcceleration(self, dof):
-            """ get acceleration at current time for joint dof """
-            return 0.0
-
-        def getPeriodLength(self):
-            ''' get the period length of the oscillation in seconds '''
-            return 5
-
-        def setTime(self, time):
-            '''set current time in seconds'''
-            self.time = time
-
-        def wait_for_zero_vel(self, t_elapsed):
-            return True
-
-    trajectory = FixedPositionTrajectory()
+#    # testing stuff
+#    class FixedPositionTrajectory(object):
+#        def __init__(self):
+#            self.time = 0
+#
+#        def getAngle(self, dof):
+#            """ get angle at current time for joint dof """
+#            return [0.0, 0.0, -90.0, 90.0, 0.0, 0.0,  #right leg
+#                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0][dof]
+#
+#        def getVelocity(self, dof):
+#            """ get velocity at current time for joint dof """
+#            return 0.0
+#
+#        def getAcceleration(self, dof):
+#            """ get acceleration at current time for joint dof """
+#            return 0.0
+#
+#        def getPeriodLength(self):
+#            ''' get the period length of the oscillation in seconds '''
+#            return 5
+#
+#        def setTime(self, time):
+#            '''set current time in seconds'''
+#            self.time = time
+#
+#        def wait_for_zero_vel(self, t_elapsed):
+#            return True
+#
+#    trajectory = FixedPositionTrajectory()
+#
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
 
@@ -320,6 +324,12 @@ def main():
         saveMeasurements(args.filename, traj_data)
         return
 
+    #adapt measured array sizes to input array sizes
+    traj_data['Q'] = np.resize(traj_data['Q'], data.samples['positions'].shape)
+    traj_data['V'] = np.resize(traj_data['V'], data.samples['velocities'].shape)
+    traj_data['Tau'] = np.resize(traj_data['Tau'], data.samples['torques'].shape)
+    traj_data['T'] = np.resize(traj_data['T'], data.samples['times'].shape)
+
     # generate some empty arrays, will be calculated in preprocess()
     if 'Vdot' not in traj_data:
         traj_data['Vdot'] = np.zeros_like(traj_data['V'])
@@ -327,28 +337,33 @@ def main():
     traj_data['Qraw'] = np.zeros_like(traj_data['Q'])
     traj_data['TauRaw'] = np.zeros_like(traj_data['Tau'])
 
-    #use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
+    # if simulating torques, prepare some arrays with proper length (needs to be same as input for
+    # simulation)
     if config['excitationSimulate']:
+        #TODO: simplify this
         tau_len = traj_data['Tau'].shape[0]   # get length of measured (zero) taus
         if tau_len < traj_data['torques'].shape[0]:
+            #less measured samples than input samples
             traj_data['Tau'][:,:] = traj_data['torques'][0:tau_len,:]
             if config['exciteMethod'] == None:
                 traj_data['V'][:,:] = traj_data['velocities'][0:tau_len,:]
         else:
+            #less or equal input samples than measured samples
             torques_len = traj_data['torques'].shape[0]
-            traj_data['Tau'][0:torques_len,:]  = traj_data['torques'][:,:]
+            traj_data['Tau'][:torques_len, :]  = traj_data['torques'][:,:]
             if config['exciteMethod'] == None:
-                traj_data['V'][0:torques_len,:] = traj_data['velocities'][:,:]
+                traj_data['V'] = traj_data['velocities'][:,:]
 
     # filter, differentiate, convert, etc.
     data.preprocess(Q=traj_data['Q'], Q_raw=traj_data['Qraw'], V=traj_data['V'],
                     V_raw=traj_data['Vraw'], Vdot=traj_data['Vdot'], Tau=traj_data['Tau'],
                     Tau_raw = traj_data['TauRaw'], T=traj_data['T'], Fs=traj_data['measured_frequency'])
 
-    #simulate again with measured/filtered data
+    # use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
+    # (simulate again with measured/filtered data)
     if config['excitationSimulate']:
         traj_data_sim, data, model = simulateTrajectory(config, trajectory, measurements=traj_data)
-        traj_data['Tau'] = data.measurements['torques'][0:traj_data['Tau'].shape[0]]
+        traj_data['Tau'] = data.samples['torques']
 
     saveMeasurements(args.filename, traj_data)
 

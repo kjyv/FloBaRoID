@@ -107,6 +107,8 @@ useConsistencyConstraints: 0
 # finding feasible standard parameters
 identifyClosestToCAD: 0
 
+limitNonIdentifiable: 0
+
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
 noChange: 1
@@ -119,6 +121,8 @@ restrictCOMtoHull: 0
 hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
+# fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
+cubeSize: 1.0
 
 # constrain overall mass
 limitOverallMass: 1

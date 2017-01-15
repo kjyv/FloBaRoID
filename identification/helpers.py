@@ -239,7 +239,7 @@ class URDFHelpers(object):
                         self.mesh_scaling = '1 1 1'
 
         if not link_found or m is None:
-            print(Fore.RED + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
+            #print(Fore.RED + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
             filepath = None
         else:
             if not filepath.lower().endswith('stl'):
@@ -261,14 +261,21 @@ class URDFHelpers(object):
 
         return filepath
 
-    def getBoundingBox(self, input_urdf, link_nr, scale=1):
+    def getBoundingBox(self, input_urdf, old_com, link_nr):
         from stl import mesh   #using numpy-stl
         link_name = self.link_names[link_nr]
+        #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
+
+        #box around current COM in case no mesh is availabe
+        length = self.opt['cubeSize']
+        cube = [(-0.5*length+old_com[0], 0.5*length+old_com[0]), (-0.5*length+old_com[1], 0.5*length+old_com[1]),
+                (-0.5*length+old_com[2], 0.5*length+old_com[2])]
 
         if filename:
             try:
                 stl_mesh = mesh.Mesh.from_file(filename)
+                scale = self.opt['hullScaling']
 
                 #gazebo and urdf use 1m for 1 stl unit
                 scale_x = float(self.mesh_scaling.split()[0])
@@ -278,17 +285,12 @@ class URDFHelpers(object):
                         [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
                         [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
             except FileNotFoundError:
-                print(Fore.RED + "Mesh file {} not found for link '{}'! Using a very large box.".format(filename, link_name)
-                      + Fore.RESET)
-                return [[100,100], [100,100], [100,100]]
+                print(Fore.RED + "Mesh file {} not found for link '{}'! Using a cube around a priori COM.".format(filename, link_name) + Fore.RESET)
+                return cube
         else:
-            #TODO: in case we have no stl files:
-            # take length of link (distance to next link, last one?) and assume width and height from it (proper
-            # geometry is not known without CAD geometry)
-            # w = h = l/2 ?
-            # length: go through all links, getFrameIndex for each (dynamicsComputations) and then
-            # of its parent, get position from Model::getFrameTransform
-            return [[100,100], [100,100], [100,100]]
+            #in case there is no stl file in urdf
+            print(Fore.RED + "No mesh file given for link '{}'! Using a cube around a priori COM.".format(link_name) + Fore.RESET)
+            return cube
 
     #replace with new idyntree method
     @classmethod

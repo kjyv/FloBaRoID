@@ -173,7 +173,7 @@ class Identification(object):
         if self.opt['floatingBase']:
             self.tauMeasuredValidation = np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
 
-        #TODO: add contact forces to estimation
+        #TODO: add contact forces to estimation, so far validation is only proper for fixed-base!
 
         self.opt['skipSamples'] = old_skip
 
@@ -748,7 +748,13 @@ class Identification(object):
                 link_cuboid_hulls = np.zeros((self.model.N_LINKS, 3, 2))
                 for i in range(self.model.N_LINKS):
                     if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                        link_cuboid_hulls[i] = np.array(self.urdfHelpers.getBoundingBox(self.model.urdf_file, i, self.opt['hullScaling']))
+                        link_cuboid_hulls[i] = np.array(
+                            self.urdfHelpers.getBoundingBox(
+                                input_urdf = self.model.urdf_file,
+                                old_com = self.model.xStdModel[i*10+1:i*10+4],
+                                link_nr = i
+                            )
+                        )
                         #print link_cuboid_hulls[i]*self.model.xStdModel[i*10]
                         l = Matrix( self.model.param_syms[i*10+1:i*10+4])
                         m = self.model.mass_syms[i]

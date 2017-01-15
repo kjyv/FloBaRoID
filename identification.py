@@ -415,9 +415,9 @@ class Identification(object):
         #np.delete(self.stdEssentialIdx, to_delete, 0)
 
         # remove mass params if present
-        if self.opt['dontIdentifyMasses']:
-            ps = list(range(0, self.model.num_params, 10))
-            self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
+        #if self.opt['dontIdentifyMasses']:
+        #    ps = list(range(0, self.model.num_params, 10))
+        #    self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
 
         self.stdNonEssentialIdx = [x for x in range(0, self.model.num_params) if x not in self.stdEssentialIdx]
 
@@ -633,12 +633,9 @@ class Identification(object):
             I = Identity
             S = skew
 
-            #compare values relative to apriori CAD parameters
-            compare = self.model.xStdModel
-
             # create LMI matrices (symbols) for each link
             # so that mass is positive, inertia matrix is positive definite
-            # (each matrix is later on used to be either >0 or >=0)
+            # (each matrix block is constrained to be >0 or >=0)
             D_inertia_blocks = []
             for i in range(0, self.model.N_LINKS):
                 m = self.model.mass_syms[i]
@@ -694,10 +691,6 @@ class Identification(object):
                     params_to_skip.append(i*10+7)
                     params_to_skip.append(i*10+8)
                     params_to_skip.append(i*10+9)
-                else:
-                    # constraints for all other links
-                    if self.opt['dontIdentifyMasses']:
-                        params_to_skip.append(i*10)
 
             # manual fixed params
             for p in self.opt['dontChangeParams']:
@@ -705,8 +698,8 @@ class Identification(object):
 
             # create actual don't-change constraints
             for p in set(params_to_skip):
-                D_other_blocks.append(Matrix([compare[p] - self.model.param_syms[p]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[p] - compare[p]]))
+                D_other_blocks.append(Matrix([self.model.xStdModel[p] - self.model.param_syms[p]]))
+                D_other_blocks.append(Matrix([self.model.param_syms[p] - self.model.xStdModel[p]]))
                 self.constr_per_param[p].append('cad')
 
             # constrain overall mass within bounds
@@ -726,20 +719,14 @@ class Identification(object):
                 D_other_blocks.append(Matrix([sum(self.model.mass_syms) - robotmaxmass_lb])) #minimum mass
 
             # constrain for each link separately
-            if self.opt['limitMassValPerLink']:
-                for i in range(self.model.N_LINKS):
-                    if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                        c = Matrix([self.opt['limitMassValPerLink'] - self.model.mass_syms[i]])
-                        D_other_blocks.append(c)
-                        self.constr_per_param[i*10].append('mF')
-            elif self.opt['limitMassToApriori']:
+            if self.opt['limitMassToApriori']:
                 # constrain each mass to env of a priori value
                 for i in range(self.model.N_LINKS):
                     if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                        ub = Matrix([compare[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
+                        ub = Matrix([self.model.xStdModel[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
                                     self.model.mass_syms[i]])
                         lb = Matrix([self.model.mass_syms[i] -
-                                     compare[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
+                                     self.model.xStdModel[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
                         D_other_blocks.append(ub)
                         D_other_blocks.append(lb)
                         self.constr_per_param[i*10].append('mA')
@@ -769,8 +756,9 @@ class Identification(object):
             # symmetry constraints
             if self.opt['useSymmetryConstraints'] and self.opt['symmetryConstraints']:
                 for (a, b, sign) in self.opt['symmetryConstraints']:
-                    D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]]))
-                    D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]]))
+                    stol = self.opt['symmetryTolerance']
+                    D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]*(1.0-stol)]))
+                    D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]*(1.0-stol)]))
                     self.constr_per_param[a].append('sym')
                     self.constr_per_param[b].append('sym')
 
@@ -780,13 +768,14 @@ class Identification(object):
                 # negative)
                 for i in range(self.model.N_DOFS):
                     #Fc > 0
-                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+i]]) )
+                    p = self.model.num_inertial_params+i
+                    D_other_blocks.append( Matrix([self.model.param_syms[p]]) )
                     #Fv > 0
-                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+self.model.N_DOFS+i]]) )
-                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+self.model.N_DOFS*2+i]]) )
-                    self.constr_per_param[self.model.num_inertial_params+i].append('>0')
-                    self.constr_per_param[self.model.num_inertial_params+self.model.N_DOFS+i].append('>0')
-                    self.constr_per_param[self.model.num_inertial_params+self.model.N_DOFS*2+i].append('>0')
+                    D_other_blocks.append( Matrix([self.model.param_syms[p+self.model.N_DOFS]]) )
+                    D_other_blocks.append( Matrix([self.model.param_syms[p+self.model.N_DOFS*2]]) )
+                    self.constr_per_param[p].append('>0')
+                    self.constr_per_param[p+self.model.N_DOFS].append('>0')
+                    self.constr_per_param[p+self.model.N_DOFS*2].append('>0')
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 

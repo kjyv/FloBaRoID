@@ -115,26 +115,20 @@ limitOverallMass: 0
 # if overall mass is set, limit to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: null #16
 
-# enforce the same upper limit for each link mass
-limitMassValPerLink: null #3
-
-# or enforce staying around the a priori masses (only set this or a combination of the other
+# enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
 limitMassToApriori: 1
 limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions
 
-# whether to take out masses to be identified because they are e.g.
-# well known or introduce problems
-# (essential params or when using feasability constraints)
-dontIdentifyMasses: 0
-
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
 
-# define constraints for link symmetries (e.g. left and right arm),
+# define constraints for link symmetries (e.g. left and right arm)
+useSymmetryConstraints: 1
+# allow some difference between symmetry pairs (1.0 = 100%)
+symmetryTolerance: 0.05
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
 # [p1, p2, sign]
-useSymmetryConstraints: 0
 symmetryConstraints:
     - [20, 90, 1]    #arm_1_1 arm_2_1
     - [21, 91, 1]
@@ -255,5 +249,5 @@ showTriangleConsistency: 0   #show per-link consistency including triangle inequ
 verbose: 1                   #show more messages
 
 # which parameters to use when estimating torques for validation. Set to one of
-# ['base', 'std', 'urdf
+# ['base', 'std', 'urdf']
 estimateWith: 'std'

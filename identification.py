@@ -761,7 +761,7 @@ class Identification(object):
                             self.constr_per_param[i*10+1+j].append('hull')
 
             # symmetry constraints
-            if self.opt['symmetryConstraints']:
+            if self.opt['useSymmetryConstraints'] and self.opt['symmetryConstraints']:
                 for (a, b, sign) in self.opt['symmetryConstraints']:
                     D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]]))
                     D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]]))
@@ -776,7 +776,11 @@ class Identification(object):
                     #Fc > 0
                     D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+i]]) )
                     #Fv > 0
-                    #D_other_blocks.append( Matrix([rbt.rbtdef.fv[i]]) )
+                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+self.model.N_DOFS+i]]) )
+                    D_other_blocks.append( Matrix([self.model.param_syms[self.model.num_inertial_params+self.model.N_DOFS*2+i]]) )
+                    self.constr_per_param[self.model.num_inertial_params+i].append('>0')
+                    self.constr_per_param[self.model.num_inertial_params+self.model.N_DOFS+i].append('>0')
+                    self.constr_per_param[self.model.num_inertial_params+self.model.N_DOFS*2+i].append('>0')
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
@@ -1155,7 +1159,7 @@ class Identification(object):
             optimization.solve_sdp = optimization.cvxopt_conelp
 
         u = solution[0, 0]
-        print("found std solution with {} error increase from CAD solution".format(u))
+        print("found std solution with distance {} from CAD solution".format(u))
         self.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
 

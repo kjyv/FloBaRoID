@@ -128,12 +128,11 @@ dontIdentifyMasses: 0
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
-#dontChangeParams: [0,1,2,3,4,5,6,7,8,9]
-#dontChangeParams: [10,11,12,13,14,15,16,17,18,19]
-#dontChangeParams:  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
 
 # define constraints for link symmetries (e.g. left and right arm),
-# tuples of two parameters ids each that should be equal and 1/-1 to allow negative symmetric
+# tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
+# [p1, p2, sign]
+useSymmetryConstraints: 0
 symmetryConstraints: []
 
 ## other forms of OLS

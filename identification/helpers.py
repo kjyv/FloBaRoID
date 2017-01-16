@@ -63,6 +63,14 @@ class ParamHelpers(object):
                     cons[i // 10] = True
                 except np.linalg.linalg.LinAlgError:
                     cons[i // 10] = False
+
+        '''
+        if False in cons.values():
+            print(Fore.RED + "Params are not consistent but ATM ignored" + Fore.RESET)
+            print(cons)
+        for k in cons:
+            cons[k] = True
+        '''
         return cons
 
     def isPhysicalConsistent(self, params):

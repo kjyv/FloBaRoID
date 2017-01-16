@@ -179,7 +179,11 @@ class OutputConsole(object):
                 else:
                     sigma = 0.0
 
-                if idf.urdf_file_real:
+                if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
+                    if idx_p in idf.model.non_identifiable:
+                        idf.constr_per_param[idx_p].append('nID')
+                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.constr_per_param[idx_p]), d]
+                elif idf.urdf_file_real:
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
                 elif idf.opt['useConsistencyConstraints']:
                     if idx_p in idf.model.non_identifiable:
@@ -197,7 +201,10 @@ class OutputConsole(object):
                 if idx_p == len(xStd):
                     break
 
-            if idf.urdf_file_real:
+            if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
+                column_widths = [13, 13, 13, 7, 7, 7, 6, 6, 45]
+                precisions = [8, 8, 8, 4, 1, 1, 3, 0, 0]
+            elif idf.urdf_file_real:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0]
             elif idf.opt['useConsistencyConstraints']:
@@ -215,7 +222,9 @@ class OutputConsole(object):
                 template = ''
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if idf.urdf_file_real:
+                if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
+                    print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Constr", "Description"))
+                elif idf.urdf_file_real:
                     print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Description"))
                 elif idf.opt['useConsistencyConstraints']:
                     print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))

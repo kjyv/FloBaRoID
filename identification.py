@@ -69,6 +69,10 @@ class Identification(object):
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 1
 
+        # if using fixed base dynamics, remove first link that is the fixed base which should completely
+        # not be identifiable and not be part of equations (as it does not move)
+        self.opt['deleteFixedBase'] = 1
+
         # use RBDL for simulation
         self.opt['useRBDL'] = 0
 
@@ -637,7 +641,16 @@ class Identification(object):
             # so that mass is positive, inertia matrix is positive definite
             # (each matrix block is constrained to be >0 or >=0)
             D_inertia_blocks = []
-            for i in range(0, self.model.N_LINKS):
+
+            if self.opt['floatingBase'] is 0 and self.opt['deleteFixedBase']:
+                #don't include equations for 0'th link (as it's fixed)
+                self.delete_cols = [0,1,2,3,4,5,6,7,8,9]
+                start_link = 1
+            else:
+                start_link = 0
+                self.delete_cols = []
+
+            for i in range(start_link, self.model.N_LINKS):
                 m = self.model.mass_syms[i]
                 l = Matrix([ self.model.param_syms[i*10+1],
                              self.model.param_syms[i*10+2],
@@ -661,13 +674,25 @@ class Identification(object):
 
             params_to_skip = []
 
-            if self.opt['limitNonIdentifiable']:
-                params_to_skip.extend(self.model.non_identifiable)
-
+            # collect constraint flags for display
             self.constr_per_param = {}
             for i in range(self.model.num_params):
                 self.constr_per_param[i] = []
 
+            '''
+            if self.opt['limitNonIdentifiable']:
+                for p in self.model.non_identifiable:
+                    if p not in self.delete_cols and p%10>3:
+                        #params_to_skip.append(p)
+                        tol = 1
+                        ub = Matrix([self.model.xStdModel[p]*1+tol - self.model.param_syms[i]])
+                        lb = Matrix([-self.model.xStdModel[p]*1-tol + self.model.param_syms[i]])
+                        D_other_blocks.append(ub)
+                        D_other_blocks.append(lb)
+                        self.constr_per_param[p].append('prox')
+            '''
+
+            # look at condition numbers per link
             linkConds = self.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
             for i in range(0, self.model.N_LINKS):
@@ -692,11 +717,11 @@ class Identification(object):
                     params_to_skip.append(i*10+8)
                     params_to_skip.append(i*10+9)
 
-            # manual fixed params
+            # manually fixed params
             for p in self.opt['dontChangeParams']:
                 params_to_skip.append(p)
 
-            # create actual don't-change constraints
+            # create the don't-change constraints
             for p in set(params_to_skip):
                 D_other_blocks.append(Matrix([self.model.xStdModel[p] - self.model.param_syms[p]]))
                 D_other_blocks.append(Matrix([self.model.param_syms[p] - self.model.xStdModel[p]]))
@@ -706,7 +731,7 @@ class Identification(object):
             if self.opt['limitOverallMass']:
                 #use given overall mass else use overall mass from CAD
                 if self.opt['limitMassVal']:
-                    robotmaxmass = self.opt['limitMassVal']
+                    robotmaxmass = self.opt['limitMassVal'] - sum(self.model.xStdModel[0:start_link*10:10])
                     robotmaxmass_ub = robotmaxmass * 1.01
                     robotmaxmass_lb = robotmaxmass * 0.99
                 else:
@@ -715,13 +740,13 @@ class Identification(object):
                     robotmaxmass_ub = robotmaxmass * 1.3
                     robotmaxmass_lb = robotmaxmass * 0.7
 
-                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.model.mass_syms)])) #maximum mass
-                D_other_blocks.append(Matrix([sum(self.model.mass_syms) - robotmaxmass_lb])) #minimum mass
+                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.model.mass_syms[start_link:])])) #maximum mass
+                D_other_blocks.append(Matrix([sum(self.model.mass_syms[start_link:]) - robotmaxmass_lb])) #minimum mass
 
             # constrain for each link separately
             if self.opt['limitMassToApriori']:
                 # constrain each mass to env of a priori value
-                for i in range(self.model.N_LINKS):
+                for i in range(start_link, self.model.N_LINKS):
                     if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
                         ub = Matrix([self.model.xStdModel[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
                                     self.model.mass_syms[i]])
@@ -733,7 +758,7 @@ class Identification(object):
 
             if self.opt['restrictCOMtoHull']:
                 link_cuboid_hulls = np.zeros((self.model.N_LINKS, 3, 2))
-                for i in range(self.model.N_LINKS):
+                for i in range(start_link, self.model.N_LINKS):
                     if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
                         link_cuboid_hulls[i] = np.array(
                             self.urdfHelpers.getBoundingBox(
@@ -745,13 +770,20 @@ class Identification(object):
                         #print link_cuboid_hulls[i]*self.model.xStdModel[i*10]
                         l = Matrix( self.model.param_syms[i*10+1:i*10+4])
                         m = self.model.mass_syms[i]
+                        '''
+                        if i == 1:
+                            m = self.model.xStdModel[10]
+                        if i == 2:
+                            m = self.model.xStdModel[20]
+                        '''
                         link_cuboid_hull = link_cuboid_hulls[i]
                         for j in range(3):
-                            ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
-                            lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
-                            D_other_blocks.append( ub )
-                            D_other_blocks.append( lb )
-                            self.constr_per_param[i*10+1+j].append('hull')
+                            if i*10+1+j not in self.delete_cols:
+                                ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
+                                lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
+                                D_other_blocks.append( ub )
+                                D_other_blocks.append( lb )
+                                self.constr_per_param[i*10+1+j].append('hull')
 
             # symmetry constraints
             if self.opt['useSymmetryConstraints'] and self.opt['symmetryConstraints']:
@@ -779,8 +811,8 @@ class Identification(object):
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
+            #self.LMIs = list(map(LMI_PD, self.D_blocks))
             epsilon_safemargin = 1e-6
-            #LMIs = list(map(LMI_PD, D_blocks))
             self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
         if self.opt['showTiming']:
@@ -788,7 +820,7 @@ class Identification(object):
 
 
     def identifyFeasibleStandardParameters(self):
-        ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
+        ''' use SDP optimization to solve constrained OLS to find globally optimal physically
             feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
         '''
         with helpers.Timer() as t:
@@ -803,6 +835,10 @@ class Identification(object):
             I = Identity
             delta = Matrix(self.model.param_syms)
 
+            #ignore some cols that are non-identifiable
+            for c in reversed(self.delete_cols):
+                delta.row_del(c)
+
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
             #Q2 = Q[:, self.model.num_base_params:]
@@ -812,6 +848,8 @@ class Identification(object):
             # get projection matrix so that xBase = K*xStd
             if self.opt['useBasisProjection']:
                 K = Matrix(self.model.Binv)
+                for c in reversed(self.delete_cols):
+                    K.col_del(c)
             else:
                 #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
                 #Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())

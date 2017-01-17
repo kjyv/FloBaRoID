@@ -92,6 +92,7 @@ class Model(object):
         # TODO: reported dofs and links are not dependent on joints specified in regressor (but
         # uses all from model file)
         # dynComp simulates with all joints regardless of regressor, regressor rows should be as specified
+        # (worked around ATM by reading from XML directly)
         if self.opt['verbose']:
             print('# DOFs: {}'.format(self.N_DOFS))
             print('Joints: {}'.format(self.jointNames))
@@ -119,10 +120,9 @@ class Model(object):
         self.num_params = self.generator.getNrOfParameters()
         # params counted without offset params
         self.num_inertial_params = self.num_params
-        # add N offset params (offsets or dry friction)
-        if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']: self.num_params += self.N_DOFS
-        # add 2*N viscous friction params (velocity +- for asymmetrical friction)
-        if self.opt['identifyFriction']: self.num_params += 2*self.N_DOFS
+        # add N offset params (offsets or dry friction) and 2*N viscous friction params
+        # (velocity +- for asymmetrical friction)
+        if self.opt['identifyFriction']: self.num_params += 3*self.N_DOFS
 
         if self.opt['verbose']:
             print('# params: {}'.format(self.num_params))
@@ -143,10 +143,8 @@ class Model(object):
         xStdModel = iDynTree.VectorDynSize(self.num_inertial_params)
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
-        if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
-            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.N_DOFS)))
         if self.opt['identifyFriction']:
-            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.N_DOFS)))
+            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(3*self.N_DOFS)))
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -314,8 +312,8 @@ class Model(object):
                             #add estimated base forces to measured torq vector from file
                             torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
 
-                if self.opt['addNoise'] != 0:
-                    torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
+                #if self.opt['addNoise'] != 0:
+                #    torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
 
             simulate_time += t.interval
 
@@ -351,14 +349,13 @@ class Model(object):
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
-                # append unitary matrix to regressor for offsets/dry friction
-                if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
+                if self.opt['identifyFriction']:
+                    # append unitary matrix to regressor for offsets/dry friction
                     static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
                     offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), static_diag))
                     regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
-                # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                if self.opt['identifyFriction']:
+                    # append positive/negative velocity matrix for velocity dependent asymmetrical friction
                     dq_p = dq.toNumPy().copy()
                     dq_p[dq_p < 0] = 0 #set to zero where v < 0
                     dq_m = dq.toNumPy().copy()
@@ -544,14 +541,13 @@ class Model(object):
                     A[0:3, :] = to_world.dot(A[0:3, :])
                     A[3:6, :] = to_world.dot(A[3:6, :])
 
-                # append unitary matrix to regressor for offsets/dry friction
-                if self.opt['identifyTorqueOffsets'] or self.opt['identifyFriction']:
+                if self.opt['identifyFriction']:
+                    # append unitary matrix to regressor for offsets/dry friction
                     static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
                     offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)
 
-                # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                if self.opt['identifyFriction']:
+                    # append positive/negative velocity matrix for velocity dependent asymmetrical friction
                     dq_p = dq.toNumPy().copy()
                     dq_p[dq_p < 0] = 0 #set to zero where <0
                     dq_m = dq.toNumPy().copy()
@@ -700,14 +696,9 @@ class Model(object):
                    ]
             self.param_syms.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
 
-        if self.opt['identifyTorqueOffsets']:
-            for i in range(0,self.N_DOFS):
-                if self.opt['identifyFriction']:
-                    self.param_syms.extend([symbols('Fc_{}'.format(i))])
-                else:
-                    self.param_syms.extend([symbols('off_{}'.format(i))])
-
         if self.opt['identifyFriction']:
+            for i in range(0,self.N_DOFS):
+                self.param_syms.extend([symbols('Fc_{}'.format(i))])
             for i in range(0,self.N_DOFS):
                 self.param_syms.extend([symbols('Fv+_{}'.format(i))])
             for i in range(0,self.N_DOFS):

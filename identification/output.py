@@ -97,27 +97,28 @@ class OutputConsole(object):
 
             # collect values for parameters
             description = idf.model.generator.getDescriptionOfParameters()
-            if idf.opt['identifyTorqueOffsets'] or idf.opt['identifyFriction']:
+            if idf.opt['identifyFriction']:
                 for i in range(0, idf.model.N_DOFS):
                     description += "Parameter {}: Dry friction / offset of joint {}\n".format(
                             i+idf.model.num_inertial_params,
                             idf.model.jointNames[i]
                     )
-            if idf.opt['identifyFriction']:
+
                 for i in range(0, idf.model.N_DOFS*2):
                     description += "Parameter {}: Viscous friction joint {}\n".format(
                             i+idf.model.N_DOFS+idf.model.num_inertial_params,
                             idf.model.jointNames[i%idf.model.N_DOFS]
                     )
 
-            idx_p = 0   #count (std) params
             idx_ep = 0  #count essential params
             lines = list()
             sum_diff_r_pc_ess = 0
             sum_diff_r_pc_all = 0
             sum_pc_delta_all = 0
             sum_pc_delta_ess = 0
-            for d in description.replace(r'Parameter ', '#').split('\n'):
+            descriptions = description.replace(r'Parameter ', '#').split('\n')
+            for idx_p in range(idf.model.num_params):
+                d = descriptions[idx_p]
                 if idf.opt['outputBarycentric']:
                     d = d.replace(r'first moment', 'center')
                 # add symbol for each parameter
@@ -197,9 +198,6 @@ class OutputConsole(object):
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
                     idx_ep += 1
-                idx_p += 1
-                if idx_p == len(xStd):
-                    break
 
             if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 6, 45]
@@ -252,6 +250,53 @@ class OutputConsole(object):
                     idx_p += 1
                     print(Style.RESET_ALL)
                 print("\n")
+
+                # print standard params also as latex table
+                if idf.opt['outputLatex']:
+                    print('As Latex:')
+                    import inspect
+                    print(inspect.cleandoc(r"""
+                        \begin{table}[h]
+                            \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are found only to satisfy consistency constraints.}
+                            \begin{center}
+                    """))
+                    header = inspect.cleandoc(r"""
+                            \begin{minipage}[t]{0.32\linewidth}
+                                \resizebox{0.97\textwidth}{!}{%
+                                \begin{tabular}[t]{c c c t}
+                                    \hline
+                                    \rule{0pt}{12pt} Parameter & Real Value & Ident. Value \\[2pt]
+                                    \hline\rule{0pt}{12pt}
+                    """)
+                    footer = inspect.cleandoc(r"""
+                                    \hline
+                                \end{tabular}}
+                            \end{minipage}
+                    """)
+                    print(header)
+
+                    #print table rows
+                    for idx_p in range(10, idf.model.num_params):
+                        #if idx_p == len(idf.model.identifiable) // 2:
+                        if idx_p-10 in [(idf.model.num_params-10) // 3, ((idf.model.num_params-10) // 3)*2]:
+                            #start new table after half of params
+                            print(footer)
+                            print(header)
+                        #if idx_p in idf.model.identifiable:
+                        #add another underscore for proper subscripts
+                        import re
+                        param = str(idf.model.param_syms[idx_p])
+                        p = re.compile(r"([0-9]+)(.*)")
+                        param = p.sub(r'{\1\2}', param)
+                        nonid = '*' if idx_p in idf.model.non_identifiable else ''
+                        print("        ${}$ & ${:.4f}$ & ${:.4f}${} \\\\".format(param, xStdReal[idx_p], xStd[idx_p], nonid))
+
+                    print(footer)
+                    print(inspect.cleandoc(r"""
+                            \end{center}
+                        \end{table}
+                    """))
+                    print("")
 
         ### print base params
         if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:

@@ -81,7 +81,8 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][so:, :]
+                                        if c != 'dummy_sim':
+                                            contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     #TODO: get mean value of scalar values (needs to count how many values then)
@@ -399,8 +400,7 @@ class Data(object):
             plt.grid()
             plt.show()
 
-        #TODO: expose as option or make dependent on measurement frequency
-        median_kernel_size = 11
+        median_kernel_size = self.opt['filterMedianSize']
 
         ## Joint Positions
 
@@ -413,24 +413,19 @@ class Data(object):
             np.copyto(V, vels_rad)
 
         #init low pass filter coefficients
-        fc = 3.0    #Cut-off frequency (Hz)
-        order = 4   #Filter order
+        fc = self.opt['filterLowPass3'][0]   #3.0  #Cut-off frequency (Hz)
+        order = self.opt['filterLowPass3'][1]  #4   #Filter order
         b_3, a_3 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
 
-        fc = 6.0    #Cut-off frequency (Hz)
-        order = 5   #Filter order
+        fc = self.opt['filterLowPass2'][0]  #6.0  #Cut-off frequency (Hz)
+        order = self.opt['filterLowPass2'][1] #5   #Filter order
         b_6, a_6 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
 
-        fc = 8.0    #Cut-off frequency (Hz)
-        order = 5   #Filter order
+        fc = self.opt['filterLowPass1'][0]  #8.0  #Cut-off frequency (Hz)
+        order = self.opt['filterLowPass1'][1] #5   #Filter order
         b_8, a_8 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
 
-        fc = 12.0    #Cut-off frequency (Hz)
-        order = 5   #Filter order
-        b_12, a_12 = sp.signal.butter(order, fc / (Fs/2), btype='low', analog=False)
-
         #plot_filter(b, a)
-        #TODO: expose filter options or allow graphically
 
         # low-pass filter positions
         Q_orig = Q.copy()

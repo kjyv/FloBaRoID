@@ -59,4 +59,6 @@ known issues:
 Optionally supply an output .urdf file path (to which the input urdf but with the identified parameters is written) or another measurement file for validation (most options are in the .yaml file, others are explained when calling with -h)
 
 
+SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
+
 Usage is licensed under the LGPL 3.0, see License.md. Please quote name and authors if you're using this software in any project.

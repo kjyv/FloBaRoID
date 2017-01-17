@@ -9,9 +9,8 @@ optimizeTrajectory: 1          #find new parameters with optimization or load pr
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
 showOptimizationTrajs: 1       #display the trajectory plot after each optimization step
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
-globalOptIterations: 5
-localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
-maxFun: 250                    #limit objective function evaluations to this value (not used currently)
+globalOptIterations: 7
+localOptIterations: 3          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01             #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
@@ -44,7 +43,20 @@ ovrPosLimit:
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 
-#### data selection
+#### data preprocessing and selection
+
+# median filter that is used to remove outliers before low-pass
+filterMedianSize: 11
+
+# low-pass butter worth filter that is used to filter positions, torques and IMU accelerations
+# 2-tuple of cut-off and order of filter
+filterLowPass1: [8.0, 5]
+
+# low-pass for joint velocities
+filterLowPass2: [6.0, 5]
+
+# low-pass for external contact force data and IMU rpy estimation
+filterLowPass3: [3.0, 4]
 
 # determine number of samples to use
 # (Khalil recommends about 500 times number of parameters to identify...)
@@ -68,15 +80,11 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 # fixed or floating-base dynamics
 floatingBase: 0
 
-# identify torque offsets as additional parameters
-identifyTorqueOffsets: 1
-
 # identify motor friction
 identifyFriction: 1
 
 # simulate torques from target values, don't use both
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
-addNoise: 0 #0.05  #additional percentage of zero-mean white noise for simulated or measured torques
 
 # almost zero threshold for QR, SVD and other things
 minTol: 0.0001
@@ -113,7 +121,7 @@ cubeSize: 1.0
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 16.5
+limitMassVal: 16.0
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting self.options to prevent constraint conflicts!)
@@ -175,6 +183,7 @@ outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
 showBaseParams: 1            #display a list of identified base params (if appliable)
 showBaseEqns: 0              #show which std params are combined for each base param
+outputLatex: 1               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
 verbose: 1                   #show more messages
 

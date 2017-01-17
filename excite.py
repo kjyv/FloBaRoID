@@ -175,6 +175,7 @@ def plot(data=None):
 
     plt.show()
 
+
 def simulateTrajectory(config, trajectory, model=None, measurements=None):
     # generate data arrays for simulation and regressor building
     old_sim = config['simulateTorques']
@@ -190,7 +191,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['target_accelerations'] = []
     trajectory_data['torques'] = []
     trajectory_data['times'] = []
-    freq=200.0
+    freq = 200.0
     for t in range(0, int(trajectory.getPeriodLength()*freq)):
         trajectory.setTime(t/freq)
         q = [trajectory.getAngle(d) for d in range(config['N_DOFS'])]

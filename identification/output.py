@@ -289,7 +289,8 @@ class OutputConsole(object):
                         p = re.compile(r"([0-9]+)(.*)")
                         param = p.sub(r'{\1\2}', param)
                         nonid = '*' if idx_p in idf.model.non_identifiable else ''
-                        print("        ${}$ & ${:.4f}$ & ${:.4f}${} \\\\".format(param, xStdReal[idx_p], xStd[idx_p], nonid))
+                        real = xStdReal if idf.urdf_file_real else xStdModel
+                        print("        ${}$ & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], xStd[idx_p], nonid))
 
                     print(footer)
                     print(inspect.cleandoc(r"""

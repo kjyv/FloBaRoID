@@ -148,9 +148,14 @@ class Identification(object):
         v_data = np.load(self.validation_file)
         dynComp = iDynTree.DynamicsComputations()
 
+        if self.opt['estimateWith'] == 'urdf':
+            params = self.model.xStdModel
+        else:
+            params = self.model.xStd
+
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file,
                                              output_urdf=self.model.urdf_file + '.tmp',
-                                             new_params=self.model.xStd, link_names=self.model.linkNames)
+                                             new_params=params, link_names=self.model.linkNames)
         dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
         os.remove(self.model.urdf_file + '.tmp')
 

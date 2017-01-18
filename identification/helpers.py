@@ -215,17 +215,17 @@ class URDFHelpers(object):
         for l in tree.findall('link'):
             if l.attrib['name'] in link_names:
                 link_id = link_names.index(l.attrib['name'])
-                l.find('inertial/mass').attrib['value'] = str(xStdBary[link_id*10])
+                l.find('inertial/mass').attrib['value'] = '{}'.format(xStdBary[link_id*10])
                 l.find('inertial/origin').attrib['xyz'] = '{} {} {}'.format(xStdBary[link_id*10+1],
                                                                             xStdBary[link_id*10+2],
                                                                             xStdBary[link_id*10+3])
                 inert = l.find('inertial/inertia')
-                inert.attrib['ixx'] = str(xStdBary[link_id*10+4])
-                inert.attrib['ixy'] = str(xStdBary[link_id*10+5])
-                inert.attrib['ixz'] = str(xStdBary[link_id*10+6])
-                inert.attrib['iyy'] = str(xStdBary[link_id*10+7])
-                inert.attrib['iyz'] = str(xStdBary[link_id*10+8])
-                inert.attrib['izz'] = str(xStdBary[link_id*10+9])
+                inert.attrib['ixx'] = '{}'.format(xStdBary[link_id*10+4])
+                inert.attrib['ixy'] = '{}'.format(xStdBary[link_id*10+5])
+                inert.attrib['ixz'] = '{}'.format(xStdBary[link_id*10+6])
+                inert.attrib['iyy'] = '{}'.format(xStdBary[link_id*10+7])
+                inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
+                inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
 
         tree.write(output_urdf, xml_declaration=True)
 

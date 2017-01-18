@@ -153,18 +153,30 @@ class Identification(object):
         else:
             params = self.model.xStd
 
+        outfile = self.model.urdf_file + '.tmp.urdf'
+
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file,
-                                             output_urdf=self.model.urdf_file + '.tmp',
+                                             output_urdf=outfile,
                                              new_params=params, link_names=self.model.linkNames)
-        dynComp.loadRobotModelFromFile(self.model.urdf_file + '.tmp')
-        os.remove(self.model.urdf_file + '.tmp')
+        if self.opt['useRBDL']:
+            import rbdl
+            self.model.rbdlModel = rbdl.loadModel(outfile,
+                                            floating_base=self.opt['floatingBase'],
+                                            verbose=False)
+            self.model.rbdlModel.gravity = np.array([0, 0, -9.81])
+        else:
+            dynComp.loadRobotModelFromFile(outfile)
+        os.remove(outfile)
 
         old_skip = self.opt['skipSamples']
         self.opt['skipSamples'] = 8
 
         self.tauEstimatedValidation = None
         for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1):
-            torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp)
+            if self.opt['useRBDL']:
+                torques = self.model.simulateDynamicsRBDL(v_data, m_idx)
+            else:
+                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp)
 
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques

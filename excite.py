@@ -13,6 +13,9 @@ from scipy import sparse
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
+import colorama
+from colorama import Fore, Back, Style
+
 import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
 parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
@@ -317,6 +320,8 @@ def main():
 #
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
+    if config['excitationSimulate'] and config['exciteMethod']:
+        print(Fore.RED + 'Using simulated torques!' + Fore.RESET)
 
     if config['exciteMethod'] == 'yarp':
         from excitation.robotCommunication import yarp_gym

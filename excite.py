@@ -17,6 +17,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Generate an excitation and record measurements to <filename>.')
 parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
 parser.add_argument('--filename', type=str, help='the filename to save the measurements to')
+parser.add_argument('--trajectory', type=str, help='the file to load the trajectory from (for replay)')
 parser.add_argument('--config', required=True, type=str, help="use options from given config file")
 parser.add_argument('--dryrun', help="don't send the trajectory", action='store_true')
 
@@ -253,7 +254,10 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     return trajectory_data, data, model
 
 def main():
-    traj_file = config['model'] + '.trajectory.npz'
+    if args.trajectory:
+        traj_file = args.trajectory
+    else:
+        traj_file = config['model'] + '.trajectory.npz'
     if config['optimizeTrajectory']:
         # find trajectory params by optimization
         trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)

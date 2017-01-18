@@ -40,6 +40,7 @@ color_triplets_6 = [
            [ 0.82745098,  0.24705882,  0.41568627],
           ]
 
+"""
 grayscale_6 = [
                [ 0.        ,  0.        ,  0.        ],
                [ 0.13333333,  0.13333333,  0.13333333],
@@ -48,10 +49,14 @@ grayscale_6 = [
                [ 0.53333333,  0.53333333,  0.53333333],
                [ 0.67058824,  0.67058824,  0.67058824]
               ]
+"""
 
 #set some more colors for higher DOF
 from palettable.tableau import Tableau_10, Tableau_20
 colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
+
+#swap some values for aesthetics
+colors[2], colors[0] = colors[0], colors[2]
 
 class OutputConsole(object):
     @staticmethod

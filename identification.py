@@ -527,7 +527,8 @@ class Identification(object):
         if self.opt['showBaseParams']:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base')
-            self.p_sigma_x = self.getStdDevForParams()
+            if not 'selectingBlocks' in self.opt or not self.opt['selectingBlocks']:
+                self.p_sigma_x = self.getStdDevForParams()
 
         if self.opt['useWLS']:
             """
@@ -1364,16 +1365,25 @@ class Identification(object):
             # add plots for each joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
-                    { 'unified_scaling': True, 'y_label': 'Torque (Nm)',
-                      'labels': ['Measured', 'Estimated', 'CAD', 'Error M/E'], 'contains_base': False,
+                    { 'unified_scaling': False, 'y_label': 'Torque (Nm)',
+                      'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                       'dataset': [
-                        {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i], tauAPriori[:,i],
-                            #tauMeasured[:,i]-tauEstimated[:,i]   #plot error
-                            )).T],
+                        {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
                          'time': rel_time, 'title': torque_labels[i]}
                       ]
                     }
                 )
+                if self.opt['plotPrioriTorques']:
+                    #plot a priori torques
+                    apriori = tauAPriori[:,i]
+                    datasets[-1]['dataset'][0]['data'][0] = np.vstack((datasets[-1]['dataset'][0]['data'][0].T, apriori)).T
+                    datasets[-1]['labels'].append('CAD')
+
+                if self.opt['plotErrors']:
+                    #plot joint torque errors
+                    e = tauMeasured[:,i] - tauEstimated[:,i]
+                    datasets[-1]['dataset'][0]['data'][0] = np.vstack((datasets[-1]['dataset'][0]['data'][0].T, e)).T
+                    datasets[-1]['labels'].append('Error M/E')
 
             """
             i = 10

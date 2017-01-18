@@ -26,7 +26,13 @@ trajectoryAngleMax:  25.0
 # instead of one range, define individual ranges for each link. If ..AngleMin/Max is to be used for
 # all of them, set entry with null
 trajectoryAngleRanges:
-    - null
+    - [-35.0, 35.0]
+    - [-25.0, 25.0]
+    - [-25.0, 25.0]
+    - [-25.0, 25.0]
+    - [-25.0, 25.0]
+    - [-25.0, 25.0]
+    - [-25.0, 25.0]
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
 # should be used (or leave completely empty)

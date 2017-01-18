@@ -20,7 +20,7 @@ import scipy.stats as stats
 import sympy
 from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, Identity, eye, zeros
 from distutils.version import LooseVersion
-is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
+is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.5')
 
 # plotting
 import matplotlib
@@ -844,7 +844,10 @@ class Identification(object):
 
             #ignore some cols that are non-identifiable
             for c in reversed(self.delete_cols):
-                delta.row_del(c)
+                if is_old_sympy:
+                    delta.col_del(c)
+                else:
+                    delta.row_del(c)
 
             Q, R = la.qr(self.model.YBase)
             Q1 = Q[:, 0:self.model.num_base_params]
@@ -876,7 +879,7 @@ class Identification(object):
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contatcs should be close to measured torques)
             if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*K*delta - contactForces)
+                e_rho1 = Matrix(rho1).T - (R1*K*delta.T - contactForces)
             else:
                 e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
 

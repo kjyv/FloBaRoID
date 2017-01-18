@@ -48,6 +48,7 @@ ovrPosLimit:
 # maximize minimal velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
+minVelocityPercentage: 0.1
 
 #### data preprocessing and selection
 
@@ -64,10 +65,9 @@ filterLowPass2: [6.0, 5]
 # low-pass for external contact force data and IMU rpy estimation
 filterLowPass3: [3.0, 4]
 
-# determine number of samples to use
-# (Khalil recommends about 500 times number of parameters to identify...)
+# use subset of samples
 startOffset: 500    #how many samples from the beginning of each measurement file are skipped
-skipSamples: 2    #how many values to skip before using the next sample
+skipSamples: 0    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
@@ -190,6 +190,7 @@ showStandardParams: 1        #display a list of identified standard params
 showBaseParams: 1            #display a list of identified base params (if appliable)
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 1               #format parameter output as latex
+outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
 verbose: 1                   #show more messages
 

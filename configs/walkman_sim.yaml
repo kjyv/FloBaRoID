@@ -71,8 +71,7 @@ filterLowPass2: [6.0, 5]
 # low-pass for external contact force data and IMU rpy estimation
 filterLowPass3: [3.0, 4]
 
-# determine number of samples to use
-# (Khalil recommends about 500 times number of parameters to identify)
+# use subset of samples
 startOffset: 650    #how many samples from the beginning of each measurement file are skipped
 skipSamples: 5    #how many values to skip before using the next sample
 

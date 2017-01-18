@@ -174,7 +174,7 @@ class TrajectoryOptimizer(object):
 
         ## bounds for parameters
         # number of fourier partial sums (same for all joints atm)
-        # (needs to be larger larger dofs? means a lot more variables)
+        # (needs to be larger for larger dofs? means a lot more variables)
         self.nf = [4]*self.dofs
         #pulsation
         self.wf_min = self.config['trajectoryPulseMin']

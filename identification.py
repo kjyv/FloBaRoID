@@ -189,6 +189,8 @@ class Identification(object):
         self.val_error = sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
         print("Validation error (std params): {}%".format(self.val_error))
+        self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation, axis=1))
+        print("Validation estimation error (mean residual): {} Nm".format(self.val_residual))
 
 
     def getBaseParamsFromParamError(self):
@@ -868,6 +870,9 @@ class Identification(object):
             else:
                 contactForces = zeros(self.model.num_base_params, 1)
 
+            import time
+            print("Step 1...", time.ctime())
+
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contatcs should be close to measured torques)
             if is_old_sympy:
@@ -875,11 +880,16 @@ class Identification(object):
             else:
                 e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
 
+            print("Step 2...", time.ctime())
+
+            # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1, I(self.model.num_base_params)]])
+            print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
+            print("Step 4...", time.ctime())
 
             if self.opt['verbose']:
                 print("Add constraint LMIs")
@@ -909,6 +919,11 @@ class Identification(object):
                 print("found std solution with distance {} from OLS solution".format(u_star))
             delta_star = np.matrix(solution[1:])
             self.model.xStd = np.squeeze(np.asarray(delta_star))
+
+            #fill up with apriori values for non-identifiable variables
+            for c in self.delete_cols:
+                self.model.xStd = np.insert(self.model.xStd, c, 0)
+            self.model.xStd[self.delete_cols] = self.model.xStdModel[self.delete_cols]
 
         if self.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
@@ -1083,6 +1098,7 @@ class Identification(object):
                             delta_d = delta_d.col_join(Matrix([s]))
             else:
                 self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+
             DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             epsilon_safemargin = 1e-6
             self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])

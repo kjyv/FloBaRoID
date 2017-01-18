@@ -242,6 +242,8 @@ outputModule: 'html'         # how to output plots and other stuff ['matplotlib'
 outputFilename: 'output_centauro.html'    #specify custom filename for html output
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint with error in one graph
+plotPrioriTorques: 0         #plot the computed torques from the a priori model parameters
+plotErrors: 1                #also plot errors into torque graphs
 
 # options for console output
 showMemUsage: 0              #print used memory for different variables

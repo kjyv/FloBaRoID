@@ -6,6 +6,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import range
 from builtins import object
+import sys
 import os
 import numpy as np
 import numpy.linalg as la
@@ -476,13 +477,15 @@ class OutputConsole(object):
         print("Absolute mean residual error: {} Nm vs. A priori: {} Nm".format(idf.abs_res_error, idf.abs_apriori_error))
 
 class OutputMatplotlib(object):
-    def __init__(self, datasets, html=True, text=None):
+    def __init__(self, datasets, text=None):
         self.datasets = datasets
-        self.html = html
         self.text = text
 
     def render(self, idf, filename='output.html'):
-        if self.html:
+        if idf.opt['outputFilename']:
+            filename = idf.opt['outputFilename']
+
+        if idf.opt['outputAs'] == 'html':
             # write matplotlib/d3 plots to html file
             import matplotlib
             import matplotlib.pyplot as plt, mpld3
@@ -490,15 +493,41 @@ class OutputMatplotlib(object):
 
             from mpld3 import plugins
             from jinja2 import Environment, FileSystemLoader
-            if idf.opt['outputFilename']:
-                filename = idf.opt['outputFilename']
-        else:
+        elif idf.opt['outputAs'] in ['pdf', 'interactive', 'tikz']:
             # show plots in separate matplotlib windows
             import matplotlib
+            if idf.opt['outputAs'] == 'pdf':
+                from matplotlib.backends.backend_pdf import PdfPages
+                pp = PdfPages(filename)
             import matplotlib.pyplot as plt
             import matplotlib.axes
+        else:
+            print("No proper output method given. Not plotting.")
+            return
+
+        if idf.opt['outputAs'] in ['pdf', 'tikz']:
+            if idf.opt['plotPerJoint']:
+                font_size = 30
+            else:
+                font_size = 12
+
+            matplotlib.rcParams.update({'font.size': font_size})
+            matplotlib.rcParams.update({'axes.labelsize': font_size - 2})
+            matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
+            matplotlib.rcParams.update({'axes.titlesize': font_size -2})
+            matplotlib.rcParams.update({'legend.fontsize': font_size -2})
+            matplotlib.rcParams.update({'xtick.labelsize': font_size -2})
+            matplotlib.rcParams.update({'ytick.labelsize': font_size -2})
+            matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
+            matplotlib.rcParams.update({'patch.linewidth': font_size/15.})
+            matplotlib.rcParams.update({'grid.linewidth': font_size/20.})
+
+        skip = 5
+
+        #create figures and plots
         figures = list()
-        for group in self.datasets:
+        for ds in range(len(self.datasets)):
+            group = self.datasets[ds]
             fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True)
             # scale unified scaling figures to same ranges and add some margin
             if group['unified_scaling']:
@@ -516,7 +545,8 @@ class OutputMatplotlib(object):
                 else:
                     ax = axes
                     axes = [axes]
-                ax.set_title(d['title'])
+                if idf.opt['outputAs'] != 'tikz':
+                    ax.set_title(d['title'])
                 if group['unified_scaling']:
                     ax.set_ylim([ymin, ymax])
                 for data_i in range(0, len(d['data'])):
@@ -528,55 +558,56 @@ class OutputMatplotlib(object):
                                 ls = '--'
                             else:
                                 ls = '-'
-                            ax.plot(d['time'], d['data'][data_i][:, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls)
+                            if idf.opt['plotErrors']:
+                                dashes = ()
+                                if i == 2:
+                                    ls = '--'
+                                    dashes = (3, 0.5)
+                            ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls, dashes=dashes)
                     else:
                         #data vector
-                        ax.plot(d['time'], d['data'][data_i], label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
+                        ax.plot(d['time'][::skip], d['data'][data_i][::skip], label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
 
                 ax.grid(b=True, which='both', color='0.4')
                 if 'y_label' in group:
                     ax.set_ylabel(group['y_label'])
 
-            ax.set_xlabel("Time (s)")
+            if idf.opt['outputAs'] != 'tikz':
+                ax.set_xlabel("Time (s)")
 
             plt.setp([a.get_xticklabels() for a in axes[:-1]], visible=False)
             #plt.setp([a.get_yticklabels() for a in axes], fontsize=8)
 
-            if self.html:
+            if idf.opt['outputAs'] == 'html':
                 #TODO: show legend properly (see mpld3 bug #274)
                 handles, labels = ax.get_legend_handles_labels()
                 #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
                 leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':7})
             else:
-                if idf.opt['plotPerJoint']:
-                    font_size = 30
-                else:
-                    font_size = 12
-                matplotlib.rcParams.update({'font.size': font_size})
-                matplotlib.rcParams.update({'axes.labelsize': font_size - 2})
-                matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
-                matplotlib.rcParams.update({'axes.titlesize': font_size})
-                matplotlib.rcParams.update({'legend.fontsize': font_size})
-                matplotlib.rcParams.update({'xtick.labelsize': font_size -2})
-                matplotlib.rcParams.update({'ytick.labelsize': font_size -2})
-                matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
-                matplotlib.rcParams.update({'patch.linewidth': font_size/15.})
-                matplotlib.rcParams.update({'grid.linewidth': font_size/20.})
                 handles, labels = ax.get_legend_handles_labels()
-                leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':font_size-4})
-                leg.draggable()
+                if idf.opt['outputAs'] != 'tikz':
+                    leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':font_size-4})
+                    leg.draggable()
+
             fig.subplots_adjust(hspace=2)
             fig.set_tight_layout(True)
 
-            if self.html:
+            if idf.opt['outputAs'] == 'html':
                 plugins.clear(fig)
                 plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
                                 plugins.MousePosition(fontsize=14, fmt=".5g"))
                 figures.append(mpld3.fig_to_html(fig))
-            else:
-                plt.show()
+            elif idf.opt['outputAs'] == 'interactive':
+                plt.show(block=False)
+            elif idf.opt['outputAs'] == 'pdf':
+                pp.savefig(plt.gcf())
+            elif idf.opt['outputAs'] == 'tikz':
+                from matplotlib2tikz import save as tikz_save
+                tikz_save('{}_{}_{}.tex'.format(filename,
+                    group['dataset'][0]['title'].replace('_','-'), ds // idf.model.N_DOFS),
+                    figureheight = '\\figureheight', figurewidth = '\\figurewidth', show_info=False)
 
-        if self.html:
+        if idf.opt['outputAs'] == 'html':
             path = os.path.dirname(os.path.abspath(__file__))
             template_environment = Environment(autoescape=False,
                                                loader=FileSystemLoader(os.path.join(path, '../output')),
@@ -589,9 +620,14 @@ class OutputMatplotlib(object):
                 f.write(html)
 
             print("Saved output at file://{}".format(outfile))
+        elif idf.opt['outputAs'] == 'interactive':
+            #keep non-blocking plot windows open
+            plt.show()
+        elif idf.opt['outputAs'] == 'pdf':
+            pp.close()
 
     def openURL(self):
-        import sys, subprocess, time
+        import subprocess, time
 
         time.sleep(1)
         print("Opening output...")

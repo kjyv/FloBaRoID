@@ -10,6 +10,11 @@ import numpy as np
 import colorama
 from colorama import Fore, Back, Style
 
+import sys
+if (sys.version_info < (3, 0)):
+    class FileNotFoundError(OSError):
+        pass
+
 class Timer(object):
     def __enter__(self):
         self.start = time.clock()

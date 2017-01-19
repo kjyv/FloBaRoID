@@ -665,7 +665,11 @@ class Identification(object):
             if self.opt['floatingBase'] is 0 and self.opt['deleteFixedBase']:
                 #don't include equations for 0'th link (as it's fixed)
                 self.delete_cols = [0,1,2,3,4,5,6,7,8,9]
-                start_link = 1
+                if set(self.delete_cols).issubset(self.model.non_identifiable):
+                    start_link = 1
+                else:
+                    start_link = 0
+                    self.delete_cols = []
             else:
                 start_link = 0
                 self.delete_cols = []
@@ -1365,7 +1369,9 @@ class Identification(object):
             # add plots for each joint
             for i in range(self.model.N_DOFS):
                 datasets.append(
-                    { 'unified_scaling': False, 'y_label': 'Torque (Nm)',
+                    { 'unified_scaling': False,
+                      #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
+                      'y_label': 'Torque (Nm)',
                       'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                       'dataset': [
                         {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
@@ -1384,17 +1390,6 @@ class Identification(object):
                     e = tauMeasured[:,i] - tauEstimated[:,i]
                     datasets[-1]['dataset'][0]['data'][0] = np.vstack((datasets[-1]['dataset'][0]['data'][0].T, e)).T
                     datasets[-1]['labels'].append('Error M/E')
-
-            """
-            i = 10
-            datasets.append(
-                { 'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position', 'Torq Meas', 'Torq Est'], 'dataset':
-                  [{'data': [np.vstack((self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]*100, tauMeasured[:,i], tauEstimated[:,i])).T],
-                    'time': rel_time, 'title': self.model.jointNames[i]},
-                  ]
-                }
-            )
-            """
 
             # positions per joint
             for i in range(self.model.N_DOFS):
@@ -1466,14 +1461,10 @@ class Identification(object):
                 }
             )
 
-        from identification.output import OutputMatplotlib
         if self.opt['outputModule'] == 'matplotlib':
-            output = OutputMatplotlib(datasets, html=False)
+            from identification.output import OutputMatplotlib
+            output = OutputMatplotlib(datasets, text=text)
             output.render(self)
-        elif self.opt['outputModule'] == 'html':
-            output = OutputMatplotlib(datasets, html=True, text=text)
-            output.render(self)
-            #output.runServer()
         else:
             print('No known output module given. Not creating plots!')
 

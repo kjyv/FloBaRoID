@@ -14,8 +14,7 @@ import lmi_sdp
 
 epsilon_sdptol = 1e-7
 
-import colorama
-from colorama import Fore, Back, Style
+from colorama import Fore, Back
 
 #simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
 def LMI_PD(lhs, rhs=0):
@@ -123,7 +122,7 @@ def to_cvxopt(objective_func, lmis, variables, objective_type='minimize',
     c, Gs, hs: parameters ready to be input to cvxopt.solvers.sdp()
     """
     if cvxopt is None:
-        raise NotAvailableError(to_cvxopt.__name__)
+        raise lmi_sdp.sdp.NotAvailableError(to_cvxopt.__name__)
 
     obj_coeffs = lmi_sdp.objective_to_coeffs(objective_func, variables,
                                              objective_type)

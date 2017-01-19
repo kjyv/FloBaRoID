@@ -4,16 +4,13 @@ from builtins import range
 from builtins import object
 import sys
 import numpy as np
-import threading
-from IPython import embed
+#import threading
 
 import rospy
 import moveit_commander
-from moveit_msgs.msg import RobotTrajectory, DisplayTrajectory
+#from moveit_msgs.msg import RobotTrajectory, DisplayTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState
-
-from .. trajectoryGenerator import TrajectoryGenerator
 
 # records the states obtained from joint_states messages
 class RecordJointStates(object):
@@ -42,7 +39,7 @@ class RecordJointStates(object):
 def main(config, trajectory, data, move_group):
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node('excitation_move_group', anonymous=False)
-    robot = moveit_commander.RobotCommander()
+    #robot = moveit_commander.RobotCommander()
     group = moveit_commander.MoveGroupCommander(move_group)
 
     # in case there are previous executions still running
@@ -122,6 +119,3 @@ def main(config, trajectory, data, move_group):
 
     print("got {} samples in {}s.".format(data['Q'].shape[0], duration), end=' ')
     print("(about {} Hz)".format(data['measured_frequency']))
-
-if __name__ == '__main__':
-    main({}, {})

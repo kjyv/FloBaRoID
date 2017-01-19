@@ -10,7 +10,6 @@ import sys
 import os
 import argparse
 import numpy as np
-import numpy.linalg as la
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
@@ -20,19 +19,18 @@ from distutils.version import LooseVersion
 if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
     plt.style.use('seaborn-muted')
 
-import os
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.data import Data
 from identification.model import Model
 
-from IPython import embed
-
 #set to simulate torques with iDynTree and override wrong torques from gazebo
 is_gazebo = 1
 
-def readCentauroCSV(dir, config, plot):
+def readCentauroCSV(path, config, plot):
     #names in order of the supplied data
-    jointNames = ['torso_yaw', 'j_arm2_1', 'j_arm2_2', 'j_arm2_3', 'j_arm2_4', 'j_arm2_5', 'j_arm2_6', 'j_arm2_7', 'j_arm1_1', 'j_arm1_2', 'j_arm1_3', 'j_arm1_4', 'j_arm1_5', 'j_arm1_6', 'j_arm1_7']
+    jointNames = ['torso_yaw', 'j_arm2_1', 'j_arm2_2', 'j_arm2_3', 'j_arm2_4', 'j_arm2_5',
+                  'j_arm2_6', 'j_arm2_7', 'j_arm1_1', 'j_arm1_2', 'j_arm1_3', 'j_arm1_4', 'j_arm1_5',
+                  'j_arm1_6', 'j_arm1_7']
     urdf_jointOrder = [0, 8,9,10,11,12,13,14, 1,2,3,4,5,6,7]
 
     config['N_DOFS'] = len(jointNames)
@@ -46,8 +44,8 @@ def readCentauroCSV(dir, config, plot):
 
     #read one file per joint
     for dof in urdf_jointOrder:
-        file = os.path.join(dir, 'CentAcESC_{}_log.txt'.format(dof+1))
-        f = np.loadtxt(file)
+        filepath = os.path.join(path, 'CentAcESC_{}_log.txt'.format(dof+1))
+        f = np.loadtxt(filepath)
 
         if dof == 0:
             # generate some empty arrays, will be calculated in preprocess()
@@ -86,7 +84,7 @@ def readCentauroCSV(dir, config, plot):
 
     return out
 
-def readWalkmanCSV(dir, config, plot):
+def readWalkmanCSV(path, config, plot):
     out = {}
     #field order in csv file
     jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R',
@@ -144,8 +142,8 @@ def readWalkmanCSV(dir, config, plot):
 
     config['N_DOFS'] = len(jointNames) - len(ignoreJoints)
 
-    file = os.path.join(dir, 'jointLog.csv')     #joint positions and torques
-    f = np.loadtxt(file)
+    filepath = os.path.join(path, 'jointLog.csv')     #joint positions and torques
+    f = np.loadtxt(filepath)
     out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
     out['torques'] = np.zeros( (f.shape[0], config['N_DOFS']) )
     out['times'] = np.empty( f.shape[0] )
@@ -178,8 +176,8 @@ def readWalkmanCSV(dir, config, plot):
     #correct signs and offsets (for now)
     out['torques'] = out['torques'] * joint_signs + joint_offsets
 
-    file = os.path.join(dir, 'feedbackData.csv')    # force torque and IMU
-    f = np.loadtxt(file)
+    filepath = os.path.join(path, 'feedbackData.csv')    # force torque and IMU
+    f = np.loadtxt(filepath)
     out['FTleft'] = np.empty((f.shape[0], 6))       # FT left foot, 3 force, 3 torque values
     out['FTright'] = np.empty((f.shape[0], 6))      # FT right foot, 3 force, 3 torque values
     out['IMUrpy'] = np.empty((f.shape[0], 3))       # IMU orientation, r,p,y

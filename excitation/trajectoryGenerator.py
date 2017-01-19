@@ -3,7 +3,6 @@ from __future__ import print_function
 from builtins import range
 from builtins import object
 import numpy as np
-import scipy as sp
 from identification.helpers import URDFHelpers
 
 import matplotlib
@@ -33,9 +32,9 @@ class TrajectoryGenerator(object):
         nf = np.random.randint(1,4, self.dofs)
         q = np.random.rand(self.dofs)*2-1
         for i in range(0, self.dofs):
-            max = 2.0-np.abs(q[i])
-            a[i] = np.random.rand(nf[i])*max-max/2
-            b[i] = np.random.rand(nf[i])*max-max/2
+            maximum = 2.0-np.abs(q[i])
+            a[i] = np.random.rand(nf[i])*maximum-maximum/2
+            b[i] = np.random.rand(nf[i])*maximum-maximum/2
 
         #random values are in rad, so convert
         if self.use_deg:
@@ -297,12 +296,12 @@ class TrajectoryOptimizer(object):
         jac = np.zeros([x0.size,f0.size])
         dx = np.zeros(x0.size)
         for i in range(x0.size):
-           dx[i] = epsilon
-           jac[i] = (f(*((x0+dx,)+args)) - f0)/epsilon
-           dx[i] = 0.0
+            dx[i] = epsilon
+            jac[i] = (f(*((x0+dx,)+args)) - f0)/epsilon
+            dx[i] = 0.0
         return jac.transpose()
 
-    def objective_func(self, x, constr=None):
+    def objective_func(self, x):
         self.iter_cnt += 1
         print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
 

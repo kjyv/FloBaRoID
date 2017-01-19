@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 #-*- coding: utf-8 -*-
 
-import sys
 import numpy as np
-import numpy.linalg as la
-from scipy import signal
-import scipy.linalg as sla
-from IPython import embed
 import re
 
 if __name__ == '__main__':

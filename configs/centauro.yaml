@@ -238,12 +238,13 @@ filterRegCutoff: 5   #frequency in Hz
 ## output and debugging
 
 createPlots: 1               #create or show plots of measurements and estimated values
-outputModule: 'html'         # how to output plots and other stuff ['matplotlib', 'html]
-outputFilename: 'output_centauro.html'    #specify custom filename for html output
+outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
+outputAs: 'html'              #one of ['html', 'pdf', 'interactive']
+outputFilename: 'output_centauro.html'    #specify custom filename for output file
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
-plotPerJoint: 1              #plot each joint with error in one graph
-plotPrioriTorques: 0         #plot the computed torques from the a priori model parameters
-plotErrors: 1                #also plot errors into torque graphs
+plotPerJoint: 1              #plot each joint torque in one graph
+plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
+plotErrors: 0                #plot errors into torque graphs
 
 # options for console output
 showMemUsage: 0              #print used memory for different variables

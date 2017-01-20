@@ -2,10 +2,12 @@
 
 from __future__ import division
 from __future__ import print_function
+from __future__ import unicode_literals
 from future import standard_library
 standard_library.install_aliases()
 from builtins import range
 from builtins import object
+
 import sys
 import os
 import numpy as np
@@ -16,6 +18,11 @@ from colorama import Fore, Back, Style
 
 from IPython import embed
 np.core.arrayprint._line_width = 160
+
+# redefine unicode for testing in python2/3
+import sys
+if sys.version_info >= (3, 0):
+    unicode = str
 
 #plot colors
 colors = []
@@ -242,7 +249,7 @@ class OutputConsole(object):
                 # print values/description
                 template = ''
                 for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) in [str, list]):
+                    if(type(lines[0][w]) in [str, unicode, list]):
                         # strings don't have precision
                         template += '|{{{}:{}}}'.format(w, column_widths[w])
                     else:
@@ -383,7 +390,7 @@ class OutputConsole(object):
                 # print values/description
                 template = ''
                 for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) == str):
+                    if(type(lines[0][w]) in [str, unicode]):
                         # strings don't have precision
                         template += '|{{{}:{}}}'.format(w, column_widths[w])
                     else:
@@ -617,7 +624,8 @@ class OutputMatplotlib(object):
 
             context = { 'figures': figures, 'text': self.text }
             outfile = os.path.join(path, '..', 'output', filename)
-            with open(outfile, 'w') as f:
+            import codecs
+            with codecs.open(outfile, 'w', 'utf-8') as f:
                 html = template_environment.get_template("templates/index.html").render(context)
                 f.write(html)
 

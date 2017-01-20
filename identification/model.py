@@ -54,8 +54,8 @@ class Model(object):
 
         # define what regressor type
         if regressor_file:
-            with open(regressor_file, 'r') as file:
-               regrXml = file.read()
+            with open(regressor_file, 'r') as filename:
+                regrXml = filename.read()
 
             self.jointNames = []
             import xml.etree.ElementTree as ET
@@ -162,6 +162,7 @@ class Model(object):
         qddot = samples['accelerations'][sample_idx]
         tau = samples['torques'][sample_idx].copy()
 
+        '''
         if self.opt['floatingBase']:
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
@@ -182,9 +183,10 @@ class Model(object):
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)
 
-            #dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
-            #                      world_gravity)
+            dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
+                                  world_gravity)
             #TODO: how to set base vel,acc and rotation with rbdl?
+        '''
 
         # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
@@ -491,7 +493,6 @@ class Model(object):
         if generate_new:
             if self.opt['verbose']:
                 print("generating random regressor")
-            import random
 
             if not n_samples:
                 n_samples = self.N_DOFS * 5000
@@ -779,7 +780,7 @@ class Model(object):
             for k in range(i*10, i*10+9+1):
                 for j in range(0, self.num_base_params):
                     if self.param_syms[k] in self.base_deps[j].free_symbols:
-                        if not j in base_columns:
+                        if j not in base_columns:
                             base_columns.append(j)
                         continue
 

@@ -93,6 +93,8 @@ class OutputConsole(object):
             if idf.opt['outputBarycentric']:
                 xStd = idf.paramHelpers.paramsLink2Bary(idf.model.xStd)
                 xStdModel = idf.paramHelpers.paramsLink2Bary(idf.model.xStdModel)
+                if idf.urdf_file_real:
+                    xStdReal = idf.paramHelpers.paramsLink2Bary(xStdReal)
                 if not summary_only:
                     print("Barycentric (relative to COM) Standard Parameters")
             else:
@@ -263,7 +265,7 @@ class OutputConsole(object):
                     import inspect
                     print(inspect.cleandoc(r"""
                         \begin{table}[h]
-                            \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are found only to satisfy consistency constraints.}
+                            \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are determined only to satisfy consistency constraints.}
                             \begin{center}
                     """))
                     header = inspect.cleandoc(r"""
@@ -296,7 +298,7 @@ class OutputConsole(object):
                         param = p.sub(r'{\1\2}', param)
                         nonid = '*' if idx_p in idf.model.non_identifiable else ''
                         real = xStdReal if idf.urdf_file_real else xStdModel
-                        print("        ${}$ & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], xStd[idx_p], nonid))
+                        print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], xStd[idx_p], nonid))
 
                     print(footer)
                     print(inspect.cleandoc(r"""
@@ -558,8 +560,8 @@ class OutputMatplotlib(object):
                                 ls = '--'
                             else:
                                 ls = '-'
+                            dashes = ()
                             if idf.opt['plotErrors']:
-                                dashes = ()
                                 if i == 2:
                                     ls = '--'
                                     dashes = (3, 0.5)

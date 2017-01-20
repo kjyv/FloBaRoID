@@ -1231,7 +1231,7 @@ class Identification(object):
             optimization.solve_sdp = optimization.cvxopt_conelp
 
         u = solution[0, 0]
-        print("found std solution with distance {} from CAD solution".format(u))
+        print("found std solution with distance {} from CAD solution".format(u))
         self.model.xStd = np.squeeze(np.asarray(solution[1:]))
         #self.model.xStd[self.model.non_identifiable] = self.model.xStdModel[self.model.non_identifiable]
 
@@ -1519,7 +1519,7 @@ def main():
     class Logger(object):
         def __init__(self):
             self.terminal = sys.stdout
-            self.log = ""
+            self.log = u""
 
         def write(self, message):
             self.terminal.write(message)

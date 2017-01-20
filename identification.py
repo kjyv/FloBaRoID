@@ -69,10 +69,6 @@ class Identification(object):
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 1
 
-        # if using fixed base dynamics, remove first link that is the fixed base which should completely
-        # not be identifiable and not be part of equations (as it does not move)
-        self.opt['deleteFixedBase'] = 1
-
         # use RBDL for simulation
         self.opt['useRBDL'] = 0
 
@@ -641,7 +637,7 @@ class Identification(object):
             print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
 
-    def initSDP_LMIs(self):
+    def initSDP_LMIs(self, remove_nonid=True):
         ''' initialize LMI matrices to set physical consistency constraints for SDP solver
             based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
         '''
@@ -1211,10 +1207,13 @@ class Identification(object):
         epsilon_safemargin = 1e-6
         self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
+        #closest to CAD but ignore non_identifiable params
+        #sol_cad_dist = Matrix(self.model.xStdModel[self.model.identifiable] - self.model.param_syms[self.model.identifiable])
         sol_cad_dist = Matrix(self.model.xStdModel - self.model.param_syms)
         u = Symbol('u')
         U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
                              [sol_cad_dist, I(self.model.num_params)]])
+        #                     [sol_cad_dist, I(len(self.model.identifiable))]])
         U_rho = U_rho.as_explicit()
 
         lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
@@ -1234,6 +1233,7 @@ class Identification(object):
         u = solution[0, 0]
         print("found std solution with distance {} from CAD solution".format(u))
         self.model.xStd = np.squeeze(np.asarray(solution[1:]))
+        #self.model.xStd[self.model.non_identifiable] = self.model.xStdModel[self.model.non_identifiable]
 
 
     def findFeasibleStdFromStd(self, xStd):
@@ -1292,18 +1292,23 @@ class Identification(object):
             self.identifyBaseParameters()
 
             if self.opt['useConsistencyConstraints']:
-                #do SDP constrained OLS identification
-                self.initSDP_LMIs()
-
                 if self.opt['useAPriori']:
                     self.getBaseParamsFromParamError()
 
                 if self.opt['identifyClosestToCAD']:
                     # first estimate feasible base params, then find corresponding feasible std
                     # params while minimizing distance to CAD
+                    self.opt['deleteFixedBase'] = 0
+                    self.initSDP_LMIs(remove_nonid=False)
                     self.identifyFeasibleBaseParameters()
+                    self.opt['deleteFixedBase'] = 1
+                    self.initSDP_LMIs(remove_nonid=True)
                     self.findFeasibleStdFromFeasibleBase(self.model.xBase)
                 else:
+                    # if using fixed base dynamics, remove first link that is the fixed base which should completely
+                    # not be identifiable and not be part of equations (as it does not move)
+                    self.opt['deleteFixedBase'] = 1
+                    self.initSDP_LMIs()
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt['estimateWith'] is 'std_direct':
                         self.identifyStandardParametersDirect()
@@ -1311,16 +1316,16 @@ class Identification(object):
                     else:
                         self.identifyFeasibleStandardParameters()
 
-                # get feasible base params, then project back to std. distance to CAD not minimized and std not feasible
-                #self.identifyFeasibleBaseParameters()
-                #self.findStdFromBaseParameters()
-
-                #get OLS standard parameters (with a priori), then correct to feasible
+                # get OLS standard parameters (with a priori), then correct to feasible
                 #self.findStdFromBaseParameters()
                 #if self.opt['useAPriori']:
                 #    self.getBaseParamsFromParamError()
 
+                # correct std solution to feasible if necessary (e.g. infeasible solution from
+                # unsuccessful optimization run)
                 if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
+                    #get full LMIs again
+                    self.initSDP_LMIs(remove_nonid=False)
                     print("Correcting solution to feasible std (non-optimal)")
                     self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
             else:
@@ -1334,7 +1339,6 @@ class Identification(object):
                     #only then go back to absolute base params
                     if self.opt['useAPriori']:
                         self.getBaseParamsFromParamError()
-
 
 
     def plot(self, text=None):

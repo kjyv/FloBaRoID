@@ -175,6 +175,9 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     tic = time.time()
     cvxopt.solvers.options['maxiters'] = 100
+    cvxopt.solvers.options['show_progress'] = False
+    #cvxopt.solvers.options['feastol'] = 1e-5
+
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     toc = time.time()
     state = sdpout['status']
@@ -212,8 +215,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
 
 
 def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # use dsdp5 directly (probably faster, can use (also non-feasible)
-    # starting points
+    # use dsdp5 directly (faster than cvxopt, can use starting points, more robust)
     import subprocess
     import os
 
@@ -226,14 +228,12 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     with open(os.path.join(path, 'sdpa_dat', 'sdp.dat-s'), 'w') as f:
         f.write(sdpadat)
 
-    if primalstart is not None:
-        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
+    if primalstart is None:
+        primalstart = np.zeros(len(variables)-1)
+    with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
             np.savetxt(f, primalstart)
-    else:
-        with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
-            np.savetxt(f, np.zeros(len(variables)-1))
 
-    # change options for far away solutions
+    # change options to allow for far away solutions
     if wide_bounds:
         bounds = ['-boundy', '1e15', '-penalty', '1e15']
     else:
@@ -250,16 +250,18 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         state = 'stopped'
         result = e.output
 
-    #print(result)
-
     error = list()
     for s in result.split('\n'):
         if 'DSDP Terminated Due to' in s:
             error.append(s)
+            state = 'infeasible'
         if 'DSDP Primal Unbounded, Dual Infeasible' in s:
             error.append(s)
+            state = 'infeasible'
         if 'DSDP Converged' in s:
-            break
+            # there can be converged and dual infeasible messages but errors come last
+            state = 'optimal'
+
     if error:
         state = 'infeasible'
         print(Fore.RED + error[0] + Fore.RESET)

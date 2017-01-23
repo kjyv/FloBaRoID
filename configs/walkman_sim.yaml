@@ -239,10 +239,10 @@ symmetryConstraints:
 # for some methods, this gives parameters that are more likely to be consistent
 useAPriori: 1
 
-# identify and use direct standard with essential parameters
+# identify std parameters directly, but only for essential parameters (Gautier, 2013)
 useEssentialParams: 0
 
-# whether to include linear dependent columns in essential params or not
+# after getting essential base params, include dependent std columns for std essential params
 useDependents: 0
 
 # use weighted least squares(WLS) instead of ordinary least squares
@@ -276,8 +276,8 @@ showErrorHistogram: 0        #show estimation error distribution
 showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
-showBaseParams: 0            #display a list of identified base params (if appliable)
-showBaseEqns: 1              #show which std params are combined for each base param
+showBaseParams: 1            #display a list of identified base params (if appliable)
+showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
 verbose: 1                   #show more messages

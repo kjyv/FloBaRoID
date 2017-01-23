@@ -107,6 +107,7 @@ useConsistencyConstraints: 1
 # finding feasible standard parameters
 identifyClosestToCAD: 0
 
+# limit non-identifiable params to stay close to apriori
 limitNonIdentifiable: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
@@ -153,10 +154,10 @@ symmetryConstraints: []
 # (not used with constrained SDP solver)
 useAPriori: 0
 
-# identify and use direct standard with essential parameters
+# identify std parameters directly, but only for essential parameters (Gautier, 2013)
 useEssentialParams: 0
 
-# whether to include linear dependent columns in essential params or not
+# after getting essential base params, include dependent std columns for std essential params
 useDependents: 0
 
 # use weighted least squares(WLS) instead of ordinary least squares
@@ -194,7 +195,6 @@ outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
 showBaseParams: 1            #display a list of identified base params (if appliable)
 showBaseEqns: 0              #show which std params are combined for each base param
-outputLatex: 1               #format parameter output as latex
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
 verbose: 1                   #show more messages

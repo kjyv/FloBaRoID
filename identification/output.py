@@ -20,7 +20,6 @@ from IPython import embed
 np.core.arrayprint._line_width = 160
 
 # redefine unicode for testing in python2/3
-import sys
 if sys.version_info >= (3, 0):
     unicode = str
 

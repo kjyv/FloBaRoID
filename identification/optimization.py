@@ -262,6 +262,10 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
             # there can be converged and dual infeasible messages but errors come last
             state = 'optimal'
 
+    #if state != 'optimal':
+        #if there were errors, print all the output
+    #    print(result)
+
     if error:
         state = 'infeasible'
         print(Fore.RED + error[0] + Fore.RESET)

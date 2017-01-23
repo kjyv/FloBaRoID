@@ -91,7 +91,7 @@ class Identification(object):
         self.validation_file = validation_file
 
 
-    def estimateRegressorTorques(self, estimateWith=None):
+    def estimateRegressorTorques(self, estimateWith=None, print_stats=False):
         """ get torque estimations using regressors, prepare for plotting """
 
         if not estimateWith:
@@ -120,14 +120,36 @@ class Identification(object):
         #if self.opt['floatingBase']:
         #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
-        if self.opt['showErrorHistogram'] == 1:
+        # give some data statistics
+        if print_stats and (self.opt['verbose'] or self.opt['showErrorHistogram'] == 1):
             error = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
-            plt.hist(error, 50)
-            plt.title("error histogram")
-            plt.draw()
-            plt.show()
-            # don't show again if we come here later
-            self.opt['showErrorHistogram'] = 2
+
+            #how gaussian is the error of the data vs estimation?
+            #http://stats.stackexchange.com/questions/62291/can-one-measure-the-degree-of-empirical-data-being-gaussian
+            if self.opt['verbose']:
+                '''
+                W, p = stats.shapiro(error)
+                if p > 0.05:
+                    print("error is normal distributed")
+                else:
+                    print("error is not normal distributed (p={})".format(p))
+                print("W: {} (> 0.999 isn't too far from normality)".format(W))
+                '''
+
+                k2, p = stats.mstats.normaltest(error)
+                if p > 0.05:
+                    print("error is normal distributed")
+                else:
+                    print("error is not normal distributed (p={})".format(p))
+                print("k2: {} (the closer it is to 0, the closer to normal distributed)".format(k2))
+
+            if self.opt['showErrorHistogram'] == 1:
+                plt.hist(error, 50)
+                plt.title("error histogram")
+                plt.draw()
+                plt.show()
+                # don't show again if we come here later
+                self.opt['showErrorHistogram'] = 2
 
         # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
         if estimateWith == 'urdf':
@@ -292,8 +314,9 @@ class Identification(object):
 
             error_start = error_func(tauDiff)
 
-            k2, p = stats.normaltest(error_start, axis=0)
             if self.opt['verbose']:
+                W, p = stats.shapiro(error_start)
+                #k2, p = stats.normaltest(error_start, axis=0)
                 if np.mean(p) > 0.05:
                     print("error is normal distributed")
                 else:
@@ -520,9 +543,9 @@ class Identification(object):
         if id_only:
             return
 
-        if self.opt['showBaseParams']:
+        if self.opt['showBaseParams'] or self.opt['verbose']:
             # get estimation once with previous ordinary LS solution parameters
-            self.estimateRegressorTorques('base')
+            self.estimateRegressorTorques('base', print_stats=True)
             if not 'selectingBlocks' in self.opt or not self.opt['selectingBlocks']:
                 self.p_sigma_x = self.getStdDevForParams()
 
@@ -1530,6 +1553,10 @@ def main():
 
     sys.stdout = Logger()
     logger = sys.stdout
+
+    #for ipython, reset this with
+    #import sys
+    #sys.stdout = sys.__stdout__
 
     idf = Identification(config, args.model, args.model_real, args.measurements, args.regressor, args.validation)
 

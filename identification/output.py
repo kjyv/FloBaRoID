@@ -194,14 +194,14 @@ class OutputConsole(object):
                 else:
                     sigma = 0.0
 
-                if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
-                    if idx_p in idf.model.non_identifiable:
+                if idf.urdf_file_real and idf.opt['constrainToConsistent']:
+                    if idx_p in idf.model.non_id:
                         idf.sdp.constr_per_param[idx_p].append('nID')
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
                 elif idf.urdf_file_real:
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
-                elif idf.opt['useConsistencyConstraints']:
-                    if idx_p in idf.model.non_identifiable:
+                elif idf.opt['constrainToConsistent']:
+                    if idx_p in idf.model.non_id:
                         idf.sdp.constr_per_param[idx_p].append('nID')
                     vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
                 elif idf.opt['useEssentialParams']:
@@ -213,13 +213,13 @@ class OutputConsole(object):
                 if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
                     idx_ep += 1
 
-            if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
+            if idf.urdf_file_real and idf.opt['constrainToConsistent']:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 6, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0, 0]
             elif idf.urdf_file_real:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0]
-            elif idf.opt['useConsistencyConstraints']:
+            elif idf.opt['constrainToConsistent']:
                 column_widths = [13, 13, 7, 7, 6, 45]
                 precisions = [8, 8, 4, 1, 0, 0]
             elif idf.opt['useEssentialParams']:
@@ -234,11 +234,11 @@ class OutputConsole(object):
                 template = ''
                 for w in range(0, len(column_widths)):
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
+                if idf.urdf_file_real and idf.opt['constrainToConsistent']:
                     print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Constr", "Description"))
                 elif idf.urdf_file_real:
                     print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Description"))
-                elif idf.opt['useConsistencyConstraints']:
+                elif idf.opt['constrainToConsistent']:
                     print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))
                 elif idf.opt['useEssentialParams']:
                     print(template.format("A priori", "Ident", "Change", "%e", "%σ", "Description"))
@@ -302,7 +302,7 @@ class OutputConsole(object):
                         param = str(idf.model.param_syms[idx_p])
                         p = re.compile(r"([0-9]+)(.*)")
                         param = p.sub(r'{\1\2}', param)
-                        nonid = '*' if idx_p in idf.model.non_identifiable else ''
+                        nonid = '*' if idx_p in idf.model.non_id else ''
                         real = xStdReal if idf.urdf_file_real else xStdModel
                         print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], xStd[idx_p], nonid))
 
@@ -458,10 +458,15 @@ class OutputConsole(object):
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.model.xStd)))
-                sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
-                sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                print( "Squared distance of std parameter vectors (identified, apriori) to real: {} vs. {}".\
+                p_idf = idf.model.identifiable
+                sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
+                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
+                print( "Squared distance of identifiable std parameter vectors (identified, apriori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
+                #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
+                #sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
+                #print( "Squared distance of std parameter vectors (identified, apriori) to real: {} vs. {}".\
+                #        format(sq_error_idf, sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))

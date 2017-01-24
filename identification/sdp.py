@@ -11,13 +11,17 @@ import scipy
 import scipy.linalg as sla
 
 import sympy
-from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, Identity, eye, zeros
+from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, ZeroMatrix, Identity, eye, zeros
 from distutils.version import LooseVersion
 is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.5')
+if is_old_sympy:
+    print("Old sympy version found (< 0.7.5)! Please update.")
 
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
+
+from IPython import embed
 
 class SDP(object):
     def initSDP_LMIs(self, idf, remove_nonid=True):
@@ -44,7 +48,7 @@ class SDP(object):
             if idf.opt['floatingBase'] is 0 and idf.opt['deleteFixedBase']:
                 #don't include equations for 0'th link (as it's fixed)
                 self.delete_cols = [0,1,2,3,4,5,6,7,8,9]
-                if set(self.delete_cols).issubset(idf.model.non_identifiable):
+                if set(self.delete_cols).issubset(idf.model.non_id):
                     start_link = 1
                 else:
                     start_link = 0
@@ -69,6 +73,7 @@ class SDP(object):
                               idf.model.param_syms[i*10+4+5]]
                            ])
 
+                '''
                 if remove_nonid and i == 1:  #test for kuka non-id'able params
                         L_star = Matrix([[idf.model.param_syms[i*10+4+5]]])
                         #s_star = Matrix([[l[0], l[1]]])
@@ -86,9 +91,10 @@ class SDP(object):
                         #    self.delete_cols.append(20)
                         #    D_inertia_blocks.append(Di.as_explicit().as_mutable())
                 else:
-                    Di = BlockMatrix([[L,    S(l).T],
-                                      [S(l), I(3)*m]])
-                    D_inertia_blocks.append(Di.as_explicit().as_mutable())
+                '''
+                Di = BlockMatrix([[L,    S(l).T],
+                                  [S(l), I(3)*m]])
+                D_inertia_blocks.append(Di.as_explicit().as_mutable())
 
             D_other_blocks = []
 
@@ -99,8 +105,10 @@ class SDP(object):
             for i in range(idf.model.num_params):
                 self.constr_per_param[i] = []
 
+            '''
+            # constraining like this often results in no solutions
             if idf.opt['limitNonIdentifiable']:
-                for p in idf.model.non_identifiable:
+                for p in idf.model.non_id:
                     if p not in self.delete_cols: #and p%10>3:
                         #params_to_skip.append(p)
                         tol = 2
@@ -109,6 +117,7 @@ class SDP(object):
                         D_other_blocks.append(ub)
                         D_other_blocks.append(lb)
                         self.constr_per_param[p].append('prox')
+            '''
 
             # look at condition numbers per link
             linkConds = idf.model.getSubregressorsConditionNumbers()
@@ -188,12 +197,7 @@ class SDP(object):
                         #print link_cuboid_hulls[i]*idf.model.xStdModel[i*10]
                         l = Matrix( idf.model.param_syms[i*10+1:i*10+4])
                         m = idf.model.mass_syms[i]
-                        '''
-                        if i == 1:
-                            m = idf.model.xStdModel[10]
-                        if i == 2:
-                            m = idf.model.xStdModel[20]
-                        '''
+
                         link_cuboid_hull = link_cuboid_hulls[i]
                         for j in range(3):
                             if i*10+1+j not in self.delete_cols:
@@ -249,29 +253,15 @@ class SDP(object):
             if idf.opt['verbose']:
                 print("Preparing SDP...")
 
-            #build OLS matrix
             I = Identity
             delta = Matrix(idf.model.param_syms)
 
             #ignore some cols that are non-identifiable
             for c in reversed(self.delete_cols):
-                if is_old_sympy:
-                    delta.col_del(c)
-                else:
-                    delta.row_del(c)
+                delta.row_del(c)
 
             YBase = idf.model.YBase
             tau = idf.model.torques_stack   #always absolute torque values
-
-            # add a priori distance regularization term
-            # (basically cost function includes torque estimation error and CAD distanca with proportion l)
-            # problems because of QR afterwards?
-            if idf.opt['useRegressorRegularization']:
-                #TODO: normalize torque error with num_samples
-                num_samples = 1 #YBase.shape[0]/idf.model.N_DOFS
-                l = [num_samples*1]*idf.model.num_params
-                YBase = np.vstack((YBase, (l*idf.model.B.T).T))
-                tau = np.concatenate((tau, idf.model.xStdModel*num_samples))
 
             Q, R = la.qr(YBase)
             Q1 = Q[:, 0:idf.model.num_base_params]
@@ -292,29 +282,45 @@ class SDP(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            if idf.opt['floatingBase']:
-                contactForces = Q.T.dot(idf.model.contactForcesSum)
-            else:
-                contactForces = zeros(idf.model.num_base_params, 1)
+            contactForces = Q.T.dot(idf.model.contactForcesSum)
+            if idf.opt['useRegressorRegularization']:
+                p_nid = idf.model.non_id
+                p_nid = list(set(p_nid).difference(set(self.delete_cols)))
+                contactForces = Matrix(np.concatenate( (contactForces, np.zeros(len(p_nid)))))
 
             import time
             print("Step 1...", time.ctime())
 
-            # minimize estimation error of to-be-found parameters delta
-            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*K*delta.T - contactForces)
+            # get minimal regresion error
+            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
+
+            # get additional regression error
+            if idf.opt['useRegressorRegularization']:
+                # add regularization term to cost function to include torque estimation error and CAD distance
+                # get symbols that are non-id but are not in delete_cols already
+                delta_nonid = Matrix(idf.model.param_syms[p_nid])
+                #num_samples = YBase.shape[0]/idf.model.N_DOFS
+                base_error = np.mean(sla.norm(idf.model.tauMeasured - idf.tauEstimated, axis=1))
+                l = (float(base_error) / len(p_nid)) * 1.5   #proportion of distance term
+
+                p = BlockMatrix([[(K*delta)], [delta_nonid]])
+                Y = BlockMatrix([[Matrix(R1),             zeros(R1.shape[0], len(p_nid))],
+                                 [zeros(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
+                rho1 = np.concatenate((rho1, l*idf.model.xStdModel[p_nid]))
+                e_rho1 = Matrix(rho1) - (Y*p - contactForces)
             else:
                 e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
 
             print("Step 2...", time.ctime())
 
-            # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
+            # minimize estimation error of to-be-found parameters delta
+            # (regressor dot std variables projected to base - contacts should be close to measured torques)
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1, I(idf.model.num_base_params)]])
+                                 [e_rho1,            I(e_rho1.shape[0])]])
+
             print("Step 3...", time.ctime())
+            # TODO: this is slow when matrices get bigger, can get faster with SymEngine or using float32?
             U_rho = U_rho.as_explicit()
             print("Step 4...", time.ctime())
 
@@ -343,11 +349,11 @@ class SDP(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with distance {} from OLS solution".format(u_star))
+                print("found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
-            #fill up with apriori values for non-identifiable variables
+            #prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
                 idf.model.xStd = np.insert(idf.model.xStd, c, 0)
             idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
@@ -372,10 +378,20 @@ class SDP(object):
             I = Identity
             delta = Matrix(idf.model.param_syms)
 
-            Q, R = la.qr(idf.YStd_nonsing)
+            YStd = idf.YStd_nonsing
+            tau = idf.model.torques_stack
+
+            if idf.opt['useRegressorRegularization']:
+                p_nid = idf.model.non_id
+                num_samples = 1 #YBase.shape[0]/idf.model.N_DOFS
+                l = [num_samples*0.001]*len(p_nid)
+                YStd = np.vstack((YStd, (l*np.identity(idf.model.num_params)[p_nid].T).T))
+                tau = np.concatenate((tau, l*idf.model.xStdModel[p_nid]))
+
+            Q, R = la.qr(YStd)
             Q1 = Q[:, 0:idf.model.num_params]
             #Q2 = Q[:, idf.model.num_base_params:]
-            rho1 = Q1.T.dot(idf.model.torques_stack)
+            rho1 = Q1.T.dot(tau)
             R1 = np.matrix(R[:idf.model.num_params, :idf.model.num_params])
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -390,10 +406,7 @@ class SDP(object):
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contatcs should be close to measured torques)
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*delta - contactForces)
-            else:
-                e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
+            e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
 
             print("Step 2...", time.ctime())
 
@@ -434,7 +447,7 @@ class SDP(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with {} error increase from OLS solution".format(u_star))
+                print("found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -546,10 +559,7 @@ class SDP(object):
             else:
                 contactForces = zeros(idf.model.num_base_params, 1)
 
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*beta_symbs - contactForces)
-            else:
-                e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
+            e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
 
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
             u = Symbol('u')
@@ -612,8 +622,8 @@ class SDP(object):
         #add explicit constraints for each base param equation and estimated value
         D_base_val_blocks = []
         for i in range(idf.model.num_base_params):
-            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] - 0.0001]) )
-            D_base_val_blocks.append( Matrix([xBase[i] + 0.0001 - beta[i]]) )
+            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] - 0.00001]) )
+            D_base_val_blocks.append( Matrix([xBase[i] + 0.00001 - beta[i]]) )
         self.D_blocks += D_base_val_blocks
 
         epsilon_safemargin = 1e-6

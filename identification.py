@@ -65,7 +65,8 @@ class Identification(object):
         # use RBDL for simulation (only correct for fixed-based atm)
         self.opt['useRBDL'] = 0
 
-        self.opt['useRegressorRegularization'] = 0
+        # add regularization term to SDP identification that minimized CAD distance for non-identifiable params
+        self.opt['useRegressorRegularization'] = 1
 
         #### end additional config flags
 
@@ -683,7 +684,7 @@ class Identification(object):
             #need to identify OLS base params in any case
             self.identifyBaseParameters()
 
-            if self.opt['useConsistencyConstraints']:
+            if self.opt['constrainToConsistent']:
                 if self.opt['useAPriori']:
                     self.getBaseParamsFromParamError()
 
@@ -693,8 +694,8 @@ class Identification(object):
                     self.opt['deleteFixedBase'] = 0
                     self.sdp.initSDP_LMIs(self, remove_nonid=False)
                     self.sdp.identifyFeasibleBaseParameters(self)
-                    self.opt['deleteFixedBase'] = 1
-                    self.sdp.initSDP_LMIs(self, remove_nonid=True)
+                    #self.opt['deleteFixedBase'] = 1
+                    #self.sdp.initSDP_LMIs(self, remove_nonid=True)
                     self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     # if using fixed base dynamics, remove first link that is the fixed base which should completely
@@ -702,7 +703,7 @@ class Identification(object):
                     self.opt['deleteFixedBase'] = 1
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
-                    if self.opt['estimateWith'] is 'std_direct':
+                    if self.opt['estimateWith'] == 'std_direct':
                         self.identifyStandardParametersDirect()
                         self.sdp.identifyFeasibleStandardParametersDirect(self)
                     else:
@@ -934,8 +935,8 @@ def main():
         old_essential_option = idf.opt['useEssentialParams']
         idf.opt['useEssentialParams'] = 0
 
-        old_feasible_option = idf.opt['useConsistencyConstraints']
-        idf.opt['useConsistencyConstraints'] = 0
+        old_feasible_option = idf.opt['constrainToConsistent']
+        idf.opt['constrainToConsistent'] = 0
 
         # loop over input blocks and select good ones
         while 1:
@@ -953,7 +954,7 @@ def main():
         idf.data.assembleSelectedBlocks()
         idf.opt['selectingBlocks'] = 0
         idf.opt['useEssentialParams'] = old_essential_option
-        idf.opt['useConsistencyConstraints'] = old_feasible_option
+        idf.opt['constrainToConsistent'] = old_feasible_option
 
     if idf.opt['removeNearZero']:
         idf.data.removeNearZeroSamples()

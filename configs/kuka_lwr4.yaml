@@ -2,7 +2,7 @@
 #### excitation
 
 excitationSimulate: 1          #simulate torques instead of using measurements (use e.g. with Gazebo)
-exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null
+exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null (simulate)
 useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 1          #find new parameters with optimization or load previous params from file (if no file exists, use random)
@@ -101,14 +101,11 @@ minTol: 0.0001
 # (currently this also does the estimation, so previously selecting another method has no effect)
 # if only torque estimation is desired, not using this self.option might give a better model
 # accuracy with approriate parameters
-useConsistencyConstraints: 1
+constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
 identifyClosestToCAD: 0
-
-# limit non-identifiable params to stay close to apriori
-limitNonIdentifiable: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
@@ -174,6 +171,7 @@ filterRegCutoff: 5   #frequency in Hz
 
 ## output and debugging
 
+# plotting
 createPlots: 1               #create or show plots of measurements and estimated values
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
 outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
@@ -182,18 +180,20 @@ outputFilename: 'output_kuka.html'    #specify custom filename for output file
 #outputFilename: 'kuka'       #specify custom filename for output file
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
-plotPrioriTorques: 0         #plot the computed torques from the a priori model parameters
-plotErrors: 1                #plot errors into torque graphs
+plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
+plotErrors: 0                #plot errors into torque graphs
+plotLegend: 1                #show plot legend
+
+showRandomRegressor: 0       #show 2d plot of random regressor
+showErrorHistogram: 0        #show estimation error distribution
 
 # options for console output
 showMemUsage: 0              #print used memory for different variables
 showTiming: 0                #show times various steps have taken
-showRandomRegressor: 0       #show 2d plot of random regressor
-showErrorHistogram: 0        #show estimation error distribution
 showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
-showBaseParams: 1            #display a list of identified base params (if appliable)
+showBaseParams: 0            #display a list of identified base params (if appliable)
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality

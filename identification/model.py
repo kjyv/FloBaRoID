@@ -679,7 +679,7 @@ class Model(object):
         self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i),real=True) for i in range(self.num_base_params)])
         self.param_syms = list()
         self.mass_syms = list()
-        for i in range(0,self.N_LINKS):
+        for i in range(0, self.N_LINKS):
             #mass
             m = symbols('m_{}'.format(i))
             self.param_syms.append(m)

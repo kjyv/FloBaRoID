@@ -17,11 +17,6 @@ import scipy
 import scipy.linalg as sla
 import scipy.stats as stats
 
-import sympy
-from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, Identity, eye, zeros
-from distutils.version import LooseVersion
-is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.5')
-
 # plotting
 import matplotlib
 import matplotlib.pyplot as plt
@@ -33,12 +28,10 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from identification.model import Model
 from identification.data import Data
 from identification.output import OutputConsole
+from identification.sdp import SDP
 from identification import helpers
 
 from colorama import Fore, Back, Style
-
-from identification import optimization
-from identification.optimization import LMI_PSD, LMI_PD
 
 from IPython import embed
 np.core.arrayprint._line_width = 160
@@ -69,8 +62,10 @@ class Identification(object):
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 1
 
-        # use RBDL for simulation
+        # use RBDL for simulation (only correct for fixed-based atm)
         self.opt['useRBDL'] = 0
+
+        self.opt['useRegressorRegularization'] = 0
 
         #### end additional config flags
 
@@ -84,6 +79,7 @@ class Identification(object):
 
         self.paramHelpers = helpers.ParamHelpers(self.model.num_inertial_params)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
+        self.sdp = SDP()
 
         self.tauEstimated = list()
         self.res_error = 100
@@ -218,9 +214,9 @@ class Identification(object):
 
         self.val_error = sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation) \
                             *100/sla.norm(self.tauMeasuredValidation)
-        print("Validation error (std params): {}%".format(self.val_error))
+        print("Relative validation error: {}%".format(self.val_error))
         self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation, axis=1))
-        print("Validation estimation error (mean residual): {} Nm".format(self.val_residual))
+        print("Absolute validation error: {} Nm".format(self.val_residual))
 
 
     def getBaseParamsFromParamError(self):
@@ -522,6 +518,7 @@ class Identification(object):
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(YBase)
 
+        # identify
         if self.opt['floatingBase']:
             self.model.xBase = self.model.YBaseInv.dot(tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
         else:
@@ -660,634 +657,6 @@ class Identification(object):
             print("Identifying %s std essential parameters took %.03f sec." % (len(self.stdEssentialIdx), t.interval))
 
 
-    def initSDP_LMIs(self, remove_nonid=True):
-        ''' initialize LMI matrices to set physical consistency constraints for SDP solver
-            based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
-        '''
-
-        with helpers.Timer() as t:
-            if self.opt['verbose']:
-                print("Initializing LMIs...")
-
-            def skew(v):
-                return Matrix([ [     0, -v[2],  v[1] ],
-                                [  v[2],     0, -v[0] ],
-                                [ -v[1],  v[0],   0 ] ])
-            I = Identity
-            S = skew
-
-            # create LMI matrices (symbols) for each link
-            # so that mass is positive, inertia matrix is positive definite
-            # (each matrix block is constrained to be >0 or >=0)
-            D_inertia_blocks = []
-
-            if self.opt['floatingBase'] is 0 and self.opt['deleteFixedBase']:
-                #don't include equations for 0'th link (as it's fixed)
-                self.delete_cols = [0,1,2,3,4,5,6,7,8,9]
-                if set(self.delete_cols).issubset(self.model.non_identifiable):
-                    start_link = 1
-                else:
-                    start_link = 0
-                    self.delete_cols = []
-            else:
-                start_link = 0
-                self.delete_cols = []
-
-            for i in range(start_link, self.model.N_LINKS):
-                m = self.model.mass_syms[i]
-                l = Matrix([ self.model.param_syms[i*10+1],
-                             self.model.param_syms[i*10+2],
-                             self.model.param_syms[i*10+3] ] )
-                L = Matrix([ [self.model.param_syms[i*10+4+0],
-                              self.model.param_syms[i*10+4+1],
-                              self.model.param_syms[i*10+4+2]],
-                             [self.model.param_syms[i*10+4+1],
-                              self.model.param_syms[i*10+4+3],
-                              self.model.param_syms[i*10+4+4]],
-                             [self.model.param_syms[i*10+4+2],
-                              self.model.param_syms[i*10+4+4],
-                              self.model.param_syms[i*10+4+5]]
-                           ])
-
-                Di = BlockMatrix([[L,    S(l).T],
-                                  [S(l), I(3)*m]])
-                D_inertia_blocks.append(Di.as_explicit().as_mutable())
-
-            D_other_blocks = []
-
-            params_to_skip = []
-
-            # collect constraint flags for display
-            self.constr_per_param = {}
-            for i in range(self.model.num_params):
-                self.constr_per_param[i] = []
-
-            '''
-            if self.opt['limitNonIdentifiable']:
-                for p in self.model.non_identifiable:
-                    if p not in self.delete_cols and p%10>3:
-                        #params_to_skip.append(p)
-                        tol = 1
-                        ub = Matrix([self.model.xStdModel[p]*1+tol - self.model.param_syms[i]])
-                        lb = Matrix([-self.model.xStdModel[p]*1-tol + self.model.param_syms[i]])
-                        D_other_blocks.append(ub)
-                        D_other_blocks.append(lb)
-                        self.constr_per_param[p].append('prox')
-            '''
-
-            # look at condition numbers per link
-            linkConds = self.model.getSubregressorsConditionNumbers()
-            robotmass_apriori = 0
-            for i in range(0, self.model.N_LINKS):
-                robotmass_apriori+= self.model.xStdModel[i*10]  #count a priori link masses
-
-                #for links that have too high condition number, don't change params
-                if self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']:
-                    print(Fore.YELLOW + 'skipping identification of link {} ({})!'.format(i, self.model.linkNames[i]) + Fore.RESET)
-                    # don't change mass
-                    params_to_skip.append(i*10)
-
-                    # don't change COM
-                    params_to_skip.append(i*10+1)
-                    params_to_skip.append(i*10+2)
-                    params_to_skip.append(i*10+3)
-
-                    # don't change inertia
-                    params_to_skip.append(i*10+4)
-                    params_to_skip.append(i*10+5)
-                    params_to_skip.append(i*10+6)
-                    params_to_skip.append(i*10+7)
-                    params_to_skip.append(i*10+8)
-                    params_to_skip.append(i*10+9)
-
-            # manually fixed params
-            for p in self.opt['dontChangeParams']:
-                params_to_skip.append(p)
-
-            # create the don't-change constraints
-            for p in set(params_to_skip):
-                D_other_blocks.append(Matrix([self.model.xStdModel[p] - self.model.param_syms[p]]))
-                D_other_blocks.append(Matrix([self.model.param_syms[p] - self.model.xStdModel[p]]))
-                self.constr_per_param[p].append('cad')
-
-            # constrain overall mass within bounds
-            if self.opt['limitOverallMass']:
-                #use given overall mass else use overall mass from CAD
-                if self.opt['limitMassVal']:
-                    robotmaxmass = self.opt['limitMassVal'] - sum(self.model.xStdModel[0:start_link*10:10])
-                    robotmaxmass_ub = robotmaxmass * 1.01
-                    robotmaxmass_lb = robotmaxmass * 0.99
-                else:
-                    robotmaxmass = robotmass_apriori
-                    # constrain with a bit of space around
-                    robotmaxmass_ub = robotmaxmass * 1.3
-                    robotmaxmass_lb = robotmaxmass * 0.7
-
-                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(self.model.mass_syms[start_link:])])) #maximum mass
-                D_other_blocks.append(Matrix([sum(self.model.mass_syms[start_link:]) - robotmaxmass_lb])) #minimum mass
-
-            # constrain for each link separately
-            if self.opt['limitMassToApriori']:
-                # constrain each mass to env of a priori value
-                for i in range(start_link, self.model.N_LINKS):
-                    if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                        ub = Matrix([self.model.xStdModel[i*10]*(1+self.opt['limitMassAprioriBoundary']) -
-                                    self.model.mass_syms[i]])
-                        lb = Matrix([self.model.mass_syms[i] -
-                                     self.model.xStdModel[i*10]*(1-self.opt['limitMassAprioriBoundary'])])
-                        D_other_blocks.append(ub)
-                        D_other_blocks.append(lb)
-                        self.constr_per_param[i*10].append('mA')
-
-            if self.opt['restrictCOMtoHull']:
-                link_cuboid_hulls = np.zeros((self.model.N_LINKS, 3, 2))
-                for i in range(start_link, self.model.N_LINKS):
-                    if not (self.opt['noChange'] and linkConds[i] > self.opt['noChangeThresh']):
-                        link_cuboid_hulls[i] = np.array(
-                            self.urdfHelpers.getBoundingBox(
-                                input_urdf = self.model.urdf_file,
-                                old_com = self.model.xStdModel[i*10+1:i*10+4],
-                                link_nr = i
-                            )
-                        )
-                        #print link_cuboid_hulls[i]*self.model.xStdModel[i*10]
-                        l = Matrix( self.model.param_syms[i*10+1:i*10+4])
-                        m = self.model.mass_syms[i]
-                        '''
-                        if i == 1:
-                            m = self.model.xStdModel[10]
-                        if i == 2:
-                            m = self.model.xStdModel[20]
-                        '''
-                        link_cuboid_hull = link_cuboid_hulls[i]
-                        for j in range(3):
-                            if i*10+1+j not in self.delete_cols:
-                                ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
-                                lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
-                                D_other_blocks.append( ub )
-                                D_other_blocks.append( lb )
-                                self.constr_per_param[i*10+1+j].append('hull')
-
-            # symmetry constraints
-            if self.opt['useSymmetryConstraints'] and self.opt['symmetryConstraints']:
-                for (a, b, sign) in self.opt['symmetryConstraints']:
-                    stol = self.opt['symmetryTolerance']
-                    D_other_blocks.append(Matrix([self.model.param_syms[a] - sign*self.model.param_syms[b]*(1.0-stol)]))
-                    D_other_blocks.append(Matrix([sign*self.model.param_syms[b] - self.model.param_syms[a]*(1.0-stol)]))
-                    self.constr_per_param[a].append('sym')
-                    self.constr_per_param[b].append('sym')
-
-            if self.opt['identifyFriction']:
-                # friction constraints
-                # (only makes sense when no offsets on torque measurements, otherwise can be
-                # negative)
-                for i in range(self.model.N_DOFS):
-                    #Fc > 0
-                    p = self.model.num_inertial_params+i
-                    D_other_blocks.append( Matrix([self.model.param_syms[p]]) )
-                    #Fv > 0
-                    D_other_blocks.append( Matrix([self.model.param_syms[p+self.model.N_DOFS]]) )
-                    D_other_blocks.append( Matrix([self.model.param_syms[p+self.model.N_DOFS*2]]) )
-                    self.constr_per_param[p].append('>0')
-                    self.constr_per_param[p+self.model.N_DOFS].append('>0')
-                    self.constr_per_param[p+self.model.N_DOFS*2].append('>0')
-
-            self.D_blocks = D_inertia_blocks + D_other_blocks
-
-            #self.LMIs = list(map(LMI_PD, self.D_blocks))
-            epsilon_safemargin = 1e-6
-            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
-
-        if self.opt['showTiming']:
-            print("Initializing LMIs took %.03f sec." % (t.interval))
-
-
-    def identifyFeasibleStandardParameters(self):
-        ''' use SDP optimization to solve constrained OLS to find globally optimal physically
-            feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
-        '''
-        with helpers.Timer() as t:
-            #if self.opt['useAPriori']:
-            #    print("Please disable using a priori parameters when using constrained optimization.")
-            #    sys.exit(1)
-
-            if self.opt['verbose']:
-                print("Preparing SDP...")
-
-            #build OLS matrix
-            I = Identity
-            delta = Matrix(self.model.param_syms)
-
-            #ignore some cols that are non-identifiable
-            for c in reversed(self.delete_cols):
-                if is_old_sympy:
-                    delta.col_del(c)
-                else:
-                    delta.row_del(c)
-
-            Q, R = la.qr(self.model.YBase)
-            Q1 = Q[:, 0:self.model.num_base_params]
-            #Q2 = Q[:, self.model.num_base_params:]
-            rho1 = Q1.T.dot(self.model.torques_stack)
-            R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
-
-            # get projection matrix so that xBase = K*xStd
-            if self.opt['useBasisProjection']:
-                K = Matrix(self.model.Binv)
-                for c in reversed(self.delete_cols):
-                    K.col_del(c)
-            else:
-                #Sousa: K = Pb.T + Kd * Pd.T (Kd==self.model.linear_deps, [Pb Pd] == self.model.Pp)
-                #Pb = Matrix(self.model.Pb) #.applyfunc(lambda x: x.nsimplify())
-                #Pd = Matrix(self.model.Pd) #.applyfunc(lambda x: x.nsimplify())
-                K = Matrix(self.model.K) #(Pb.T + Kd * Pd.T)
-
-            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
-            if self.opt['floatingBase']:
-                contactForces = Q.T.dot(self.model.contactForcesSum)
-            else:
-                contactForces = zeros(self.model.num_base_params, 1)
-
-            import time
-            print("Step 1...", time.ctime())
-
-            # minimize estimation error of to-be-found parameters delta
-            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*K*delta.T - contactForces)
-            else:
-                e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
-
-            print("Step 2...", time.ctime())
-
-            # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
-            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
-            u = Symbol('u')
-            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1, I(self.model.num_base_params)]])
-            print("Step 3...", time.ctime())
-            U_rho = U_rho.as_explicit()
-            print("Step 4...", time.ctime())
-
-            if self.opt['verbose']:
-                print("Add constraint LMIs")
-            lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-            variables = [u] + list(delta)
-
-            #solve SDP
-            objective_func = u
-
-            if self.opt['verbose']:
-                print("Solving constrained OLS as SDP")
-
-            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
-            # otherwise returns primal as solution when failing)
-            prime = self.model.xStdModel
-            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-
-            #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':  # or not self.paramHelpers.isPhysicalConsistent(np.squeeze(np.asarray(solution[1:]))):
-                print("Trying again with dsdp5 solver")
-                optimization.solve_sdp = optimization.dsdp5
-                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
-                optimization.solve_sdp = optimization.cvxopt_conelp
-
-            u_star = solution[0,0]
-            if u_star:
-                print("found std solution with distance {} from OLS solution".format(u_star))
-            delta_star = np.matrix(solution[1:])
-            self.model.xStd = np.squeeze(np.asarray(delta_star))
-
-            #fill up with apriori values for non-identifiable variables
-            for c in self.delete_cols:
-                self.model.xStd = np.insert(self.model.xStd, c, 0)
-            self.model.xStd[self.delete_cols] = self.model.xStdModel[self.delete_cols]
-
-        if self.opt['showTiming']:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
-
-
-    def identifyFeasibleStandardParametersDirect(self):
-        ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
-            feasible std parameters. Based on code from Sousa, 2014, using direct regressor from Gautier, 2013
-        '''
-        with helpers.Timer() as t:
-            #if self.opt['useAPriori']:
-            #    print("Please disable using a priori parameters when using constrained optimization.")
-            #    sys.exit(1)
-
-            if self.opt['verbose']:
-                print("Preparing SDP...")
-
-            #build OLS matrix
-            I = Identity
-            delta = Matrix(self.model.param_syms)
-
-            Q, R = la.qr(self.YStd_nonsing)
-            Q1 = Q[:, 0:self.model.num_params]
-            #Q2 = Q[:, self.model.num_base_params:]
-            rho1 = Q1.T.dot(self.model.torques_stack)
-            R1 = np.matrix(R[:self.model.num_params, :self.model.num_params])
-
-            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
-            if self.opt['floatingBase']:
-                contactForces = Q.T.dot(self.model.contactForcesSum)
-            else:
-                contactForces = zeros(self.model.num_params, 1)
-
-            import time
-            print("Step 1...", time.ctime())
-
-            # minimize estimation error of to-be-found parameters delta
-            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*delta - contactForces)
-            else:
-                e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
-
-            print("Step 2...", time.ctime())
-
-            # calc estimation error of previous OLS parameter solution
-            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
-            print("rho2_norm_sqr: ", rho2_norm_sqr)
-
-            # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
-            u = Symbol('u')
-            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1, I(self.model.num_params)]])
-            print("Step 3...", time.ctime())
-            U_rho = U_rho.as_explicit()
-            print("Step 4...", time.ctime())
-
-            if self.opt['verbose']:
-                print("Add constraint LMIs")
-            lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-            variables = [u] + list(delta)
-
-            #solve SDP
-            objective_func = u
-
-            if self.opt['verbose']:
-                print("Solving constrained OLS as SDP")
-
-            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
-            # otherwise returns primal as solution when failing)
-            prime = self.model.xStdModel
-            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-
-            #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':
-                print("Trying again with dsdp5 solver")
-                optimization.solve_sdp = optimization.dsdp5
-                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
-                optimization.solve_sdp = optimization.cvxopt_conelp
-
-            u_star = solution[0,0]
-            if u_star:
-                print("found std solution with {} error increase from OLS solution".format(u_star))
-            delta_star = np.matrix(solution[1:])
-            self.model.xStd = np.squeeze(np.asarray(delta_star))
-
-        if self.opt['showTiming']:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
-
-
-    def identifyFeasibleBaseParameters(self):
-        ''' use SDP optimization to solve OLS to find physically feasible base parameters (i.e. for
-            which a consistent std solution exists), based on code from github.com/cdsousa/wam7_dyn_ident
-        '''
-        with helpers.Timer() as t:
-            if self.opt['verbose']:
-                print("Preparing SDP...")
-
-            # build OLS matrix
-            I = Identity
-            def mrepl(m,repl):
-                return m.applyfunc(lambda x: x.xreplace(repl))
-
-            # base and standard parameter symbols
-            delta = Matrix(self.model.param_syms)
-            beta_symbs = self.model.base_syms
-
-            # permutation of std to base columns projection
-            # (simplify to reduce 1.0 to 1 etc., important for replacement)
-            Pb = Matrix(self.model.Pb).applyfunc(lambda x: x.nsimplify())
-            # permutation of std to non-identifiable columns (dependents)
-            Pd = Matrix(self.model.Pd).applyfunc(lambda x: x.nsimplify())
-
-            # projection matrix from independents to dependents
-            #Kd = Matrix(self.model.linear_deps)
-            #K = Matrix(self.model.K).applyfunc(lambda x: x.nsimplify()) #(Pb.T + Kd * Pd.T)
-
-            # equations for base parameters expressed in independent std param symbols
-            #beta = K * delta
-            beta = Matrix(self.model.base_deps).applyfunc(lambda x: x.nsimplify())
-
-            ## std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
-
-            '''
-            if self.opt['useBasisProjection']:
-                # determined through base matrix, which included other variables too
-                # (find first variable in eq, chosen as independent here)
-                delta_b_syms = []
-                for i in range(self.model.base_deps.shape[0]):
-                    for s in self.model.base_deps[i].free_symbols:
-                        if s not in delta_b_syms:
-                            delta_b_syms.append(s)
-                            break
-                delta_b = Matrix(delta_b_syms)
-            else:
-                # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
-            '''
-            delta_b = Pb.T*delta
-
-            ## std variables that are dependent, i.e. their value is a combination of independent columns
-            '''
-            if self.opt['useBasisProjection']:
-                #determined from base eqns
-                delta_not_d = self.model.base_deps[0].free_symbols
-                for e in self.model.base_deps:
-                    delta_not_d = delta_not_d.union(e.free_symbols)
-                delta_d = []
-                for s in delta:
-                    if s not in delta_not_d:
-                        delta_d.append(s)
-                delta_d = Matrix(delta_d)
-            else:
-                # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
-            '''
-            delta_d = Pd.T*delta
-
-            # rewrite LMIs for base params
-
-            if self.opt['useBasisProjection']:
-                # (Sousa code is assuming that delta_b for each eq has factor 1.0 in equations beta.
-                # this is true if using Gautier dependency matrix, otherwise
-                # correct is to properly transpose eqn base_n = a1*x1 + a2*x2 + ... +an*xn to
-                # 1*xi = a1*x1/ai + a2*x2/ai + ... + an*xn/ai - base_n/ai )
-                transposed_beta = Matrix([solve(beta[i], delta_b[i])[0] for i in range(len(beta))])
-                self.varchange_dict = dict(zip(delta_b,  beta_symbs + transposed_beta))
-
-                #add free vars to variables for optimization
-                for eq in transposed_beta:
-                    for s in eq.free_symbols:
-                        if s not in delta_d:
-                            delta_d = delta_d.col_join(Matrix([s]))
-            else:
-                self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
-
-            DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
-            epsilon_safemargin = 1e-6
-            self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
-
-            #import ipdb; ipdb.set_trace()
-            #embed()
-
-            Q, R = la.qr(self.model.YBase)
-            Q1 = Q[:, 0:self.model.num_base_params]
-            #Q2 = Q[:, self.model.num_base_params:]
-            rho1 = Q1.T.dot(self.model.torques_stack)
-            R1 = np.matrix(R[:self.model.num_base_params, :self.model.num_base_params])
-
-            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
-            if self.opt['floatingBase']:
-                contactForces = Q.T.dot(self.model.contactForcesSum)
-            else:
-                contactForces = zeros(self.model.num_base_params, 1)
-
-            if is_old_sympy:
-                e_rho1 = Matrix(rho1).T - (R1*beta_symbs - contactForces)
-            else:
-                e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
-
-            rho2_norm_sqr = la.norm(self.model.torques_stack - self.model.YBase.dot(self.model.xBase))**2
-            u = Symbol('u')
-            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1, I(self.model.num_base_params)]])
-            U_rho = U_rho.as_explicit()
-
-            if self.opt['verbose']:
-                print("Add constraint LMIs")
-
-            lmis = [LMI_PSD(U_rho)] + self.DB_LMIs_marg
-            variables = [u] + list(beta_symbs) + list(delta_d)
-
-            # solve SDP
-            objective_func = u
-
-            if self.opt['verbose']:
-                print("Solving constrained OLS as SDP")
-
-            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
-            # otherwise returns primal as solution when failing)
-            prime = np.concatenate((self.model.xBaseModel, np.array(Pd.T*self.model.xStdModel)[:,0]))
-            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-
-            #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':
-                print("Trying again with dsdp5 solver")
-                optimization.solve_sdp = optimization.dsdp5
-                solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
-                optimization.solve_sdp = optimization.cvxopt_conelp
-
-            u_star = solution[0,0]
-            if u_star:
-                print("found base solution with {} error increase from OLS solution".format(u_star))
-            beta_star = np.matrix(solution[1:1+self.model.num_base_params])
-
-            self.model.xBase = np.squeeze(np.asarray(beta_star))
-
-        if self.opt['showTiming']:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
-
-
-    def findFeasibleStdFromFeasibleBase(self, xBase):
-        ''' find a std feasible solution for feasible base solution (exists by definition) while
-            minimizing param distance to a-priori parameters
-        '''
-
-        def mrepl(m, repl):
-            return m.applyfunc(lambda x: x.xreplace(repl))
-        I = Identity
-
-        #symbols for std params
-        delta = Matrix(self.model.param_syms)
-
-        # equations for base parameters expressed in independent std param symbols
-        #beta = K * delta
-        beta = self.model.base_deps #.applyfunc(lambda x: x.nsimplify())
-
-        #add explicit constraints for each base param equation and estimated value
-        D_base_val_blocks = []
-        for i in range(self.model.num_base_params):
-            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] - 0.0001]) )
-            D_base_val_blocks.append( Matrix([xBase[i] + 0.0001 - beta[i]]) )
-        self.D_blocks += D_base_val_blocks
-
-        epsilon_safemargin = 1e-6
-        self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
-
-        #closest to CAD but ignore non_identifiable params
-        #sol_cad_dist = Matrix(self.model.xStdModel[self.model.identifiable] - self.model.param_syms[self.model.identifiable])
-        sol_cad_dist = Matrix(self.model.xStdModel - self.model.param_syms)
-        u = Symbol('u')
-        U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
-                             [sol_cad_dist, I(self.model.num_params)]])
-        #                     [sol_cad_dist, I(len(self.model.identifiable))]])
-        U_rho = U_rho.as_explicit()
-
-        lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-        variables = [u] + list(self.model.param_syms)
-        objective_func = u   # 'find' problem
-
-        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel)
-
-        #try again with wider bounds and dsdp5 cmd line
-        if state is not 'optimal':
-            print("Trying again with dsdp5 solver")
-            optimization.solve_sdp = optimization.dsdp5
-            # start at CAD data to find solution faster
-            solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=self.model.xStdModel, wide_bounds=True)
-            optimization.solve_sdp = optimization.cvxopt_conelp
-
-        u = solution[0, 0]
-        print("found std solution with distance {} from CAD solution".format(u))
-        self.model.xStd = np.squeeze(np.asarray(solution[1:]))
-        #self.model.xStd[self.model.non_identifiable] = self.model.xStdModel[self.model.non_identifiable]
-
-
-    def findFeasibleStdFromStd(self, xStd):
-        ''' find closest feasible std solution for some std parameters (increases error) '''
-
-        delta = Matrix(self.model.param_syms)
-        I = Identity
-
-        Pd = Matrix(self.model.Pd)
-        delta_d = (Pd.T*delta)
-
-        u = Symbol('u')
-        U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
-                               [xStd - delta,    I(self.model.num_params)]])
-        U_delta = U_delta.as_explicit()
-        lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
-        variables = [u] + list(delta)
-        objective_func = u
-
-        prime = self.model.xStdModel
-        solution, state = optimization.solve_sdp(objective_func, lmis, variables, primalstart=prime)
-
-        u_star = solution[0,0]
-        if u_star:
-            print("found std solution with {} error increase from previous solution".format(u_star))
-        delta_star = np.matrix(solution[1:])
-        xStd = np.squeeze(np.asarray(delta_star))
-
-        return xStd
-
-
     def estimateParameters(self):
         '''identify parameters using data and regressor (method depends on chosen options)'''
 
@@ -1322,22 +691,22 @@ class Identification(object):
                     # first estimate feasible base params, then find corresponding feasible std
                     # params while minimizing distance to CAD
                     self.opt['deleteFixedBase'] = 0
-                    self.initSDP_LMIs(remove_nonid=False)
-                    self.identifyFeasibleBaseParameters()
+                    self.sdp.initSDP_LMIs(self, remove_nonid=False)
+                    self.sdp.identifyFeasibleBaseParameters(self)
                     self.opt['deleteFixedBase'] = 1
-                    self.initSDP_LMIs(remove_nonid=True)
-                    self.findFeasibleStdFromFeasibleBase(self.model.xBase)
+                    self.sdp.initSDP_LMIs(self, remove_nonid=True)
+                    self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     # if using fixed base dynamics, remove first link that is the fixed base which should completely
                     # not be identifiable and not be part of equations (as it does not move)
                     self.opt['deleteFixedBase'] = 1
-                    self.initSDP_LMIs()
+                    self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt['estimateWith'] is 'std_direct':
                         self.identifyStandardParametersDirect()
-                        self.identifyFeasibleStandardParametersDirect()
+                        self.sdp.identifyFeasibleStandardParametersDirect(self)
                     else:
-                        self.identifyFeasibleStandardParameters()
+                        self.sdp.identifyFeasibleStandardParameters(self)
 
                 # get OLS standard parameters (with a priori), then correct to feasible
                 #self.findStdFromBaseParameters()
@@ -1348,9 +717,9 @@ class Identification(object):
                 # unsuccessful optimization run)
                 if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
                     #get full LMIs again
-                    self.initSDP_LMIs(remove_nonid=False)
+                    self.sdp.initSDP_LMIs(self, remove_nonid=False)
                     print("Correcting solution to feasible std (non-optimal)")
-                    self.model.xStd = self.findFeasibleStdFromStd(self.model.xStd)
+                    self.model.xStd = self.sdp.findFeasibleStdFromStd(self, self.model.xStd)
             else:
                 #identify with OLS only
 

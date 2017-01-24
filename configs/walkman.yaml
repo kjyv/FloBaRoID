@@ -108,18 +108,17 @@ minTol: 0.001
 # (currently this also does the estimation, so previously selecting another method has no effect)
 # if only torque estimation is desired, not using this self.option might give a better model
 # accuracy with approriate parameters
-useConsistencyConstraints: 0
+constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
 identifyClosestToCAD: 0
 
-limitNonIdentifiable: 0
-
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
-noChange: 1
-noChangeThresh: 300
+noChange: 0
+noChangeThresh: 2200
+# allow to make thresh = cond(YBase) / N_LINKS (-1)
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
 restrictCOMtoHull: 0
@@ -259,20 +258,23 @@ filterRegCutoff: 5   #frequency in Hz
 
 ## output and debugging
 
+# plotting
 createPlots: 1               #create or show plots of measurements and estimated values
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
-outputAs: 'html'              #one of ['html', 'pdf', 'interactive']
+outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
 outputFilename: 'output_walkman.html'    #specify custom filename for output file
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
+plotLegend: 1                #show plot legend
 
-# self.options for console output
-showMemUsage: 0              #print used memory for different variables
-showTiming: 0                #show times various steps have taken
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution
+
+# options for console output
+showMemUsage: 0              #print used memory for different variables
+showTiming: 0                #show times various steps have taken
 showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params

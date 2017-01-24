@@ -196,14 +196,14 @@ class OutputConsole(object):
 
                 if idf.urdf_file_real and idf.opt['useConsistencyConstraints']:
                     if idx_p in idf.model.non_identifiable:
-                        idf.constr_per_param[idx_p].append('nID')
-                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.constr_per_param[idx_p]), d]
+                        idf.sdp.constr_per_param[idx_p].append('nID')
+                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
                 elif idf.urdf_file_real:
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
                 elif idf.opt['useConsistencyConstraints']:
                     if idx_p in idf.model.non_identifiable:
-                        idf.constr_per_param[idx_p].append('nID')
-                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.constr_per_param[idx_p]), d]
+                        idf.sdp.constr_per_param[idx_p].append('nID')
+                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
                 elif idf.opt['useEssentialParams']:
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
                 else:

@@ -60,7 +60,7 @@ class Identification(object):
 
         # in order ot get regressor and base equations, use basis projection matrix or use
         # permutation from QR directly (Gautier/Sousa method)
-        self.opt['useBasisProjection'] = 1
+        self.opt['useBasisProjection'] = 0
 
         # use RBDL for simulation (only correct for fixed-based atm)
         self.opt['useRBDL'] = 0
@@ -528,9 +528,11 @@ class Identification(object):
         self.model.xBase = la.lstsq(YBase, tau)[0] + self.model.YBaseInv.dot(self.model.contactForcesSum)
         """
 
+        """
         # damped least squares
-        #from scipy.sparse.linalg import lsqr
-        #self.model.xBase = lsqr(YBase, tau, damp=10)[0]
+        from scipy.sparse.linalg import lsqr
+        self.model.xBase = lsqr(YBase, tau, damp=10)[0]
+        """
 
         # stop here if called recursively
         if id_only:
@@ -699,8 +701,8 @@ class Identification(object):
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt['estimateWith'] == 'std_direct':
-                        self.identifyStandardParametersDirect()
-                        self.sdp.identifyFeasibleStandardParametersDirect(self)
+                        self.identifyStandardParametersDirect()   #get std nonsingular regressor
+                        self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
                         self.sdp.identifyFeasibleStandardParameters(self)
 

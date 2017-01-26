@@ -108,18 +108,19 @@ class Identification(object):
 
         if self.opt['floatingBase']:
             fb = 6
-            tauEst -= self.model.contactForcesSum
         else:
             fb = 0
+        tauEst -= self.model.contactForcesSum
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS + fb))
+        self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 
         #if self.opt['floatingBase']:
         #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
         # give some data statistics
         if print_stats and (self.opt['verbose'] or self.opt['showErrorHistogram'] == 1):
-            error = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
+            error_per_joint = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
 
             #how gaussian is the error of the data vs estimation?
             #http://stats.stackexchange.com/questions/62291/can-one-measure-the-degree-of-empirical-data-being-gaussian
@@ -133,7 +134,7 @@ class Identification(object):
                 print("W: {} (> 0.999 isn't too far from normality)".format(W))
                 '''
 
-                k2, p = stats.mstats.normaltest(error)
+                k2, p = stats.mstats.normaltest(error_per_joint)
                 if p > 0.05:
                     print("error is normal distributed")
                 else:
@@ -141,7 +142,7 @@ class Identification(object):
                 print("k2: {} (the closer it is to 0, the closer to normal distributed)".format(k2))
 
             if self.opt['showErrorHistogram'] == 1:
-                plt.hist(error, 50)
+                plt.hist(error_per_joint, 50)
                 plt.title("error histogram")
                 plt.draw()
                 plt.show()
@@ -520,17 +521,11 @@ class Identification(object):
         self.model.YBaseInv = la.pinv(YBase)
 
         # identify
-        if self.opt['floatingBase']:
-            self.model.xBase = self.model.YBaseInv.dot(tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
-        else:
-            self.model.xBase = self.model.YBaseInv.dot(tau.T)
+        self.model.xBase = self.model.YBaseInv.dot(tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
 
         """
         # ordinary least squares with numpy method (might be better in noisy situations)
-        if self.opt['floatingBase']:
-            self.model.xBase = la.lstsq(YBase, tau)[0] + self.model.YBaseInv.dot(self.model.contactForcesSum)
-        else:
-            self.model.xBase = la.lstsq(YBase, tau)[0]
+        self.model.xBase = la.lstsq(YBase, tau)[0] + self.model.YBaseInv.dot(self.model.contactForcesSum)
         """
 
         # damped least squares

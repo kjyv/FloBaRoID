@@ -267,7 +267,9 @@ class Model(object):
         self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_params))
         self.torques_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
         self.torquesAP_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
-        self.contacts_stack = np.zeros(shape=(len(data.samples['contacts'].item().keys()), 6*data.num_used_samples))
+
+        num_contacts = len(data.samples['contacts'].item().keys()) if 'contacts' in data.samples else 0
+        self.contacts_stack = np.zeros(shape=(num_contacts, 6*data.num_used_samples))
         self.contactForcesSum = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
 
         """loop over measurement data, optionally skip some values
@@ -285,7 +287,7 @@ class Model(object):
                 vel = data.samples['velocities'][m_idx]
                 acc = data.samples['accelerations'][m_idx]
                 torq = data.samples['torques'][m_idx]
-                if self.opt['floatingBase']:
+                if 'contacts' in data.samples:
                     for frame in data.samples['contacts'].item(0).keys():
                         contacts[frame] = data.samples['contacts'].item(0)[frame][m_idx]
 
@@ -375,10 +377,9 @@ class Model(object):
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.N_DOFS+fb], torqAP)
 
             contact_idx = (sample_index*6)
-            if self.opt['floatingBase']:
-                for i in range(self.contacts_stack.shape[0]):
-                    frame = list(contacts.keys())[i]
-                    np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
+            for i in range(self.contacts_stack.shape[0]):
+                frame = list(contacts.keys())[i]
+                np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
         if len(contacts.keys()):
             # TODO: if robot does not have contact sensors, use HyQ null-space method (only for

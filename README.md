@@ -1,4 +1,4 @@
-# FloBaRoID [![Build Status](https://travis-ci.org/kjyv/dynamical-system-identification.svg?branch=master)](https://travis-ci.org/kjyv/dynamical-system-identification)
+# FloBaRoID [![Build Status](https://travis-ci.org/kjyv/FloBaRoID.svg?branch=master)](https://travis-ci.org/kjyv/FloBaRoID)
 
 (FLOating BAse RObot dynamical IDentification)
 

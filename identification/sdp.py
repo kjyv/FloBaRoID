@@ -272,13 +272,14 @@ class SDP(object):
             # get projection matrix so that xBase = K*xStd
             if idf.opt['useBasisProjection']:
                 K = Matrix(idf.model.Binv)
-                for c in reversed(self.delete_cols):
-                    K.col_del(c)
             else:
                 #Sousa: K = Pb.T + Kd * Pd.T (Kd==idf.model.linear_deps, [Pb Pd] == idf.model.Pp)
                 #Pb = Matrix(idf.model.Pb) #.applyfunc(lambda x: x.nsimplify())
                 #Pd = Matrix(idf.model.Pd) #.applyfunc(lambda x: x.nsimplify())
                 K = Matrix(idf.model.K) #(Pb.T + Kd * Pd.T)
+
+            for c in reversed(self.delete_cols):
+                K.col_del(c)
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
@@ -305,10 +306,10 @@ class SDP(object):
                 p = BlockMatrix([[(K*delta)], [delta_nonid]])
                 Y = BlockMatrix([[Matrix(R1),             zeros(R1.shape[0], len(p_nid))],
                                  [zeros(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
-                rho1 = np.concatenate((rho1, l*idf.model.xStdModel[p_nid]))
-                e_rho1 = Matrix(rho1) - (Y*p - contactForces)
+                tau_hat = np.concatenate((rho1, l*idf.model.xStdModel[p_nid]))
+                e_rho1 = Matrix(tau_hat) - Y*p - contactForces
             else:
-                e_rho1 = Matrix(rho1) - (R1*K*delta - contactForces)
+                e_rho1 = Matrix(rho1) - R1*K*delta - contactForces
 
             print("Step 2...", time.ctime())
 
@@ -382,10 +383,15 @@ class SDP(object):
 
             if idf.opt['useRegressorRegularization']:
                 p_nid = idf.model.non_id
-                num_samples = 1 #YBase.shape[0]/idf.model.N_DOFS
-                l = [num_samples*0.001]*len(p_nid)
+                #p_nid = list(set(p_nid).difference(set(self.delete_cols)))
+                #l = [0.001]*len(p_nid)
+                l = [(float(idf.base_error) / len(p_nid)) * 1.5]*len(p_nid)   #proportion of distance term
                 YStd = np.vstack((YStd, (l*np.identity(idf.model.num_params)[p_nid].T).T))
                 tau = np.concatenate((tau, l*idf.model.xStdModel[p_nid]))
+
+            for c in reversed(self.delete_cols):
+                delta.row_del(c)
+            YStd = np.delete(YStd, self.delete_cols, axis=1)
 
             Q, R = la.qr(YStd)
             Q1 = Q[:, 0:idf.model.num_params]
@@ -395,25 +401,28 @@ class SDP(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            contactForces = Q.T.dot(idf.model.contactForcesSum)
+            if idf.opt['useRegressorRegularization']:
+                contactForcesSum = np.concatenate( (idf.model.contactForcesSum, np.zeros(len(p_nid))))
+            else:
+                contactForcesSum = idf.model.contactForcesSum
+            contactForces = Matrix(Q.T.dot(contactForcesSum))
 
             import time
             print("Step 1...", time.ctime())
 
             # minimize estimation error of to-be-found parameters delta
-            # (regressor dot std variables projected to base - contatcs should be close to measured torques)
+            # (regressor dot std variables projected to base - contacts should be close to measured torques)
             e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
 
             print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
-            print("rho2_norm_sqr: ", rho2_norm_sqr)
 
             # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1, I(idf.model.num_params)]])
+                                 [e_rho1,       I(idf.model.num_params)]])
             print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
             print("Step 4...", time.ctime())
@@ -446,6 +455,11 @@ class SDP(object):
                 print("found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
+
+            #prepend apriori values for 0'th link non-identifiable variables
+            for c in self.delete_cols:
+                idf.model.xStd = np.insert(idf.model.xStd, c, 0)
+            idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
 
         if idf.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))

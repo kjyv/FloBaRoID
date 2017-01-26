@@ -518,23 +518,25 @@ class OutputMatplotlib(object):
             print("No proper output method given. Not plotting.")
             return
 
+        font_size = 10
         if idf.opt['outputAs'] in ['pdf', 'tikz']:
             if idf.opt['plotPerJoint']:
                 font_size = 30
             else:
                 font_size = 12
-
             matplotlib.rcParams.update({'font.size': font_size})
-            matplotlib.rcParams.update({'axes.labelsize': font_size - 2})
+            matplotlib.rcParams.update({'axes.labelsize': font_size -5})
             matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
             matplotlib.rcParams.update({'axes.titlesize': font_size -2})
             matplotlib.rcParams.update({'legend.fontsize': font_size -2})
-            matplotlib.rcParams.update({'xtick.labelsize': font_size -2})
-            matplotlib.rcParams.update({'ytick.labelsize': font_size -2})
+            matplotlib.rcParams.update({'xtick.labelsize': font_size -5})
+            matplotlib.rcParams.update({'ytick.labelsize': font_size -5})
             matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
-            matplotlib.rcParams.update({'patch.linewidth': font_size/15.})
-            matplotlib.rcParams.update({'grid.linewidth': font_size/20.})
+            matplotlib.rcParams.update({'patch.linewidth': font_size / 15.})
+            matplotlib.rcParams.update({'grid.linewidth': font_size / 20.})
 
+
+        # skip some samples so graphs don't get too large/detailed
         skip = 5
 
         #create figures and plots
@@ -568,20 +570,20 @@ class OutputMatplotlib(object):
                         for i in range(0, d['data'][data_i].shape[1]):
                             l = group['labels'][i] if data_i == 0 else ''
                             if i < 6 and 'contains_base' in group and group['contains_base']:
-                                ls = '--'
+                                ls = 'dashed'
                             else:
                                 ls = '-'
                             dashes = ()
                             if idf.opt['plotErrors']:
                                 if i == 2:
-                                    ls = '--'
+                                    ls = 'dashed'
                                     dashes = (3, 0.5)
                             ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls, dashes=dashes)
                     else:
                         #data vector
                         ax.plot(d['time'][::skip], d['data'][data_i][::skip], label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
 
-                ax.grid(b=True, which='both', color='0.4')
+                ax.grid(which='both', linestyle="dotted", alpha=0.8)
                 if 'y_label' in group:
                     ax.set_ylabel(group['y_label'])
 
@@ -591,15 +593,15 @@ class OutputMatplotlib(object):
             plt.setp([a.get_xticklabels() for a in axes[:-1]], visible=False)
             #plt.setp([a.get_yticklabels() for a in axes], fontsize=8)
 
-            if idf.opt['outputAs'] == 'html':
-                #TODO: show legend properly (see mpld3 bug #274)
+            if idf.opt['plotLegend']:
                 handles, labels = ax.get_legend_handles_labels()
-                #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
-                leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':7})
-            else:
-                handles, labels = ax.get_legend_handles_labels()
-                if idf.opt['outputAs'] != 'tikz':
-                    leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size':font_size-4})
+                if idf.opt['outputAs'] == 'html':
+                    #TODO: show legend properly (see mpld3 bug #274)
+                    #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
+                    leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size': 8})
+                else:
+                    leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True,
+                            fontsize=font_size, title='', prop={'size': font_size-3})
                     leg.draggable()
 
             fig.subplots_adjust(hspace=2)

@@ -485,7 +485,7 @@ class OutputConsole(object):
                 format(idf.res_error, idf.apriori_error))
 
         idf.abs_apriori_error = np.mean(sla.norm(idf.tauAPriori-idf.model.tauMeasured, axis=1))
-        idf.abs_res_error = np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
+        idf.abs_res_error = idf.base_error #np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
         # get absolute error (i.e. how big is the mean torque prediction error in Nm)
         print("Absolute mean residual error: {} Nm vs. A priori: {} Nm".format(idf.abs_res_error, idf.abs_apriori_error))
 

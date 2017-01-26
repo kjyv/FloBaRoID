@@ -300,8 +300,7 @@ class SDP(object):
                 # get symbols that are non-id but are not in delete_cols already
                 delta_nonid = Matrix(idf.model.param_syms[p_nid])
                 #num_samples = YBase.shape[0]/idf.model.N_DOFS
-                base_error = np.mean(sla.norm(idf.model.tauMeasured - idf.tauEstimated, axis=1))
-                l = (float(base_error) / len(p_nid)) * 1.5   #proportion of distance term
+                l = (float(idf.base_error) / len(p_nid)) * 1.5   #proportion of distance term
 
                 p = BlockMatrix([[(K*delta)], [delta_nonid]])
                 Y = BlockMatrix([[Matrix(R1),             zeros(R1.shape[0], len(p_nid))],
@@ -396,10 +395,7 @@ class SDP(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            if idf.opt['floatingBase']:
-                contactForces = Q.T.dot(idf.model.contactForcesSum)
-            else:
-                contactForces = zeros(idf.model.num_params, 1)
+            contactForces = Q.T.dot(idf.model.contactForcesSum)
 
             import time
             print("Step 1...", time.ctime())
@@ -554,10 +550,7 @@ class SDP(object):
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
-            if idf.opt['floatingBase']:
-                contactForces = Q.T.dot(idf.model.contactForcesSum)
-            else:
-                contactForces = zeros(idf.model.num_base_params, 1)
+            contactForces = Q.T.dot(idf.model.contactForcesSum)
 
             e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
 

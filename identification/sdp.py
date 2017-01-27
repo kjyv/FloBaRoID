@@ -209,7 +209,7 @@ class SDP(object):
                                 lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
                                 D_other_blocks.append( ub )
                                 D_other_blocks.append( lb )
-                                self.constr_per_param[i*10+1+j].append('hull')
+                                self.constr_per_param[p].append('hull')
 
             # symmetry constraints
             if idf.opt['useSymmetryConstraints'] and idf.opt['symmetryConstraints']:
@@ -312,11 +312,19 @@ class SDP(object):
                                  [ZeroMatrix(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
                 tau_hat = np.concatenate((rho1, l*idf.model.xStdModel[p_nid]))
 
-                # TODO: this is slow when matrices get bigger, can get faster with SymEngine or using float32?
-                # maybe don't use blockmatrices but append directly?
-                e_rho1 = (Matrix(tau_hat - contactForces) - Y*p).as_explicit()
+                #TODO: also use symengine (but we should only come here for fixed-base, so mostly smaller DOFs)
+                e_rho1 = (Matrix(tau_hat) - contactForces - Y*p).as_explicit()
             else:
-                e_rho1 = Matrix(rho1 - contactForces) - R1*K*delta
+                try:
+                    from symengine import DenseMatrix as eMatrix
+                    print('using symengine')
+                    edelta = eMatrix(delta.shape[0], delta.shape[1], delta)
+                    eK = eMatrix(K.shape[0], K.shape[1], K)
+                    eR1 = eMatrix(R1.shape[0], R1.shape[1], Matrix(R1))
+                    print("Step 2.1...", time.ctime())
+                    e_rho1 = eMatrix(rho1 - contactForces) - eR1*eK*edelta
+                except ImportError:
+                    e_rho1 = Matrix(rho1 - contactForces) - R1*K*delta
 
             print("Step 2...", time.ctime())
 

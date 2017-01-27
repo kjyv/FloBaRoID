@@ -113,13 +113,13 @@ class OutputConsole(object):
             description = idf.model.generator.getDescriptionOfParameters()
             if idf.opt['identifyFriction']:
                 for i in range(0, idf.model.N_DOFS):
-                    description += "Parameter {}: Dry friction / offset of joint {}\n".format(
+                    description += "Parameter {}: Constant friction / offset of joint {}\n".format(
                             i+idf.model.num_inertial_params,
                             idf.model.jointNames[i]
                     )
 
                 for i in range(0, idf.model.N_DOFS*2):
-                    description += "Parameter {}: Viscous friction joint {}\n".format(
+                    description += "Parameter {}: Velocity dep. friction joint {}\n".format(
                             i+idf.model.N_DOFS+idf.model.num_inertial_params,
                             idf.model.jointNames[i%idf.model.N_DOFS]
                     )

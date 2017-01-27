@@ -20,6 +20,7 @@ if is_old_sympy:
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
+from colorama import Fore, Back, Style
 
 from IPython import embed
 
@@ -321,8 +322,7 @@ class SDP(object):
                     edelta = eMatrix(delta.shape[0], delta.shape[1], delta)
                     eK = eMatrix(K.shape[0], K.shape[1], K)
                     eR1 = eMatrix(R1.shape[0], R1.shape[1], Matrix(R1))
-                    print("Step 2.1...", time.ctime())
-                    e_rho1 = eMatrix(rho1 - contactForces) - eR1*eK*edelta
+                    e_rho1 = Matrix(eMatrix(rho1 - contactForces) - eR1*eK*edelta)
                 except ImportError:
                     e_rho1 = Matrix(rho1 - contactForces) - R1*K*delta
 

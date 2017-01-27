@@ -120,7 +120,7 @@ class Model(object):
         self.num_params = self.generator.getNrOfParameters()
         # params counted without offset params
         self.num_inertial_params = self.num_params
-        # add N offset params (offsets or dry friction) and 2*N viscous friction params
+        # add N offset params (offsets or constant friction) and 2*N velocity dependent friction params
         # (velocity +- for asymmetrical friction)
         if self.opt['identifyFriction']: self.num_params += 3*self.N_DOFS
 
@@ -353,7 +353,7 @@ class Model(object):
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
                 if self.opt['identifyFriction']:
-                    # append unitary matrix to regressor for offsets/dry friction
+                    # append unitary matrix to regressor for offsets/constant friction
                     static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
                     offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), static_diag))
                     regressor = np.concatenate((regressor, offset_regressor), axis=1)
@@ -543,7 +543,7 @@ class Model(object):
                     A[3:6, :] = to_world.dot(A[3:6, :])
 
                 if self.opt['identifyFriction']:
-                    # append unitary matrix to regressor for offsets/dry friction
+                    # append unitary matrix to regressor for offsets/constant friction
                     static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
                     offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)

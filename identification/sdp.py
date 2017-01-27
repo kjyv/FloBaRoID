@@ -11,7 +11,7 @@ import scipy
 import scipy.linalg as sla
 
 import sympy
-from sympy import Symbol, solve, Eq, Matrix, BlockMatrix, ZeroMatrix, Identity, eye, zeros
+from sympy import Symbol, solve, Matrix, BlockMatrix, ZeroMatrix, Identity, zeros, eye
 from distutils.version import LooseVersion
 is_old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.5')
 if is_old_sympy:
@@ -81,7 +81,7 @@ class SDP(object):
                         #                 [s_star.T, I(2)*idf.model.xStdModel[10]]])
 
                         Di = BlockMatrix([[L_star]])
-                        D_inertia_blocks.append(Di.as_explicit().as_mutable())
+                        D_inertia_blocks.append(Di.as_mutable())
                         self.delete_cols.extend([10,11,12,13,14,15,16,17,18])
                         #self.delete_cols.extend([10,13,14,15,16,17,18])
                         start_link = 2
@@ -89,12 +89,12 @@ class SDP(object):
                         #    Di = BlockMatrix([[L,    S(l).T],
                         #                      [S(l), I(3)*idf.model.xStdModel[20]]])
                         #    self.delete_cols.append(20)
-                        #    D_inertia_blocks.append(Di.as_explicit().as_mutable())
+                        #    D_inertia_blocks.append(Di.as_mutable())
                 else:
                 '''
                 Di = BlockMatrix([[L,    S(l).T],
                                   [S(l), I(3)*m]])
-                D_inertia_blocks.append(Di.as_explicit().as_mutable())
+                D_inertia_blocks.append(Di.as_mutable())
 
             D_other_blocks = []
 
@@ -150,9 +150,10 @@ class SDP(object):
 
             # create the don't-change constraints
             for p in set(params_to_skip):
-                D_other_blocks.append(Matrix([idf.model.xStdModel[p] - idf.model.param_syms[p]]))
-                D_other_blocks.append(Matrix([idf.model.param_syms[p] - idf.model.xStdModel[p]]))
-                self.constr_per_param[p].append('cad')
+                if p not in idf.opt['dontConstrain']:
+                    D_other_blocks.append(Matrix([idf.model.xStdModel[p] - idf.model.param_syms[p]]))
+                    D_other_blocks.append(Matrix([idf.model.param_syms[p] - idf.model.xStdModel[p]]))
+                    self.constr_per_param[p].append('cad')
 
             # constrain overall mass within bounds
             if idf.opt['limitOverallMass']:
@@ -175,13 +176,15 @@ class SDP(object):
                 # constrain each mass to env of a priori value
                 for i in range(start_link, idf.model.N_LINKS):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
-                        ub = Matrix([idf.model.xStdModel[i*10]*(1+idf.opt['limitMassAprioriBoundary']) -
-                                    idf.model.mass_syms[i]])
-                        lb = Matrix([idf.model.mass_syms[i] -
-                                     idf.model.xStdModel[i*10]*(1-idf.opt['limitMassAprioriBoundary'])])
-                        D_other_blocks.append(ub)
-                        D_other_blocks.append(lb)
-                        self.constr_per_param[i*10].append('mA')
+                        p = i*10
+                        if p not in idf.opt['dontConstrain']:
+                            ub = Matrix([idf.model.xStdModel[p]*(1+idf.opt['limitMassAprioriBoundary']) -
+                                        idf.model.mass_syms[i]])
+                            lb = Matrix([idf.model.mass_syms[i] -
+                                         idf.model.xStdModel[p]*(1-idf.opt['limitMassAprioriBoundary'])])
+                            D_other_blocks.append(ub)
+                            D_other_blocks.append(lb)
+                            self.constr_per_param[p].append('mA')
 
             if idf.opt['restrictCOMtoHull']:
                 link_cuboid_hulls = np.zeros((idf.model.N_LINKS, 3, 2))
@@ -200,7 +203,8 @@ class SDP(object):
 
                         link_cuboid_hull = link_cuboid_hulls[i]
                         for j in range(3):
-                            if i*10+1+j not in self.delete_cols:
+                            p = i*10+1+j
+                            if p not in self.delete_cols and p not in idf.opt['dontConstrain']:
                                 ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
                                 lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
                                 D_other_blocks.append( ub )
@@ -304,12 +308,15 @@ class SDP(object):
                 l = (float(idf.base_error) / len(p_nid)) * 1.5   #proportion of distance term
 
                 p = BlockMatrix([[(K*delta)], [delta_nonid]])
-                Y = BlockMatrix([[Matrix(R1),             zeros(R1.shape[0], len(p_nid))],
-                                 [zeros(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
+                Y = BlockMatrix([[Matrix(R1),             ZeroMatrix(R1.shape[0], len(p_nid))],
+                                 [ZeroMatrix(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
                 tau_hat = np.concatenate((rho1, l*idf.model.xStdModel[p_nid]))
-                e_rho1 = Matrix(tau_hat) - Y*p - contactForces
+
+                # TODO: this is slow when matrices get bigger, can get faster with SymEngine or using float32?
+                # maybe don't use blockmatrices but append directly?
+                e_rho1 = (Matrix(tau_hat - contactForces) - Y*p).as_explicit()
             else:
-                e_rho1 = Matrix(rho1) - R1*K*delta - contactForces
+                e_rho1 = Matrix(rho1 - contactForces) - R1*K*delta
 
             print("Step 2...", time.ctime())
 
@@ -320,8 +327,8 @@ class SDP(object):
                                  [e_rho1,            I(e_rho1.shape[0])]])
 
             print("Step 3...", time.ctime())
-            # TODO: this is slow when matrices get bigger, can get faster with SymEngine or using float32?
             U_rho = U_rho.as_explicit()
+
             print("Step 4...", time.ctime())
 
             if idf.opt['verbose']:
@@ -552,9 +559,6 @@ class SDP(object):
             DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             epsilon_safemargin = 1e-6
             self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
-
-            #import ipdb; ipdb.set_trace()
-            #embed()
 
             Q, R = la.qr(idf.model.YBase)
             Q1 = Q[:, 0:idf.model.num_base_params]

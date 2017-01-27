@@ -143,6 +143,9 @@ limitMassAprioriBoundary: 0.01     #allowed change of CAD value in both +- direc
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
 
+# don't constrain some parameters that are otherwise included through group constraint options
+dontConstrain: []
+
 # define constraints for link symmetries (e.g. left and right arm)
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
@@ -184,13 +187,13 @@ symmetryConstraints:
     - [41, 101, 1]
     - [42, 102, -1]
     - [43, 103, 1]
-#    - [44, 104, 1]    # not symmetric for linear parameters (only barycentric)
-#    - [45, 105, 1]
-#    - [46, 106, 1]
-#    - [47, 107, 1]
-#    - [48, 108, 1]
-#    - [49, 109, 1]
     - [50, 110, 1]   #L/RFootMot
+    - [44, 104, 1]
+    - [45, 105, -1]
+    - [46, 106, 1]
+    - [47, 107, 1]
+    - [48, 108, -1]
+    - [49, 109, 1]
     - [51, 111, 1]
     - [52, 112, -1]
     - [53, 113, 1]
@@ -205,10 +208,10 @@ symmetryConstraints:
     - [62, 122, -1]
     - [63, 123, 1]
     - [64, 124, 1]
-    - [65, 125, 1]
+    - [65, 125, -1]
     - [66, 126, 1]
     - [67, 127, 1]
-#    - [68, 128, -1]    #is not exactly symmetrical because of different COM_y?
+    - [68, 128, -1]
     - [69, 129, 1]
     - [160,280, 1]  #'L/RShp'
     - [161,281, 1]

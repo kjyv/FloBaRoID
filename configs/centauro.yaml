@@ -129,6 +129,9 @@ limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
 
+# don't constrain some parameters that are otherwise included through group constraint options
+dontConstrain: []
+
 # define constraints for link symmetries (e.g. left and right arm)
 useSymmetryConstraints: 1
 # allow some difference between symmetry pairs (1.0 = 100%)

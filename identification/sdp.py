@@ -296,7 +296,7 @@ class SDP(object):
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
 
             # get additional regression error
-            if idf.opt['useRegressorRegularization']:
+            if idf.opt['useRegressorRegularization'] and len(p_nid):
                 # add regularization term to cost function to include torque estimation error and CAD distance
                 # get symbols that are non-id but are not in delete_cols already
                 delta_nonid = Matrix(idf.model.param_syms[p_nid])

@@ -590,7 +590,7 @@ and to define the end effectors of the robot-->
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0050828668 -0.0037732093 -0.072605017"/>
       <mass value="6.82012"/>
-      <inertia ixx="0.10535542" ixy="-0.00058199221" ixz="0.0016743598" iyy="0.097857796" iyz="-0.0033770181" izz="0.020854086"/>
+      <inertia ixx="0.1271852007247329" ixy="0.0007025817565824415" ixz="0.002021289338967313" iyy="0.118134059232453" iyz="0.004076740664121088" izz="0.025175079875727722"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -630,7 +630,7 @@ and to define the end effectors of the robot-->
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00653584 0.00479384 -0.10180375"/>
       <mass value="2.58"/>
-      <inertia ixx="0.0077783" ixy="-0.00012356" ixz="-0.00151587" iyy="0.02149266" iyz="0.00034878" izz="0.02108204"/>
+      <inertia ixx="0.0077783" ixy="0.00012356" ixz="-0.00151587" iyy="0.02149266" iyz="-0.00034878" izz="0.02108204"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>

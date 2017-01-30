@@ -25,8 +25,9 @@ class Timer(object):
         self.interval = self.end - self.start
 
 class ParamHelpers(object):
-    def __init__(self, n_params):
+    def __init__(self, n_params, opt):
         self.n_params = n_params
+        self.opt = opt
 
     def checkPhysicalConsistency(self, params):
         """
@@ -80,7 +81,11 @@ class ParamHelpers(object):
 
     def isPhysicalConsistent(self, params):
         """give boolean consistency statement for a set of parameters"""
-        return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
+        if self.opt['identifyGravityParamsOnly']:
+            #TODO: check properly if masses are positive
+            return True
+        else:
+            return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
     def inertiaTensorFromParams(self, params):
         """take a parameter vector and return list of full inertia tensors (one for each link)"""

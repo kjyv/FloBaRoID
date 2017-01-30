@@ -116,16 +116,31 @@ class Model(object):
         if self.opt['verbose']:
             print('# links: {} (+ {} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks()))
 
-        # get initial inertia params (from urdf)
-        self.num_params = self.generator.getNrOfParameters()
-        # params counted without offset params
-        self.num_inertial_params = self.num_params
+        self.inertia_params = list()
+        self.mass_params = list()
+        for i in range(self.N_LINKS):
+            self.mass_params.append(i*10)
+            self.inertia_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
+
+        # get amount of initial inertia params (from urdf) (no friction, no removed columns)
+        self.num_model_params = self.generator.getNrOfParameters()
+        self.num_all_params = self.num_model_params
+
         # add N offset params (offsets or constant friction) and 2*N velocity dependent friction params
         # (velocity +- for asymmetrical friction)
-        if self.opt['identifyFriction']: self.num_params += 3*self.N_DOFS
+        if self.opt['identifyFriction']:
+            self.num_identified_params = self.num_model_params + self.N_DOFS
+            self.num_all_params += self.N_DOFS
+
+            if not self.opt['identifyGravityParamsOnly']:
+                self.num_identified_params += 2*self.N_DOFS
+                self.num_all_params += 2*self.N_DOFS
+
+        if self.opt['identifyGravityParamsOnly']:
+            self.num_identified_params = self.num_identified_params - len(self.inertia_params)
 
         if self.opt['verbose']:
-            print('# params: {}'.format(self.num_params))
+            print('# params: {} ({} will be identified)'.format(self.num_model_params, self.num_identified_params))
 
         self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
 
@@ -140,11 +155,13 @@ class Model(object):
             self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
         # get model parameters
-        xStdModel = iDynTree.VectorDynSize(self.num_inertial_params)
+        xStdModel = iDynTree.VectorDynSize(self.generator.getNrOfParameters())
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
         if self.opt['identifyFriction']:
-            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(3*self.N_DOFS)))
+            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.N_DOFS)))
+            if not self.opt['identifyGravityParamsOnly']:
+                self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.N_DOFS)))
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -264,7 +281,7 @@ class Model(object):
         #extra regressor rows for floating base
         if self.opt['floatingBase']: fb = 6
         else: fb = 0
-        self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_params))
+        self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_identified_params))
         self.torques_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
         self.torquesAP_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
 
@@ -290,6 +307,11 @@ class Model(object):
                 if 'contacts' in data.samples:
                     for frame in data.samples['contacts'].item(0).keys():
                         contacts[frame] = data.samples['contacts'].item(0)[frame][m_idx]
+
+                if self.opt['identifyGravityParamsOnly']:
+                    #set vel and acc to zero (should be almost zero already) to remove noise
+                    vel[:] = 0.0
+                    acc[:] = 0.0
 
                 # system state for iDynTree
                 q = iDynTree.VectorDynSize.fromList(pos)
@@ -329,6 +351,12 @@ class Model(object):
                     vel = data.samples['base_velocity'][m_idx]
                     acc = data.samples['base_acceleration'][m_idx]
                     rpy = data.samples['base_rpy'][m_idx]
+
+                    if self.opt['identifyGravityParamsOnly']:
+                        #set vel and acc to zero (should be almost zero already) to remove noise
+                        vel[:] = 0.0
+                        acc[:] = 0.0
+
                     base_velocity = iDynTree.Twist.fromList(vel)
                     base_acceleration = iDynTree.Twist.fromList(acc)
                     rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
@@ -339,7 +367,7 @@ class Model(object):
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
 
                 # get (standard) regressor
-                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_inertial_params)
+                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
                 knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
                 if not self.generator.computeRegressor(regressor, knownTerms):
                     print("Error during numeric computation of regressor")
@@ -352,20 +380,29 @@ class Model(object):
                     regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                     regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
+                if self.opt['identifyGravityParamsOnly']:
+                    #delete inertia param columns
+                    regressor = np.delete(regressor, self.inertia_params, 1)
+
                 if self.opt['identifyFriction']:
                     # append unitary matrix to regressor for offsets/constant friction
-                    static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
+                    if self.opt['identifyGravityParamsOnly']:
+                        sign = 1
+                    else:
+                        sign = np.sign(dq.toNumPy())
+                    static_diag = np.identity(self.N_DOFS)*sign
                     offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), static_diag))
                     regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
-                    # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                    dq_p = dq.toNumPy().copy()
-                    dq_p[dq_p < 0] = 0 #set to zero where v < 0
-                    dq_m = dq.toNumPy().copy()
-                    dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                    vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
-                    friction_regressor = np.vstack( (np.zeros((fb, self.N_DOFS*2)), vel_diag))   # add base dynamics rows
-                    regressor = np.concatenate((regressor, friction_regressor), axis=1)
+                    if not self.opt['identifyGravityParamsOnly']:
+                        # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                        dq_p = dq.toNumPy().copy()
+                        dq_p[dq_p < 0] = 0 #set to zero where v < 0
+                        dq_m = dq.toNumPy().copy()
+                        dq_m[dq_m > 0] = 0 #set to zero where v > 0
+                        vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
+                        friction_regressor = np.vstack( (np.zeros((fb, self.N_DOFS*2)), vel_diag))   # add base dynamics rows
+                        regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
                 # stack on previous regressors
                 np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor)
@@ -482,9 +519,11 @@ class Model(object):
             R = regr_file['R']
             n = regr_file['n']   #number of samples that were used
             fb = regr_file['fb']  #floating base flag
+            grav = regr_file['grav_only']
             if self.opt['verbose']:
                 print("loaded random regressor from {}".format(regr_filename))
-            if n != n_samples or fb != self.opt['floatingBase'] or R.shape[0] != self.num_params:
+            if n != n_samples or fb != self.opt['floatingBase'] or R.shape[0] != self.num_identified_params or \
+                    self.opt['identifyGravityParamsOnly'] != grav:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
         except (IOError, KeyError):
@@ -496,8 +535,8 @@ class Model(object):
 
             if not n_samples:
                 n_samples = self.N_DOFS * 5000
-            R = np.array((self.N_OUT, self.num_inertial_params))
-            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_inertial_params)
+            R = np.array((self.N_OUT, self.num_model_params))
+            regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
             if len(limits) > 0:
@@ -510,9 +549,15 @@ class Model(object):
                 # set random system state
                 if len(limits) > 0:
                     rnd = np.random.rand(self.N_DOFS) #0..1
-                    q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd).tolist())
-                    dq = iDynTree.VectorDynSize.fromList(((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim).tolist())
-                    ddq = iDynTree.VectorDynSize.fromList(((np.random.rand(self.N_DOFS)-0.5)*2*np.pi).tolist())
+                    q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd))
+                    vel = ((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim)
+                    acc = ((np.random.rand(self.N_DOFS)-0.5)*2*np.pi)
+                    if self.opt['identifyGravityParamsOnly']:
+                        #set vel and acc to zero (should be almost zero already) to remove noise
+                        vel[:] = 0.0
+                        acc[:] = 0.0
+                    dq = iDynTree.VectorDynSize.fromList(vel.tolist())
+                    ddq = iDynTree.VectorDynSize.fromList(acc.tolist())
                 else:
                     q = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
                     dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
@@ -521,8 +566,14 @@ class Model(object):
                 # TODO: make work with fixed dofs (set vel and acc to zero, look at iDynTree method)
 
                 if self.opt['floatingBase']:
-                    base_velocity = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
-                    base_acceleration = iDynTree.Twist.fromList(np.pi*np.random.rand(6))
+                    vel = np.pi*np.random.rand(6)
+                    acc = np.pi*np.random.rand(6)
+                    if self.opt['identifyGravityParamsOnly']:
+                        #set vel and acc to zero (should be almost zero already) to remove noise
+                        vel[:] = 0.0
+                        acc[:] = 0.0
+                    base_velocity = iDynTree.Twist.fromList(vel)
+                    base_acceleration = iDynTree.Twist.fromList(acc)
                     rpy = np.random.ranf(3)*0.05
                     rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                     pos = iDynTree.Position.Zero()
@@ -542,20 +593,29 @@ class Model(object):
                     A[0:3, :] = to_world.dot(A[0:3, :])
                     A[3:6, :] = to_world.dot(A[3:6, :])
 
+                if self.opt['identifyGravityParamsOnly']:
+                    #delete inertia param columns
+                    A = np.delete(A, self.inertia_params, 1)
+
                 if self.opt['identifyFriction']:
                     # append unitary matrix to regressor for offsets/constant friction
-                    static_diag = np.identity(self.N_DOFS)*np.sign(dq.toNumPy())
+                    if self.opt['identifyGravityParamsOnly']:
+                        sign = 1
+                    else:
+                        sign = np.sign(dq.toNumPy())
+                    static_diag = np.identity(self.N_DOFS)*sign
                     offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)
 
-                    # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                    dq_p = dq.toNumPy().copy()
-                    dq_p[dq_p < 0] = 0 #set to zero where <0
-                    dq_m = dq.toNumPy().copy()
-                    dq_m[dq_m > 0] = 0 #set to zero where >0
-                    vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
-                    friction_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS*2)), vel_diag))
-                    A = np.concatenate((A, friction_regressor), axis=1)
+                    if not self.opt['identifyGravityParamsOnly']:
+                        # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                        dq_p = dq.toNumPy().copy()
+                        dq_p[dq_p < 0] = 0 #set to zero where <0
+                        dq_m = dq.toNumPy().copy()
+                        dq_m[dq_m > 0] = 0 #set to zero where >0
+                        vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
+                        friction_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS*2)), vel_diag))
+                        A = np.concatenate((A, friction_regressor), axis=1)
 
                 # add to previous regressors, linear dependencies don't change
                 # (if too many, saturation or accuracy problems?)
@@ -564,7 +624,7 @@ class Model(object):
                 else:
                     R += A.T.dot(A)
 
-            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floatingBase'])
+            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'])
 
         if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
@@ -644,7 +704,7 @@ class Model(object):
 
         # collect grouped columns for each independent column
         # and build base matrix
-        self.B = np.zeros((self.num_params, self.num_base_params))
+        self.B = np.zeros((self.num_identified_params, self.num_base_params))
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
             for i in range(0, self.linear_deps.shape[1]):
@@ -679,16 +739,21 @@ class Model(object):
         self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i),real=True) for i in range(self.num_base_params)])
         self.param_syms = list()
         self.mass_syms = list()
+        self.friction_syms = list()
+        self.identified_params = list()  #indices of params within full param vector that are going to be identified
         for i in range(0, self.N_LINKS):
             #mass
             m = symbols('m_{}'.format(i))
             self.param_syms.append(m)
+            self.identified_params.append(i*10)
             self.mass_syms.append(m)
 
             #first moment of mass
             p = 'c_{}'.format(i)  #symbol prefix
             syms = [symbols(p+'x'), symbols(p+'y'), symbols(p+'z')]
             self.param_syms.extend(syms)
+            self.identified_params.extend([i*10+1, i*10+2, i*10+3])
+
             #3x3 inertia tensor about link-frame (for link i)
             p = 'I_{}'.format(i)
             syms = [symbols(p+'xx'), symbols(p+'xy'), symbols(p+'xz'),
@@ -697,13 +762,27 @@ class Model(object):
                    ]
             self.param_syms.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
 
+            if not self.opt['identifyGravityParamsOnly']:
+                self.identified_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
+
         if self.opt['identifyFriction']:
+            mp = self.num_model_params
             for i in range(0,self.N_DOFS):
-                self.param_syms.extend([symbols('Fc_{}'.format(i))])
-            for i in range(0,self.N_DOFS):
-                self.param_syms.extend([symbols('Fv+_{}'.format(i))])
-            for i in range(0,self.N_DOFS):
-                self.param_syms.extend([symbols('Fv-_{}'.format(i))])
+                s = [symbols('Fc_{}'.format(i))]
+                self.param_syms.extend(s)
+                self.friction_syms.extend(s)
+                self.identified_params.append(mp+i)
+            if not self.opt['identifyGravityParamsOnly']:
+                for i in range(0,self.N_DOFS):
+                    s = [symbols('Fv+_{}'.format(i))]
+                    self.param_syms.extend(s)
+                    self.friction_syms.extend(s)
+                    self.identified_params.append(mp+self.N_DOFS+i)
+                for i in range(0,self.N_DOFS):
+                    s = [symbols('Fv-_{}'.format(i))]
+                    self.param_syms.extend(s)
+                    self.friction_syms.extend(s)
+                    self.identified_params.append(mp+2*self.N_DOFS+i)
         self.param_syms = np.array(self.param_syms)
 
         ## get symbolic equations for base param dependencies
@@ -712,16 +791,16 @@ class Model(object):
         if self.opt['useBasisProjection']:
             if self.opt['orthogonalizeBasis']:
                 #this is only correct if basis is orthogonal
-                self.base_deps = np.dot(self.param_syms, self.B)
+                self.base_deps = np.dot(self.param_syms[self.identified_params], self.B)
             else:
                 #otherwise, we need to get relationships from the inverse
                 B_qr_inv_z = la.pinv(self.B)
                 B_qr_inv_z[np.abs(B_qr_inv_z) < self.opt['minTol']] = 0
-                self.base_deps = np.dot(self.param_syms, B_qr_inv_z.T)
+                self.base_deps = np.dot(self.param_syms[self.identified_params], B_qr_inv_z.T)
         else:
             # using projection matrix from Gautier/Sousa method for base eqns
-            # (seems K is orthogonal)
-            self.base_deps = Matrix(self.K) * Matrix(self.param_syms)
+            # (K is orthogonal)
+            self.base_deps = Matrix(self.K) * Matrix(self.param_syms[self.identified_params])
 
         # find std parameters that have no effect on estimation (not single or contributing to base
         # equations)
@@ -730,8 +809,8 @@ class Model(object):
             for s in self.base_deps[i].free_symbols:
                 if s not in base_deps_syms:
                     base_deps_syms.append(s)
-        self.non_id = [p for p in range(self.num_params) if self.param_syms[p] not in base_deps_syms]
-        self.identifiable = [p for p in range(self.num_params) if p not in self.non_id]
+        self.non_id = [p for p in range(self.num_all_params) if self.param_syms[p] not in base_deps_syms]
+        self.identifiable = [p for p in range(self.num_all_params) if p not in self.non_id]
 
     def computeRegressorLinDepsSVD(self):
         """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
@@ -739,7 +818,7 @@ class Model(object):
         with helpers.Timer() as t:
             # get subspace basis (for projection to base regressor/parameters)
             Yrand = self.getRandomRegressor(5000)
-            #A = iDynTree.MatrixDynSize(self.num_params, self.num_params)
+            #A = iDynTree.MatrixDynSize(self.num_identified_params, self.num_identified_params)
             #self.generator.generate_random_regressors(A, False, True, 2000)
             #Yrand = A.toNumPy()
             U, s, Vh = la.svd(Yrand, full_matrices=False)

@@ -31,12 +31,12 @@ def test_regressors():
       </jointTorqueDynamics>
     </regressor>'''
     generator.loadRegressorStructureFromString(regrXml)
-    num_params = generator.getNrOfParameters()
+    num_model_params = generator.getNrOfParameters()
     num_out = generator.getNrOfOutputs()
     n_dofs = generator.getNrOfDegreesOfFreedom()
     num_samples = 100
 
-    xStdModel = iDynTree.VectorDynSize(num_params)
+    xStdModel = iDynTree.VectorDynSize(num_model_params)
     generator.getModelParameters(xStdModel)
     xStdModel = xStdModel.toNumPy()
 
@@ -46,7 +46,7 @@ def test_regressors():
     dynComp = iDynTree.DynamicsComputations()
     dynComp.loadRobotModelFromFile(urdf_file)
 
-    regressor_stack = np.zeros(shape=((n_dofs+6)*num_samples, num_params))
+    regressor_stack = np.zeros(shape=((n_dofs+6)*num_samples, num_model_params))
     idyn_torques = np.zeros(shape=((n_dofs+6)*num_samples))
 
     for sample_index in range(0,num_samples):
@@ -66,7 +66,7 @@ def test_regressors():
         #regressor
         generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, gravity_twist)
 
-        regressor = iDynTree.MatrixDynSize(num_out, num_params)
+        regressor = iDynTree.MatrixDynSize(num_out, num_model_params)
         knownTerms = iDynTree.VectorDynSize(num_out)
         if not generator.computeRegressor(regressor, knownTerms):
             print("Error during numeric computation of regressor")

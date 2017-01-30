@@ -78,7 +78,7 @@ class Identification(object):
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
 
-        self.paramHelpers = helpers.ParamHelpers(self.model.num_inertial_params)
+        self.paramHelpers = helpers.ParamHelpers(self.model.num_model_params, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
         self.sdp = SDP()
 
@@ -96,7 +96,7 @@ class Identification(object):
             estimateWith = self.opt['estimateWith']
         # estimate torques with idyntree regressor and different params
         if estimateWith == 'urdf':
-            tauEst = np.dot(self.model.YStd, self.model.xStdModel)
+            tauEst = np.dot(self.model.YStd, self.model.xStdModel[self.model.identified_params])
         elif estimateWith == 'base_essential':
             tauEst = np.dot(self.model.YBase, self.xBase_essential)
         elif estimateWith == 'base':
@@ -241,7 +241,7 @@ class Identification(object):
 
         # get estimated parameters from estimated error (add a priori knowledge)
         if self.opt['useAPriori']:
-            self.model.xStd += self.model.xStdModel
+            self.model.xStd += self.model.xStdModel[self.model.identified_params]
 
     def getStdDevForParams(self):
         if self.opt['useAPriori']:
@@ -456,10 +456,10 @@ class Identification(object):
 
         # remove mass params if present
         #if self.opt['dontIdentifyMasses']:
-        #    ps = list(range(0, self.model.num_params, 10))
+        #    ps = list(range(0, self.model.num_identified_params, 10))
         #    self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
 
-        self.stdNonEssentialIdx = [x for x in range(0, self.model.num_params) if x not in self.stdEssentialIdx]
+        self.stdNonEssentialIdx = [x for x in range(0, self.model.num_identified_params) if x not in self.stdEssentialIdx]
 
         # get \hat{x_e}, set zeros for non-essential params
         if self.opt['useDependents'] or useCADWeighting:
@@ -485,7 +485,7 @@ class Identification(object):
                     self.xStdEssential[idx] = v
                     #print idx, idx % 10, v
                 idx += 1
-                if idx > self.model.num_inertial_params:
+                if idx > self.model.num_model_params:
                     break
 
             # cancel non-essential std params so they are not identified
@@ -512,7 +512,7 @@ class Identification(object):
         if self.opt['useBasisProjection']:
             self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
         else:
-            self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel)
+            self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
@@ -615,7 +615,7 @@ class Identification(object):
                 self.model.xStd = x_est
 
             """
-            st = self.model.num_params
+            st = self.model.num_identified_params
             # non-singular YStd, called W_st in Gautier, 2013
             self.YStdHat = self.YStd - U[:, nb:st].dot(np.diag(s[nb:st])).dot(V[:,nb:st].T)
             self.YStdHatInv = la.pinv(self.YStdHat)
@@ -658,7 +658,7 @@ class Identification(object):
     def estimateParameters(self):
         '''identify parameters using data and regressor (method depends on chosen options)'''
 
-        if not self.data.num_used_samples > self.model.num_params*2 \
+        if not self.data.num_used_samples > self.model.num_identified_params*2 \
             and 'selectingBlocks' in self.opt and not self.opt['selectingBlocks']:
             print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
             if self.opt['startOffset'] > 0:

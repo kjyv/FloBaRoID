@@ -73,7 +73,7 @@ class OutputConsole(object):
         colorama.init(autoreset=False)
 
         if not idf.opt['useEssentialParams']:
-            idf.stdEssentialIdx = list(range(0, idf.model.num_params))
+            idf.stdEssentialIdx = list(range(0, idf.model.num_identified_params))
             idf.stdNonEssentialIdx = []
 
         import iDynTree
@@ -82,17 +82,17 @@ class OutputConsole(object):
             dc = iDynTree.DynamicsRegressorGenerator()
             if not dc.loadRobotAndSensorsModelFromFile(idf.urdf_file_real):
                 sys.exit()
-            tmp = iDynTree.VectorDynSize(idf.model.num_inertial_params)
+            tmp = iDynTree.VectorDynSize(idf.model.num_model_params)
             #set regressor, otherwise getModelParameters segfaults
             dc.loadRegressorStructureFromString(idf.model.regrXml)
             dc.getModelParameters(tmp)
             xStdReal = tmp.toNumPy()
-            #add some zeros for friction etc.
-            xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_params-idf.model.num_inertial_params)))
+            #add some zeros for friction
+            xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_all_params-idf.model.num_model_params)))
             if idf.opt['useBasisProjection']:
-                xBaseReal = np.dot(idf.model.Binv, xStdReal)
+                xBaseReal = np.dot(idf.model.Binv, xStdReal[idf.model.identified_params])
             else:
-                xBaseReal = idf.model.K.dot(xStdReal)
+                xBaseReal = idf.model.K.dot(xStdReal[idf.model.identified_params])
 
         if idf.opt['showStandardParams']:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
@@ -114,13 +114,13 @@ class OutputConsole(object):
             if idf.opt['identifyFriction']:
                 for i in range(0, idf.model.N_DOFS):
                     description += "Parameter {}: Constant friction / offset of joint {}\n".format(
-                            i+idf.model.num_inertial_params,
+                            i+idf.model.num_model_params,
                             idf.model.jointNames[i]
                     )
 
                 for i in range(0, idf.model.N_DOFS*2):
                     description += "Parameter {}: Velocity dep. friction joint {}\n".format(
-                            i+idf.model.N_DOFS+idf.model.num_inertial_params,
+                            i+idf.model.N_DOFS+idf.model.num_model_params,
                             idf.model.jointNames[i%idf.model.N_DOFS]
                     )
 
@@ -131,24 +131,26 @@ class OutputConsole(object):
             sum_pc_delta_all = 0
             sum_pc_delta_ess = 0
             descriptions = description.replace(r'Parameter ', '#').split('\n')
-            for idx_p in range(idf.model.num_params):
-                d = descriptions[idx_p]
+            for idx_p in range(idf.model.num_identified_params):
+                idx_p_full = idf.model.identified_params[idx_p]
+                d = descriptions[idx_p_full]
+
                 if idf.opt['outputBarycentric']:
                     d = d.replace(r'first moment', 'center')
                 # add symbol for each parameter
-                d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p]))
+                d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p_full]))
 
                 # print beginning of each link block in green
-                if idx_p % 10 == 0 and idx_p < idf.model.num_inertial_params:
+                if idx_p_full % 10 == 0 and idx_p_full < idf.model.num_model_params:
                     d = Fore.GREEN + d
 
                 # get some error values for each parameter
                 approx = xStd[idx_p]
-                apriori = xStdModel[idx_p]
+                apriori = xStdModel[idx_p_full]
                 diff = approx - apriori
 
                 if idf.urdf_file_real:
-                    real = xStdReal[idx_p]
+                    real = xStdReal[idx_p_full]
                     # set real params that are 0 to some small value
                     #if real == 0: real = 0.01
 
@@ -195,15 +197,15 @@ class OutputConsole(object):
                     sigma = 0.0
 
                 if idf.urdf_file_real and idf.opt['constrainToConsistent']:
-                    if idx_p in idf.model.non_id:
-                        idf.sdp.constr_per_param[idx_p].append('nID')
-                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
+                    if idx_p_full in idf.model.non_id:
+                        idf.sdp.constr_per_param[idx_p_full].append('nID')
+                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
                 elif idf.urdf_file_real:
                     vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
                 elif idf.opt['constrainToConsistent']:
-                    if idx_p in idf.model.non_id:
-                        idf.sdp.constr_per_param[idx_p].append('nID')
-                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p]), d]
+                    if idx_p_full in idf.model.non_id:
+                        idf.sdp.constr_per_param[idx_p_full].append('nID')
+                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
                 elif idf.opt['useEssentialParams']:
                     vals = [apriori, approx, diff, diff_pc, sigma, d]
                 else:
@@ -214,13 +216,13 @@ class OutputConsole(object):
                     idx_ep += 1
 
             if idf.urdf_file_real and idf.opt['constrainToConsistent']:
-                column_widths = [13, 13, 13, 7, 7, 7, 6, 6, 45]
+                column_widths = [13, 13, 13, 7, 7, 7, 6, 8, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0, 0]
             elif idf.urdf_file_real:
                 column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
                 precisions = [8, 8, 8, 4, 1, 1, 3, 0]
             elif idf.opt['constrainToConsistent']:
-                column_widths = [13, 13, 7, 7, 6, 45]
+                column_widths = [13, 13, 7, 7, 8, 45]
                 precisions = [8, 8, 4, 1, 0, 0]
             elif idf.opt['useEssentialParams']:
                 column_widths = [13, 13, 7, 7, 6, 45]
@@ -290,9 +292,9 @@ class OutputConsole(object):
                     print(header)
 
                     #print table rows
-                    for idx_p in range(10, idf.model.num_params):
+                    for idx_p in range(10, idf.model.num_identified_params):
                         #if idx_p == len(idf.model.identifiable) // 2:
-                        if idx_p-10 in [(idf.model.num_params-10) // 3, ((idf.model.num_params-10) // 3)*2]:
+                        if idx_p-10 in [(idf.model.num_identified_params-10) // 3, ((idf.model.num_identified_params-10) // 3)*2]:
                             #start new table after half of params
                             print(footer)
                             print(header)
@@ -417,9 +419,15 @@ class OutputConsole(object):
             #print "unused blocks: {}".format(idf.unusedBlocks)
             print("condition number: {}".format(la.cond(idf.model.YBase)))
 
-        print("Estimated overall mass: {} kg vs. apriori {} kg".format(np.sum(idf.model.xStd[0:idf.model.num_inertial_params:10]), np.sum(idf.model.xStdModel[0:idf.model.num_inertial_params:10])), end="")
+        if idf.opt['identifyGravityParamsOnly']:
+            fric = idf.model.N_DOFS * idf.opt['identifyFriction']
+            sum_id = np.sum(idf.model.xStd[0:idf.model.num_identified_params-fric:4])
+        else:
+            sum_id = np.sum(idf.model.xStd[0:idf.model.num_model_params:10])
+        sum_apriori = np.sum(idf.model.xStdModel[0:idf.model.num_model_params:10])
+        print("Estimated overall mass: {} kg vs. apriori {} kg".format(sum_id, sum_apriori), end="")
         if idf.urdf_file_real:
-            print(" vs. real {} kg".format(np.sum(xStdReal[0:idf.model.num_inertial_params:10])))
+            print(" vs. real {} kg".format(np.sum(xStdReal[0:idf.model.num_model_params:10])))
         else:
             print()
 
@@ -431,12 +439,13 @@ class OutputConsole(object):
             else:
                 print("A priori parameters are physical consistent")
 
-            consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
-            if False in list(consistency.values()):
-                print("Identified parameters are not physical consistent,")
-                print("per-link physical consistency (identified): {}".format(consistency))
-            else:
-                print("Identified parameters are physical consistent")
+            if not idf.opt['identifyGravityParamsOnly']:
+                consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
+                if False in list(consistency.values()):
+                    print("Identified parameters are not physical consistent,")
+                    print("per-link physical consistency (identified): {}".format(consistency))
+                else:
+                    print("Identified parameters are physical consistent")
 
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
@@ -458,9 +467,9 @@ class OutputConsole(object):
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.model.xStd)))
-                p_idf = idf.model.identifiable
+                p_idf = idf.model.identified_params
                 sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
-                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
+                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd))
                 print( "Squared distance of identifiable std parameter vectors (identified, apriori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
                 #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))

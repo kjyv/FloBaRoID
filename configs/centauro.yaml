@@ -83,6 +83,9 @@ floatingBase: 0
 # identify motor friction
 identifyFriction: 1
 
+# identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
+identifyGravityParamsOnly: 0
+
 # simulate torques from target values, don't use both
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 

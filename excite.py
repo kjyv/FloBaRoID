@@ -54,7 +54,8 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.model import Model
 from identification.data import Data
 
-from excitation.trajectoryGenerator import TrajectoryGenerator, TrajectoryOptimizer
+from excitation.trajectoryGenerator import TrajectoryGenerator
+from excitation.trajectoryOptimizer import TrajectoryOptimizer
 
 def plot(data=None):
     fig = plt.figure(1)

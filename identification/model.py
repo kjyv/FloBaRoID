@@ -440,7 +440,7 @@ class Model(object):
                 for s in range(self.data.num_used_samples):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
-            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+6))
+            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+fb))
 
             #reshape torque stack
             torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
@@ -455,7 +455,7 @@ class Model(object):
                 # so only add it to the (simulated) base force estimation
                 torques_stack_2dim[:, :6] -= self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
-            self.data.samples['torques'] = torques_stack_2dim[:, 6:]
+            self.data.samples['torques'] = torques_stack_2dim[:, fb:]
         else:
             # also write back torques if simulating and fixed-base
             if self.opt['simulateTorques']:

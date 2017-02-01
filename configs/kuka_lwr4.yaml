@@ -108,7 +108,12 @@ constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
-identifyClosestToCAD: 0
+identifyClosestToCAD: 1
+
+# after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
+constrainUsingNL: 1
+nlOptIterations: 1000
+useIPOPTforNL: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

@@ -426,7 +426,7 @@ class Model(object):
             for i in range(self.contacts_stack.shape[0]):
                 frame = list(contacts.keys())[i]
                 if frame == 'dummy_sim':  #ignore empty contacts from simulation
-                    print("Empty contacts data!")
+                    #print("Empty contacts data!")
                     continue
 
                 # get jacobian and contact force for each contact frame and measurement sample

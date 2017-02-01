@@ -25,6 +25,14 @@ import time
 from IPython import embed
 
 class SDP(object):
+    def __init__(self, idf):
+        self.idf = idf
+
+        # collect constraint flags for display
+        self.constr_per_param = {}
+        for i in self.idf.model.identified_params:
+            self.constr_per_param[i] = []
+
     def initSDP_LMIs(self, idf, remove_nonid=True):
         ''' initialize LMI matrices to set physical consistency constraints for SDP solver
             based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
@@ -109,11 +117,6 @@ class SDP(object):
                     D_inertia_blocks.append(Di.as_mutable())
 
             params_to_skip = []
-
-            # collect constraint flags for display
-            self.constr_per_param = {}
-            for i in idf.model.identified_params:
-                self.constr_per_param[i] = []
 
             # ignore depending on sub-regressor condition numbers per link
             linkConds = idf.model.getSubregressorsConditionNumbers()

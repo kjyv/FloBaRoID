@@ -37,7 +37,8 @@ requirements for identification module:
 
 requirements for excitation modules:
 
-* optimization: python modules: iDynTree, pyOpt (apply included patch if getting inf's while optimizing trajectories)
+* optimization: python modules: iDynTree, pyOpt (fork at https://github.com/kjyv/pyOpt is
+  recommended)
 * for yarp/walkman: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
 * for ros/kuka: [kuka-lwr package](https://github.com/CentroEPiaggio/kuka-lwr), python modules: ros, moveit\_msg, moveit\_commander
 * for other robots, new modules might have to be written

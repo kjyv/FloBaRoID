@@ -82,8 +82,8 @@ class ParamHelpers(object):
     def isPhysicalConsistent(self, params):
         """give boolean consistency statement for a set of parameters"""
         if self.opt['identifyGravityParamsOnly']:
-            #TODO: check properly if masses are positive
-            return True
+            # check if masses are positive
+            return np.all(params[0::4] > 0)
         else:
             return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 

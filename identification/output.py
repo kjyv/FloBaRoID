@@ -439,13 +439,15 @@ class OutputConsole(object):
             else:
                 print("A priori parameters are physical consistent")
 
-            if not idf.opt['identifyGravityParamsOnly']:
+            if idf.opt['identifyGravityParamsOnly']:
+                consistency = {p:p > 0 for p in idf.model.xStd[0::4]}
+            else:
                 consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
-                if False in list(consistency.values()):
-                    print("Identified parameters are not physical consistent,")
-                    print("per-link physical consistency (identified): {}".format(consistency))
-                else:
-                    print("Identified parameters are physical consistent")
+            if False in list(consistency.values()):
+                print("Identified parameters are not physical consistent,")
+                print("per-link physical consistency (identified): {}".format(consistency))
+            else:
+                print("Identified parameters are physical consistent")
 
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
@@ -468,14 +470,14 @@ class OutputConsole(object):
                 print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.model.xStd)))
                 p_idf = idf.model.identified_params
-                sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
-                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd))
-                print( "Squared distance of identifiable std parameter vectors (identified, apriori) to real: {} vs. {}".\
-                        format(sq_error_idf, sq_error_apriori))
-                #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
-                #sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                #print( "Squared distance of std parameter vectors (identified, apriori) to real: {} vs. {}".\
+                #sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
+                #sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd))
+                #print( "Squared distance of identifiable std parameter vectors (identified, apriori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
+                sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
+                sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
+                print( "Squared distance of std parameter vectors (identified, apriori) to real: {} vs. {}".\
+                        format(sq_error_idf, sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 print("Mean error (apriori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))

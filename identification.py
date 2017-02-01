@@ -29,6 +29,7 @@ from identification.model import Model
 from identification.data import Data
 from identification.output import OutputConsole
 from identification.sdp import SDP
+from identification.nlopt import NLOPT
 from identification import helpers
 
 from colorama import Fore, Back, Style
@@ -80,7 +81,7 @@ class Identification(object):
 
         self.paramHelpers = helpers.ParamHelpers(self.model.num_model_params, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
-        self.sdp = SDP()
+        self.sdp = SDP(self)
 
         self.tauEstimated = list()
         self.res_error = 100
@@ -688,11 +689,14 @@ class Identification(object):
                 if self.opt['identifyClosestToCAD']:
                     # first estimate feasible base params, then find corresponding feasible std
                     # params while minimizing distance to CAD
-                    self.opt['deleteFixedBase'] = 0
-                    self.sdp.initSDP_LMIs(self, remove_nonid=False)
-                    self.sdp.identifyFeasibleBaseParameters(self)
-                    #self.opt['deleteFixedBase'] = 1
-                    #self.sdp.initSDP_LMIs(self, remove_nonid=True)
+                    self.opt['deleteFixedBase'] = 1
+                    self.sdp.initSDP_LMIs(self)
+                    self.sdp.identifyFeasibleStandardParameters(self)
+                    self.model.xBase = self.model.Binv.dot(self.model.xStd)
+                    if self.opt['constrainUsingNL']:
+                        nlopt = NLOPT(self)
+                        nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
+                    else:
                     self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     # if using fixed base dynamics, remove first link that is the fixed base which should completely
@@ -713,8 +717,9 @@ class Identification(object):
 
                 # correct std solution to feasible if necessary (e.g. infeasible solution from
                 # unsuccessful optimization run)
-                if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
+                if not self.paramHelpers.isPhysicalConsistent(self.model.xStd) and not self.opt['constrainUsingNL']:
                     #get full LMIs again
+                    self.opt['deleteFixedBase'] = 0
                     self.sdp.initSDP_LMIs(self, remove_nonid=False)
                     print("Correcting solution to feasible std (non-optimal)")
                     self.model.xStd = self.sdp.findFeasibleStdFromStd(self, self.model.xStd)

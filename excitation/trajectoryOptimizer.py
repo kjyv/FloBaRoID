@@ -325,11 +325,10 @@ class TrajectoryOptimizer(object):
 
         ## describe optimization problem with pyOpt classes
 
-        from pyOpt import Optimization
-        from pyOpt import ALPSO, SLSQP
+        import pyOpt
 
         # Instanciate Optimization Problem
-        opt_prob = Optimization('Trajectory optimization', self.objective_func)
+        opt_prob = pyOpt.Optimization('Trajectory optimization', self.objective_func)
         opt_prob.addObj('f')
 
         # add variables, define bounds
@@ -358,7 +357,7 @@ class TrajectoryOptimizer(object):
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
-            opt = ALPSO()  #augmented lagrange particle swarm optimization
+            opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
             opt.setOption('stopCriteria', 0)
             opt.setOption('maxInnerIter', 3)
             opt.setOption('maxOuterIter', self.config['globalOptIterations'])
@@ -385,10 +384,12 @@ class TrajectoryOptimizer(object):
 
         # after using global optimization, get more exact solution with
         # gradient based method init optimizer (only local)
-        opt2 = SLSQP()   #sequential least squares
+        opt2 = pyOpt.SLSQP()   #sequential least squares
         opt2.setOption('MAXIT', self.config['localOptIterations'])
         if self.config['verbose']:
             opt2.setOption('IPRINT', 0)
+        #opt2 = pyOpt.IPOPT()
+        #opt2 = pyOpt.PSQP()
         # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
         # iterations are probably steps along the gradient. How to get proper no. of expected func calls?
         self.iter_max = "(unknown)"

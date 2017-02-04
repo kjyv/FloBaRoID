@@ -539,7 +539,7 @@ class Identification(object):
         if id_only:
             return
 
-        if self.opt['showBaseParams'] or self.opt['verbose']:
+        if self.opt['showBaseParams'] or self.opt['verbose'] or self.opt['useRegressorRegularization']:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base', print_stats=True)
             if not 'selectingBlocks' in self.opt or not self.opt['selectingBlocks']:

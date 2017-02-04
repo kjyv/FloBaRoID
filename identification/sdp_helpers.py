@@ -168,7 +168,7 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
 
     return s
 
-def cvxopt_conelp(objf, lmis, variables, primalstart=None):
+def cvxopt_conelp(objf, lmis, variables, primalstart=None, verbose=False):
     # using cvxopt conelp (no structure exploitation)
     # currently not using primal as starting point (since idk what s is)
     import cvxopt.solvers
@@ -188,11 +188,12 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
         # return primalstart if no solution was found
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
         sdpout['x'] = np.reshape( np.concatenate(([0], primalstart)), (len(primalstart)+1, 1) )
-    print('Elapsed time: %.2f s'%(toc-tic))
+    if verbose:
+        print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x']), state
 
 
-def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
+def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False, verbose=False):
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
@@ -210,14 +211,17 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         #print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
-    print('Elapsed time: %.2f s'%(toc-tic))
+    if verbose:
+        print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x']), state
 
 
-def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
+def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False, verbose=False):
     # use dsdp5 directly (faster than cvxopt, can use starting points, more robust)
     import subprocess
     import os
+
+    tic = time.time()
 
     sdpadat = to_sdpa_sparse(objf, lmis, variables)
     path = os.path.dirname(os.path.abspath(__file__))
@@ -273,6 +277,11 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         print(state)
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
+
+    toc = time.time()
+    if verbose:
+        print('Elapsed time: %.2f s'%(toc-tic))
+
     return np.matrix(sol).T, state
 
 #set a default solver
@@ -280,4 +289,4 @@ solve_sdp = cvxopt_conelp # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp
 
 # it seems cvxopt_conelp and cvxopt_dsdp5 are working well when the data is good whereas dsdp5
 # sometimes fails that situation completely. However, in some bad data situations dsdp5 performs very well
-# (with changed bounds) where the other two don't work. Weird
+# (with changed bounds) where the other two don't work.

@@ -14,9 +14,9 @@ localOptIterations: 3          #how many optimizer iterations to use. this is no
 minTolConstr: 0.01             #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
-trajectoryPulseInit: 0.75      #determines length of one period of trajectory (smaller=longer)
-trajectoryPulseMin:  0.5
-trajectoryPulseMax:  1.5
+trajectoryPulseInit: 0.5       #determines length of one period of trajectory (smaller=longer)
+trajectoryPulseMin:  0.3
+trajectoryPulseMax:  1.0
 trajectoryCoeffInit: 0.4       #set this as high as possible without violating constraints (see output after start)
 trajectoryCoeffMin: -0.5       #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
@@ -109,10 +109,10 @@ constrainToConsistent: 1
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
 identifyClosestToCAD: 1
-
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
+# (otherwise use SDP as well, experimental)
 constrainUsingNL: 1
-nlOptIterations: 1000
+nlOptIterations: 500
 useIPOPTforNL: 0
 
 # constrain parameters for links more than a certain condition number to the a priori values

@@ -32,7 +32,7 @@ class NLOPT(object):
         self.inner_iter = 0
         self.last_best_u = 1e16
 
-    def minimizeBaseOLSError(self, x):
+    def minimizeSolToCAD(self, x):
         fail = 0
 
         # estimation error
@@ -131,7 +131,7 @@ class NLOPT(object):
         self.use_tri_ineq = not (False in self.idf.paramHelpers.checkPhysicalConsistency(self.model.xStd).values())
 
         # formulate problem as objective function
-        opt = pyOpt.Optimization('Constrained OLS', self.minimizeBaseOLSError)
+        opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCAD)
         opt.addObj('u')
 
         self.addVarsAndConstraints(opt)
@@ -159,9 +159,11 @@ class NLOPT(object):
             print(opt)
 
         if self.idf.opt['useIPOPTforNL']:
-            # not deterministic, takes a long time?
+            # not necessarily deterministic
+            if self.idf.opt['verbose']:
+                print('Using IPOPT to get closer to a priori')
             solver = pyOpt.IPOPT()
-            solver.setOption('linear_solver', 'ma86')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            solver.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             #for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
             solver.setOption('max_iter', self.idf.opt['nlOptIterations'])
             #solver.setOption('max_cpu_time', 120)
@@ -175,10 +177,11 @@ class NLOPT(object):
             solver.setOption('bound_relax_factor', 0.0) #1e-16)
         else:
             # solve optimization problem
+            if self.idf.opt['verbose']:
+                print('Using PSQP to get closer to a priori')
             solver = pyOpt.PSQP(disp_opts=True)
             solver.setOption('MIT', self.idf.opt['nlOptIterations'])
-            solver.setOption('TOLC', 0.0)
-            solver.setOption('XMAX', 1e8)
+            solver.setOption('TOLC', 1e-16)
             if self.idf.opt['verbose']:
                 solver.setOption('IPRINT', 1)
 
@@ -193,8 +196,8 @@ class NLOPT(object):
         solver(opt)         #run optimization
 
         # set best solution again (is often different than final solver solution)
-        for i in range(len(opt._variables)):
-            opt._variables[i].value = self.last_best_x[i]
+        for i in range(len(opt.getVarSet())):
+            opt.getVar(i).value = self.last_best_x[i]
 
         sol = opt.solution(0)
         if self.idf.opt['verbose']:

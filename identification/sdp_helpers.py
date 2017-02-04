@@ -1,7 +1,6 @@
 from __future__ import print_function
 from builtins import str
 from builtins import range
-import time
 import sympy
 from sympy import Basic, BlockDiagMatrix, sympify
 version = int(sympy.__version__.replace('.','')[:3])
@@ -168,18 +167,16 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
 
     return s
 
-def cvxopt_conelp(objf, lmis, variables, primalstart=None, verbose=False):
+def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     # using cvxopt conelp (no structure exploitation)
     # currently not using primal as starting point (since idk what s is)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
-    tic = time.time()
     cvxopt.solvers.options['maxiters'] = 100
     cvxopt.solvers.options['show_progress'] = False
     #cvxopt.solvers.options['feastol'] = 1e-5
 
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
-    toc = time.time()
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
         #print("(does not necessarily mean feasible)")
@@ -188,40 +185,32 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None, verbose=False):
         # return primalstart if no solution was found
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
         sdpout['x'] = np.reshape( np.concatenate(([0], primalstart)), (len(primalstart)+1, 1) )
-    if verbose:
-        print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x']), state
 
 
-def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False, verbose=False):
+def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     cvxopt.solvers.options['dsdp']= {'DSDP_GapTolerance': epsilon_sdptol, 'DSDP_Monitor': 10}
-    tic = time.time()
     if wide_bounds:
         sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, beta=10e15, gama=10e15, solver='dsdp')
     else:
         sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
-    toc = time.time()
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
         print("{}".format(sdpout['status']))
         #print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
-    if verbose:
-        print('Elapsed time: %.2f s'%(toc-tic))
     return np.matrix(sdpout['x']), state
 
 
-def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False, verbose=False):
+def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     # use dsdp5 directly (faster than cvxopt, can use starting points, more robust)
     import subprocess
     import os
-
-    tic = time.time()
 
     sdpadat = to_sdpa_sparse(objf, lmis, variables)
     path = os.path.dirname(os.path.abspath(__file__))
@@ -278,11 +267,8 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False, verbose=Fa
     outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
 
-    toc = time.time()
-    if verbose:
-        print('Elapsed time: %.2f s'%(toc-tic))
-
     return np.matrix(sol).T, state
+
 
 #set a default solver
 solve_sdp = cvxopt_conelp # choose one from dsdp5, cvxopt_dsdp5, cvxopt_conelp

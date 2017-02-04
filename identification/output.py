@@ -488,9 +488,9 @@ class OutputConsole(object):
                 print("Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
         else:
-                sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
-                print("Squared distance of identifiable std parameter vectors to a priori: {}".\
-                        format(sq_error_apriori))
+            sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
+            print("Squared distance of identifiable std parameter vectors to a priori: {}".\
+                    format(sq_error_apriori))
 
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)

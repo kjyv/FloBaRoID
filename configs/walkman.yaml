@@ -116,6 +116,11 @@ constrainToConsistent: 1
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
 identifyClosestToCAD: 0
+# after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
+# (otherwise use SDP as well, experimental)
+constrainUsingNL: 1
+nlOptIterations: 500
+useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)

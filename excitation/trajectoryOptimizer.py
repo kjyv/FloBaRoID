@@ -353,7 +353,7 @@ class TrajectoryOptimizer(object):
             opt_prob.addConGroup('g', self.dofs*4, type='i')
         #print opt_prob
 
-        initial = [v.value for v in list(opt_prob._variables.values())]
+        initial = [v.value for v in list(opt_prob.getVarSet().values())]
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
@@ -396,13 +396,9 @@ class TrajectoryOptimizer(object):
 
         if self.config['useGlobalOptimization']:
             if self.last_best_sol is not None:
-                #use best constrained solution
-                for i in range(len(opt_prob._variables)):
-                    opt_prob._variables[i].value = self.last_best_sol[i]
-            else:
-                #reuse previous solution
-                for i in range(len(opt_prob._variables)):
-                    opt_prob._variables[i].value = opt_prob.solution(0).getVar(i).value
+                #use best constrained solution (might be better than what solver thinks)
+                for i in range(len(opt_prob.getVarSet())):
+                    opt_prob.getVar(i).value = self.last_best_sol[i]
 
             opt2(opt_prob, store_hst=False, sens_step=0.1)
         else:
@@ -415,7 +411,7 @@ class TrajectoryOptimizer(object):
         local_sol = opt_prob.solution(0)
         if not self.config['useGlobalOptimization']:
             print(local_sol)
-        local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol._variables))])
+        local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol.getVarSet()))])
 
         if self.last_best_sol is not None:
             local_sol_vec = self.last_best_sol

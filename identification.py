@@ -697,7 +697,7 @@ class Identification(object):
                         nlopt = NLOPT(self)
                         nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
                     else:
-                    self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
+                        self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     # if using fixed base dynamics, remove first link that is the fixed base which should completely
                     # not be identifiable and not be part of equations (as it does not move)

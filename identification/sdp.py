@@ -297,7 +297,8 @@ class SDP(object):
                 p_nid = list(set(p_nid).difference(set(self.delete_cols)).intersection(set(idf.model.identified_params)))
                 contactForces = np.concatenate( (contactForces, np.zeros(len(p_nid))))
 
-            print("Step 1...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 1...", time.ctime())
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
@@ -334,7 +335,8 @@ class SDP(object):
                     Y = R1*(K*delta)
                     e_rho1 = Matrix(rho1 - contactForces) - Y
 
-            print("Step 2...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 2...", time.ctime())
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contacts should be close to measured torques)
@@ -342,10 +344,12 @@ class SDP(object):
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1,            I(e_rho1.shape[0])]])
 
-            print("Step 3...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
 
-            print("Step 4...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 4...", time.ctime())
 
             if idf.opt['verbose']:
                 print("Add constraint LMIs")
@@ -371,7 +375,7 @@ class SDP(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with {} squared residual error".format(u_star))
+                print("SDP found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -429,13 +433,15 @@ class SDP(object):
                 contactForcesSum = idf.model.contactForcesSum
             contactForces = Matrix(Q.T.dot(contactForcesSum))
 
-            print("Step 1...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 1...", time.ctime())
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contacts should be close to measured torques)
             e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
 
-            print("Step 2...", time.ctime())
+            if idf.opt['verbose']:
+                print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
@@ -444,9 +450,13 @@ class SDP(object):
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1,       I(idf.model.num_identified_params)]])
-            print("Step 3...", time.ctime())
+
+            if idf.opt['verbose']:
+                print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
-            print("Step 4...", time.ctime())
+
+            if idf.opt['verbose']:
+                print("Step 4...", time.ctime())
 
             if idf.opt['verbose']:
                 print("Add constraint LMIs")
@@ -473,7 +483,7 @@ class SDP(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found std solution with {} squared residual error".format(u_star))
+                print("SDP found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -619,7 +629,7 @@ class SDP(object):
 
             u_star = solution[0,0]
             if u_star:
-                print("found base solution with {} error increase from OLS solution".format(u_star))
+                print("SDP found base solution with {} error increase from OLS solution".format(u_star))
             beta_star = np.matrix(solution[1:1+idf.model.num_base_params])
 
             idf.model.xBase = np.squeeze(np.asarray(beta_star))
@@ -677,7 +687,7 @@ class SDP(object):
             sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
         u = solution[0, 0]
-        print("found std solution with distance {} from CAD solution".format(u))
+        print("SDP found std solution with distance {} from CAD solution".format(u))
         idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
 
@@ -703,7 +713,7 @@ class SDP(object):
 
         u_star = solution[0,0]
         if u_star:
-            print("found std solution with {} error increase from previous solution".format(u_star))
+            print("SDP found std solution with {} error increase from previous solution".format(u_star))
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 

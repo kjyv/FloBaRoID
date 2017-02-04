@@ -868,6 +868,7 @@ class Model(object):
             else:
                 linkConds.append(la.cond(self.YBase[:, base_columns]))
 
-        print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds))))
+        if self.opt['verbose']:
+            print("Condition numbers of link sub-regressors: [{}]".format(dict(enumerate(linkConds))))
 
         return linkConds

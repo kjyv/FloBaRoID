@@ -424,8 +424,10 @@ class OutputConsole(object):
             sum_id = np.sum(idf.model.xStd[0:idf.model.num_identified_params-fric:4])
         else:
             sum_id = np.sum(idf.model.xStd[0:idf.model.num_model_params:10])
+
+        print(Style.BRIGHT + "Parameters" + Style.RESET_ALL)
         sum_apriori = np.sum(idf.model.xStdModel[0:idf.model.num_model_params:10])
-        print("Estimated overall mass: {} kg vs. apriori {} kg".format(sum_id, sum_apriori), end="")
+        print("Estimated overall mass: {} kg vs. a priori {} kg".format(sum_id, sum_apriori), end="")
         if idf.urdf_file_real:
             print(" vs. real {} kg".format(np.sum(xStdReal[0:idf.model.num_model_params:10])))
         else:
@@ -452,11 +454,12 @@ class OutputConsole(object):
         if idf.opt['showTriangleConsistency']:
             consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
             if False in list(consistency.values()):
-                print("A priori parameters (w/ triangle inequality) are not physical consistent,")
+                print("A priori parameters are not physical consistent (w/ triangle inequality),")
                 print("per-link full physical consistency (identified): {}".format(consistency))
             else:
-                print("A priori parameters (w/ triangle inequality) are physical consistent")
+                print("A priori parameters are physical consistent (w/ triangle inequality)")
 
+        p_idf = idf.model.identifiable
         if idf.urdf_file_real:
             if idf.opt['showStandardParams']:
                 if idf.opt['useEssentialParams']:
@@ -465,26 +468,30 @@ class OutputConsole(object):
                 print("Mean relative error of all std params: {}%".format(sum_diff_r_pc_all/len(idf.model.xStd)))
 
                 if idf.opt['useEssentialParams']:
-                    print("Mean error delta (apriori error vs approx error) of essential std params: {}%".\
+                    print("Mean error delta (a priori error vs approx error) of essential std params: {}%".\
                             format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
-                print("Mean error delta (apriori error vs approx error) of all std params: {}%".\
+                print("Mean error delta (a priori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.model.xStd)))
-                p_idf = idf.model.identified_params
-                #sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
-                #sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd))
-                #print( "Squared distance of identifiable std parameter vectors (identified, apriori) to real: {} vs. {}".\
-                #        format(sq_error_idf, sq_error_apriori))
-                sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
-                sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                print( "Squared distance of std parameter vectors (identified, apriori) to real: {} vs. {}".\
+                sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
+                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
+                print("Squared distance of identifiable std parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
+                #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
+                #sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
+                #print( "Squared distance of std parameter vectors (identified, a priori) to real: {} vs. {}".\
+                #        format(sq_error_idf, sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
-                print("Mean error (apriori - approx) of all base params: {:.5f}".\
+                print("Mean error (a priori - approx) of all base params: {:.5f}".\
                         format(sum_error_all_base/len(idf.model.xBase)))
                 sq_error_apriori = np.square(la.norm(xBaseReal - idf.model.xBaseModel))
                 sq_error_idf = np.square(la.norm(xBaseReal - idf.model.xBase))
-                print( "Squared distance of base parameter vectors (identified, apriori) to real: {} vs. {}".\
+                print("Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
+        else:
+                sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
+                print("Squared distance of identifiable std parameter vectors to a priori: {}".\
+                        format(sq_error_apriori))
+
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
         # get percentual error (i.e. how big is the error relative to the measured magnitudes)

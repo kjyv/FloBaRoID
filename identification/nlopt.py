@@ -90,19 +90,20 @@ class NLOPT(object):
             cons += cons_com
 
         # print some iter stats
-        if self.inner_iter % 100 == 0:
+        if self.idf.opt['verbose'] and self.inner_iter % 100 == 0:
             print("inner iter {}, u={}, base dist:{}, inertia pd:{}, tri ineq:{}".format(self.inner_iter, u,
                 np.sum(np.array(cons_base)), np.all(np.array(cons_inertia) >= 0), np.all(np.array(cons_tri) >= 0)))
         self.inner_iter += 1
 
         #keep best solution manually (whatever these solvers are doing...)
         #TODO: check that all constraints are met (create test function)
-        if u < self.last_best_u and (np.abs(np.sum(np.array(cons_base))) - 1e9) <= 0 and \
+        if u < self.last_best_u and (np.abs(np.sum(np.array(cons_base))) - 1e6) <= 0 and \
                 np.all(np.array(cons_inertia) >= 0):
             if (self.use_tri_ineq and np.all(np.array(cons_tri) >= 0)) or not self.use_tri_ineq:
                 self.last_best_x = x
                 self.last_best_u = u
-                print("keeping new best solution")
+                if self.idf.opt['verbose']:
+                    print("keeping new best solution")
 
         return (u, cons, fail)
 
@@ -154,12 +155,14 @@ class NLOPT(object):
         for i in range(len(opt._variables)):
             opt._variables[i].value = self.model.xStd[i]   #xStdModel[i]
 
-        print(opt)
+        if self.idf.opt['verbose']:
+            print(opt)
 
         if self.idf.opt['useIPOPTforNL']:
             # not deterministic, takes a long time?
             solver = pyOpt.IPOPT()
-            solver.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            solver.setOption('linear_solver', 'ma86')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            #for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
             solver.setOption('max_iter', self.idf.opt['nlOptIterations'])
             #solver.setOption('max_cpu_time', 120)
             solver.setOption('print_level', 3)  #0 none ... 5 max
@@ -189,12 +192,13 @@ class NLOPT(object):
 
         solver(opt)         #run optimization
 
+        # set best solution again (is often different than final solver solution)
+        for i in range(len(opt._variables)):
+            opt._variables[i].value = self.last_best_x[i]
+
         sol = opt.solution(0)
-        #print(sol)
-        # get solution vector
-        #sol_vec = np.array([sol.getVar(x).value for x in range(0, len(sol._variables))])
+        if self.idf.opt['verbose']:
+            print(sol)
 
-        sol_vec = self.last_best_x
-
-        self.model.xStd = sol_vec
+        self.model.xStd = self.last_best_x
 

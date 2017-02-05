@@ -20,9 +20,9 @@ class TrajectoryOptimizer(object):
         self.sim_func = simulation_func
         # init some classes
         self.limits = URDFHelpers.getJointLimits(config['model'], use_deg=False)  #will always be compared to rad
-        self.trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg = config['useDeg'])
+        self.trajectory = TrajectoryGenerator(config['num_dofs'], use_deg = config['useDeg'])
 
-        self.dofs = self.config['N_DOFS']
+        self.dofs = self.config['num_dofs']
 
         ## bounds for parameters
         # number of fourier partial sums (same for all joints atm)

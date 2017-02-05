@@ -237,7 +237,7 @@ class Data(object):
         # select blocks with some best % of condition numbers
         perc_cond = np.percentile([cond for (b,bs,cond,linkConds) in self.seenBlocks], self.opt['selectBestPerenctage'])
 
-        cond_matrix = np.zeros((len(self.seenBlocks), self.model.N_LINKS))
+        cond_matrix = np.zeros((len(self.seenBlocks), self.model.num_links))
         c = 0
         for block in self.seenBlocks:
             (b,bs,cond,linkConds) = block
@@ -429,7 +429,7 @@ class Data(object):
 
         # low-pass filter positions
         Q_orig = Q.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             Q[:, j] = sp.signal.filtfilt(b_8, a_8, Q_orig[:, j])
         if Q_raw is not None:
             np.copyto(Q_raw, Q_orig)
@@ -448,12 +448,12 @@ class Data(object):
 
         # median filter of velocities self to remove outliers
         vels_self_orig = V_self.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             V_self[:, j] = sp.signal.medfilt(vels_self_orig[:, j], median_kernel_size)
 
         # low-pass filter velocities self
         vels_self_orig = V_self.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             V_self[:, j] = sp.signal.filtfilt(b_6, a_6, vels_self_orig[:, j])
 
         np.copyto(V, V_self)
@@ -466,12 +466,12 @@ class Data(object):
 
         # median filter of accelerations
         accls_orig = Vdot.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             Vdot[:, j] = sp.signal.medfilt(accls_orig[:, j], median_kernel_size)
 
         # low-pass filter of accelerations
         #accls_orig = Vdot.copy()
-        #for j in range(0, self.opt['N_DOFS']):
+        #for j in range(0, self.opt['num_dofs']):
         #    Vdot[:, j] = sp.signal.filtfilt(b_3, a_3, accls_orig[:, j])
 
         ## Joint Torques
@@ -481,12 +481,12 @@ class Data(object):
 
         # median filter of torques
         torques_orig = Tau.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             Tau[:, j] = sp.signal.medfilt(torques_orig[:, j], median_kernel_size)
 
         # low-pass of torques
         torques_orig = Tau.copy()
-        for j in range(0, self.opt['N_DOFS']):
+        for j in range(0, self.opt['num_dofs']):
             Tau[:, j] = sp.signal.filtfilt(b_8, a_8, torques_orig[:, j])
 
         ### IMU data

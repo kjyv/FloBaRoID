@@ -53,17 +53,17 @@ def main(config, trajectory, out):
     sent_accelerations = list()
 
     # try high level p correction when using velocity ctrl
-    #e = [0] * config['N_DOFS']
-    #velocity_correction = [0] * config['N_DOFS']
+    #e = [0] * config['num_dofs']
+    #velocity_correction = [0] * config['num_dofs']
 
     waited_for_start = 0
     started = False
     while t_elapsed < duration:
         trajectory.setTime(t_elapsed)
-        target_angles = [trajectory.getAngle(i) for i in range(0, config['N_DOFS'])]
-        target_velocities = [trajectory.getVelocity(i) for i in range(0, config['N_DOFS'])]
-        target_accelerations = [trajectory.getAcceleration(i) for i in range(0, config['N_DOFS'])]
-        #for i in range(0, config['N_DOFS']):
+        target_angles = [trajectory.getAngle(i) for i in range(0, config['num_dofs'])]
+        target_velocities = [trajectory.getVelocity(i) for i in range(0, config['num_dofs'])]
+        target_accelerations = [trajectory.getAcceleration(i) for i in range(0, config['num_dofs'])]
+        #for i in range(0, config['num_dofs']):
         #    target_velocities[i]+=velocity_correction[i]
 
         # make sure we start moving at a position with zero velocity
@@ -102,22 +102,22 @@ def main(config, trajectory, out):
         b_torques = data_out.get(2).asList()
         d_time = data_out.get(3).asDouble()
 
-        positions = np.zeros(config['N_DOFS'])
-        velocities = np.zeros(config['N_DOFS'])
-        accelerations = np.zeros(config['N_DOFS'])
-        torques = np.zeros(config['N_DOFS'])
+        positions = np.zeros(config['num_dofs'])
+        velocities = np.zeros(config['num_dofs'])
+        accelerations = np.zeros(config['num_dofs'])
+        torques = np.zeros(config['num_dofs'])
 
-        if config['N_DOFS'] == b_positions.size():
-            for i in range(0, config['N_DOFS']):
+        if config['num_dofs'] == b_positions.size():
+            for i in range(0, config['num_dofs']):
                 positions[i] = b_positions.get(i).asDouble()
                 velocities[i] = b_velocities.get(i).asDouble()
                 torques[i] = b_torques.get(i).asDouble()
         else:
-            print("warning, wrong amount of values received! ({} DOFS vs. {})".format(config['N_DOFS'], b_positions.size()))
+            print("warning, wrong amount of values received! ({} DOFS vs. {})".format(config['num_dofs'], b_positions.size()))
 
         # test manual correction for position error
         #p = 0
-        #for i in range(0, config['N_DOFS']):
+        #for i in range(0, config['num_dofs']):
         #    e[i] = (angles[i] - positions[i])
         #    velocity_correction[i] = e[i]*p
 

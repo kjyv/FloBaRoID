@@ -53,7 +53,7 @@ def main(config, trajectory, data, move_group):
     #group.set_goal_joint_tolerance(0.1)
     #group.set_goal_position_tolerance(0.1)
 
-    #config['N_DOFS'] = len(group.get_current_joint_values())
+    #config['num_dofs'] = len(group.get_current_joint_values())
 
     # create some plan and clear its trajectory
     plan = group.plan()
@@ -76,7 +76,7 @@ def main(config, trajectory, data, move_group):
     while t < start_t+duration:
         trajectory.setTime(t)
         point = JointTrajectoryPoint()
-        for i in range(0, config['N_DOFS']):
+        for i in range(0, config['num_dofs']):
             q = trajectory.getAngle(i)
             point.positions.append(q)
             dq = trajectory.getVelocity(i)

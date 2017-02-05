@@ -17,15 +17,15 @@ class NLOPT(object):
         self.model = idf.model
 
         if self.idf.opt['floatingBase']:
-            self.nl = self.model.N_LINKS
+            self.nl = self.model.num_links
             self.start_link = 0
         else:
-            self.nl = self.model.N_LINKS - 1 # ignore first fixed link
+            self.nl = self.model.num_links - 1 # ignore first fixed link
             self.start_link = 1
 
         #get COM boundaries
         self.link_hulls = np.zeros((self.nl, 3, 2))
-        for i in range(self.start_link, idf.model.N_LINKS):
+        for i in range(self.start_link, idf.model.num_links):
             self.link_hulls[i - self.start_link] = np.array(
                                 idf.urdfHelpers.getBoundingBox(
                                     input_urdf = idf.model.urdf_file,

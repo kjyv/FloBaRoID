@@ -33,7 +33,7 @@ def readCentauroCSV(path, config, plot):
                   'j_arm1_6', 'j_arm1_7']
     urdf_jointOrder = [0, 8,9,10,11,12,13,14, 1,2,3,4,5,6,7]
 
-    config['N_DOFS'] = len(jointNames)
+    config['num_dofs'] = len(jointNames)
 
     out = {}
 
@@ -49,10 +49,10 @@ def readCentauroCSV(path, config, plot):
 
         if dof == 0:
             # generate some empty arrays, will be calculated in preprocess()
-            out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
-            out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
-            out['torques'] = np.empty( (f.shape[0], config['N_DOFS']) )
-#            out['currents'] = np.empty( (f.shape[0], config['N_DOFS']) )
+            out['positions'] = np.empty( (f.shape[0], config['num_dofs']) )
+            out['target_positions'] = np.empty( (f.shape[0], config['num_dofs']) )
+            out['torques'] = np.empty( (f.shape[0], config['num_dofs']) )
+#            out['currents'] = np.empty( (f.shape[0], config['num_dofs']) )
             out['velocities'] = np.zeros_like(out['positions'])
             out['accelerations'] = np.zeros_like(out['positions'])
             out['times'] = np.empty( f.shape[0] )
@@ -140,15 +140,15 @@ def readWalkmanCSV(path, config, plot):
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
-    config['N_DOFS'] = len(jointNames) - len(ignoreJoints)
+    config['num_dofs'] = len(jointNames) - len(ignoreJoints)
 
     filepath = os.path.join(path, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(filepath)
-    out['positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
-    out['torques'] = np.zeros( (f.shape[0], config['N_DOFS']) )
+    out['positions'] = np.empty( (f.shape[0], config['num_dofs']) )
+    out['torques'] = np.zeros( (f.shape[0], config['num_dofs']) )
     out['times'] = np.empty( f.shape[0] )
     out['times'][:] = np.arange(0, f.shape[0])*sampleTime
-    out['target_positions'] = np.empty( (f.shape[0], config['N_DOFS']) )
+    out['target_positions'] = np.empty( (f.shape[0], config['num_dofs']) )
 
     # generate some empty arrays, will be calculated in preprocess()
     out['velocities'] = np.zeros_like(out['positions'])
@@ -161,7 +161,7 @@ def readWalkmanCSV(path, config, plot):
     dofs_file = len(f[1])//7
 
     skip=0
-    for dof in range(0, config['N_DOFS']):
+    for dof in range(0, config['num_dofs']):
         if dof in ignoreJoints:
             skip+=1
 

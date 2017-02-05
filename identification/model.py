@@ -63,7 +63,7 @@ class Model(object):
             for l in tree.iter():
                 if l.tag == 'joint':
                     self.jointNames.append(l.text)
-            self.N_DOFS = len(self.jointNames)
+            self.num_dofs = len(self.jointNames)
         else:
             # (default for all joints)
             if self.opt['floatingBase']:
@@ -87,14 +87,14 @@ class Model(object):
         if not regressor_file:
             import re
             self.jointNames = re.sub(r"DOF Index: \d+ Name: ", "", self.generator.getDescriptionOfDegreesOfFreedom()).split()
-            self.N_DOFS = self.generator.getNrOfDegreesOfFreedom()
+            self.num_dofs = self.generator.getNrOfDegreesOfFreedom()
 
         # TODO: reported dofs and links are not dependent on joints specified in regressor (but
         # uses all from model file)
         # dynComp simulates with all joints regardless of regressor, regressor rows should be as specified
         # (worked around ATM by reading from XML directly)
         if self.opt['verbose']:
-            print('# DOFs: {}'.format(self.N_DOFS))
+            print('# DOFs: {}'.format(self.num_dofs))
             print('Joints: {}'.format(self.jointNames))
             #print('Joints: {}'.format(self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")))
             #print('\nJoints: {}'.format([self.idyn_model.getJointName(i) for i in range(0, self.idyn_model.getNrOfDOFs())]))
@@ -112,13 +112,13 @@ class Model(object):
         if self.opt['verbose']:
             print('({})'.format(self.linkNames))
 
-        self.N_LINKS = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
+        self.num_links = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         if self.opt['verbose']:
-            print('# links: {} (+ {} fake)'.format(self.N_LINKS, self.generator.getNrOfFakeLinks()))
+            print('# links: {} (+ {} fake)'.format(self.num_links, self.generator.getNrOfFakeLinks()))
 
         self.inertia_params = list()
         self.mass_params = list()
-        for i in range(self.N_LINKS):
+        for i in range(self.num_links):
             self.mass_params.append(i*10)
             self.inertia_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
 
@@ -129,12 +129,12 @@ class Model(object):
         # add N offset params (offsets or constant friction) and 2*N velocity dependent friction params
         # (velocity +- for asymmetrical friction)
         if self.opt['identifyFriction']:
-            self.num_identified_params = self.num_model_params + self.N_DOFS
-            self.num_all_params += self.N_DOFS
+            self.num_identified_params = self.num_model_params + self.num_dofs
+            self.num_all_params += self.num_dofs
 
             if not self.opt['identifyGravityParamsOnly']:
-                self.num_identified_params += 2*self.N_DOFS
-                self.num_all_params += 2*self.N_DOFS
+                self.num_identified_params += 2*self.num_dofs
+                self.num_all_params += 2*self.num_dofs
 
         if self.opt['identifyGravityParamsOnly']:
             self.num_identified_params = self.num_identified_params - len(self.inertia_params)
@@ -159,9 +159,9 @@ class Model(object):
         self.generator.getModelParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
         if self.opt['identifyFriction']:
-            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.N_DOFS)))
+            self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
             if not self.opt['identifyGravityParamsOnly']:
-                self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.N_DOFS)))
+                self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.num_dofs)))
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -258,7 +258,7 @@ class Model(object):
             dynComp.setRobotState(q, dq, ddq, world_gravity)
 
         # compute inverse dynamics
-        torques = iDynTree.VectorDynSize(self.N_DOFS)
+        torques = iDynTree.VectorDynSize(self.num_dofs)
         baseReactionForce = iDynTree.Wrench()
         dynComp.inverseDynamics(torques, baseReactionForce)
 
@@ -281,13 +281,13 @@ class Model(object):
         #extra regressor rows for floating base
         if self.opt['floatingBase']: fb = 6
         else: fb = 0
-        self.regressor_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples, self.num_identified_params))
-        self.torques_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
-        self.torquesAP_stack = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
+        self.regressor_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples, self.num_identified_params))
+        self.torques_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
+        self.torquesAP_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         num_contacts = len(data.samples['contacts'].item().keys()) if 'contacts' in data.samples else 0
         self.contacts_stack = np.zeros(shape=(num_contacts, 6*data.num_used_samples))
-        self.contactForcesSum = np.zeros(shape=((self.N_DOFS+fb)*data.num_used_samples))
+        self.contactForcesSum = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         """loop over measurement data, optionally skip some values
             - get the regressor per time step
@@ -338,14 +338,14 @@ class Model(object):
                             torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
 
                 #if self.opt['addNoise'] != 0:
-                #    torq += np.random.randn(self.N_DOFS+fb)*self.opt['addNoise']
+                #    torq += np.random.randn(self.num_dofs+fb)*self.opt['addNoise']
 
             simulate_time += t.interval
 
             #...still looping over measurement samples
 
             # get numerical regressor (std)
-            row_index = (self.N_DOFS+fb)*sample_index   # index for current row in stacked regressor matrix
+            row_index = (self.num_dofs+fb)*sample_index   # index for current row in stacked regressor matrix
             with helpers.Timer() as t:
                 if self.opt['floatingBase']:
                     vel = data.samples['base_velocity'][m_idx]
@@ -390,8 +390,8 @@ class Model(object):
                         sign = 1
                     else:
                         sign = np.sign(dq.toNumPy())
-                    static_diag = np.identity(self.N_DOFS)*sign
-                    offset_regressor = np.vstack( (np.zeros((fb, self.N_DOFS)), static_diag))
+                    static_diag = np.identity(self.num_dofs)*sign
+                    offset_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), static_diag))
                     regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
                     if not self.opt['identifyGravityParamsOnly']:
@@ -400,18 +400,18 @@ class Model(object):
                         dq_p[dq_p < 0] = 0 #set to zero where v < 0
                         dq_m = dq.toNumPy().copy()
                         dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                        vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
-                        friction_regressor = np.vstack( (np.zeros((fb, self.N_DOFS*2)), vel_diag))   # add base dynamics rows
+                        vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
+                        friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                         regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
                 # stack on previous regressors
-                np.copyto(self.regressor_stack[row_index:row_index+self.N_DOFS+fb], regressor)
+                np.copyto(self.regressor_stack[row_index:row_index+self.num_dofs+fb], regressor)
             num_time += t.interval
 
             # stack results onto matrices of previous time steps
-            np.copyto(self.torques_stack[row_index:row_index+self.N_DOFS+fb], torq)
+            np.copyto(self.torques_stack[row_index:row_index+self.num_dofs+fb], torq)
             if self.opt['useAPriori']:
-                np.copyto(self.torquesAP_stack[row_index:row_index+self.N_DOFS+fb], torqAP)
+                np.copyto(self.torquesAP_stack[row_index:row_index+self.num_dofs+fb], torqAP)
 
             contact_idx = (sample_index*6)
             for i in range(self.contacts_stack.shape[0]):
@@ -430,20 +430,20 @@ class Model(object):
                     continue
 
                 # get jacobian and contact force for each contact frame and measurement sample
-                jacobian = iDynTree.MatrixDynSize(6, 6+self.N_DOFS)
+                jacobian = iDynTree.MatrixDynSize(6, 6+self.num_dofs)
                 self.dynComp.getFrameJacobian(frame, jacobian)
                 jacobian = jacobian.toNumPy()
 
                 # mul each sample of measured contact forces with frame jacobian
-                dim = self.N_DOFS+fb
+                dim = self.num_dofs+fb
                 contacts_torq = np.empty(dim*self.data.num_used_samples)
                 for s in range(self.data.num_used_samples):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
-            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.N_DOFS+fb))
+            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
 
             #reshape torque stack
-            torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
+            torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
 
             #subtract measured contact forces from torque estimation from iDynTree
             if self.opt['simulateTorques']:
@@ -459,7 +459,7 @@ class Model(object):
         else:
             # also write back torques if simulating and fixed-base
             if self.opt['simulateTorques']:
-                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
+                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:
@@ -485,14 +485,14 @@ class Model(object):
             fc = self.opt['filterRegCutoff']     # Cut-off frequency (Hz)
             b, a = signal.butter(order, fc / (fs / 2), btype='low', analog=False)
             for j in range(0, self.num_base_inertial_params):
-                for i in range(0, self.N_DOFS):
-                    self.YBase[i::self.N_DOFS, j] = signal.filtfilt(b, a, self.YBase[i::self.N_DOFS, j])
+                for i in range(0, self.num_dofs):
+                    self.YBase[i::self.num_dofs, j] = signal.filtfilt(b, a, self.YBase[i::self.num_dofs, j])
 
         self.sample_end = data.samples['positions'].shape[0]
         if self.opt['skipSamples'] > 0: self.sample_end -= (self.opt['skipSamples'])
 
         # keep absolute torques (self.tau can be relative)
-        self.tauMeasured = np.reshape(self.torques_stack, (data.num_used_samples, self.N_DOFS+fb))
+        self.tauMeasured = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
 
         self.T = data.samples['times'][0:self.sample_end:self.opt['skipSamples']+1]
 
@@ -534,24 +534,24 @@ class Model(object):
                 print("generating random regressor")
 
             if not n_samples:
-                n_samples = self.N_DOFS * 5000
+                n_samples = self.num_dofs * 5000
             R = np.array((self.N_OUT, self.num_model_params))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
             limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
             if len(limits) > 0:
                 jn = self.jointNames
-                q_lim_pos = [limits[jn[n]]['upper'] for n in range(self.N_DOFS)]
-                q_lim_neg = [limits[jn[n]]['lower'] for n in range(self.N_DOFS)]
-                dq_lim = [limits[jn[n]]['velocity'] for n in range(self.N_DOFS)]
+                q_lim_pos = [limits[jn[n]]['upper'] for n in range(self.num_dofs)]
+                q_lim_neg = [limits[jn[n]]['lower'] for n in range(self.num_dofs)]
+                dq_lim = [limits[jn[n]]['velocity'] for n in range(self.num_dofs)]
                 q_range = (np.array(q_lim_pos) - np.array(q_lim_neg)).tolist()
             for i in range(0, n_samples):
                 # set random system state
                 if len(limits) > 0:
-                    rnd = np.random.rand(self.N_DOFS) #0..1
+                    rnd = np.random.rand(self.num_dofs) #0..1
                     q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd))
-                    vel = ((np.random.rand(self.N_DOFS)-0.5)*2*dq_lim)
-                    acc = ((np.random.rand(self.N_DOFS)-0.5)*2*np.pi)
+                    vel = ((np.random.rand(self.num_dofs)-0.5)*2*dq_lim)
+                    acc = ((np.random.rand(self.num_dofs)-0.5)*2*np.pi)
                     if self.opt['identifyGravityParamsOnly']:
                         #set vel and acc to zero (should be almost zero already) to remove noise
                         vel[:] = 0.0
@@ -559,9 +559,9 @@ class Model(object):
                     dq = iDynTree.VectorDynSize.fromList(vel.tolist())
                     ddq = iDynTree.VectorDynSize.fromList(acc.tolist())
                 else:
-                    q = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                    dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
-                    ddq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.N_DOFS)*2-1)*np.pi).tolist())
+                    q = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.num_dofs)*2-1)*np.pi).tolist())
+                    dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.num_dofs)*2-1)*np.pi).tolist())
+                    ddq = iDynTree.VectorDynSize.fromList(((np.random.ranf(self.num_dofs)*2-1)*np.pi).tolist())
 
                 # TODO: make work with fixed dofs (set vel and acc to zero, look at iDynTree method)
 
@@ -603,8 +603,8 @@ class Model(object):
                         sign = 1
                     else:
                         sign = np.sign(dq.toNumPy())
-                    static_diag = np.identity(self.N_DOFS)*sign
-                    offset_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS)), static_diag))
+                    static_diag = np.identity(self.num_dofs)*sign
+                    offset_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)
 
                     if not self.opt['identifyGravityParamsOnly']:
@@ -613,8 +613,8 @@ class Model(object):
                         dq_p[dq_p < 0] = 0 #set to zero where <0
                         dq_m = dq.toNumPy().copy()
                         dq_m[dq_m > 0] = 0 #set to zero where >0
-                        vel_diag = np.hstack((np.identity(self.N_DOFS)*dq_p, np.identity(self.N_DOFS)*dq_m))
-                        friction_regressor = np.vstack( (np.zeros((fb*6, self.N_DOFS*2)), vel_diag))
+                        vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
+                        friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs*2)), vel_diag))
                         A = np.concatenate((A, friction_regressor), axis=1)
 
                 # add to previous regressors, linear dependencies don't change
@@ -679,7 +679,7 @@ class Model(object):
         #get rank
         r = np.where(np.abs(R.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
-        self.num_base_inertial_params = r - self.N_DOFS
+        self.num_base_inertial_params = r - self.num_dofs
 
         #create proper permutation matrix from vector
         self.Pp = np.zeros((P.size, P.size))
@@ -741,7 +741,7 @@ class Model(object):
         self.mass_syms = list()
         self.friction_syms = list()
         self.identified_params = list()  #indices of params within full param vector that are going to be identified
-        for i in range(0, self.N_LINKS):
+        for i in range(0, self.num_links):
             #mass
             m = symbols('m_{}'.format(i))
             self.param_syms.append(m)
@@ -767,22 +767,22 @@ class Model(object):
 
         if self.opt['identifyFriction']:
             mp = self.num_model_params
-            for i in range(0,self.N_DOFS):
+            for i in range(0,self.num_dofs):
                 s = [symbols('Fc_{}'.format(i))]
                 self.param_syms.extend(s)
                 self.friction_syms.extend(s)
                 self.identified_params.append(mp+i)
             if not self.opt['identifyGravityParamsOnly']:
-                for i in range(0,self.N_DOFS):
+                for i in range(0,self.num_dofs):
                     s = [symbols('Fv+_{}'.format(i))]
                     self.param_syms.extend(s)
                     self.friction_syms.extend(s)
-                    self.identified_params.append(mp+self.N_DOFS+i)
-                for i in range(0,self.N_DOFS):
+                    self.identified_params.append(mp+self.num_dofs+i)
+                for i in range(0,self.num_dofs):
                     s = [symbols('Fv-_{}'.format(i))]
                     self.param_syms.extend(s)
                     self.friction_syms.extend(s)
-                    self.identified_params.append(mp+2*self.N_DOFS+i)
+                    self.identified_params.append(mp+2*self.num_dofs+i)
         self.param_syms = np.array(self.param_syms)
 
         ## get symbolic equations for base param dependencies
@@ -842,7 +842,7 @@ class Model(object):
     def getSubregressorsConditionNumbers(self):
         # get condition number for each of the links
         linkConds = list()
-        for i in range(0, self.N_LINKS):
+        for i in range(0, self.num_links):
             #get columns of base regressor that are dependent on std parameters of link i
             # TODO: try going further down to e.g. condition number of link mass, com, inertial
             # and ignore those groups of params

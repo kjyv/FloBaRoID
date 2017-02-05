@@ -112,7 +112,7 @@ class Identification(object):
             fb = 0
         tauEst -= self.model.contactForcesSum
 
-        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.N_DOFS + fb))
+        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 
         #if self.opt['floatingBase']:
@@ -149,7 +149,7 @@ class Identification(object):
                 # don't show again if we come here later
                 self.opt['showErrorHistogram'] = 2
 
-        # reshape torques into one column per DOF for plotting (NUM_SAMPLES*N_DOFSx1) -> (NUM_SAMPLESxN_DOFS)
+        # reshape torques into one column per DOF for plotting (NUM_SAMPLES*num_dofsx1) -> (NUM_SAMPLESxnum_dofs)
         if estimateWith == 'urdf':
             self.tauAPriori = self.tauEstimated
 
@@ -253,7 +253,7 @@ class Identification(object):
         else: fb = 0
 
         # get relative standard deviation of measurement and modeling error \sigma_{rho}^2
-        r = self.data.num_used_samples*(self.model.N_DOFS+fb)
+        r = self.data.num_used_samples*(self.model.num_dofs+fb)
         rho = np.square(sla.norm(tauDiff))
         sigma_rho = rho/(r - self.model.num_base_params)
 
@@ -557,7 +557,7 @@ class Identification(object):
 
             if self.opt['floatingBase']: fb = 6
             else: fb = 0
-            r = self.data.num_used_samples*(self.model.N_DOFS+fb)
+            r = self.data.num_used_samples*(self.model.num_dofs+fb)
 
             '''
             if self.opt['useAPriori']:
@@ -573,7 +573,7 @@ class Identification(object):
             # along the diagonal of G
             # G = np.diag(np.repeat(1/self.sigma_rho, self.num_used_samples))
             #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
-            #        self.N_DOFS*self.num_used_samples, self.N_DOFS*self.num_used_samples)
+            #        self.num_dofs*self.num_used_samples, self.num_dofs*self.num_used_samples)
             #G = scipy.sparse.spdiags(np.repeat(1/np.sqrt(self.sigma_rho), self.data.num_used_samples), 0, r, r)
             G = scipy.sparse.spdiags(np.repeat(1/self.p_sigma_x, self.data.num_used_samples), 0, r, r)
 
@@ -766,7 +766,7 @@ class Identification(object):
         if self.opt['plotPerJoint']:
             datasets = []
             # add plots for each joint
-            for i in range(self.model.N_DOFS):
+            for i in range(self.model.num_dofs):
                 datasets.append(
                     { 'unified_scaling': False,
                       #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
@@ -791,7 +791,7 @@ class Identification(object):
                     datasets[-1]['labels'].append('Error M/E')
 
             # positions per joint
-            for i in range(self.model.N_DOFS):
+            for i in range(self.model.num_dofs):
                 datasets.append(
                     {'unified_scaling': False, 'y_label': 'rad', 'labels': ['Position'], 'dataset':
                      [{'data': [self.data.samples['positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i],

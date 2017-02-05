@@ -112,16 +112,16 @@ class OutputConsole(object):
             # collect values for parameters
             description = idf.model.generator.getDescriptionOfParameters()
             if idf.opt['identifyFriction']:
-                for i in range(0, idf.model.N_DOFS):
+                for i in range(0, idf.model.num_dofs):
                     description += "Parameter {}: Constant friction / offset of joint {}\n".format(
                             i+idf.model.num_model_params,
                             idf.model.jointNames[i]
                     )
 
-                for i in range(0, idf.model.N_DOFS*2):
+                for i in range(0, idf.model.num_dofs*2):
                     description += "Parameter {}: Velocity dep. friction joint {}\n".format(
-                            i+idf.model.N_DOFS+idf.model.num_model_params,
-                            idf.model.jointNames[i%idf.model.N_DOFS]
+                            i+idf.model.num_dofs+idf.model.num_model_params,
+                            idf.model.jointNames[i%idf.model.num_dofs]
                     )
 
             idx_ep = 0  #count essential params
@@ -420,7 +420,7 @@ class OutputConsole(object):
             print("condition number: {}".format(la.cond(idf.model.YBase)))
 
         if idf.opt['identifyGravityParamsOnly']:
-            fric = idf.model.N_DOFS * idf.opt['identifyFriction']
+            fric = idf.model.num_dofs * idf.opt['identifyFriction']
             sum_id = np.sum(idf.model.xStd[0:idf.model.num_identified_params-fric:4])
         else:
             sum_id = np.sum(idf.model.xStd[0:idf.model.num_model_params:10])
@@ -637,7 +637,7 @@ class OutputMatplotlib(object):
             elif idf.opt['outputAs'] == 'tikz':
                 from matplotlib2tikz import save as tikz_save
                 tikz_save('{}_{}_{}.tex'.format(filename,
-                    group['dataset'][0]['title'].replace('_','-'), ds // idf.model.N_DOFS),
+                    group['dataset'][0]['title'].replace('_','-'), ds // idf.model.num_dofs),
                     figureheight = '\\figureheight', figurewidth = '\\figurewidth', show_info=False)
 
         if idf.opt['outputAs'] == 'html':

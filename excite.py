@@ -42,7 +42,7 @@ config['model'] = args.model
 config['jointNames'] = iDynTree.StringVector([])
 if not iDynTree.dofsListFromURDF(args.model, config['jointNames']):
     sys.exit()
-config['N_DOFS'] = len(config['jointNames'])
+config['num_dofs'] = len(config['jointNames'])
 config['useAPriori'] = 0
 config['skipSamples'] = 0
 
@@ -69,7 +69,7 @@ def plot(data=None):
         color_lvl = 8
         rgb = np.array(list(permutations(list(range(0,256,color_lvl),3))))/255.0
         colors = sample(rgb,Nlines)
-        print(colors[0:config['N_DOFS']])
+        print(colors[0:config['num_dofs']])
     else:
         # set some fixed colors
         colors = []
@@ -120,7 +120,7 @@ def plot(data=None):
 
     if args.plot_targets:
         print("tracking error per joint:")
-        for i in range(0, config['N_DOFS']):
+        for i in range(0, config['num_dofs']):
             sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
             print("joint {}: {}".format(i, sse))
 
@@ -166,7 +166,7 @@ def plot(data=None):
         labels = list()
         for d_i in range(0, len(data)):
             if len(data[d_i].shape) > 1:
-                for i in range(0, config['N_DOFS']):
+                for i in range(0, config['num_dofs']):
                     l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
                     labels.append(l)
                     line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
@@ -199,26 +199,26 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     freq = 200.0
     for t in range(0, int(trajectory.getPeriodLength()*freq)):
         trajectory.setTime(t/freq)
-        q = [trajectory.getAngle(d) for d in range(config['N_DOFS'])]
+        q = [trajectory.getAngle(d) for d in range(config['num_dofs'])]
         q = np.array(q)
         if config['useDeg']:
             q = np.deg2rad(q)
         trajectory_data['target_positions'].append(q)
 
-        qdot = [trajectory.getVelocity(d) for d in range(config['N_DOFS'])]
+        qdot = [trajectory.getVelocity(d) for d in range(config['num_dofs'])]
         qdot = np.array(qdot)
         if config['useDeg']:
             qdot = np.deg2rad(qdot)
         trajectory_data['target_velocities'].append(qdot)
 
-        qddot = [trajectory.getAcceleration(d) for d in range(config['N_DOFS'])]
+        qddot = [trajectory.getAcceleration(d) for d in range(config['num_dofs'])]
         qddot = np.array(qddot)
         if config['useDeg']:
             qddot = np.deg2rad(qddot)
         trajectory_data['target_accelerations'].append(qddot)
 
         trajectory_data['times'].append(t/freq)
-        trajectory_data['torques'].append(np.zeros(config['N_DOFS']))
+        trajectory_data['torques'].append(np.zeros(config['num_dofs']))
 
     num_samples = len(trajectory_data['times'])
 
@@ -275,13 +275,13 @@ def main():
         try:
             # replay optimized trajectory if found
             tf = np.load(traj_file)
-            trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=tf['use_deg'])
+            trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=tf['use_deg'])
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
             print("using trajectory from file {}".format(traj_file))
         except IOError:
             # otherwise use some random params
             print("using random trajectory")
-            trajectory = TrajectoryGenerator(config['N_DOFS'], use_deg=config['useDeg']).initWithRandomParams()
+            trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=config['useDeg']).initWithRandomParams()
             print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
             print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
             print("q {}".format(trajectory.q.tolist()))

@@ -70,14 +70,14 @@ class SDP(object):
 
             if idf.opt['identifyGravityParamsOnly']:
                 # only constrain gravity params (i.e. mass)
-                for i in range(start_link, idf.model.N_LINKS):
+                for i in range(start_link, idf.model.num_links):
                     p = idf.model.mass_params[i]
                     D_other_blocks.append( Matrix([idf.model.param_syms[p]]) )
             else:
                 # create LMI matrices (symbols) for each link
                 # so that mass is positive, inertia matrix is positive definite
                 # (each matrix block is constrained to be >0 or >=0)
-                for i in range(start_link, idf.model.N_LINKS):
+                for i in range(start_link, idf.model.num_links):
                     m = idf.model.mass_syms[i]
                     l = Matrix([ idf.model.param_syms[i*10+1],
                                  idf.model.param_syms[i*10+2],
@@ -121,7 +121,7 @@ class SDP(object):
             # ignore depending on sub-regressor condition numbers per link
             linkConds = idf.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
-            for i in range(0, idf.model.N_LINKS):
+            for i in range(0, idf.model.num_links):
                 robotmass_apriori+= idf.model.xStdModel[i*10]  #count a priori link masses
 
                 # for links that have too high condition number, don't change params
@@ -175,7 +175,7 @@ class SDP(object):
             # constrain masses for each link separately
             if idf.opt['limitMassToApriori']:
                 # constrain each mass to env of a priori value
-                for i in range(start_link, idf.model.N_LINKS):
+                for i in range(start_link, idf.model.num_links):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
                         p = i*10
                         if p not in idf.opt['dontConstrain']:
@@ -188,8 +188,8 @@ class SDP(object):
                             self.constr_per_param[p].append('mA')
 
             if idf.opt['restrictCOMtoHull']:
-                link_cuboid_hulls = np.zeros((idf.model.N_LINKS, 3, 2))
-                for i in range(start_link, idf.model.N_LINKS):
+                link_cuboid_hulls = np.zeros((idf.model.num_links, 3, 2))
+                for i in range(start_link, idf.model.num_links):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
                         link_cuboid_hulls[i] = np.array(
                             idf.urdfHelpers.getBoundingBox(
@@ -228,17 +228,17 @@ class SDP(object):
                 # friction constraints
                 # (only makes sense when no offsets on torque measurements, otherwise can be
                 # negative)
-                for i in range(idf.model.N_DOFS):
+                for i in range(idf.model.num_dofs):
                     #Fc > 0
                     p = i #idf.model.num_model_params+i
                     D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
                     self.constr_per_param[idf.model.num_model_params + p].append('>0')
                     #Fv > 0
                     if not idf.opt['identifyGravityParamsOnly']:
-                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.N_DOFS]]) )
-                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.N_DOFS*2]]) )
-                        self.constr_per_param[idf.model.num_model_params + p + idf.model.N_DOFS].append('>0')
-                        self.constr_per_param[idf.model.num_model_params + p + idf.model.N_DOFS * 2].append('>0')
+                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]) )
+                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
+                        self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs].append('>0')
+                        self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs * 2].append('>0')
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
@@ -311,7 +311,7 @@ class SDP(object):
                 # add regularization term to cost function to include torque estimation error and CAD distance
                 # get symbols that are non-id but are not in delete_cols already
                 delta_nonid = Matrix(idf.model.param_syms[p_nid])
-                #num_samples = YBase.shape[0]/idf.model.N_DOFS
+                #num_samples = YBase.shape[0]/idf.model.num_dofs
                 l = (float(idf.base_error) / len(p_nid)) * 1.5   #proportion of distance term
 
                 #TODO: also use symengine

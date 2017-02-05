@@ -4,11 +4,8 @@ from __future__ import absolute_import
 from builtins import zip
 from builtins import range
 
-import sys
 import numpy as np
 import numpy.linalg as la
-import scipy
-import scipy.linalg as sla
 
 import pyOpt
 
@@ -53,7 +50,6 @@ class NLOPT(object):
         tensors = self.idf.paramHelpers.inertiaTensorFromParams(x_bary)
         cons_inertia = [0.0]*self.model.N_LINKS*3
         cons_tri = [0.0]*self.model.N_LINKS*3
-        is_pd = [False]*self.model.N_LINKS
         for l in range(self.model.N_LINKS):
             eigvals = la.eigvals(tensors[l])
             # inertia tensor needs to be positive (semi-)definite
@@ -152,8 +148,8 @@ class NLOPT(object):
         # solvers?)
         # atm, either can be eqal in projection to feasible base or consistent and equal to CAD (and
         # not equal to base), hm
-        for i in range(len(opt._variables)):
-            opt._variables[i].value = self.model.xStd[i]   #xStdModel[i]
+        for i in range(len(opt.getVarSet())):
+            opt.getVarSet(i).value = self.model.xStd[i]   #xStdModel[i]
 
         if self.idf.opt['verbose']:
             print(opt)
@@ -185,13 +181,11 @@ class NLOPT(object):
             if self.idf.opt['verbose']:
                 solver.setOption('IPRINT', 1)
 
-            '''
             #SLSQP seems to violate constraints, no options to configure boundary handling
-            solver = pyOpt.SLSQP(disp_opts=True)
-            solver.setOption('MAXIT', self.idf.opt['nlOptIterations'])
-            if self.idf.opt['verbose']:
-                solver.setOption('IPRINT', -1)
-            '''
+            #solver = pyOpt.SLSQP(disp_opts=True)
+            #solver.setOption('MAXIT', self.idf.opt['nlOptIterations'])
+            #if self.idf.opt['verbose']:
+            #    solver.setOption('IPRINT', -1)
 
         solver(opt)         #run optimization
 

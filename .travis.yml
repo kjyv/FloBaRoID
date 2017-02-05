@@ -13,6 +13,7 @@ before_cache:
 
 before_install: 
     - sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
+    - sudo apt-add-repository "deb http://archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse" --yes
     - sudo apt-get -qq update
     - sudo apt-get install -y cmake cmake-data
     - sudo apt-get install -y swig/trusty-backports

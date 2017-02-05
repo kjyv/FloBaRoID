@@ -36,6 +36,22 @@ class NLOPT(object):
         self.inner_iter = 0
         self.last_best_u = 1e16
 
+        self.param_weights = np.zeros(self.model.num_all_params - self.start_link*10)
+        for p in range(len(self.param_weights)):
+            if p < (self.model.num_model_params-self.start_link):
+                if p % 10 == 0:
+                    #masses
+                    self.param_weights[p] = 1.0
+                elif p % 10 in [1,2,3]:
+                    #com
+                    self.param_weights[p] = 1.0
+                elif p % 10 > 3:
+                    #inertia
+                    self.param_weights[p] = 1.0
+            else:
+                #friction
+                self.param_weights[p] = 1.0
+
     def minimizeSolToCAD(self, x):
         fail = 0
 
@@ -44,15 +60,19 @@ class NLOPT(object):
         #u = la.norm(tau - self.model.YStd.dot(x))**2 / self.idf.data.num_used_samples
 
         #distance to CAD
-        #u = la.norm(x[self.model.identifiable] - self.model.xStdModel[self.model.identifiable])**2
-        u = la.norm(x - self.model.xStdModel[self.start_link*10:])**2
+        apriori = self.model.xStdModel
+        #u = la.norm(x - apriori[self.start_link*10:])**2
+
+        #distance to CAD, weighted/normalized params
+        diff = (x - apriori[self.start_link*10:]) #*self.param_weights
+        u = np.square(la.norm(diff))
 
         cons = []
         # base equations == xBase as constraints
         cons_base = list((self.model.Binv[:, self.start_link*10:].dot(x) - self.xBase_feas)*10)
         cons += cons_base
 
-        x_bary = self.idf.paramHelpers.paramsLink2Bary(x)
+        x_bary = self.idf.paramHelpers.paramsLink2Bary(x[:self.model.num_model_params-self.start_link*10])
 
         #test for positive definiteness (too naive?)
         tensors = self.idf.paramHelpers.inertiaTensorFromParams(x_bary)
@@ -164,7 +184,7 @@ class NLOPT(object):
             if self.idf.opt['verbose']:
                 print('Using IPOPT to get closer to a priori')
             solver = pyOpt.IPOPT()
-            solver.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            solver.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             #for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
             solver.setOption('max_iter', self.idf.opt['nlOptIterations'])
             solver.setOption('print_level', 3)  #0 none ... 5 max

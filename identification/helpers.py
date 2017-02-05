@@ -25,8 +25,8 @@ class Timer(object):
         self.interval = self.end - self.start
 
 class ParamHelpers(object):
-    def __init__(self, n_params, opt):
-        self.n_params = n_params
+    def __init__(self, model, opt):
+        self.model = model
         self.opt = opt
 
     def checkPhysicalConsistency(self, params):
@@ -38,8 +38,8 @@ class ParamHelpers(object):
         returns dictionary of link ids and boolean consistency for each link
         """
         cons = {}
-        for i in range(0, self.n_params):
-            if (i % 10 == 0):   #for each link
+        for i in range(0, len(params)):
+            if (i % 10 == 0) and i < self.model.num_model_params:   #for each link (and not friction)
                 p_vec = iDynTree.Vector10()
                 for j in range(0, 10):
                     p_vec.setVal(j, params[i+j])
@@ -58,8 +58,8 @@ class ParamHelpers(object):
         """
         cons = {}
         tensors = self.inertiaTensorFromParams(params)
-        for i in range(0, self.n_params):
-            if (i % 10 == 0):
+        for i in range(0, len(params)):
+            if (i % 10 == 0) and i < self.model.num_model_params:
                 if params[i] <= 0:  #masses need to be positive
                     cons[i // 10] = False
                     continue
@@ -69,6 +69,9 @@ class ParamHelpers(object):
                     cons[i // 10] = True
                 except np.linalg.linalg.LinAlgError:
                     cons[i // 10] = False
+            else:
+                #TODO: check friction params >0
+                pass
 
         '''
         if False in cons.values():
@@ -87,34 +90,51 @@ class ParamHelpers(object):
         else:
             return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
+    def invvech(self, params):
+        """give full inertia tensor from vectorized form
+           expect vector of 6 values (xx, xy, xz, yy, yz, zz).T"""
+        tensor = np.zeros((3,3))
+        #xx of tensor matrix
+        value = params[0]
+        tensor[0, 0] = value
+        #xy
+        value = params[1]
+        tensor[0, 1] = value
+        tensor[1, 0] = value
+        #xz
+        value = params[2]
+        tensor[0, 2] = value
+        tensor[2, 0] = value
+        #yy
+        value = params[3]
+        tensor[1, 1] = value
+        #yz
+        value = params[4]
+        tensor[1, 2] = value
+        tensor[2, 1] = value
+        #zz
+        value = params[5]
+        tensor[2, 2] = value
+        return tensor
+
+    def vech(self, params):
+        #return vectorization of symmetric 3x3 matrix (only up to diagonal)
+        vec = np.zeros(6)
+        vec[0] = params[0,0]
+        vec[1] = params[0,1]
+        vec[2] = params[0,2]
+        vec[3] = params[1,1]
+        vec[4] = params[1,2]
+        vec[5] = params[2,2]
+        return vec
+
     def inertiaTensorFromParams(self, params):
         """take a parameter vector and return list of full inertia tensors (one for each link)"""
         tensors = list()
-        for i in range(self.n_params):
-            if (i % 10 == 0):
-                inertia = np.zeros((3,3))
-                #xx of inertia matrix
-                value = params[i+4]
-                inertia[0, 0] = value
-                #xy
-                value = params[i+5]
-                inertia[0, 1] = value
-                inertia[1, 0] = value
-                #xz
-                value = params[i+6]
-                inertia[0, 2] = value
-                inertia[2, 0] = value
-                #yy
-                value = params[i+7]
-                inertia[1, 1] = value
-                #yz
-                value = params[i+8]
-                inertia[1, 2] = value
-                inertia[2, 1] = value
-                #zz
-                value = params[i+9]
-                inertia[2, 2] = value
-                tensors.append(inertia)
+        for i in range(len(params)):
+            if (i % 10 == 0) and i < self.model.num_model_params:
+                tensor = self.invvech(params[i+4:i+10])
+                tensors.append(tensor)
         return tensors
 
     def inertiaParams2RotationalInertiaRaw(self, params):
@@ -146,15 +166,15 @@ class ParamHelpers(object):
         return inertia
 
     def paramsLink2Bary(self, params):
-        ## convert params from iDynTree values (relative to link frame) to values usable in URDF (barycentric)
-        ## (params are changed in place)
+        ## convert params from iDynTree values (relative to link frame) to barycentric parameters (usable in URDF)
+        ## (changed in place)
 
-        #mass is mass
-        #com in idyntree is represented as first moment of mass, so com * mass. URDF uses com
-        #inertia in idyntree is represented w.r.t. frame origin. URDF uses w.r.t com
+        #mass stays the same
+        #linear com is first moment of mass, so com * mass. URDF uses com
+        #linear inertia is expressed w.r.t. frame origin (-m*S(c).T*S(c)). URDF uses w.r.t com
         params = params.copy()
-        for i in range(0, self.n_params):
-            if (i % 10 == 0):   #for each link
+        for i in range(0, len(params)):
+            if (i % 10 == 0) and i < self.model.num_model_params:   #for each link
                 link_mass = params[i]
                 #com
                 com_x = params[i+1]
@@ -182,8 +202,8 @@ class ParamHelpers(object):
 
     def paramsBary2Link(self, params):
         params = params.copy()
-        for i in range(0, self.n_params):
-            if (i % 10 == 0):   #for each link
+        for i in range(0, len(params)):
+            if (i % 10 == 0) and i < self.model.num_model_params:   #for each link
                 link_mass = params[i]
                 #com
                 com_x = params[i+1]
@@ -210,7 +230,6 @@ class ParamHelpers(object):
 
 class URDFHelpers(object):
     def __init__(self, paramHelpers, link_names, opt):
-        self.n_params = paramHelpers.n_params
         self.paramHelpers = paramHelpers
         self.link_names = link_names
         self.opt = opt

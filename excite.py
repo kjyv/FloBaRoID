@@ -83,8 +83,7 @@ def plot(data=None):
                  ]
 
         from palettable.tableau import Tableau_10, Tableau_20
-        #colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors
-        colors += Tableau_20.mpl_colors
+        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
 
     if not data:
         # reload measurements from this or last run (if run dry)
@@ -235,7 +234,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
-    #TODO: add proper contacts (from e.g. gazebo) for floating-base
+    #TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
     trajectory_data['contacts'] = np.array({'dummy_sim': np.zeros( num_samples )})
 
     if measurements:
@@ -280,7 +279,7 @@ def main():
             print("using trajectory from file {}".format(traj_file))
         except IOError:
             # otherwise use some random params
-            print("using random trajectory")
+            print("no optimized trajectory found, generating random one")
             trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=config['useDeg']).initWithRandomParams()
             print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
             print("b {}".format([t_b.tolist() for t_b in trajectory.b]))

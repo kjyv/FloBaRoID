@@ -367,14 +367,15 @@ class TrajectoryOptimizer(object):
             opt.setOption('xinit', 1)
             #TODO: how to properly limit max number of function calls?
             # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-            self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
+            self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
+                opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
 
             # run fist (global) optimization
             try:
                 #reuse history
-                opt(opt_prob, store_hst=False, hot_start=True, xstart=initial)
+                opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
             except NameError:
-                opt(opt_prob, store_hst=False, xstart=initial)
+                opt(opt_prob, store_hst=False) #, xstart=initial)
             print(opt_prob.solution(0))
 
         ### pyOpt local
@@ -392,6 +393,7 @@ class TrajectoryOptimizer(object):
         #opt2 = pyOpt.PSQP()
         # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
         # iterations are probably steps along the gradient. How to get proper no. of expected func calls?
+        # (one call per dimension for each iteration?)
         self.iter_max = "(unknown)"
 
         if self.config['useGlobalOptimization']:

@@ -30,7 +30,7 @@ Details:
 requirements for identification module:
 
 * at least python 2.7 or 3.3
-* python modules: numpy, scipy, sympy (> 0.7.5), iDynTree, pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib, colorama, palettable, humanize, future (when using 2.7)
+* python modules: numpy (> 1.8), scipy, sympy (>= 1.0), iDynTree, pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib, colorama, palettable, humanize, future (when using Python 2.7)
 * dsdp5 (command line executable)
 * symengine.py (for SDP speedups)
 * mpld3, jinja2 (if using html plots)

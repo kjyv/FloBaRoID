@@ -1,0 +1,206 @@
+
+#### excitation
+
+excitationSimulate: 1          #simulate torques instead of using measurements (use e.g. with Gazebo)
+exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null (simulate)
+useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
+
+optimizeTrajectory: 0          #find new parameters with optimization or load previous params from file (if no file exists, use random)
+showOptimizationGraph: 1       #display updating graph during trajectory optimization
+showOptimizationTrajs: 1       #display the trajectory plot after each optimization step
+useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
+globalOptIterations: 1         #(times 90 + 30 function calls)
+localOptIterations: 1          #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+minTolConstr: 0.01             #threshold for being within constraints (only used for display)
+
+# initial values to start optimization from (if using global opt not really important)
+trajectoryPulseInit: 0.5       #determines length of one period of trajectory (smaller=longer)
+trajectoryPulseMin:  0.3
+trajectoryPulseMax:  1.0
+trajectoryCoeffInit: 0.4       #set this as high as possible without violating constraints (see output after start)
+trajectoryCoeffMin: -0.5       #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMax:  0.5
+trajectoryAngleMin: -25.0      #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMax:  25.0
+
+# instead of one range, define individual ranges for each link. If ..AngleMin/Max is to be used for
+# one or all of them, set entry with null
+trajectoryAngleRanges:
+    - null
+    - null
+
+# manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
+# should be used (or leave completely empty)
+ovrPosLimit:
+    - null
+    - null
+
+# maximize minimal velocity for each joint (better excitation of parameters)
+# (implemented as penalty, so will not necessarily reach the set value)
+minVelocityConstraint: 0
+minVelocityPercentage: 0.1
+
+#### data preprocessing and selection
+
+# median filter that is used to remove outliers before low-pass
+filterMedianSize: 11
+
+# low-pass butter worth filter that is used to filter positions, torques and IMU accelerations
+# 2-tuple of cut-off and order of filter
+filterLowPass1: [8.0, 5]
+
+# low-pass for joint velocities
+filterLowPass2: [6.0, 5]
+
+# low-pass for external contact force data and IMU rpy estimation
+filterLowPass3: [3.0, 4]
+
+# use subset of samples
+startOffset: 0    #how many samples from the beginning of each measurement file are skipped
+skipSamples: 0    #how many values to skip before using the next sample
+
+# whether only "good" data is being selected or simply all is used (selected by condition number)
+selectBlocksFromMeasurements: 0
+blockSize: 250  # needs to be at least as much as parameters so regressor is square or higher
+selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
+
+removeNearZero: 0  #remove samples that have almost zero velocity
+minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
+
+# IMU processing (floating base)
+waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
+zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero (m/s^2)
+
+#### identification
+
+# fixed or floating-base dynamics
+floatingBase: 0
+
+# identify motor friction (constant sign dependent offset and velocity dependent)
+identifyFriction: 0
+
+# identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
+identifyGravityParamsOnly: 0
+
+# simulate torques from target values, don't use both
+simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+
+# almost zero threshold for QR, SVD and other things
+minTol: 0.0001
+
+## constrained SDP to solve OLS
+
+# constrain std params to physical consistent space to only achieve physical consistent parameters
+# (currently this also does the estimation, so previously selecting another method has no effect)
+# if only torque estimation is desired, not using this self.option might give a better model
+# accuracy with approriate parameters
+constrainToConsistent: 0
+
+# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
+# finding feasible standard parameters
+identifyClosestToCAD: 0
+# after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
+# (otherwise use SDP as well, experimental)
+constrainUsingNL: 0
+nlOptIterations: 500
+useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
+
+# constrain parameters for links more than a certain condition number to the a priori values
+# (to prevent very big changes for parameters that are not expressed well in the data)
+noChange: 0
+noChangeThresh: 400
+
+# restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
+restrictCOMtoHull: 1
+# set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
+# geometry or that initial CAD data is too large)
+hullScaling: 1.0
+# name of the directory after the package base name (as in package://basename/)
+meshBaseDir: 'meshes'
+# fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
+cubeSize: 1.0
+
+# constrain overall mass
+limitOverallMass: 1
+# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
+limitMassVal: 16.0
+
+# enforce staying around the a priori masses (only set this or a combination of the other
+# two mass limiting self.options to prevent constraint conflicts!)
+limitMassToApriori: 1
+limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+#limitMassAprioriBoundary: 0.3     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+
+# specify single params that will be constrained to the CAD values
+dontChangeParams: []
+
+# don't constrain some parameters that are otherwise included through group constraint options
+dontConstrain: []
+
+# define constraints for link symmetries (e.g. left and right arm)
+useSymmetryConstraints: 0
+# allow some difference between symmetry pairs (1.0 = 100%)
+symmetryTolerance: 0.05
+# tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
+# [p1, p2, sign]
+symmetryConstraints: []
+
+## other forms of OLS
+
+# use previously known CAD parameters to identify parameter error, estimates parameters closer to
+# known ones (taken from URDF file)
+# for some methods, this gives parameters that are more likely to be consistent
+# (not used with constrained SDP solver)
+useAPriori: 1
+
+# identify std parameters directly, but only for essential parameters (Gautier, 2013)
+useEssentialParams: 0
+
+# after getting essential base params, include dependent std columns for std essential params
+useDependents: 0
+
+# use weighted least squares(WLS) instead of ordinary least squares
+# needs small condition number, otherwise might amplify some parameters too much as the
+# covariance estimation can be wrong (also assumes that error is zero mean and normal
+# distributed)
+useWLS: 0
+
+# whether to filter the regressor columns (cutoff frequency is system dependent)
+# possibly increases accuracy when torque ripples are present. also supposedly decreases
+# correlation between (observation) regressor and measured torques
+filterRegressor: 0
+filterRegCutoff: 5   #frequency in Hz
+
+## output and debugging
+
+# plotting
+createPlots: 1               #create or show plots of measurements and estimated values
+outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
+outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
+outputFilename: 'output_threelink.html'    #specify custom filename for output file
+#outputFilename: 'kuka.pdf'   #specify custom filename for output file
+#outputFilename: 'kuka'       #specify custom filename for output file
+plotBaseDynamics: 0          #when using floating base, plot base forces or not
+plotPerJoint: 1              #plot each joint torque in one graph
+plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
+plotErrors: 0                #plot errors into torque graphs
+plotLegend: 1                #show plot legend
+
+showRandomRegressor: 0       #show 2d plot of random regressor
+showErrorHistogram: 0        #show estimation error distribution
+
+# options for console output
+showMemUsage: 0              #print used memory for different variables
+showTiming: 0                #show times various steps have taken
+showEssentialSteps: 0        #stop after every reduction step and show values
+outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
+showStandardParams: 1        #display a list of identified standard params
+showBaseParams: 1            #display a list of identified base params (if appliable)
+showBaseEqns: 1              #show which std params are combined for each base param
+outputLatex: 0               #format parameter output as latex
+showTriangleConsistency: 0   #show per-link consistency including triangle inequality
+verbose: 1                   #show more messages
+
+# which parameters to use when estimating torques for validation. Set to one of
+# ['base', 'std', 'urdf']
+estimateWith: 'std'

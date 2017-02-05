@@ -78,7 +78,7 @@ class Identification(object):
         self.data = Data(self.opt)
         self.data.init_from_files(measurements_files)
 
-        self.paramHelpers = helpers.ParamHelpers(self.model.num_model_params, self.opt)
+        self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
         self.sdp = SDP(self)
 

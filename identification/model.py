@@ -135,6 +135,8 @@ class Model(object):
             if not self.opt['identifyGravityParamsOnly']:
                 self.num_identified_params += 2*self.num_dofs
                 self.num_all_params += 2*self.num_dofs
+        else:
+            self.num_identified_params = self.num_model_params
 
         if self.opt['identifyGravityParamsOnly']:
             self.num_identified_params = self.num_identified_params - len(self.inertia_params)
@@ -530,6 +532,7 @@ class Model(object):
             generate_new = True
 
         if generate_new:
+            fb = self.opt['floatingBase']  #read again to not possibly take value from file
             if self.opt['verbose']:
                 print("generating random regressor")
 

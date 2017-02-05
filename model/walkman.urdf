@@ -127,6 +127,9 @@
 ####################################################
 -->
   <!-- ***********  MODEL COLORS *********** -->
+  <material name="black">
+    <color rgba="0.0 0.0 0.0 1"/>
+  </material>
   <material name="grey">
     <color rgba="0.5 0.5 0.5 1"/>
   </material>

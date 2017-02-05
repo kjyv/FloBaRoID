@@ -29,7 +29,6 @@ from identification.model import Model
 from identification.data import Data
 from identification.output import OutputConsole
 from identification.sdp import SDP
-from identification.nlopt import NLOPT
 from identification import helpers
 
 from colorama import Fore, Back, Style
@@ -694,6 +693,7 @@ class Identification(object):
                     self.sdp.identifyFeasibleStandardParameters(self)
                     self.model.xBase = self.model.Binv.dot(self.model.xStd)
                     if self.opt['constrainUsingNL']:
+                        from identification.nlopt import NLOPT
                         nlopt = NLOPT(self)
                         nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
                     else:

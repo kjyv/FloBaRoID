@@ -10,15 +10,22 @@ cache:
     - ccache
 before_cache:
     - rm -f $HOME/.cache/pip/log/debug.log
+addons:
+    apt:
+        sources:
+            - sourceline: 'deb http://de.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse'
+        packages:
+            - python-dev
+            - python3-dev
+            - gfortran
 
 before_install: 
     - sudo add-apt-repository ppa:george-edison55/cmake-3.x --yes
-    - sudo apt-add-repository "deb http://archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse" --yes
     - sudo apt-get -qq update
     - sudo apt-get install -y cmake cmake-data
-    - sudo apt-get install -y swig/trusty-backports
-    - sudo apt-get install -y python-dev python3-dev
-    - sudo apt-get install -y gfortran
+    - sudo apt-get remove -y swig
+    - sudo apt-get install -y -t trusty-backports swig3.0
+    - sudo ln -s /usr/bin/swig3.0 /usr/bin/swig
     #cvxopt dependencies
     - sudo apt-get install -y liblapack3 liblapack-dev
     - sudo apt-get install -y libblas3 libblas-dev

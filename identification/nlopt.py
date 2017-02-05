@@ -16,10 +16,17 @@ class NLOPT(object):
         self.idf = idf
         self.model = idf.model
 
+        if self.idf.opt['floatingBase']:
+            self.nl = self.model.N_LINKS
+            self.start_link = 0
+        else:
+            self.nl = self.model.N_LINKS - 1 # ignore first fixed link
+            self.start_link = 1
+
         #get COM boundaries
-        self.link_hulls = np.zeros((idf.model.N_LINKS, 3, 2))
-        for i in range(idf.model.N_LINKS):
-            self.link_hulls[i] = np.array(
+        self.link_hulls = np.zeros((self.nl, 3, 2))
+        for i in range(self.start_link, idf.model.N_LINKS):
+            self.link_hulls[i - self.start_link] = np.array(
                                 idf.urdfHelpers.getBoundingBox(
                                     input_urdf = idf.model.urdf_file,
                                     old_com = idf.model.xStdModel[i*10+1:i*10+4],
@@ -37,20 +44,21 @@ class NLOPT(object):
         #u = la.norm(tau - self.model.YStd.dot(x))**2 / self.idf.data.num_used_samples
 
         #distance to CAD
-        u = la.norm(x - self.model.xStdModel)**2
+        #u = la.norm(x[self.model.identifiable] - self.model.xStdModel[self.model.identifiable])**2
+        u = la.norm(x - self.model.xStdModel[self.start_link*10:])**2
 
         cons = []
         # base equations == xBase as constraints
-        cons_base = list((self.model.Binv.dot(x) - self.xBase_feas)*10)
+        cons_base = list((self.model.Binv[:, self.start_link*10:].dot(x) - self.xBase_feas)*10)
         cons += cons_base
 
         x_bary = self.idf.paramHelpers.paramsLink2Bary(x)
 
         #test for positive definiteness (too naive?)
         tensors = self.idf.paramHelpers.inertiaTensorFromParams(x_bary)
-        cons_inertia = [0.0]*self.model.N_LINKS*3
-        cons_tri = [0.0]*self.model.N_LINKS*3
-        for l in range(self.model.N_LINKS):
+        cons_inertia = [0.0]*self.nl*3
+        cons_tri = [0.0]*self.nl*3
+        for l in range(self.nl):
             eigvals = la.eigvals(tensors[l])
             # inertia tensor needs to be positive (semi-)definite
             cons_inertia[l*3+0] = eigvals[0]
@@ -69,14 +77,14 @@ class NLOPT(object):
         # constrain overall mass
         if self.idf.opt['limitOverallMass']:
             cons_mass_sum = [0.0]*1
-            est_mass = np.sum(x[0:self.model.num_model_params:10])
+            est_mass = np.sum(x[0:self.model.num_model_params-self.start_link:10])
             cons_mass_sum[0] = est_mass
             cons += cons_mass_sum
 
         # constrain com
         if self.idf.opt['restrictCOMtoHull']:
-            cons_com = [0.0]*self.model.N_LINKS*6
-            for l in range(self.model.N_LINKS):
+            cons_com = [0.0]*(self.nl*6)
+            for l in range(self.nl):
                 cons_com[l*6+0] = x_bary[l*10+1] - self.link_hulls[l][0][0]  #lower bound
                 cons_com[l*6+1] = x_bary[l*10+2] - self.link_hulls[l][1][0]
                 cons_com[l*6+2] = x_bary[l*10+3] - self.link_hulls[l][2][0]
@@ -105,7 +113,7 @@ class NLOPT(object):
 
     def addVarsAndConstraints(self, opt):
         #add all std vars and some constraints
-        for i in range(len(self.model.param_syms)):
+        for i in range(self.start_link*10, len(self.model.param_syms)):
             p = self.model.param_syms[i]
             if i % 10 == 0 and i < self.model.num_model_params:   #mass
                 opt.addVar(str(p), type="c", lower=0.1, upper=20.0)
@@ -132,24 +140,21 @@ class NLOPT(object):
 
         self.addVarsAndConstraints(opt)
 
-        nl = self.model.N_LINKS
         opt.addConGroup('xbase', len(xBase), 'e', equal=0.0)   #=xBase)  # lower=-0.1, upper=0.1)
-        opt.addConGroup('inertia', 3*nl, 'i', lower=0.0, upper=100)
+        opt.addConGroup('inertia', 3*self.nl, 'i', lower=0.0, upper=100)
         if self.use_tri_ineq:
-            opt.addConGroup('tri_ineq', 3*nl, 'i', lower=0.0, upper=100)
+            opt.addConGroup('tri_ineq', 3*self.nl, 'i', lower=0.0, upper=100)
         if self.idf.opt['limitOverallMass']:
             opt.addConGroup('mass sum', 1, 'i',
                             lower=self.idf.opt['limitMassVal']*0.99,
                             upper=self.idf.opt['limitMassVal']*1.01)
         if self.idf.opt['restrictCOMtoHull']:
-            opt.addConGroup('com', 6*nl, 'i', lower=0.0, upper=100)
+            opt.addConGroup('com', 6*self.nl, 'i', lower=0.0, upper=100)
 
-        # set CAD/previous sol as starting point (should be already within constraints for some
-        # solvers?)
-        # atm, either can be eqal in projection to feasible base or consistent and equal to CAD (and
-        # not equal to base), hm
+        # set preevious sol as starting point (should be already within constraints for most
+        # solvers to perform well)
         for i in range(len(opt.getVarSet())):
-            opt.getVarSet(i).value = self.model.xStd[i]   #xStdModel[i]
+            opt.getVar(i).value = self.model.xStd[i+self.start_link*10]
 
         if self.idf.opt['verbose']:
             print(opt)
@@ -162,9 +167,7 @@ class NLOPT(object):
             solver.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             #for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
             solver.setOption('max_iter', self.idf.opt['nlOptIterations'])
-            #solver.setOption('max_cpu_time', 120)
             solver.setOption('print_level', 3)  #0 none ... 5 max
-            #solver.setOption('expect_infeasible_problem', 'yes')
 
             #don't start too far away from inital values (boundaries push even if starting inside feasible set)
             solver.setOption('bound_push', 0.0000001)
@@ -197,5 +200,5 @@ class NLOPT(object):
         if self.idf.opt['verbose']:
             print(sol)
 
-        self.model.xStd = self.last_best_x
+        self.model.xStd[self.start_link*10:] = self.last_best_x
 

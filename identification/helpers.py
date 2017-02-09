@@ -57,21 +57,26 @@ class ParamHelpers(object):
         returns dictionary of link ids and boolean consistency for each link
         """
         cons = {}
-        tensors = self.inertiaTensorFromParams(params)
-        for i in range(0, len(params)):
-            if (i % 10 == 0) and i < self.model.num_model_params:
-                if params[i] <= 0:  #masses need to be positive
-                    cons[i // 10] = False
-                    continue
-                #check if inertia tensor is positive definite (only then cholesky decomp exists)
-                try:
-                    np.linalg.cholesky(tensors[i // 10])
-                    cons[i // 10] = True
-                except np.linalg.linalg.LinAlgError:
-                    cons[i // 10] = False
-            else:
-                #TODO: check friction params >0
-                pass
+        if self.opt['identifyGravityParamsOnly']:
+            for i in range(0, self.model.num_links):
+                #masses need to be positive
+                cons[i] = params[i*4] > 0
+        else:
+            tensors = self.inertiaTensorFromParams(params)
+            for i in range(0, len(params)):
+                if (i % 10 == 0) and i < self.model.num_model_params:
+                    if params[i] <= 0:  #masses need to be positive
+                        cons[i // 10] = False
+                        continue
+                    #check if inertia tensor is positive definite (only then cholesky decomp exists)
+                    try:
+                        np.linalg.cholesky(tensors[i // 10])
+                        cons[i // 10] = True
+                    except np.linalg.linalg.LinAlgError:
+                        cons[i // 10] = False
+                else:
+                    #TODO: check friction params >0
+                    pass
 
         '''
         if False in cons.values():
@@ -84,11 +89,7 @@ class ParamHelpers(object):
 
     def isPhysicalConsistent(self, params):
         """give boolean consistency statement for a set of parameters"""
-        if self.opt['identifyGravityParamsOnly']:
-            # check if masses are positive
-            return np.all(params[0::4] > 0)
-        else:
-            return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
+        return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
     def invvech(self, params):
         """give full inertia tensor from vectorized form

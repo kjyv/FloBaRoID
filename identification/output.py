@@ -441,10 +441,7 @@ class OutputConsole(object):
             else:
                 print("A priori parameters are physical consistent")
 
-            if idf.opt['identifyGravityParamsOnly']:
-                consistency = {p:p > 0 for p in idf.model.xStd[0::4]}
-            else:
-                consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
+            consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
             if False in list(consistency.values()):
                 print("Identified parameters are not physical consistent,")
                 print("per-link physical consistency (identified): {}".format(consistency))
@@ -473,7 +470,12 @@ class OutputConsole(object):
                 print("Mean error delta (a priori error vs approx error) of all std params: {}%".\
                         format(sum_pc_delta_all/len(idf.model.xStd)))
                 sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
-                sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
+                if idf.opt['identifyGravityParamsOnly']:
+                    xStd_full = idf.model.xStdModel.copy()
+                    xStd_full[p_idf] = idf.model.xStd
+                    sq_error_idf = np.square(la.norm(xStdReal[p_idf] - xStd_full[p_idf]))
+                else:
+                    sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
                 print("Squared distance of identifiable std parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
                 #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
@@ -488,7 +490,12 @@ class OutputConsole(object):
                 print("Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
         else:
-            sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
+            if idf.opt['identifyGravityParamsOnly']:
+                xStd_full = idf.model.xStdModel.copy()
+                xStd_full[p_idf] = idf.model.xStd
+                sq_error_apriori = np.square(la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf]))
+            else:
+                sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
             print("Squared distance of identifiable std parameter vectors to a priori: {}".\
                     format(sq_error_apriori))
 
@@ -554,7 +561,8 @@ class OutputMatplotlib(object):
             matplotlib.rcParams.update({'grid.linewidth': font_size / 20.})
 
 
-        # skip some samples so graphs don't get too large/detailed
+        # skip some samples so graphs don't get too large/detailed TODO: change skip so that some
+        # maximum number of points is plotted (determined by screen etc.)
         skip = 5
 
         #create figures and plots

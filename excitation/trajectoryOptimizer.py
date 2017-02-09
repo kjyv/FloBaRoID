@@ -185,8 +185,8 @@ class TrajectoryOptimizer(object):
 
         old_verbose = self.config['verbose']
         self.config['verbose'] = 0
-        old_floatingBase = self.config['floatingBase']
-        self.config['floatingBase'] = 0
+        #old_floatingBase = self.config['floatingBase']
+        #self.config['floatingBase'] = 0
         if not 'model' in locals():
             # get model at first run, then reuse
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory)
@@ -194,7 +194,7 @@ class TrajectoryOptimizer(object):
             trajectory_data, data, model = self.sim_func(self.config, self.trajectory, model)
 
         self.config['verbose'] = old_verbose
-        self.config['floatingBase'] = old_floatingBase
+        #self.config['floatingBase'] = old_floatingBase
 
         self.last_trajectory_data = trajectory_data
         if self.plot_func: self.plot_func(trajectory_data)

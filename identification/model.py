@@ -294,7 +294,7 @@ class Model(object):
         """loop over measurement data, optionally skip some values
             - get the regressor per time step
             - if necessary, calculate inverse dynamics to get simulated torques
-            - if necessary, get torques from contact forces and add them to the torques
+            - if necessary, get torques from contact wrenches and add them to the torques
             - stack the torques, regressors and contacts into matrices
         """
         contacts = {}
@@ -421,47 +421,37 @@ class Model(object):
                 np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
 
         if len(contacts.keys()):
-            # TODO: if robot does not have contact sensors, use HyQ null-space method (only for
-            # static positions?)
-
-            #convert contact forces into torque contribution
+            #convert contact wrenches into torque contribution
             for i in range(self.contacts_stack.shape[0]):
                 frame = list(contacts.keys())[i]
-                if frame == 'dummy_sim':  #ignore empty contacts from simulation
-                    #print("Empty contacts data!")
-                    continue
 
-                # get jacobian and contact force for each contact frame and measurement sample
-                jacobian = iDynTree.MatrixDynSize(6, 6+self.num_dofs)
-                self.dynComp.getFrameJacobian(frame, jacobian)
+                dim = self.num_dofs+fb
+                # get jacobian and contact wrench for each contact frame and measurement sample
+                jacobian = iDynTree.MatrixDynSize(6, dim)
+                if not self.dynComp.getFrameJacobian(str(frame), jacobian):
+                    continue
                 jacobian = jacobian.toNumPy()
 
-                # mul each sample of measured contact forces with frame jacobian
-                dim = self.num_dofs+fb
+                # mul each sample of measured contact wrenches with frame jacobian
                 contacts_torq = np.empty(dim*self.data.num_used_samples)
                 for s in range(self.data.num_used_samples):
                     contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
                 self.contactForcesSum += contacts_torq
-            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
 
-            #reshape torque stack
-            torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
-
-            #subtract measured contact forces from torque estimation from iDynTree
             if self.opt['simulateTorques']:
-                self.torques_stack -= self.contactForcesSum
-                #torques_stack_2dim[:, 6:] -= self.contactForcesSum_2dim[:, 6:]
-                #self.torques_stack = torques_stack_2dim.flatten()
+                #subtract measured contact wrench from torque estimation from iDynTree
+                self.torques_stack = self.torques_stack - self.contactForcesSum
             else:
                 # if not simulating, measurements of joint torques already contain contact contribution,
                 # so only add it to the (simulated) base force estimation
+                torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
+                self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
                 torques_stack_2dim[:, :6] -= self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
-            self.data.samples['torques'] = torques_stack_2dim[:, fb:]
-        else:
-            # also write back torques if simulating and fixed-base
-            if self.opt['simulateTorques']:
-                self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
+
+        if len(contacts.keys()) or self.opt['simulateTorques']:
+            # write back torques to data object when simulating or contacts were added
+            self.data.samples['torques'] = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
 
         with helpers.Timer() as t:
             if self.opt['useAPriori']:

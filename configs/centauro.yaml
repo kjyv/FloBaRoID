@@ -6,6 +6,7 @@ exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null
 useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 1          #find new parameters with optimization or load previous params from file (if no file exists, use random)
+useStaticTrajectories: 0       #generate simple static trajectories for identification of gravity terms (no optimization is done)
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
 showOptimizationTrajs: 1       #display the trajectory plot after each optimization step
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
@@ -49,15 +50,12 @@ minVelocityPercentage: 0.1
 # median filter that is used to remove outliers before low-pass
 filterMedianSize: 11
 
+
 # low-pass butter worth filter that is used to filter positions, torques and IMU accelerations
 # 2-tuple of cut-off and order of filter
 filterLowPass1: [8.0, 5]
-
-# low-pass for joint velocities
-filterLowPass2: [6.0, 5]
-
-# low-pass for external contact force data and IMU rpy estimation
-filterLowPass3: [3.0, 4]
+filterLowPass2: [6.0, 5]        # low-pass for joint velocities
+filterLowPass3: [3.0, 4]        # low-pass for external contact force data and IMU rpy estimation
 
 # use subset of samples
 startOffset: 6000    #how many samples from the beginning of each measurement file are skipped

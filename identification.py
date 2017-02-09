@@ -55,15 +55,13 @@ class Identification(object):
 
         ## some additional options (experiments)
 
-        # orthogonalize basis matrix (some SDP estimations seem to work more stable that way)
-        self.opt['orthogonalizeBasis'] = 1
-
         # in order ot get regressor and base equations, use basis projection matrix or use
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 0
 
-        # use RBDL for simulation (only correct for fixed-based atm)
-        self.opt['useRBDL'] = 0
+        # in case projection is used, orthogonalize basis matrix (some SDP estimations seem to work
+        # more stable that way)
+        self.opt['orthogonalizeBasis'] = 1
 
         # add regularization term to SDP identification that minimized CAD distance for non-identifiable params
         self.opt['useRegressorRegularization'] = 1
@@ -114,9 +112,6 @@ class Identification(object):
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
-
-        #if self.opt['floatingBase']:
-        #    self.tauEstimated[:, 6:] -= self.model.contactForcesSum_2dim[:, 6:]
 
         # give some data statistics
         if print_stats and (self.opt['verbose'] or self.opt['showErrorHistogram'] == 1):
@@ -244,6 +239,7 @@ class Identification(object):
             self.model.xStd += self.model.xStdModel[self.model.identified_params]
 
     def getStdDevForParams(self):
+        # this might not be working correctly
         if self.opt['useAPriori']:
             tauDiff = self.model.tauMeasured - self.tauEstimated
         else:
@@ -258,7 +254,7 @@ class Identification(object):
         sigma_rho = rho/(r - self.model.num_base_params)
 
         # get standard deviation \sigma_{x} (of the estimated parameter vector x)
-        C_xx = sigma_rho * (sla.inv(np.dot(self.model.YBase.T, self.model.YBase)))
+        C_xx = sigma_rho * (sla.pinv(np.dot(self.model.YBase.T, self.model.YBase)))
         sigma_x = np.diag(C_xx)
 
         # get relative standard deviation
@@ -598,7 +594,7 @@ class Identification(object):
             U, s, VH = la.svd(self.model.YStd, full_matrices=False)
             nb = self.model.num_base_params
 
-            # identify standard parameters directly
+            # get non-singular std regressor
             V_1 = VH.T[:, 0:nb]
             U_1 = U[:, 0:nb]
             s_1 = np.diag(s[0:nb])
@@ -666,7 +662,7 @@ class Identification(object):
             sys.exit(1)
 
         if self.opt['verbose']:
-            print("doing identification on {} samples".format(self.data.num_used_samples), end=' ')
+            print("estimating parameters from {} samples".format(self.data.num_used_samples), end=' ')
 
         self.model.computeRegressors(self.data)
 

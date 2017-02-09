@@ -49,12 +49,13 @@ class SDP(object):
             I = Identity
             S = skew
 
-            #don't include equations for 0'th link (in case it's fixed)
+            # don't include equations for 0'th link (in case it's fixed)
             if idf.opt['floatingBase'] == 0 and idf.opt['deleteFixedBase']:
                 if idf.opt['identifyGravityParamsOnly']:
                     self.delete_cols = [0,1,2,3]
                 else:
                     self.delete_cols = [0,1,2,3,4,5,6,7,8,9]
+
                 if set(self.delete_cols).issubset(idf.model.non_id):
                     start_link = 1
                 else:
@@ -69,7 +70,8 @@ class SDP(object):
             D_other_blocks = []
 
             if idf.opt['identifyGravityParamsOnly']:
-                # only constrain gravity params (i.e. mass)
+                # only constrain gravity params (i.e. mass as COM is not part of physical
+                # consistency)
                 for i in range(start_link, idf.model.num_links):
                     p = idf.model.mass_params[i]
                     D_other_blocks.append( Matrix([idf.model.param_syms[p]]) )
@@ -93,25 +95,6 @@ class SDP(object):
                                   idf.model.param_syms[i*10+4+5]]
                                ])
 
-                    '''
-                    if remove_nonid and i == 1:  #test for kuka non-id'able params
-                            L_star = Matrix([[idf.model.param_syms[i*10+4+5]]])
-                            #s_star = Matrix([[l[0], l[1]]])
-                            #Di = BlockMatrix([[L_star, s_star],
-                            #                 [s_star.T, I(2)*idf.model.xStdModel[10]]])
-
-                            Di = BlockMatrix([[L_star]])
-                            D_inertia_blocks.append(Di.as_mutable())
-                            self.delete_cols.extend([10,11,12,13,14,15,16,17,18])
-                            #self.delete_cols.extend([10,13,14,15,16,17,18])
-                            start_link = 2
-                            #elif i == 2:
-                            #    Di = BlockMatrix([[L,    S(l).T],
-                            #                      [S(l), I(3)*idf.model.xStdModel[20]]])
-                            #    self.delete_cols.append(20)
-                            #    D_inertia_blocks.append(Di.as_mutable())
-                    else:
-                    '''
                     Di = BlockMatrix([[L,    S(l).T],
                                       [S(l), I(3)*m]])
                     D_inertia_blocks.append(Di.as_mutable())
@@ -126,7 +109,7 @@ class SDP(object):
 
                 # for links that have too high condition number, don't change params
                 if idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']:
-                    print(Fore.YELLOW + 'skipping identification of link {} ({})!'.format(i, idf.model.linkNames[i]) + Fore.RESET)
+                    print(Fore.YELLOW + 'not changing parameters of link {} ({})!'.format(i, idf.model.linkNames[i]) + Fore.RESET)
                     # don't change mass
                     params_to_skip.append(i*10)
 
@@ -211,6 +194,9 @@ class SDP(object):
                                 D_other_blocks.append( ub )
                                 D_other_blocks.append( lb )
                                 self.constr_per_param[p].append('hull')
+            else:
+                if idf.opt['identifyGravityParamsOnly']:
+                    print(Fore.RED+"COM parameters are not constrained, might result in rank deficiency when solving SDP problem!"+Fore.RESET)
 
             # symmetry constraints
             if idf.opt['useSymmetryConstraints'] and idf.opt['symmetryConstraints']:
@@ -233,8 +219,8 @@ class SDP(object):
                     p = i #idf.model.num_model_params+i
                     D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
                     self.constr_per_param[idf.model.num_model_params + p].append('>0')
-                    #Fv > 0
                     if not idf.opt['identifyGravityParamsOnly']:
+                        #Fv > 0
                         D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]) )
                         D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
                         self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs].append('>0')
@@ -324,14 +310,16 @@ class SDP(object):
             else:
                 try:
                     from symengine import DenseMatrix as eMatrix
-                    print('using symengine')
+                    if idf.opt['verbose']:
+                        print('using symengine')
                     edelta = eMatrix(delta.shape[0], delta.shape[1], delta)
                     eK = eMatrix(K.shape[0], K.shape[1], K)
                     eR1 = eMatrix(R1.shape[0], R1.shape[1], Matrix(R1))
                     Y = eR1*eK*edelta
                     e_rho1 = Matrix(eMatrix(rho1) - contactForces - Y)
                 except ImportError:
-                    print('not using symengine')
+                    if idf.opt['verbose']:
+                        print('not using symengine')
                     Y = R1*(K*delta)
                     e_rho1 = Matrix(rho1 - contactForces) - Y
 
@@ -360,10 +348,10 @@ class SDP(object):
             # solve SDP
 
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
-            # otherwise returns primal as solution when failing)
+            # but is used to return primal as solution when failing cvxopt)
             if idf.opt['verbose']:
                 print("Solving constrained OLS as SDP")
-            prime = idf.model.xStdModel
+            prime = idf.model.xStdModel[list(set(idf.model.identified_params).difference(self.delete_cols))]
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line

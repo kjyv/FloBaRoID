@@ -65,7 +65,8 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][so:, :]
+                                        if c != 'dummy_sim':   # could be removed but is here for compatibility
+                                            contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     self.measurements[k] = m[k]
@@ -80,7 +81,8 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        contact_dict[c] = m[k].item(0)[c][so:, :]
+                                        if c != 'dummy_sim':
+                                            contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     #TODO: get mean value of scalar values (needs to count how many values then)
@@ -112,6 +114,7 @@ class Data(object):
             if self.opt['selectBlocksFromMeasurements']:
                 # fill only with starting block
                 for k in self.measurements.keys():
+                    #TODO: add contacts into this logic as well
                     if self.measurements[k].ndim == 0:
                         self.samples[k] = self.measurements[k]
                     elif self.measurements[k].ndim == 1:
@@ -169,6 +172,7 @@ class Data(object):
         if self.opt['verbose']:
             print("getting next block: {}/{}".format(self.block_pos, self.num_loaded_samples))
 
+        #TODO: add contacts into this logic as well
         for k in self.measurements.keys():
             if self.measurements[k].ndim == 0:
                 mv = self.measurements[k]
@@ -302,6 +306,7 @@ class Data(object):
             #append
             for i in range(1, len(self.usedBlocks)):
                 (b, bs, cond, linkConds) = self.usedBlocks[i]
+                #TODO: add contacts into this logic as well
                 if self.measurements[k].ndim == 0:
                     self.samples[k] = self.measurements[k]
                 elif self.measurements[k].ndim == 1:

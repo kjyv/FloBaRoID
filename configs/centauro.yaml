@@ -75,6 +75,10 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
+# use random regressors to determine structural dependencies when getting base regressor
+# (may give some issues if only limited data is available)
+useRandomRegressor: 1
+
 # fixed or floating-base dynamics
 floatingBase: 0
 
@@ -86,6 +90,9 @@ identifyGravityParamsOnly: 0
 
 # simulate torques from target values, don't use both
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+
+# use RBDL for simulation (instead of iDynTree)
+useRBDL: 0
 
 # almost zero threshold for QR, SVD and other things
 minTol: 0.0001

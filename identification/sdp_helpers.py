@@ -169,7 +169,11 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     # using cvxopt conelp (no structure exploitation)
-    # currently not using primal as starting point (since idk what s is)
+    # TODO: currently not using primal as starting point (benefits?)
+    # primalstart['sl'] - initial value of u?
+    # primalsstart['x'] - initial values of x
+    # primalsstart['ss'] - value like hs for initial x values (lmis replaced with primal values
+    # and converted to cvxopt matrix format), must be within constraints
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     cvxopt.solvers.options['maxiters'] = 100

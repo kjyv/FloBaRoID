@@ -247,6 +247,12 @@ and to define the end effectors of the robot-->
       </geometry>
     </collision>
   </link>
+  <link name="crane_ft"/>
+  <joint name="crane_ft_joint" type="fixed">
+    <parent link="DWYTorso"/>
+    <child link="crane_ft"/>
+    <origin xyz="0 0 0.480" rpy="0 0 0"/>
+  </joint>
   <!-- UPDATE DATA FOR TORSO PROTECTION! -->
   <link name="TorsoProtections">
     <inertial>

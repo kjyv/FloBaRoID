@@ -3,6 +3,7 @@ from __future__ import print_function
 from builtins import range
 from builtins import object
 import numpy as np
+import numpy.linalg as la
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -82,6 +83,34 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
 
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
 
+    if config['floatingBase']:
+        crane = 0
+        if crane:
+            contactFrame = 'crane_ft'
+            # get base acceleration that results from acceleration at crane contact frame
+            contact_wrench =  np.zeros(6)
+            contact_wrench[2] = 9.81 # * 139.122814
+            len_contact = la.norm(contact_wrench[0:3])
+
+            # get vector from contact frame to robot center of mass
+            model_com = iDynTree.Position()
+            model_com = model.dynComp.getWorldTransform(contactFrame).inverse()*model.dynComp.getCenterOfMass()
+            model_com = model_com.toNumPy()
+
+            # rotate contact wrench to be in line with COM (so that base link is not rotationally accelerated)
+            contact_wrench[0:3] = (-model_com) / la.norm(model_com) * len_contact
+
+            # rotate base accordingly (ore rather the whole robot) so gravity is parallel to contact force
+            a_xz = np.array([0,9.81])      #xz of non-rotated contact force
+            b_xz = contact_wrench[[0,2]]     #rotated contact force vec projected to xz
+            pitch = np.arccos( (a_xz.dot(b_xz))/(la.norm(a_xz)*la.norm(b_xz)) )   #angle in xz layer
+            a_yz = np.array([0,9.81])        #yz of non-rotated contact force
+            b_yz = contact_wrench[[1,2]]     #rotated contact force vec projected to yz
+            roll = np.arccos( (a_yz.dot(b_yz))/(la.norm(a_yz)*la.norm(b_yz)) )   #angle in yz layer
+            yaw = 0
+
+            trajectory_data['base_rpy'][:] += np.array([roll, pitch, yaw])
+
     #TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
     trajectory_data['contacts'] = np.array({})
 
@@ -100,25 +129,22 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
 
     if config['floatingBase']:
-        #add crane constraints
-        crane = 0
+        # add force of hook to keep robot fixed in space (always accelerate exactly against gravity)
+        # floating base orientation has to be rotated so that accelerations resulting from hanging
+        # are zero, i.e. the vector COM - contact point is parallel to gravity.
         if crane:
-            # get base acceleration that results from acceleration at crane contact frame
-            contact_wrench =  np.zeros(6)
-            contact_wrench[2] = 9.81 # * 139.122814
-
             # get jacobian of contact frame at current posture
             dim = model.num_dofs+fb
             jacobian = iDynTree.MatrixDynSize(6, dim)
-            model.dynComp
-            model.dynComp.getFrameJacobian('crane_ft', jacobian)
+            model.dynComp.getFrameJacobian(contactFrame, jacobian)
             jacobian = jacobian.toNumPy()
 
-            # get base link vel and acc and torques that result from contact
+            # get base link vel and acc and torques that result from contact force / acceleration
             contacts_torq = np.zeros(dim)
             contacts_torq = jacobian.T.dot(contact_wrench)
-            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / mass #(139.122 or of link?)
+            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / 139.122
             data.samples['base_acceleration'][:,:] = trajectory_data['base_acceleration'][:,:]
+            # simulate again with proper base acceleration
             model.computeRegressors(data, only_simulate=True)
             trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
 

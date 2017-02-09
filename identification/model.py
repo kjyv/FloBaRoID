@@ -27,9 +27,6 @@ class Model(object):
         if 'useBasisProjection' not in self.opt:
             self.opt['useBasisProjection'] = 0
 
-        if 'useRBDL' not in self.opt:
-            self.opt['useRBDL'] = 0
-
         # create generator instance and load model
         self.generator = iDynTree.DynamicsRegressorGenerator()
         ret = self.generator.loadRobotAndSensorsModelFromFile(urdf_file)
@@ -121,8 +118,8 @@ class Model(object):
             self.mass_params.append(i*10)
             self.inertia_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
 
-        # get amount of initial inertia params (from urdf) (no friction, no removed columns)
-        self.num_model_params = self.generator.getNrOfParameters()
+        # get amount of initial inertia params (from urdf) (full params, no friction, no removed columns)
+        self.num_model_params = self.num_links*10
         self.num_all_params = self.num_model_params
 
         # add N offset params (offsets or constant friction) and 2*N velocity dependent friction params
@@ -248,7 +245,7 @@ class Model(object):
             # for identification purposes, the position does not matter but rotation is taken
             # from IMU estimation. The gravity, base velocity and acceleration all need to be
             # expressed in world frame then
-            dynComp.setFloatingBase(self.opt['baseLinkName'])
+            #dynComp.setFloatingBase(self.opt['baseLinkName'])
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)
@@ -335,7 +332,7 @@ class Model(object):
                     if self.opt['simulateTorques']:
                         torq = np.nan_to_num(torques)
                     else:
-                        if self.opt['floatingBase']:
+                        if self.opt['floatingBase'] and len(torq) < (self.num_dofs + fb):
                             #add estimated base forces to measured torq vector from file
                             torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
 
@@ -352,17 +349,11 @@ class Model(object):
                 # get numerical regressor (std)
                 with helpers.Timer() as t:
                     if self.opt['floatingBase']:
-                        vel = data.samples['base_velocity'][m_idx]
-                        acc = data.samples['base_acceleration'][m_idx]
+                        base_vel = data.samples['base_velocity'][m_idx]
+                        base_acc = data.samples['base_acceleration'][m_idx]
                         rpy = data.samples['base_rpy'][m_idx]
-
-                        if self.opt['identifyGravityParamsOnly']:
-                            #set vel and acc to zero (should be almost zero already) to remove noise
-                            vel[:] = 0.0
-                            acc[:] = 0.0
-
-                        base_velocity = iDynTree.Twist.fromList(vel)
-                        base_acceleration = iDynTree.Twist.fromList(acc)
+                        base_velocity = iDynTree.Twist.fromList(base_vel)
+                        base_acceleration = iDynTree.Twist.fromList(base_acc)
                         rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                         pos = iDynTree.Position.Zero()
                         world_T_base = iDynTree.Transform(rot, pos)
@@ -377,9 +368,9 @@ class Model(object):
                         print("Error during numeric computation of regressor")
 
                     regressor = regressor.toNumPy()
-                    # the base forces are expressed in the base frame for the regressor, so transform them
-                    # (inverse dynamics use world frame)
                     if self.opt['floatingBase']:
+                        # the base forces are expressed in the base frame for the regressor, so transform them
+                        # to world frame (inverse dynamics use world frame)
                         to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
                         regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                         regressor[3:6, :] = to_world.dot(regressor[3:6, :])
@@ -390,10 +381,7 @@ class Model(object):
 
                     if self.opt['identifyFriction']:
                         # append unitary matrix to regressor for offsets/constant friction
-                        if self.opt['identifyGravityParamsOnly']:
-                            sign = 1
-                        else:
-                            sign = np.sign(dq.toNumPy())
+                        sign = 1 #np.sign(dq.toNumPy())
                         static_diag = np.identity(self.num_dofs)*sign
                         offset_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), static_diag))
                         regressor = np.concatenate((regressor, offset_regressor), axis=1)
@@ -464,6 +452,13 @@ class Model(object):
         simulate_time+=t.interval
 
         self.YStd = self.regressor_stack
+
+        # if difference between random regressor (that was used for base projection) and regressor
+        # from the data is too big, the base regressor can still have linear dependencies.
+        # in that case get projection from data regressor matrix
+        if not self.opt['useRandomRegressor']:
+            self.computeRegressorLinDepsQR(self.YStd)
+
         if self.opt['useBasisProjection']:
             self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
         else:
@@ -515,21 +510,21 @@ class Model(object):
             RQ = regr_file['RQ']
             PQ = regr_file['PQ']
             n = regr_file['n']   #number of samples that were used
-            fb = regr_file['fb']  #floating base flag
+            fbase = regr_file['fb']  #floating base flag
             grav = regr_file['grav_only']
+            fric = regr_file['fric']
             if self.opt['verbose']:
                 print("loaded random regressor from {}".format(regr_filename))
-            if n != n_samples or fb != self.opt['floatingBase'] or R.shape[0] != self.num_identified_params or \
-                    self.opt['identifyGravityParamsOnly'] != grav:
+            if n != n_samples or fbase != fb or R.shape[0] != self.num_identified_params or \
+                    self.opt['identifyGravityParamsOnly'] != grav or fric != self.opt['identifyFriction']:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
         except (IOError, KeyError):
             generate_new = True
 
         if generate_new:
-            fb = self.opt['floatingBase']  #read again to not possibly take value from file
             if self.opt['verbose']:
-                print("generating random regressor")
+                print("(re-)generating random regressor")
 
             if not n_samples:
                 n_samples = self.num_dofs * 5000
@@ -548,12 +543,13 @@ class Model(object):
                 if len(limits) > 0:
                     rnd = np.random.rand(self.num_dofs) #0..1
                     q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd))
-                    vel = ((np.random.rand(self.num_dofs)-0.5)*2*dq_lim)
-                    acc = ((np.random.rand(self.num_dofs)-0.5)*2*np.pi)
                     if self.opt['identifyGravityParamsOnly']:
-                        #set vel and acc to zero (should be almost zero already) to remove noise
-                        vel[:] = 0.0
-                        acc[:] = 0.0
+                        #set vel and acc to zero for static case
+                        vel = np.zeros(self.num_dofs)
+                        acc = np.zeros(self.num_dofs)
+                    else:
+                        vel = ((np.random.rand(self.num_dofs)-0.5)*2*dq_lim)
+                        acc = ((np.random.rand(self.num_dofs)-0.5)*2*np.pi)
                     dq = iDynTree.VectorDynSize.fromList(vel.tolist())
                     ddq = iDynTree.VectorDynSize.fromList(acc.tolist())
                 else:
@@ -564,15 +560,15 @@ class Model(object):
                 # TODO: make work with fixed dofs (set vel and acc to zero, look at iDynTree method)
 
                 if self.opt['floatingBase']:
-                    vel = np.pi*np.random.rand(6)
-                    acc = np.pi*np.random.rand(6)
+                    base_vel = np.pi*np.random.rand(6)
+                    base_acc = np.pi*np.random.rand(6)
                     if self.opt['identifyGravityParamsOnly']:
-                        #set vel and acc to zero (should be almost zero already) to remove noise
-                        vel[:] = 0.0
-                        acc[:] = 0.0
-                    base_velocity = iDynTree.Twist.fromList(vel)
-                    base_acceleration = iDynTree.Twist.fromList(acc)
-                    rpy = np.random.ranf(3)*0.05
+                        #set vel and acc to zero for static case (reduces resulting amount of base dependencies)
+                        base_vel[:] = 0.0
+                        #base_acc[:] = 0.0
+                    base_velocity = iDynTree.Twist.fromList(base_vel)
+                    base_acceleration = iDynTree.Twist.fromList(base_acc)
+                    rpy = np.random.ranf(3)*0.1
                     rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                     pos = iDynTree.Position.Zero()
                     world_T_base = iDynTree.Transform(rot, pos)
@@ -585,6 +581,7 @@ class Model(object):
                     print("Error during numeric computation of regressor")
 
                 A = regressor.toNumPy()
+
                 #the base forces are expressed in the base frame for the regressor, so transform them
                 if self.opt['floatingBase']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
@@ -597,10 +594,7 @@ class Model(object):
 
                 if self.opt['identifyFriction']:
                     # append unitary matrix to regressor for offsets/constant friction
-                    if self.opt['identifyGravityParamsOnly']:
-                        sign = 1
-                    else:
-                        sign = np.sign(dq.toNumPy())
+                    sign = 1 #np.sign(dq.toNumPy())
                     static_diag = np.identity(self.num_dofs)*sign
                     offset_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)
@@ -625,7 +619,7 @@ class Model(object):
             # get column space dependencies
             Q,RQ,PQ = sla.qr(R, pivoting=True, mode='economic')
 
-            np.savez(regr_filename, R=R, Q=Q, RQ=RQ, PQ=PQ, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'])
+            np.savez(regr_filename, R=R, Q=Q, RQ=RQ, PQ=PQ, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'], fric=self.opt['identifyFriction'])
 
         if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
@@ -635,19 +629,24 @@ class Model(object):
         return R, Q,RQ,PQ
 
 
-    def computeRegressorLinDepsQR(self):
+    def computeRegressorLinDepsQR(self, regressor=None):
         """get base regressor and identifiable basis matrix with QR decomposition
 
         gets independent columns (non-unique choice) each with its dependent ones, i.e.
         those std parameter indices that form each of the base parameters (including the linear factors)
         """
-        #using random regressor gives us structural base params, not dependent on excitation
-        #QR of transposed gives us basis of column space of original matrix (Gautier, 1990)
-        Yrand, self.Q, self.R, self.P = self.getRandomRegressor(n_samples=5000)
+        if regressor is not None:
+            # if supplied, get dependencies from specific regressor
+            Y = regressor
+            self.Q, self.R, self.P = sla.qr(regressor, pivoting=True, mode='economic')
+        else:
+            #using random regressor gives us structural base params, not dependent on excitation
+            #QR of transposed gives us basis of column space of original matrix (Gautier, 1990)
+            Y, self.Q, self.R, self.P = self.getRandomRegressor(n_samples=5000)
 
         """
         # get basis directly from regressor matrix using QR
-        Qt,Rt,Pt = sla.qr(Yrand.T, pivoting=True, mode='economic')
+        Qt,Rt,Pt = sla.qr(Y.T, pivoting=True, mode='economic')
 
         #get rank
         r = np.where(np.abs(Rt.diagonal()) > self.opt['minTol'])[0].size
@@ -804,32 +803,6 @@ class Model(object):
                     base_deps_syms.append(s)
         self.non_id = [p for p in range(self.num_all_params) if self.param_syms[p] not in base_deps_syms]
         self.identifiable = [p for p in range(self.num_all_params) if p not in self.non_id]
-
-    def computeRegressorLinDepsSVD(self):
-        """get base regressor and identifiable basis matrix with iDynTree (SVD)"""
-
-        with helpers.Timer() as t:
-            # get subspace basis (for projection to base regressor/parameters)
-            Yrand = self.getRandomRegressor(5000)
-            #A = iDynTree.MatrixDynSize(self.num_identified_params, self.num_identified_params)
-            #self.generator.generate_random_regressors(A, False, True, 2000)
-            #Yrand = A.toNumPy()
-            U, s, Vh = la.svd(Yrand, full_matrices=False)
-            r = np.sum(s>self.opt['minTol'])
-            self.B = -Vh.T[:, 0:r]
-            self.num_base_params = r
-
-            print("tau: {}".format(self.tau.shape), end=' ')
-
-            print("YStd: {}".format(self.YStd.shape), end=' ')
-            # project regressor to base regressor, Y_base = Y_std*B
-            self.YBase = np.dot(self.YStd, self.B)
-            if self.opt['verbose']:
-                print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
-
-            self.num_base_params = self.YBase.shape[1]
-        if self.showTiming:
-            print("Getting the base regressor (iDynTree) took %.03f sec." % t.interval)
 
 
     def getSubregressorsConditionNumbers(self):

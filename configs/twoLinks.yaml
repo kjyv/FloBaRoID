@@ -6,6 +6,7 @@ exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null (simulate)
 useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 0          #find new parameters with optimization or load previous params from file (if no file exists, use random)
+useStaticTrajectories: 0       #generate simple static trajectories for identification of gravity terms (no optimization is done)
 showOptimizationGraph: 1       #display updating graph during trajectory optimization
 showOptimizationTrajs: 1       #display the trajectory plot after each optimization step
 useGlobalOptimization: 1       #do global optimization before using local refinement (does not use initial values)
@@ -178,8 +179,6 @@ createPlots: 1               #create or show plots of measurements and estimated
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
 outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
 outputFilename: 'output_threelink.html'    #specify custom filename for output file
-#outputFilename: 'kuka.pdf'   #specify custom filename for output file
-#outputFilename: 'kuka'       #specify custom filename for output file
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters

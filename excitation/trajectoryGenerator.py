@@ -103,6 +103,45 @@ class TrajectoryGenerator(object):
         else: thresh = np.deg2rad(5)
         return abs(self.getVelocity(0)) < thresh
 
+# generate some static testing 'trajectories'
+class FixedPositionTrajectory(object):
+    def __init__(self):
+        self.time = 0
+
+    def getAngle(self, dof):
+        """ get angle at current time for joint dof """
+        # Walk-Man:
+        # ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
+        #  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',
+        #  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
+        #  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
+        #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
+        return [0.0, 0.0, -90.0, 0.0, 0.0, 0.0,       #left leg
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         #right leg
+                -90.0, 0.0,                           #Waist
+                0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+                0.0, -5.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
+                ][dof]
+
+    def getVelocity(self, dof):
+        """ get velocity at current time for joint dof """
+        return 0.0
+
+    def getAcceleration(self, dof):
+        """ get acceleration at current time for joint dof """
+        return 0.0
+
+    def getPeriodLength(self):
+        ''' get the period length of the oscillation in seconds '''
+        return 1
+
+    def setTime(self, time):
+        '''set current time in seconds'''
+        self.time = time
+
+    def wait_for_zero_vel(self, t_elapsed):
+        return True
+
 class OscillationGenerator(object):
     def __init__(self, w_f, a, b, q0, nf, use_deg):
         '''

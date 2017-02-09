@@ -65,8 +65,7 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        if c != 'dummy_sim':
-                                            contact_dict[c] = m[k].item(0)[c][so:, :]
+                                        contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     self.measurements[k] = m[k]
@@ -81,8 +80,7 @@ class Data(object):
                                     #contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        if c != 'dummy_sim':
-                                            contact_dict[c] = m[k].item(0)[c][so:, :]
+                                        contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
                                     #TODO: get mean value of scalar values (needs to count how many values then)

@@ -54,7 +54,7 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from identification.model import Model
 from identification.data import Data
 
-from excitation.trajectoryGenerator import TrajectoryGenerator
+from excitation.trajectoryGenerator import TrajectoryGenerator, FixedPositionTrajectory
 from excitation.trajectoryOptimizer import TrajectoryOptimizer
 
 def plot(data=None):
@@ -185,6 +185,9 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     old_sim = config['simulateTorques']
     config['simulateTorques'] = True
 
+    if config['floatingBase']: fb = 6
+    else: fb = 0
+
     if not model:
         model = Model(config, config['model'])
 
@@ -217,7 +220,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         trajectory_data['target_accelerations'].append(qddot)
 
         trajectory_data['times'].append(t/freq)
-        trajectory_data['torques'].append(np.zeros(config['num_dofs']))
+        trajectory_data['torques'].append(np.zeros(config['num_dofs']+fb))
 
     num_samples = len(trajectory_data['times'])
 
@@ -233,9 +236,31 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['measured_frequency'] = freq
     trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
     trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
+
+    if config['floatingBase']:
+        trajectory_data['base_acceleration'][:, 2] = -9.81   #base is 'falling' if no contacts
+
+        crane = 0
+        if crane:
+            # get base acceleration that results from acceleration at crane contact frame
+            contact_wrench =  np.zeros(6)
+            contact_wrench[2] = 9.81 #* 139.122814
+
+            # get jacobian of contact frame
+            dim = model.num_dofs+fb
+            jacobian = iDynTree.MatrixDynSize(6, dim)
+            model.dynComp.getFrameJacobian('crane_ft', jacobian)
+            jacobian = jacobian.toNumPy()
+
+            # get base link vel and acc and torques that result from contact
+            contacts_torq = np.zeros(dim)
+            contacts_torq = jacobian.T.dot(contact_wrench)
+            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / mass #(139.122 or of link?)
+
     trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
+
     #TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
-    trajectory_data['contacts'] = np.array({'dummy_sim': np.zeros( num_samples )})
+    trajectory_data['contacts'] = np.array({})
 
     if measurements:
         trajectory_data['positions'] = measurements['Q']
@@ -261,63 +286,36 @@ def main():
         traj_file = args.trajectory
     else:
         traj_file = config['model'] + '.trajectory.npz'
-    if config['optimizeTrajectory']:
-        # find trajectory params by optimization
-        trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
-        if config['showOptimizationTrajs']:
-            trajectory = trajectoryOptimizer.optimizeTrajectory(plot_func=plot)
-        else:
-            trajectory = trajectoryOptimizer.optimizeTrajectory()
-        np.savez(traj_file, use_deg=trajectory.use_deg, a=trajectory.a, b=trajectory.b,
-                 q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
-    else:
-        try:
-            # replay optimized trajectory if found
-            tf = np.load(traj_file)
-            trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=tf['use_deg'])
-            trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
-            print("using trajectory from file {}".format(traj_file))
-        except IOError:
-            # otherwise use some random params
-            print("no optimized trajectory found, generating random one")
-            trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=config['useDeg']).initWithRandomParams()
-            print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
-            print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
-            print("q {}".format(trajectory.q.tolist()))
-            print("nf {}".format(trajectory.nf.tolist()))
-            print("wf {}".format(trajectory.w_f_global))
 
-#    # testing stuff
-#    class FixedPositionTrajectory(object):
-#        def __init__(self):
-#            self.time = 0
-#
-#        def getAngle(self, dof):
-#            """ get angle at current time for joint dof """
-#            return [0.0, 0.0, -90.0, 90.0, 0.0, 0.0,  #right leg
-#                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0][dof]
-#
-#        def getVelocity(self, dof):
-#            """ get velocity at current time for joint dof """
-#            return 0.0
-#
-#        def getAcceleration(self, dof):
-#            """ get acceleration at current time for joint dof """
-#            return 0.0
-#
-#        def getPeriodLength(self):
-#            ''' get the period length of the oscillation in seconds '''
-#            return 5
-#
-#        def setTime(self, time):
-#            '''set current time in seconds'''
-#            self.time = time
-#
-#        def wait_for_zero_vel(self, t_elapsed):
-#            return True
-#
-#    trajectory = FixedPositionTrajectory()
-#
+    if config['useStaticTrajectories']:
+        print("using fixed positions")
+        trajectory = FixedPositionTrajectory()
+    else:
+        if config['optimizeTrajectory']:
+            # find trajectory params by optimization
+            trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
+            if config['showOptimizationTrajs']:
+                trajectory = trajectoryOptimizer.optimizeTrajectory(plot_func=plot)
+            else:
+                trajectory = trajectoryOptimizer.optimizeTrajectory()
+            np.savez(traj_file, use_deg=trajectory.use_deg, a=trajectory.a, b=trajectory.b,
+                     q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
+        else:
+            try:
+                # replay optimized trajectory if found
+                tf = np.load(traj_file)
+                trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=tf['use_deg'])
+                trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
+                print("using trajectory from file {}".format(traj_file))
+            except IOError:
+                # otherwise use some random params
+                print("no optimized trajectory found, generating random one")
+                trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=config['useDeg']).initWithRandomParams()
+                print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
+                print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
+                print("q {}".format(trajectory.q.tolist()))
+                print("nf {}".format(trajectory.nf.tolist()))
+                print("wf {}".format(trajectory.w_f_global))
 
     traj_data, data, model = simulateTrajectory(config, trajectory)
     if config['excitationSimulate'] and config['exciteMethod']:

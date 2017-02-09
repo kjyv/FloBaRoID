@@ -1,46 +1,41 @@
 
 #### excitation
 
-excitationSimulate: 1        #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
-exciteMethod: null #'yarp'         #currently 'yarp', 'ros' or null
-useDeg: 1                    #encode angles in degrees for excitation (internal and data is always in rad)
+excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
+exciteMethod: null #'yarp'       #currently 'yarp', 'ros' or null
+excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
+useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 0        #find new parameters with optimization or load previous params from file (if no file exists, use random)
-useStaticTrajectories: 1     #generate simple static trajectories for identification of gravity terms (no optimization is done)
-showOptimizationGraph: 1     #display updating graph during trajectory optimization
-showOptimizationTrajs: 1     #display the trajectory plot after each optimization step
-useGlobalOptimization: 1     #do global optimization before using local refinement (does not use initial values)
+optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
+useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+showOptimizationGraph: 1         #display updating graph during trajectory optimization
+showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
+useGlobalOptimization: 1         #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 10
-localOptIterations: 2        #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
-minTolConstr: 0.01         #threshold for being within constraints (only used for display)
+localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)
-trajectoryPulseInit: 0.75    #determines length of one period of trajectory (smaller=longer)
+trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
 trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.1     #set this as high as possible without violating velocity constraints (see output after start)
-trajectoryCoeffMin: -0.4     #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
+trajectoryCoeffMin: -0.4         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.4
-trajectoryAngleMin: -10.0    #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMin: -10.0        #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax: 10.0
 
 # instead of one range, define individual ranges for each link. initial is the center of these
 # ranges. If ..AngleMin/Max is to be used for all of them, set to null
 trajectoryAngleRanges:
-    [[-10.9745248069, 8.9797344371],
-     [-18.9543738355, 8.9746393985],
-     [-27.938974128, 13.9696016556],
-     [10.0,          30.929013234],
-     [-12.9596980573, 5.9797344371],
-     [-8.9771869178, 8.9771869178]
-    ]
-#    [[-49.9745248069, 39.9797344371],
-#     [-89.9543738355, 49.9746393985],
-#     [-119.938974128, 59.9696016556],
-#     [0.0,            139.929013234],
-#     [-79.9596980573, 39.9797344371],
-#     [-44.9771869178, 44.9771869178]
-#    ]
+    - null
+ #   [[-10.9745248069, 8.9797344371],
+ #    [-18.9543738355, 8.9746393985],
+ #    [-27.938974128, 13.9696016556],
+ #    [10.0,          30.929013234],
+ #    [-12.9596980573, 5.9797344371],
+ #    [-8.9771869178, 8.9771869178]
+ #   ]
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
 # (or leave completely empty)

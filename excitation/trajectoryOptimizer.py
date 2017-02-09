@@ -11,8 +11,246 @@ from distutils.version import LooseVersion
 if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
     plt.style.use('seaborn-pastel')
 
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+
+from identification.model import Model
+from identification.data import Data
 from identification.helpers import URDFHelpers
 from excitation.trajectoryGenerator import TrajectoryGenerator
+
+def simulateTrajectory(config, trajectory, model=None, measurements=None):
+    # generate data arrays for simulation and regressor building
+    old_sim = config['simulateTorques']
+    config['simulateTorques'] = True
+
+    if config['floatingBase']: fb = 6
+    else: fb = 0
+
+    if not model:
+        model = Model(config, config['model'])
+
+    data = Data(config)
+    trajectory_data = {}
+    trajectory_data['target_positions'] = []
+    trajectory_data['target_velocities'] = []
+    trajectory_data['target_accelerations'] = []
+    trajectory_data['torques'] = []
+    trajectory_data['times'] = []
+
+    #TODO: set this in config, depends on robot and otherwise times are wrong etc.
+    freq = config['excitationFrequency']
+    for t in range(0, int(trajectory.getPeriodLength()*freq)):
+        trajectory.setTime(t/freq)
+        q = [trajectory.getAngle(d) for d in range(config['num_dofs'])]
+        q = np.array(q)
+        if config['useDeg']:
+            q = np.deg2rad(q)
+        trajectory_data['target_positions'].append(q)
+
+        qdot = [trajectory.getVelocity(d) for d in range(config['num_dofs'])]
+        qdot = np.array(qdot)
+        if config['useDeg']:
+            qdot = np.deg2rad(qdot)
+        trajectory_data['target_velocities'].append(qdot)
+
+        qddot = [trajectory.getAcceleration(d) for d in range(config['num_dofs'])]
+        qddot = np.array(qddot)
+        if config['useDeg']:
+            qddot = np.deg2rad(qddot)
+        trajectory_data['target_accelerations'].append(qddot)
+
+        trajectory_data['times'].append(t/freq)
+        trajectory_data['torques'].append(np.zeros(config['num_dofs']+fb))
+
+    num_samples = len(trajectory_data['times'])
+
+    #convert lists to numpy arrays
+    trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
+    trajectory_data['positions'] = trajectory_data['target_positions']
+    trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
+    trajectory_data['velocities'] = trajectory_data['target_velocities']
+    trajectory_data['target_accelerations'] = np.array(trajectory_data['target_accelerations'])
+    trajectory_data['accelerations'] = trajectory_data['target_accelerations']
+    trajectory_data['torques'] = np.array(trajectory_data['torques'])
+    trajectory_data['times'] = np.array(trajectory_data['times'])
+    trajectory_data['measured_frequency'] = freq
+    trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
+    trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
+
+    if config['floatingBase']:
+        trajectory_data['base_acceleration'][:, 2] = -9.81   #base is 'falling' if no contacts
+
+    trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
+
+    #TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
+    trajectory_data['contacts'] = np.array({})
+
+    if measurements:
+        trajectory_data['positions'] = measurements['Q']
+        trajectory_data['velocities'] = measurements['V']
+        trajectory_data['accelerations'] = measurements['Vdot']
+        trajectory_data['measured_frequency'] = measurements['measured_frequency']
+
+    old_skip = config['skipSamples']
+    config['skipSamples'] = 0
+    old_offset = config['startOffset']
+    config['startOffset'] = 0
+    data.init_from_data(trajectory_data)
+    model.computeRegressors(data, only_simulate=True)
+    trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
+
+    if config['floatingBase']:
+        #add crane constraints
+        crane = 0
+        if crane:
+            # get base acceleration that results from acceleration at crane contact frame
+            contact_wrench =  np.zeros(6)
+            contact_wrench[2] = 9.81 # * 139.122814
+
+            # get jacobian of contact frame at current posture
+            dim = model.num_dofs+fb
+            jacobian = iDynTree.MatrixDynSize(6, dim)
+            model.dynComp
+            model.dynComp.getFrameJacobian('crane_ft', jacobian)
+            jacobian = jacobian.toNumPy()
+
+            # get base link vel and acc and torques that result from contact
+            contacts_torq = np.zeros(dim)
+            contacts_torq = jacobian.T.dot(contact_wrench)
+            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / mass #(139.122 or of link?)
+            data.samples['base_acceleration'][:,:] = trajectory_data['base_acceleration'][:,:]
+            model.computeRegressors(data, only_simulate=True)
+            trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
+
+    config['skipSamples'] = old_skip
+    config['startOffset'] = old_offset
+    config['simulateTorques'] = old_sim
+
+    return trajectory_data, data, model
+
+
+def plotter(config, data=None):
+    fig = plt.figure(1)
+    fig.clear()
+    if False:
+        from random import sample
+        from itertools import permutations
+
+        # get a random color wheel
+        Nlines = 200
+        color_lvl = 8
+        rgb = np.array(list(permutations(list(range(0,256,color_lvl),3))))/255.0
+        colors = sample(rgb,Nlines)
+        print(colors[0:config['num_dofs']])
+    else:
+        # set some fixed colors
+        colors = []
+        colors = [[ 0.97254902,  0.62745098,  0.40784314],
+                  [ 0.0627451 ,  0.53333333,  0.84705882],
+                  [ 0.15686275,  0.75294118,  0.37647059],
+                  [ 0.90980392,  0.37647059,  0.84705882],
+                  [ 0.84705882,  0.        ,  0.1254902 ],
+                  [ 0.18823529,  0.31372549,  0.09411765],
+                  [ 0.50196078,  0.40784314,  0.15686275]
+                 ]
+
+        from palettable.tableau import Tableau_10, Tableau_20
+        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
+
+    if not data:
+        # reload measurements from this or last run (if run dry)
+        measurements = np.load(args.filename)
+        Q = measurements['positions']
+        Qraw = measurements['positions_raw']
+        V = measurements['velocities']
+        Vraw = measurements['velocities_raw']
+        dV = measurements['accelerations']
+        Tau = measurements['torques']
+        TauRaw = measurements['torques_raw']
+        if 'plot_targets' in config and config['plot_targets']:
+            Q_t = measurements['target_positions']
+            V_t = measurements['target_velocities']
+            dV_t = measurements['target_accelerations']
+        T = measurements['times']
+        num_samples = measurements['positions'].shape[0]
+    else:
+        Q = data['positions']
+        Qraw = data['positions']
+        Q_t = data['target_positions']
+        V = data['velocities']
+        Vraw = data['velocities']
+        V_t = data['target_velocities']
+        dV = data['accelerations']
+        dV_t = data['target_accelerations']
+        Tau = data['torques']
+        TauRaw = data['torques']
+        T = data['times']
+        num_samples = data['positions'].shape[0]
+
+    print('loaded {} measurement samples'.format(num_samples))
+
+    if 'plot_targets' in config and config['plot_targets']:
+        print("tracking error per joint:")
+        for i in range(0, config['num_dofs']):
+            sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
+            print("joint {}: {}".format(i, sse))
+
+    print("histogram of time diffs")
+    dT = np.diff(T)
+    H, B = np.histogram(dT)
+    #plt.hist(H, B)
+    late_msgs = (1 - float(np.sum(H)-np.sum(H[1:])) / float(np.sum(H))) * 100
+    print("bins: {}".format(B))
+    print("sums: {}".format(H))
+    print("({}% messages too late)\n".format(late_msgs))
+
+    # what to plot (each tuple has a title and one or multiple data arrays)
+    if 'plot_targets' in config and config['plot_targets']:
+        datasets = [
+            ([Q_t,], 'Target Positions'),
+            ([V_t,], 'Target Velocities'),
+            ([dV_t,], 'Target Accelerations')
+            ]
+    else:   #plot measurements and raw data (from measurements file)
+        if np.sum(Qraw - Q) != 0:
+            datasets = [
+                ([Q, Qraw], 'Positions'),
+                ([V, Vraw],'Velocities'),
+                ([dV,], 'Accelerations'),
+                ([Tau, TauRaw],'Measured Torques')
+                ]
+        else:
+            datasets = [
+                ([Q], 'Positions'),
+                ([V],'Velocities'),
+                ([dV,], 'Accelerations'),
+                ([Tau],'Measured Torques')
+                ]
+
+    d = 0
+    cols = 2.0
+    rows = round(len(datasets)/cols)
+    for (data, title) in datasets:
+        plt.subplot(rows, cols, d+1)
+        plt.title(title)
+        lines = list()
+        labels = list()
+        for d_i in range(0, len(data)):
+            if len(data[d_i].shape) > 1:
+                for i in range(0, config['num_dofs']):
+                    l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
+                    labels.append(l)
+                    line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
+                    lines.append(line[0])
+            else:
+                #data vector
+                plt.plot(T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+        d+=1
+    leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
+    leg.draggable()
+
+    plt.show()
+
 
 class TrajectoryOptimizer(object):
     def __init__(self, config, simulation_func):
@@ -197,7 +435,7 @@ class TrajectoryOptimizer(object):
         #self.config['floatingBase'] = old_floatingBase
 
         self.last_trajectory_data = trajectory_data
-        if self.plot_func: self.plot_func(trajectory_data)
+        plotter(self.config, trajectory_data)
 
         f = np.linalg.cond(model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
@@ -314,11 +552,9 @@ class TrajectoryOptimizer(object):
         x = kwargs['x_new']
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
-    def optimizeTrajectory(self, plot_func=None):
+    def optimizeTrajectory(self):
         # use non-linear optimization to find parameters for minimal
         # condition number trajectory
-
-        self.plot_func = plot_func
 
         if self.config['showOptimizationGraph']:
             self.initGraph()

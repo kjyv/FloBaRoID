@@ -14,7 +14,6 @@ from sympy import symbols, Matrix
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
 
-from IPython import embed
 np.core.arrayprint._line_width = 160
 
 class Model(object):
@@ -26,7 +25,7 @@ class Model(object):
             self.opt['orthogonalizeBasis'] = 1
 
         if 'useBasisProjection' not in self.opt:
-            self.opt['useBasisProjection'] = 1
+            self.opt['useBasisProjection'] = 0
 
         if 'useRBDL' not in self.opt:
             self.opt['useRBDL'] = 0
@@ -269,7 +268,7 @@ class Model(object):
         else:
             return torques.toNumPy()
 
-    def computeRegressors(self, data):
+    def computeRegressors(self, data, only_simulate=False):
         """ compute regressors from measurements for each time step of the measurement data
             and stack them vertically. also stack measured torques and get simulation data.
             for floating base, get estimated base forces (6D wrench) and add to torque measure stack
@@ -292,7 +291,7 @@ class Model(object):
         self.contactForcesSum = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         """loop over measurement data, optionally skip some values
-            - get the regressor per time step
+            - get the regressor for each time step
             - if necessary, calculate inverse dynamics to get simulated torques
             - if necessary, get torques from contact wrenches and add them to the torques
             - stack the torques, regressors and contacts into matrices
@@ -324,6 +323,7 @@ class Model(object):
                 # or that we need to simulate the base reaction forces for floating base
                 if self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floatingBase']:
                     if self.opt['useRBDL']:
+                        #TODO: make sure joint order of torques is the same as iDynTree!
                         torques = self.simulateDynamicsRBDL(data.samples, m_idx)
                     else:
                         torques = self.simulateDynamicsIDynTree(data.samples, m_idx)
@@ -346,69 +346,71 @@ class Model(object):
 
             #...still looping over measurement samples
 
-            # get numerical regressor (std)
-            row_index = (self.num_dofs+fb)*sample_index   # index for current row in stacked regressor matrix
-            with helpers.Timer() as t:
-                if self.opt['floatingBase']:
-                    vel = data.samples['base_velocity'][m_idx]
-                    acc = data.samples['base_acceleration'][m_idx]
-                    rpy = data.samples['base_rpy'][m_idx]
+            row_index = (self.num_dofs+fb)*sample_index   # index for current row in stacked matrices
 
-                    if self.opt['identifyGravityParamsOnly']:
-                        #set vel and acc to zero (should be almost zero already) to remove noise
-                        vel[:] = 0.0
-                        acc[:] = 0.0
+            if not only_simulate:
+                # get numerical regressor (std)
+                with helpers.Timer() as t:
+                    if self.opt['floatingBase']:
+                        vel = data.samples['base_velocity'][m_idx]
+                        acc = data.samples['base_acceleration'][m_idx]
+                        rpy = data.samples['base_rpy'][m_idx]
 
-                    base_velocity = iDynTree.Twist.fromList(vel)
-                    base_acceleration = iDynTree.Twist.fromList(acc)
-                    rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
-                    pos = iDynTree.Position.Zero()
-                    world_T_base = iDynTree.Transform(rot, pos)
-                    self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
-                else:
-                    self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
+                        if self.opt['identifyGravityParamsOnly']:
+                            #set vel and acc to zero (should be almost zero already) to remove noise
+                            vel[:] = 0.0
+                            acc[:] = 0.0
 
-                # get (standard) regressor
-                regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
-                knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
-                if not self.generator.computeRegressor(regressor, knownTerms):
-                    print("Error during numeric computation of regressor")
-
-                regressor = regressor.toNumPy()
-                # the base forces are expressed in the base frame for the regressor, so transform them
-                # (inverse dynamics use world frame)
-                if self.opt['floatingBase']:
-                    to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
-                    regressor[0:3, :] = to_world.dot(regressor[0:3, :])
-                    regressor[3:6, :] = to_world.dot(regressor[3:6, :])
-
-                if self.opt['identifyGravityParamsOnly']:
-                    #delete inertia param columns
-                    regressor = np.delete(regressor, self.inertia_params, 1)
-
-                if self.opt['identifyFriction']:
-                    # append unitary matrix to regressor for offsets/constant friction
-                    if self.opt['identifyGravityParamsOnly']:
-                        sign = 1
+                        base_velocity = iDynTree.Twist.fromList(vel)
+                        base_acceleration = iDynTree.Twist.fromList(acc)
+                        rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+                        pos = iDynTree.Position.Zero()
+                        world_T_base = iDynTree.Transform(rot, pos)
+                        self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
                     else:
-                        sign = np.sign(dq.toNumPy())
-                    static_diag = np.identity(self.num_dofs)*sign
-                    offset_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), static_diag))
-                    regressor = np.concatenate((regressor, offset_regressor), axis=1)
+                        self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
 
-                    if not self.opt['identifyGravityParamsOnly']:
-                        # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                        dq_p = dq.toNumPy().copy()
-                        dq_p[dq_p < 0] = 0 #set to zero where v < 0
-                        dq_m = dq.toNumPy().copy()
-                        dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                        vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
-                        friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
-                        regressor = np.concatenate((regressor, friction_regressor), axis=1)
+                    # get (standard) regressor
+                    regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
+                    knownTerms = iDynTree.VectorDynSize(self.N_OUT)   # what are known terms useable for?
+                    if not self.generator.computeRegressor(regressor, knownTerms):
+                        print("Error during numeric computation of regressor")
 
-                # stack on previous regressors
-                np.copyto(self.regressor_stack[row_index:row_index+self.num_dofs+fb], regressor)
-            num_time += t.interval
+                    regressor = regressor.toNumPy()
+                    # the base forces are expressed in the base frame for the regressor, so transform them
+                    # (inverse dynamics use world frame)
+                    if self.opt['floatingBase']:
+                        to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
+                        regressor[0:3, :] = to_world.dot(regressor[0:3, :])
+                        regressor[3:6, :] = to_world.dot(regressor[3:6, :])
+
+                    if self.opt['identifyGravityParamsOnly']:
+                        #delete inertia param columns
+                        regressor = np.delete(regressor, self.inertia_params, 1)
+
+                    if self.opt['identifyFriction']:
+                        # append unitary matrix to regressor for offsets/constant friction
+                        if self.opt['identifyGravityParamsOnly']:
+                            sign = 1
+                        else:
+                            sign = np.sign(dq.toNumPy())
+                        static_diag = np.identity(self.num_dofs)*sign
+                        offset_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), static_diag))
+                        regressor = np.concatenate((regressor, offset_regressor), axis=1)
+
+                        if not self.opt['identifyGravityParamsOnly']:
+                            # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                            dq_p = dq.toNumPy().copy()
+                            dq_p[dq_p < 0] = 0 #set to zero where v < 0
+                            dq_m = dq.toNumPy().copy()
+                            dq_m[dq_m > 0] = 0 #set to zero where v > 0
+                            vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
+                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
+                            regressor = np.concatenate((regressor, friction_regressor), axis=1)
+
+                    # stack on previous regressors
+                    np.copyto(self.regressor_stack[row_index:row_index+self.num_dofs+fb], regressor)
+                num_time += t.interval
 
             # stack results onto matrices of previous time steps
             np.copyto(self.torques_stack[row_index:row_index+self.num_dofs+fb], torq)
@@ -508,7 +510,10 @@ class Model(object):
 
         try:
             regr_file = np.load(regr_filename)
-            R = regr_file['R']
+            R = regr_file['R']  #regressor matrix
+            Q = regr_file['Q']  #QR decomposition
+            RQ = regr_file['RQ']
+            PQ = regr_file['PQ']
             n = regr_file['n']   #number of samples that were used
             fb = regr_file['fb']  #floating base flag
             grav = regr_file['grav_only']
@@ -617,14 +622,17 @@ class Model(object):
                 else:
                     R += A.T.dot(A)
 
-            np.savez(regr_filename, R=R, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'])
+            # get column space dependencies
+            Q,RQ,PQ = sla.qr(R, pivoting=True, mode='economic')
+
+            np.savez(regr_filename, R=R, Q=Q, RQ=RQ, PQ=PQ, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'])
 
         if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
             plt.imshow(R, interpolation='nearest')
             plt.show()
 
-        return R
+        return R, Q,RQ,PQ
 
 
     def computeRegressorLinDepsQR(self):
@@ -634,10 +642,8 @@ class Model(object):
         those std parameter indices that form each of the base parameters (including the linear factors)
         """
         #using random regressor gives us structural base params, not dependent on excitation
-        #QR of transposed gives us basis of column space of original matrix
-        Yrand = self.getRandomRegressor(n_samples=5000)
-
-        #TODO: save all this following stuff into regressor file as well
+        #QR of transposed gives us basis of column space of original matrix (Gautier, 1990)
+        Yrand, self.Q, self.R, self.P = self.getRandomRegressor(n_samples=5000)
 
         """
         # get basis directly from regressor matrix using QR
@@ -662,33 +668,26 @@ class Model(object):
         #self.B = Qt[:, 0:r]
 
         """
-
-        #get basis use Gautier, 1990 way, also using QR decomposition
-
-        # get column space dependencies
-        Q,R,P = sla.qr(Yrand, pivoting=True, mode='economic')
-        self.Q, self.R, self.P = Q,R,P
-
         #get rank
-        r = np.where(np.abs(R.diagonal()) > self.opt['minTol'])[0].size
+        r = np.where(np.abs(self.R.diagonal()) > self.opt['minTol'])[0].size
         self.num_base_params = r
         self.num_base_inertial_params = r - self.num_dofs
 
         #create proper permutation matrix from vector
-        self.Pp = np.zeros((P.size, P.size))
-        for i in P:
-            self.Pp[i, P[i]] = 1
+        self.Pp = np.zeros((self.P.size, self.P.size))
+        for i in self.P:
+            self.Pp[i, self.P[i]] = 1
         self.Pb = self.Pp.T[:, 0:self.num_base_params]
         self.Pd = self.Pp.T[:, self.num_base_params:]
 
         # get the choice of indices of "independent" columns of the regressor matrix
         # (representants chosen from each separate interdependent group of columns)
-        self.independent_cols = P[0:r]
+        self.independent_cols = self.P[0:r]
 
         # get column dependency matrix (with what factor are columns of "dependent" columns grouped)
         # i (independent column) = (value at i,j) * j (dependent column index among the others)
-        R1 = R[0:r, 0:r]
-        R2 = R[0:r, r:]
+        R1 = self.R[0:r, 0:r]
+        R2 = self.R[0:r, r:]
         self.linear_deps = sla.inv(R1).dot(R2)
         self.linear_deps[np.abs(self.linear_deps) < self.opt['minTol']] = 0
 
@@ -701,10 +700,10 @@ class Model(object):
         for j in range(0, self.linear_deps.shape[0]):
             indep_idx = self.independent_cols[j]
             for i in range(0, self.linear_deps.shape[1]):
-                for k in range(r, P.size):
+                for k in range(r, self.P.size):
                     #factor = round(self.linear_deps[j, k-r], 5)
                     factor = self.linear_deps[j, k-r]
-                    if np.abs(factor)>self.opt['minTol']: self.B[P[k],j] = factor
+                    if np.abs(factor)>self.opt['minTol']: self.B[self.P[k],j] = factor
             self.B[indep_idx,j] = 1
 
         if self.opt['orthogonalizeBasis']:
@@ -781,6 +780,7 @@ class Model(object):
         ## get symbolic equations for base param dependencies
         # Each dependent parameter can be ignored (non-identifiable) or it can be
         # represented by grouping some base and/or dependent parameters.
+        # TODO: put this in regressor cache file (it's slow)
         if self.opt['useBasisProjection']:
             if self.opt['orthogonalizeBasis']:
                 #this is only correct if basis is orthogonal

@@ -116,11 +116,11 @@ class FixedPositionTrajectory(object):
         #  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
         #  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
         #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
-        return [0.0, 0.0, -90.0, 0.0, 0.0, 0.0,       #left leg
+        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,       #left leg
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         #right leg
-                -90.0, 0.0,                           #Waist
-                0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-                0.0, -5.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
+                0.0, 0.0,                           #Waist
+                0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+                0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
 
     def getVelocity(self, dof):

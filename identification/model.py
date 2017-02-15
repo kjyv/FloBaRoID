@@ -177,13 +177,27 @@ class Model(object):
     def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None):
         import rbdl
 
+        def toQuaternion(roll, pitch, yaw):
+            t0 = np.cos(yaw * 0.5)
+            t1 = np.sin(yaw * 0.5)
+            t2 = np.cos(roll * 0.5)
+            t3 = np.sin(roll * 0.5)
+            t4 = np.cos(pitch * 0.5)
+            t5 = np.sin(pitch * 0.5)
+
+            q = np.zeros(4)
+            q[0] = t0 * t2 * t4 + t1 * t3 * t5
+            q[1] = t0 * t3 * t4 - t1 * t2 * t5
+            q[2] = t0 * t2 * t5 + t1 * t3 * t4
+            q[3] = t1 * t2 * t4 - t0 * t3 * t5
+            return q
+
         # read sample data
         q = samples['positions'][sample_idx]
         qdot = samples['velocities'][sample_idx]
         qddot = samples['accelerations'][sample_idx]
         tau = samples['torques'][sample_idx].copy()
 
-        '''
         if self.opt['floatingBase']:
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
@@ -194,20 +208,22 @@ class Model(object):
             base_acceleration = samples['base_acceleration'][sample_idx]
             rpy = samples['base_rpy'][sample_idx]
 
-            # get the homogeneous transformation that transforms vectors expressed
-            # in the base reference frame to frames expressed in the world
-            # reference frame, i.e. pos_world = world_T_base*pos_base
-            # for identification purposes, the position does not matter but rotation is taken
-            # from IMU estimation. The gravity, base velocity and acceleration all need to be
-            # expressed in world frame then
-            rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
-            pos = iDynTree.Position.Zero()
-            world_T_base = iDynTree.Transform(rot, pos)
+            # the first three elements (0,1,2) of q are the position variables of the floating body
+            # elements 3,4,5 of q are the x,y,z components of the quaternion of the floating body
+            # the w component of the quaternion is appended at the end (why?)
+            rotq = toQuaternion(rpy[0], rpy[1], rpy[2])
+            q = np.concatenate([[0,0,0], rotq[1:4], q, rotq[0]])
 
-            dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
-                                  world_gravity)
-            #TODO: how to set base vel,acc and rotation with rbdl?
-        '''
+            # the first three elements (0,1,2) of qdot is the linear velocity of the floating body
+            # elements 3,4,5 of qdot is the angular velocity of the floating body
+            qdot = np.concatenate([base_velocity, qdot])
+
+            # the first three elements (0,1,2) of qddot is the linear acceleration of the floating body
+            # elements 3,4,5 of qddot is the angular acceleration of the floating body
+            qddot = np.concatenate([base_acceleration, qddot])
+
+            # increase size of tau to hold linear forces and torques on base link
+            tau = np.concatenate([np.zeros(6), tau])
 
         # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)

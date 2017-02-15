@@ -47,9 +47,17 @@ class SDP(object):
 
         feasible = True
         for l in self.LMIs_marg:
-            if not l.subs(replace).rhs[0] > 0:
-                print("Constraint {} does not hold true for CAD params".format(l))
-                feasible = False
+            const_inst = l.subs(replace).rhs
+            if const_inst.shape[0] > 1:
+                if not np.all(np.linalg.eig(np.asarray(const_inst).astype(float))[0] > 0):
+                    # matrix needs to be positive definite
+                    print("Constraint {} does not hold true for CAD params".format(l))
+                    feasible = False
+            else:
+                if not l.subs(replace).rhs[0] > 0:
+                    # single values > 0
+                    print("Constraint {} does not hold true for CAD params".format(l))
+                    feasible = False
         return feasible
 
 
@@ -319,7 +327,7 @@ class SDP(object):
                 # get symbols that are non-id but are not in delete_cols already
                 delta_nonid = Matrix(idf.model.param_syms[p_nid])
                 #num_samples = YBase.shape[0]/idf.model.num_dofs
-                l = (float(idf.base_error) / len(p_nid)) * 1.5   #proportion of distance term
+                l = (float(idf.base_error) / len(p_nid)) * idf.opt['regularizationFactor']
 
                 #TODO: also use symengine
                 #p = BlockMatrix([[(K*delta)], [delta_nonid]])
@@ -374,7 +382,8 @@ class SDP(object):
             if idf.opt['verbose']:
                 print("Solving constrained OLS as SDP")
             prime = idf.model.xStdModel[list(set(idf.model.identified_params).difference(self.delete_cols))]
-            #self.checkFeasibility(prime)
+            #if idf.opt['checkAPrioriFeasibility']:
+                #self.checkFeasibility(prime)
 
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 

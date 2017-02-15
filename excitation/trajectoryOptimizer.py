@@ -155,7 +155,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     return trajectory_data, data, model
 
 
-def plotter(config, data=None):
+def plotter(config, data=None, filename=None):
     fig = plt.figure(1)
     fig.clear()
     if False:
@@ -185,7 +185,7 @@ def plotter(config, data=None):
 
     if not data:
         # reload measurements from this or last run (if run dry)
-        measurements = np.load(args.filename)
+        measurements = np.load(filename)
         Q = measurements['positions']
         Qraw = measurements['positions_raw']
         V = measurements['velocities']
@@ -461,7 +461,7 @@ class TrajectoryOptimizer(object):
         #self.config['floatingBase'] = old_floatingBase
 
         self.last_trajectory_data = trajectory_data
-        plotter(self.config, trajectory_data)
+        plotter(self.config, data=trajectory_data)
 
         f = np.linalg.cond(model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix

@@ -168,4 +168,4 @@ if __name__ == '__main__':
     if not args.dryrun:
         main()
     if(args.plot):
-        plotter(config)
+        plotter(config, filename=args.filename)

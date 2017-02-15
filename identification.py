@@ -66,6 +66,8 @@ class Identification(object):
         # add regularization term to SDP identification that minimized CAD distance for non-identifiable params
         self.opt['useRegressorRegularization'] = 1
 
+        self.opt['regularizationFactor'] = 100.0   #proportion of distance term
+
         #### end additional config flags
 
 
@@ -81,7 +83,7 @@ class Identification(object):
         self.sdp = SDP(self)
 
         self.tauEstimated = list()
-        self.res_error = 100
+        self.res_error = 100        #last residual error in percent
         self.urdf_file_real = urdf_file_real
         self.validation_file = validation_file
 

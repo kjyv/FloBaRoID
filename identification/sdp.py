@@ -33,6 +33,26 @@ class SDP(object):
         for i in self.idf.model.identified_params:
             self.constr_per_param[i] = []
 
+
+    def checkFeasibility(self, prime):
+        ''' check for a given parameter vector, e.g. a starting point, if it is within the LMI
+        constraints '''
+
+        print("Checking feasibility of a priori parameters...")
+        replace = dict()
+        syms = self.idf.model.param_syms[list(set(self.idf.model.identified_params).difference(self.delete_cols))]
+        for i in range(len(syms)):
+            p = syms[i]
+            replace[p] = prime[i]
+
+        feasible = True
+        for l in self.LMIs_marg:
+            if not l.subs(replace).rhs[0] > 0:
+                print("Constraint {} does not hold true for CAD params".format(l))
+                feasible = False
+        return feasible
+
+
     def initSDP_LMIs(self, idf, remove_nonid=True):
         ''' initialize LMI matrices to set physical consistency constraints for SDP solver
             based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
@@ -73,8 +93,9 @@ class SDP(object):
                 # only constrain gravity params (i.e. mass as COM is not part of physical
                 # consistency)
                 for i in range(start_link, idf.model.num_links):
-                    p = idf.model.mass_params[i]
-                    D_other_blocks.append( Matrix([idf.model.param_syms[p]]) )
+                    if i*10 not in self.delete_cols:
+                        p = idf.model.mass_params[i]
+                        D_other_blocks.append( Matrix([idf.model.param_syms[p]]) )
             else:
                 # create LMI matrices (symbols) for each link
                 # so that mass is positive, inertia matrix is positive definite
@@ -140,17 +161,16 @@ class SDP(object):
 
             # constrain overall mass within bounds
             if idf.opt['limitOverallMass']:
-                #TODO: add option for range around value
                 #use given overall mass else use overall mass from CAD
                 if idf.opt['limitMassVal']:
                     robotmaxmass = idf.opt['limitMassVal'] - sum(idf.model.xStdModel[0:start_link*10:10])
-                    robotmaxmass_ub = robotmaxmass * 1.01
-                    robotmaxmass_lb = robotmaxmass * 0.99
+                    robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt['limitMassRange']
+                    robotmaxmass_lb = robotmaxmass * 1.0 - idf.opt['limitMassRange']
                 else:
                     robotmaxmass = robotmass_apriori
-                    # constrain with a bit of space around
-                    robotmaxmass_ub = robotmaxmass * 1.3
-                    robotmaxmass_lb = robotmaxmass * 0.7
+                    # constrain within apriori range
+                    robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt['limitMassRange']
+                    robotmaxmass_lb = robotmaxmass * 1.0 - idf.opt['limitMassRange']
 
                 D_other_blocks.append(Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])])) #maximum mass
                 D_other_blocks.append(Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb])) #minimum mass
@@ -177,7 +197,7 @@ class SDP(object):
                         link_cuboid_hulls[i] = np.array(
                             idf.urdfHelpers.getBoundingBox(
                                 input_urdf = idf.model.urdf_file,
-                                old_com = idf.model.xStdModel[i*10+1:i*10+4],
+                                old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
                                 link_nr = i
                             )
                         )
@@ -189,10 +209,10 @@ class SDP(object):
                         for j in range(3):
                             p = i*10+1+j
                             if p not in self.delete_cols and p not in idf.opt['dontConstrain']:
-                                ub = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
-                                lb = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
-                                D_other_blocks.append( ub )
+                                lb = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
+                                ub = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
                                 D_other_blocks.append( lb )
+                                D_other_blocks.append( ub )
                                 self.constr_per_param[p].append('hull')
             else:
                 if idf.opt['identifyGravityParamsOnly']:
@@ -211,15 +231,16 @@ class SDP(object):
                         self.constr_per_param[b].append('sym')
 
             if idf.opt['identifyFriction']:
-                # friction constraints
-                # (only makes sense when no offsets on torque measurements, otherwise can be
-                # negative)
-                for i in range(idf.model.num_dofs):
-                    #Fc > 0
-                    p = i #idf.model.num_model_params+i
-                    D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
-                    self.constr_per_param[idf.model.num_model_params + p].append('>0')
-                    if not idf.opt['identifyGravityParamsOnly']:
+                # friction constraints, need to be positive
+                # (only makes sense when no offsets on torque measurements and if there is
+                # movements, otherwise constant friction includes offsets and can be negative)
+                if not idf.opt['identifyGravityParamsOnly']:
+                    for i in range(idf.model.num_dofs):
+                        #Fc > 0
+                        p = i #idf.model.num_model_params+i
+                        D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
+                        self.constr_per_param[idf.model.num_model_params + p].append('>0')
+
                         #Fv > 0
                         D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]) )
                         D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
@@ -347,11 +368,14 @@ class SDP(object):
 
             # solve SDP
 
+
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
             # but is used to return primal as solution when failing cvxopt)
             if idf.opt['verbose']:
                 print("Solving constrained OLS as SDP")
             prime = idf.model.xStdModel[list(set(idf.model.identified_params).difference(self.delete_cols))]
+            #self.checkFeasibility(prime)
+
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line

@@ -59,7 +59,7 @@ class Identification(object):
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 0
 
-        # in case projection is used, orthogonalize basis matrix (some SDP estimations seem to work
+        # in case projection is used, orthogonalize the basis matrix (SDP estimation seem to work
         # more stable that way)
         self.opt['orthogonalizeBasis'] = 1
 

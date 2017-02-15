@@ -3,8 +3,9 @@ from builtins import str
 from builtins import range
 import sympy
 from sympy import Basic, BlockDiagMatrix, sympify
-version = int(sympy.__version__.replace('.','')[:3])
-old_sympy = (version <= 74 and not sympy.__version__.startswith('1'))
+from distutils.version import LooseVersion
+old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
+
 import numpy as np
 
 import cvxopt

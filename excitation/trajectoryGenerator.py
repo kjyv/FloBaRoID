@@ -117,6 +117,13 @@ class FixedPositionTrajectory(object):
         #  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
         #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
         '''
+        # posture #0
+        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,       #left leg
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         #right leg
+                0.0, 0.0,                           #Waist
+                0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+                0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
+                ][dof]
         # posture #1
         return [0.0, 0.0, -45.0, 0.0, -15.0, 0.0,       #left leg
                 0.0, 0.0, -45.0, 0.0, -15.0, 0.0,         #right leg

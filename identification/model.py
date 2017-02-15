@@ -241,15 +241,18 @@ class Model(object):
         # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
 
-        # add friction torques
-        # constant
-        sign = 1 #np.sign(vel)
-        p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
-        tau[fb:] += sign*self.xStdModel[p_constant]
-        # vel dependents
-        # (take only first half of params as they are not direction dependent in urdf anyway)
-        p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
-        tau[fb:] += self.xStdModel[p_vel]*-qdot[fb:]
+        if self.opt['identifyFriction']:
+            # add friction torques
+            # constant
+            sign = 1 #np.sign(vel)
+            p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+            tau[fb:] += sign*self.xStdModel[p_constant]
+
+            # vel dependents
+            if not self.opt['identifyGravityParamsOnly']:
+                # (take only first half of params as they are not direction dependent in urdf anyway)
+                p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+                tau[fb:] += self.xStdModel[p_vel]*-qdot[fb:]
 
         return tau
 
@@ -307,15 +310,18 @@ class Model(object):
         dynComp.inverseDynamics(torques, baseReactionForce)
         torques = torques.toNumPy()
 
-        # add friction torques (iDynTree doesn't do that)
-        # constant
-        sign = 1 #np.sign(vel)
-        p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
-        torques += sign*self.xStdModel[p_constant]
-        # vel dependents
-        # (take only first half of params as they are not direction dependent in urdf anyway)
-        p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
-        torques += self.xStdModel[p_vel]*-vel
+        if self.opt['identifyFriction']:
+            # add friction torques
+            # constant
+            sign = 1 #np.sign(vel)
+            p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+            torques += sign*self.xStdModel[p_constant]
+
+            # vel dependents
+            if not self.opt['identifyGravityParamsOnly']:
+                # (take only first half of params as they are not direction dependent in urdf anyway)
+                p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+                torques += self.xStdModel[p_vel]*-vel
 
         if self.opt['floatingBase']:
             return np.concatenate((baseReactionForce.toNumPy(), torques))

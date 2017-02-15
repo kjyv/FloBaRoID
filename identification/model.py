@@ -14,6 +14,8 @@ from sympy import symbols, Matrix
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
 
+from IPython import embed
+
 np.core.arrayprint._line_width = 160
 
 class Model(object):
@@ -166,6 +168,8 @@ class Model(object):
             self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
             if not self.opt['identifyGravityParamsOnly']:
                 self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.num_dofs)))
+            helpers.ParamHelpers.addFrictionFromURDF(self, self.urdf_file, self.xStdModel)
+
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
@@ -197,8 +201,10 @@ class Model(object):
         qdot = samples['velocities'][sample_idx]
         qddot = samples['accelerations'][sample_idx]
         tau = samples['torques'][sample_idx].copy()
+        fb = 0
 
         if self.opt['floatingBase']:
+            fb = 6
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
             base_velocity = samples['base_velocity'][sample_idx]
@@ -227,6 +233,17 @@ class Model(object):
 
         # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
+
+        # add friction torques
+        # constant
+        sign = 1 #np.sign(vel)
+        p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+        tau[fb:] += sign*self.xStdModel[p_constant]
+        # vel dependents
+        # (take only first half of params as they are not direction dependent in urdf anyway)
+        p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+        tau[fb:] += self.xStdModel[p_vel]*-qdot[fb:]
+
         return tau
 
 
@@ -281,11 +298,22 @@ class Model(object):
         torques = iDynTree.VectorDynSize(self.num_dofs)
         baseReactionForce = iDynTree.Wrench()
         dynComp.inverseDynamics(torques, baseReactionForce)
+        torques = torques.toNumPy()
+
+        # add friction torques (iDynTree doesn't do that)
+        # constant
+        sign = 1 #np.sign(vel)
+        p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+        torques += sign*self.xStdModel[p_constant]
+        # vel dependents
+        # (take only first half of params as they are not direction dependent in urdf anyway)
+        p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+        torques += self.xStdModel[p_vel]*-vel
 
         if self.opt['floatingBase']:
-            return np.concatenate((baseReactionForce.toNumPy(), torques.toNumPy()))
+            return np.concatenate((baseReactionForce.toNumPy(), torques))
         else:
-            return torques.toNumPy()
+            return torques
 
     def computeRegressors(self, data, only_simulate=False):
         """ compute regressors from measurements for each time step of the measurement data
@@ -403,7 +431,7 @@ class Model(object):
 
                     if self.opt['identifyFriction']:
                         # append unitary matrix to regressor for offsets/constant friction
-                        sign = 1 #np.sign(dq.toNumPy())
+                        sign = 1 #np.sign(dq.toNumPy())   #TODO: dependent on direction or always constant?
                         static_diag = np.identity(self.num_dofs)*sign
                         offset_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), static_diag))
                         regressor = np.concatenate((regressor, offset_regressor), axis=1)
@@ -414,7 +442,7 @@ class Model(object):
                             dq_p[dq_p < 0] = 0 #set to zero where v < 0
                             dq_m = dq.toNumPy().copy()
                             dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                            vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
+                            vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
                             friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                             regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
@@ -627,7 +655,7 @@ class Model(object):
                         dq_p[dq_p < 0] = 0 #set to zero where <0
                         dq_m = dq.toNumPy().copy()
                         dq_m[dq_m > 0] = 0 #set to zero where >0
-                        vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
+                        vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
                         friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs*2)), vel_diag))
                         A = np.concatenate((A, friction_regressor), axis=1)
 

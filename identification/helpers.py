@@ -229,6 +229,22 @@ class ParamHelpers(object):
 
         return params
 
+    @classmethod
+    def addFrictionFromURDF(self, model, urdf_file, params):
+        ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
+
+        friction = URDFHelpers.getJointFriction(urdf_file)
+        nd = model.num_dofs
+        start = model.num_model_params
+        end = start + nd
+        params[start:end] = np.array([friction[f]['f_constant'] for f in sorted(friction.keys())])
+        if not model.opt['identifyGravityParamsOnly']:
+            start = model.num_model_params+nd
+            end = start + nd
+            params[start:end] = np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
+            params[start+nd:end+nd] = \
+                np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
+
 class URDFHelpers(object):
     def __init__(self, paramHelpers, link_names, opt):
         self.paramHelpers = paramHelpers
@@ -256,6 +272,12 @@ class URDFHelpers(object):
                 inert.attrib['iyy'] = '{}'.format(xStdBary[link_id*10+7])
                 inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
                 inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
+
+        for l in tree.findall('joint'):
+            if l.attrib['name'] in joint_names:
+                pass
+                # TODO: write friction to joints (interpret value for friction as coulomb constant,
+                # damping as velocity dependent loss)
 
         tree.write(output_urdf, xml_declaration=True)
 
@@ -344,7 +366,7 @@ class URDFHelpers(object):
             print(Fore.RED + "No mesh file given/found for link '{}'! Using a cube around a priori COM.".format(link_name) + Fore.RESET)
             return cube
 
-    #replace with new idyntree method
+    #TODO: replace with new idyntree method
     @classmethod
     def getJointLimits(self, input_urdf, use_deg=True):
         import xml.etree.ElementTree as ET
@@ -376,3 +398,31 @@ class URDFHelpers(object):
                         limits[name]['velocity'] = float(velocity)
         return limits
 
+    @classmethod
+    def getJointFriction(self, input_urdf):
+        ''' return friction values for each revolute joint from a urdf'''
+
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(input_urdf)
+        friction = {}
+        for j in tree.findall('joint'):
+            name = j.attrib['name']
+            constant = 0
+            vel_dependent = 0
+            if j.attrib['type'] == 'revolute':
+                l = j.find('dynamics')
+                if l != None:
+                    try:
+                        constant = l.attrib['friction']
+                    except KeyError:
+                        constant = 0
+
+                    try:
+                        vel_dependent = l.attrib['damping']
+                    except KeyError:
+                        vel_dependent = 0
+
+                    friction[name] = {}
+                    friction[name]['f_constant'] = float(constant)
+                    friction[name]['f_velocity'] = float(vel_dependent)
+        return friction

@@ -82,7 +82,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.11"/>
     <axis xyz="0 0 1"/>
     <limit effort="176" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_base_link"/>
     <child link="lwr_1_link"/>
   </joint>
@@ -124,7 +124,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.2005"/>
     <axis xyz="0 -1 0"/>
     <limit effort="176" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_1_link"/>
     <child link="lwr_2_link"/>
   </joint>
@@ -166,7 +166,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 0 1"/>
     <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.23402144255"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_2_link"/>
     <child link="lwr_3_link"/>
   </joint>
@@ -208,7 +208,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 1 0"/>
     <limit effort="100" lower="-2.09439510239" upper="2.09439510239" velocity="2.23402144255"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_3_link"/>
     <child link="lwr_4_link"/>
   </joint>
@@ -250,7 +250,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 0 1"/>
     <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="3.56047167407"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_4_link"/>
     <child link="lwr_5_link"/>
   </joint>
@@ -292,7 +292,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.19"/>
     <axis xyz="0 -1 0"/>
     <limit effort="38" lower="-2.09439510239" upper="2.09439510239" velocity="3.21140582367"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_5_link"/>
     <child link="lwr_6_link"/>
   </joint>
@@ -321,7 +321,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.078"/>
     <axis xyz="0 0 1"/>
     <limit effort="38" lower="-2.96705972839" upper="2.96705972839" velocity="3.21140582367"/>
-    <dynamics damping="1.0" friction="10.0"/>
+    <dynamics damping="1.0" friction="0.0"/>
     <parent link="lwr_6_link"/>
     <child link="lwr_7_link"/>
   </joint>

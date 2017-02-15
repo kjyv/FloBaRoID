@@ -140,14 +140,14 @@ limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 16.0
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.1
+limitMassRange: 0.3
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
-#limitMassAprioriBoundary: 0.3     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+#limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []

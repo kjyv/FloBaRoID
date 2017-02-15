@@ -89,6 +89,7 @@ class OutputConsole(object):
             xStdReal = tmp.toNumPy()
             #add some zeros for friction
             xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_all_params-idf.model.num_model_params)))
+            idf.paramHelpers.addFrictionFromURDF(idf.model, idf.urdf_file_real, xStdReal)
             if idf.opt['useBasisProjection']:
                 xBaseReal = np.dot(idf.model.Binv, xStdReal[idf.model.identified_params])
             else:

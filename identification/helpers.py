@@ -242,8 +242,9 @@ class ParamHelpers(object):
             start = model.num_model_params+nd
             end = start + nd
             params[start:end] = np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
-            params[start+nd:end+nd] = \
-                np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
+            if not model.opt['identifySymmetricVelFriction']:
+                params[start+nd:end+nd] = \
+                    np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
 
 class URDFHelpers(object):
     def __init__(self, paramHelpers, link_names, opt):

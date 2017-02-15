@@ -246,14 +246,15 @@ class SDP(object):
                     for i in range(idf.model.num_dofs):
                         #Fc > 0
                         p = i #idf.model.num_model_params+i
-                        D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
-                        self.constr_per_param[idf.model.num_model_params + p].append('>0')
+                        #D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
+                        #self.constr_per_param[idf.model.num_model_params + p].append('>0')
 
                         #Fv > 0
                         D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]) )
-                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
                         self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs].append('>0')
-                        self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs * 2].append('>0')
+                        if not idf.opt['identifySymmetricVelFriction']:
+                            D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
+                            self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs * 2].append('>0')
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 

@@ -90,6 +90,7 @@ floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 1
+identifySymmetricVelFriction: 1
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0
@@ -129,7 +130,7 @@ noChangeThresh: 400
 restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
-hullScaling: 1.0
+hullScaling: 1.5
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)

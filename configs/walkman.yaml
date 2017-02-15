@@ -90,6 +90,7 @@ floatingBase: 1
 
 # identify motor friction
 identifyFriction: 1
+identifySymmetricVelFriction: 1
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0

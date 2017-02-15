@@ -137,8 +137,12 @@ class Model(object):
             self.num_all_params += self.num_dofs
 
             if not self.opt['identifyGravityParamsOnly']:
-                self.num_identified_params += 2*self.num_dofs
-                self.num_all_params += 2*self.num_dofs
+                if self.opt['identifySymmetricVelFriction']:
+                    self.num_identified_params += self.num_dofs
+                    self.num_all_params += self.num_dofs
+                else:
+                    self.num_identified_params += 2*self.num_dofs
+                    self.num_all_params += 2*self.num_dofs
         else:
             self.num_identified_params = self.num_model_params
 
@@ -167,7 +171,10 @@ class Model(object):
         if self.opt['identifyFriction']:
             self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
             if not self.opt['identifyGravityParamsOnly']:
-                self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.num_dofs)))
+                if self.opt['identifySymmetricVelFriction']:
+                    self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
+                else:
+                    self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2*self.num_dofs)))
             helpers.ParamHelpers.addFrictionFromURDF(self, self.urdf_file, self.xStdModel)
 
         if opt['estimateWith'] == 'urdf':
@@ -437,13 +444,18 @@ class Model(object):
                         regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
                         if not self.opt['identifyGravityParamsOnly']:
-                            # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                            dq_p = dq.toNumPy().copy()
-                            dq_p[dq_p < 0] = 0 #set to zero where v < 0
-                            dq_m = dq.toNumPy().copy()
-                            dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                            vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
-                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
+                            if self.opt['identifySymmetricVelFriction']:
+                                # just use velocity directly
+                                vel_diag = np.identity(self.num_dofs)*-dq.toNumPy()
+                                friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), vel_diag))   # add base dynamics rows
+                            else:
+                                # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                                dq_p = dq.toNumPy().copy()
+                                dq_p[dq_p < 0] = 0 #set to zero where v < 0
+                                dq_m = dq.toNumPy().copy()
+                                dq_m[dq_m > 0] = 0 #set to zero where v > 0
+                                vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
+                                friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                             regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
                     # stack on previous regressors
@@ -563,10 +575,12 @@ class Model(object):
             fbase = regr_file['fb']  #floating base flag
             grav = regr_file['grav_only']
             fric = regr_file['fric']
+            fric_sym = regr_file['fric_sym']
             if self.opt['verbose']:
                 print("loaded random regressor from {}".format(regr_filename))
             if n != n_samples or fbase != fb or R.shape[0] != self.num_identified_params or \
-                    self.opt['identifyGravityParamsOnly'] != grav or fric != self.opt['identifyFriction']:
+                    self.opt['identifyGravityParamsOnly'] != grav or \
+                    fric != self.opt['identifyFriction'] or fric_sym != self.opt['identifySymmetricVelFriction']:
                 generate_new = True
             #TODO: save and check timestamp of urdf file, if newer regenerate
         except (IOError, KeyError):
@@ -650,13 +664,18 @@ class Model(object):
                     A = np.concatenate((A, offset_regressor), axis=1)
 
                     if not self.opt['identifyGravityParamsOnly']:
-                        # append positive/negative velocity matrix for velocity dependent asymmetrical friction
-                        dq_p = dq.toNumPy().copy()
-                        dq_p[dq_p < 0] = 0 #set to zero where <0
-                        dq_m = dq.toNumPy().copy()
-                        dq_m[dq_m > 0] = 0 #set to zero where >0
-                        vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
-                        friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs*2)), vel_diag))
+                        if self.opt['identifySymmetricVelFriction']:
+                            # just use velocity directly
+                            vel_diag = np.identity(self.num_dofs)*-dq.toNumPy()
+                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), vel_diag))   # add base dynamics rows
+                        else:
+                            # append positive/negative velocity matrix for velocity dependent asymmetrical friction
+                            dq_p = dq.toNumPy().copy()
+                            dq_p[dq_p < 0] = 0 #set to zero where v < 0
+                            dq_m = dq.toNumPy().copy()
+                            dq_m[dq_m > 0] = 0 #set to zero where v > 0
+                            vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
+                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                         A = np.concatenate((A, friction_regressor), axis=1)
 
                 # add to previous regressors, linear dependencies don't change
@@ -669,7 +688,7 @@ class Model(object):
             # get column space dependencies
             Q,RQ,PQ = sla.qr(R, pivoting=True, mode='economic')
 
-            np.savez(regr_filename, R=R, Q=Q, RQ=RQ, PQ=PQ, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'], fric=self.opt['identifyFriction'])
+            np.savez(regr_filename, R=R, Q=Q, RQ=RQ, PQ=PQ, n=n_samples, fb=self.opt['floatingBase'], grav_only=self.opt['identifyGravityParamsOnly'], fric=self.opt['identifyFriction'], fric_sym=self.opt['identifySymmetricVelFriction'])
 
         if 'showRandomRegressor' in self.opt and self.opt['showRandomRegressor']:
             import matplotlib.pyplot as plt
@@ -814,16 +833,23 @@ class Model(object):
                 self.friction_syms.extend(s)
                 self.identified_params.append(mp+i)
             if not self.opt['identifyGravityParamsOnly']:
-                for i in range(0,self.num_dofs):
-                    s = [symbols('Fv+_{}'.format(i))]
-                    self.param_syms.extend(s)
-                    self.friction_syms.extend(s)
-                    self.identified_params.append(mp+self.num_dofs+i)
-                for i in range(0,self.num_dofs):
-                    s = [symbols('Fv-_{}'.format(i))]
-                    self.param_syms.extend(s)
-                    self.friction_syms.extend(s)
-                    self.identified_params.append(mp+2*self.num_dofs+i)
+                if self.opt['identifySymmetricVelFriction']:
+                    for i in range(0,self.num_dofs):
+                        s = [symbols('Fv_{}'.format(i))]
+                        self.param_syms.extend(s)
+                        self.friction_syms.extend(s)
+                        self.identified_params.append(mp+self.num_dofs+i)
+                else:
+                    for i in range(0,self.num_dofs):
+                        s = [symbols('Fv+_{}'.format(i))]
+                        self.param_syms.extend(s)
+                        self.friction_syms.extend(s)
+                        self.identified_params.append(mp+self.num_dofs+i)
+                    for i in range(0,self.num_dofs):
+                        s = [symbols('Fv-_{}'.format(i))]
+                        self.param_syms.extend(s)
+                        self.friction_syms.extend(s)
+                        self.identified_params.append(mp+2*self.num_dofs+i)
         self.param_syms = np.array(self.param_syms)
 
         ## get symbolic equations for base param dependencies

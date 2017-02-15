@@ -294,18 +294,25 @@ class URDFHelpers(object):
             except ImportError:
                 #if no ros installed, try to get stl files from 'meshes' dir relative to urdf files
                 filename = filepath.split('/')
-                filename = filename[filename.index(self.opt['meshBaseDir']):]
-                filepath = '/'.join(input_urdf.split('/')[:-1] + filename)
+                try:
+                    filename = filename[filename.index(self.opt['meshBaseDir']):]
+                    filepath = '/'.join(input_urdf.split('/')[:-1] + filename)
+                except ValueError:
+                    filepath = None
 
         return filepath
 
     def getBoundingBox(self, input_urdf, old_com, link_nr):
+        ''' Return bounding box for one link derived from mesh file if possible.
+            If no mesh file is found, a cube around the old COM is returned.
+            Expects old_com in barycentric form! '''
+
         from stl import mesh   #using numpy-stl
         link_name = self.link_names[link_nr]
         #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
 
-        #box around current COM in case no mesh is availabe
+        # box around current COM in case no mesh is availabe
         length = self.opt['cubeSize']
         cube = [(-0.5*length+old_com[0], 0.5*length+old_com[0]), (-0.5*length+old_com[1], 0.5*length+old_com[1]),
                 (-0.5*length+old_com[2], 0.5*length+old_com[2])]
@@ -319,15 +326,22 @@ class URDFHelpers(object):
                 scale_x = float(self.mesh_scaling.split()[0])
                 scale_y = float(self.mesh_scaling.split()[1])
                 scale_z = float(self.mesh_scaling.split()[2])
-                return [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
-                        [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
-                        [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+
+                bounding_box = [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
+                                [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
+                                [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+                # switch order of min/max if scaling is negative
+                for s in range(0,3):
+                    if [scale_x, scale_y, scale_z][s] < 0:
+                        bounding_box[s][0], bounding_box[s][1] = bounding_box[s][1], bounding_box[s][0]
+
+                return bounding_box
             except FileNotFoundError:
                 print(Fore.RED + "Mesh file {} not found for link '{}'! Using a cube around a priori COM.".format(filename, link_name) + Fore.RESET)
                 return cube
         else:
             #in case there is no stl file in urdf
-            print(Fore.RED + "No mesh file given for link '{}'! Using a cube around a priori COM.".format(link_name) + Fore.RESET)
+            print(Fore.RED + "No mesh file given/found for link '{}'! Using a cube around a priori COM.".format(link_name) + Fore.RESET)
             return cube
 
     #replace with new idyntree method

@@ -107,7 +107,7 @@ minTol: 0.0001
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters
 # (currently this also does the estimation, so previously selecting another method has no effect)
-# if only torque estimation is desired, not using this self.option might give a better model
+# if only torque estimation is desired, not using this option might give a better model
 # accuracy with approriate parameters
 constrainToConsistent: 1
 
@@ -139,11 +139,15 @@ cubeSize: 1.0
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 16.0
+#allowed percentual change in both directions (1-range and 1+range)
+limitMassRange: 0.1
 
 # enforce staying around the a priori masses (only set this or a combination of the other
-# two mass limiting self.options to prevent constraint conflicts!)
+# two mass limiting options to prevent constraint conflicts which result in problem
+# infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+#limitMassAprioriBoundary: 0.3     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []

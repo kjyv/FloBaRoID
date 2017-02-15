@@ -89,7 +89,7 @@ useRandomRegressor: 0
 floatingBase: 0
 
 # identify motor friction
-identifyFriction: 1
+identifyFriction: 0
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 1
@@ -107,9 +107,9 @@ minTol: 0.001 #0.0000001
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters
 # (currently this also does the estimation, so previously selecting another method has no effect)
-# if only torque estimation is desired, not using this self.option might give a better model
+# if only torque estimation is desired, not using this option might give a better model
 # accuracy with approriate parameters
-constrainToConsistent: 0
+constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
@@ -123,26 +123,29 @@ useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOp
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed in the data)
 noChange: 0
-noChangeThresh: 2200
+noChangeThresh: 200
 # allow to make thresh = cond(YBase) / N_LINKS (-1)
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 0
+restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
-# fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
+# fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
 cubeSize: 1.0
 
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 139.15  #139.122
+#allowed percentual change in both directions (1-range and 1+range)
+limitMassRange: 0.05
 
 # enforce staying around the a priori masses (only set this or a combination of the other
-# two mass limiting self.options to prevent constraint conflicts!)
+# two mass limiting options to prevent constraint conflicts which result in problem
+# infeasibility!)
 limitMassToApriori: 1
 limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
@@ -153,152 +156,69 @@ dontChangeParams: []
 dontConstrain: []
 
 # define constraints for link symmetries (e.g. left and right arm)
-useSymmetryConstraints: 0
+# (does not work atm for parameters that can be positive and negative!)
+useSymmetryConstraints: 1
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
 # [p1, p2, sign]
 symmetryConstraints:
     - [10, 70, 1]   #L/RHipMot
-    - [11, 71, 1]
-    - [12, 72, -1]
-    - [13, 73, 1]
-    - [14, 74, 1]
-    - [15, 75, -1]
-    - [16, 76, 1]
-    - [17, 77, 1]
-    - [18, 78, -1]
-    - [19, 79, 1]
+#    - [11, 71, 1]
+#    - [12, 72, -1]
+#    - [13, 73, 1]
     - [20, 80, 1]   #L/RThighUpLeg
-    - [21, 81, 1]
-    - [22, 82, -1]
-    - [23, 83, 1]
-    - [24, 84, 1]
-    - [25, 85, -1]
-    - [26, 86, 1]
-    - [27, 87, 1]
-    - [28, 88, -1]
-    - [29, 89, 1]
+#    - [21, 81, 1]
+#    - [22, 82, -1]
+#    - [23, 83, 1]
     - [30, 90, 1]   #L/RThighLowLeg
-    - [31, 91, 1]
-    - [32, 92, -1]
-    - [33, 93, 1]
-    - [34, 94, 1]
-    - [35, 95, -1]
-    - [36, 96, 1]
-    - [37, 97, 1]
-    - [38, 98, -1]
-    - [39, 99, 1]
+#    - [31, 91, 1]
+#    - [32, 92, -1]
+#    - [33, 93, 1]
     - [40, 100, 1]   #L/RLowLeg
-    - [41, 101, 1]
-    - [42, 102, -1]
-    - [43, 103, 1]
-    - [44, 104, 1]
-    - [45, 105, -1]
-    - [46, 106, 1]
-    - [47, 107, 1]
-    - [48, 108, -1]
-    - [49, 109, 1]
+#    - [41, 101, 1]
+#    - [42, 102, -1]
+#    - [43, 103, 1]
     - [50, 110, 1]   #L/RFootMot
-    - [51, 111, 1]
-    - [52, 112, -1]
-    - [53, 113, 1]
-    - [54, 114, 1]
-    - [55, 115, -1]
-    - [56, 116, 1]
-    - [57, 117, 1]
-    - [58, 118, -1]
-    - [59, 119, 1]
+#    - [51, 111, 1]
+#    - [52, 112, -1]
+#    - [53, 113, 1]
     - [60, 120, 1]  #L/RFoot
-    - [61, 121, 1]
-    - [62, 122, -1]
-    - [63, 123, 1]
-    - [64, 124, 1]
-    - [65, 125, -1]
-    - [66, 126, 1]
-    - [67, 127, 1]
-    - [68, 128, -1]
-    - [69, 129, 1]
+#    - [61, 121, 1]
+#    - [62, 122, -1]
+#    - [63, 123, 1]
     - [160,280, 1]  #'L/RShp'
-    - [161,281, 1]
-    - [162,282, -1]
-    - [163,283, 1]
-    - [164,284, 1]
-    - [165,285, -1]
-    - [166,286, 1]
-    - [167,287, 1]
-    - [168,288, -1]
-    - [169,289, 1]
+#    - [161,281, 1]
+#    - [162,282, -1]
+#    - [163,283, 1]
     - [170,290, 1]  #'L/RShr'
-    - [171,291, 1]
-    - [172,292, -1]
-    - [173,293, 1]
-    - [174,294, 1]
-    - [175,295, -1]
-    - [176,296, 1]
-    - [177,297, 1]
-    - [178,298, -1]
-    - [179,299, 1]
+#    - [171,291, 1]
+#    - [172,292, -1]
+#    - [173,293, 1]
     - [180,300, 1]  #'L/RShy'
-    - [181,301, 1]
-    - [182,302, -1]
-    - [183,303, 1]
-    - [184,304, 1]
-    - [185,305, -1]
-    - [186,306, 1]
-    - [187,307, 1]
-    - [188,308, -1]
-    - [189,309, 1]
+#    - [181,301, 1]
+#    - [182,302, -1]
+#    - [183,303, 1]
     - [190,310, 1]  #'L/RElb'
-    - [191,311, 1]
-    - [192,312, -1]
-    - [193,313, 1]
-    - [194,314, 1]
-    - [195,315, -1]
-    - [196,316, 1]
-    - [197,317, 1]
-    - [198,318, -1]
-    - [199,319, 1]
+#    - [191,311, 1]
+#    - [192,312, -1]
+#    - [193,313, 1]
     - [200,320, 1]  #'L/RForearm'
-    - [201,321, 1]
-    - [202,322, -1]
-    - [203,323, 1]
-    - [204,324, 1]
-    - [205,325, -1]
-    - [206,326, 1]
-    - [207,327, 1]
-    - [208,328, -1]
-    - [209,329, 1]
+#    - [201,321, 1]
+#    - [202,322, -1]
+#    - [203,323, 1]
     - [210,330, 1]  #'L/RWrMot2'
-    - [211,331, 1]
-    - [212,332, -1]
-    - [213,333, 1]
-    - [214,334, 1]
-    - [215,335, -1]
-    - [216,336, 1]
-    - [217,337, 1]
-    - [218,338, -1]
-    - [219,339, 1]
+#    - [211,331, 1]
+#    - [212,332, -1]
+#    - [213,333, 1]
     - [220,340, 1]  #'L/RWrMot3'
-    - [221,341, 1]
-    - [222,342, -1]
-    - [223,343, 1]
-    - [224,344, 1]
-    - [225,345, -1]
-    - [226,346, 1]
-    - [227,347, 1]
-    - [228,348, -1]
-    - [229,349, 1]
+#    - [221,341, 1]
+#    - [222,342, -1]
+#    - [223,343, 1]
     - [230,350, 1] #'L/RSoftHandLink'
-    - [231,351, 1]
-    - [232,352, 1]
-    - [233,353, 1]
-    - [234,354, 1]
-    - [235,355, 1]
-    - [236,356, 1]
-    - [237,357, 1]
-    - [238,358, 1]
-    - [239,359, 1]
+#    - [231,351, 1]
+#    - [232,352, 1]
+#    - [233,353, 1]
 
 ## other forms of OLS
 

@@ -104,7 +104,13 @@ class Model(object):
             else:
                 print('# outputs: {}'.format(self.N_OUT))
 
-        self.linkNames = self.generator.getDescriptionOfLinks().split()
+        #self.linkNames = self.generator.getDescriptionOfLinks().split()
+        self.linkNames = []
+        import re
+        for d in self.generator.getDescriptionOfParameters().strip().split("\n"):
+            link = re.findall(r"of link (.*)", d)[0]
+            if link not in self.linkNames:
+                self.linkNames.append(link)
         if self.opt['verbose']:
             print('({})'.format(self.linkNames))
 
@@ -456,7 +462,7 @@ class Model(object):
         # if difference between random regressor (that was used for base projection) and regressor
         # from the data is too big, the base regressor can still have linear dependencies.
         # in that case get projection from data regressor matrix
-        if not self.opt['useRandomRegressor']:
+        if not self.opt['useRandomRegressor'] and not only_simulate:
             self.computeRegressorLinDepsQR(self.YStd)
 
         if self.opt['useBasisProjection']:

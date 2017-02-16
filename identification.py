@@ -510,7 +510,7 @@ class Identification(object):
         if self.opt['useBasisProjection']:
             self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
         else:
-            self.model.xBaseModel = np.dot(self.model.Pb.T, self.model.xStdModel[self.model.identified_params])
+            self.model.xBaseModel = np.dot(self.model.K, self.model.xStdModel[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion if possible
@@ -689,7 +689,13 @@ class Identification(object):
                     self.opt['deleteFixedBase'] = 1
                     self.sdp.initSDP_LMIs(self)
                     self.sdp.identifyFeasibleStandardParameters(self)
-                    self.model.xBase = self.model.Binv.dot(self.model.xStd)
+
+                    # get feasible base solution by projection
+                    if self.opt['useBasisProjection']:
+                        self.model.xBase = self.model.Binv.dot(self.model.xStd)
+                    else:
+                        self.model.xBase = self.model.K.dot(self.model.xStd)
+
                     if self.opt['constrainUsingNL']:
                         from identification.nlopt import NLOPT
                         nlopt = NLOPT(self)
@@ -707,6 +713,10 @@ class Identification(object):
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
                         self.sdp.identifyFeasibleStandardParameters(self)
+                    if self.opt['useBasisProjection']:
+                        self.model.xBase = self.model.Binv.dot(self.model.xStd)
+                    else:
+                        self.model.xBase = self.model.K.dot(self.model.xStd)
 
                 # get OLS standard parameters (with a priori), then correct to feasible
                 #self.findStdFromBaseParameters()

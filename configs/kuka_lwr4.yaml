@@ -6,7 +6,7 @@ exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
 excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                        #encode angles in degrees for excitation (internal and data is always in rad)
 
-optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
+optimizeTrajectory: 0            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 useStaticTrajectories: 0         #generate simple static trajectories for identification of gravity terms (no optimization is done)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
@@ -117,9 +117,9 @@ constrainToConsistent: 1
 identifyClosestToCAD: 0
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
 # (otherwise use SDP as well, experimental)
-constrainUsingNL: 1
+constrainUsingNL: 0
 nlOptIterations: 500
-useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
+useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

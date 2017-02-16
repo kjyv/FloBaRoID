@@ -466,7 +466,7 @@ class TrajectoryOptimizer(object):
         f = np.linalg.cond(model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
 
-        #xBaseModel = np.dot(model.Binv, model.xStdModel)
+        #xBaseModel = np.dot(model.Binv | K, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
 
         print("objective function value: {} (last best: {} + {})".format(f,

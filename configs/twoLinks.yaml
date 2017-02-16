@@ -3,6 +3,7 @@
 
 excitationSimulate: 1          #simulate torques instead of using measurements (use e.g. with Gazebo)
 exciteMethod: null #'ros'      #currently 'yarp', 'ros' or null (simulate)
+excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                      #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 0          #find new parameters with optimization or load previous params from file (if no file exists, use random)
@@ -27,7 +28,6 @@ trajectoryAngleMax:  25.0
 # instead of one range, define individual ranges for each link. If ..AngleMin/Max is to be used for
 # one or all of them, set entry with null
 trajectoryAngleRanges:
-    - null
     - null
 
 # manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
@@ -74,17 +74,25 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
+# use random regressors to determine structural dependencies when getting base regressor
+# (may give issues if only limited data is available)
+useRandomRegressor: 0
+
 # fixed or floating-base dynamics
 floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 0
+identifySymmetricVelFriction: 1
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0
 
 # simulate torques from target values, don't use both
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
+
+# use RBDL for simulation (forward kinematics) instead of iDynTree
+useRBDL: 1
 
 # almost zero threshold for QR, SVD and other things
 minTol: 0.0001
@@ -95,11 +103,11 @@ minTol: 0.0001
 # (currently this also does the estimation, so previously selecting another method has no effect)
 # if only torque estimation is desired, not using this option might give a better model
 # accuracy with approriate parameters
-constrainToConsistent: 0
+constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
-identifyClosestToCAD: 0
+identifyClosestToCAD: 1
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
 # (otherwise use SDP as well, experimental)
 constrainUsingNL: 0
@@ -112,7 +120,7 @@ noChange: 0
 noChangeThresh: 400
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 1
+restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
@@ -122,15 +130,17 @@ meshBaseDir: 'meshes'
 cubeSize: 1.0
 
 # constrain overall mass
-limitOverallMass: 1
+limitOverallMass: 0
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 16.0
+#allowed percentual change in both directions (1-range and 1+range)
+limitMassRange: 0.05
 
 # enforce staying around the a priori masses (only set this or a combination of the other
-# two mass limiting options to prevent constraint conflicts!)
+# two mass limiting options to prevent constraint conflicts which result in problem
+# infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
-#limitMassAprioriBoundary: 0.3     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -152,7 +162,7 @@ symmetryConstraints: []
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
 # (not used with constrained SDP solver)
-useAPriori: 1
+useAPriori: 0
 
 # identify std parameters directly, but only for essential parameters (Gautier, 2013)
 useEssentialParams: 0

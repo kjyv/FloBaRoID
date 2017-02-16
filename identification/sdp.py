@@ -40,10 +40,11 @@ class SDP(object):
 
         print("Checking feasibility of a priori parameters...")
         replace = dict()
-        syms = self.idf.model.param_syms[list(set(self.idf.model.identified_params).difference(self.delete_cols))]
+        idable_params = sorted(list(set(self.idf.model.identified_params).difference(self.delete_cols)))
+        syms = self.idf.model.param_syms[idable_params]
         for i in range(len(syms)):
             p = syms[i]
-            replace[p] = prime[i]
+            replace[p] = prime[idable_params][i]
 
         feasible = True
         for l in self.LMIs_marg:
@@ -332,7 +333,7 @@ class SDP(object):
                 #num_samples = YBase.shape[0]/idf.model.num_dofs
                 l = (float(idf.base_error) / len(p_nid)) * idf.opt['regularizationFactor']
 
-                #TODO: also use symengine
+                #TODO: also use symengine to gain speedup?
                 #p = BlockMatrix([[(K*delta)], [delta_nonid]])
                 #Y = BlockMatrix([[Matrix(R1),             ZeroMatrix(R1.shape[0], len(p_nid))],
                 #                 [ZeroMatrix(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
@@ -379,12 +380,13 @@ class SDP(object):
 
             # solve SDP
 
-
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
             # but is used to return primal as solution when failing cvxopt)
             if idf.opt['verbose']:
                 print("Solving constrained OLS as SDP")
-            prime = idf.model.xStdModel[list(set(idf.model.identified_params).difference(self.delete_cols))]
+            idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
+            prime = idf.model.xStdModel[idable_params]
+
             #if idf.opt['checkAPrioriFeasibility']:
                 #self.checkFeasibility(prime)
 
@@ -462,7 +464,7 @@ class SDP(object):
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contacts should be close to measured torques)
-            e_rho1 = Matrix(rho1) - (R1*delta - contactForces)
+            e_rho1 = Matrix(rho1 - contactForces) - (R1*delta)
 
             if idf.opt['verbose']:
                 print("Step 2...", time.ctime())
@@ -618,7 +620,7 @@ class SDP(object):
             # sub contact forces
             contactForces = Q.T.dot(idf.model.contactForcesSum)
 
-            e_rho1 = Matrix(rho1) - (R1*beta_symbs - contactForces)
+            e_rho1 = Matrix(rho1 - contactForces) - (R1*beta_symbs)
 
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
             u = Symbol('u')
@@ -672,20 +674,24 @@ class SDP(object):
         I = Identity
 
         #symbols for std params
-        delta = Matrix(idf.model.param_syms)
+        #delta = Matrix(idf.model.param_syms)
+        delta = Matrix(idf.model.param_syms[idf.model.identified_params])
+
+        #ignore some params that are non-identifiable
+        for c in reversed(self.delete_cols):
+            delta.row_del(c)
 
         # equations for base parameters expressed in independent std param symbols
-        #beta = K * delta
         beta = idf.model.base_deps #.applyfunc(lambda x: x.nsimplify())
 
+        epsilon_safemargin = 1e-6
         #add explicit constraints for each base param equation and estimated value
         D_base_val_blocks = []
         for i in range(idf.model.num_base_params):
-            D_base_val_blocks.append( Matrix([beta[i] - xBase[i] - 0.00001]) )
-            D_base_val_blocks.append( Matrix([xBase[i] + 0.00001 - beta[i]]) )
+            D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - epsilon_safemargin)]) )
+            D_base_val_blocks.append( Matrix([xBase[i] + (epsilon_safemargin - beta[i])]) )
         self.D_blocks += D_base_val_blocks
 
-        epsilon_safemargin = 1e-6
         self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
         #closest to CAD but ignore non_identifiable params
@@ -700,14 +706,17 @@ class SDP(object):
         variables = [u] + list(idf.model.param_syms)
         objective_func = u   # 'find' problem
 
-        solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStdModel)
+        #if idf.opt['checkAPrioriFeasibility']:
+        #self.checkFeasibility(idf.model.xStd)
+
+        solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStd)
 
         #try again with wider bounds and dsdp5 cmd line
         if state is not 'optimal':
             print("Trying again with dsdp5 solver")
             sdp_helpers.solve_sdp = sdp_helpers.dsdp5
             # start at CAD data to find solution faster
-            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStdModel, wide_bounds=True)
+            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStd, wide_bounds=True)
             sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
         u = solution[0, 0]

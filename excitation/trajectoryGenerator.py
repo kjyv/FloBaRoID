@@ -118,41 +118,52 @@ class FixedPositionTrajectory(object):
         #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
         '''
         # posture #0
-        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,       #left leg
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         #right leg
+        return [0.0, 0.0, 70.0, 90.0, -20.0, 0.0,       #left leg
+                0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
                 0.0, 0.0,                           #Waist
                 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
                 0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
         # posture #1
-        return [0.0, 0.0, -45.0, 0.0, -15.0, 0.0,       #left leg
-                0.0, 0.0, -45.0, 0.0, -15.0, 0.0,         #right leg
+        return [0.0, 0.0, 70.0, 90.0, -20.0, 0.0,       #left leg
+                0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
                 0.0, 0.0,                           #Waist
                 90.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
                 90.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
         # posture #2
-        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,       #left leg
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         #right leg
+        return [0.0, 0.0, 70.0, 90.0, -20.0, 0.0,       #left leg
+                0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
                 0.0, 0.0,                           #Waist
                 20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
                 20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
         # posture #3
-        return [0.0, 0.0, 0.0, 0.0, -79.0, 0.0,       #left leg
-                0.0, 0.0, 0.0, 0.0, -79.0, 0.0,         #right leg
-                -6.0, 0.0,                           #Waist
+        return [0.0, 0.0, 70.0, 90.0, -79.0, 0.0,       #left leg
+                0.0, 0.0, -70.0, 90.0, -79.0, 0.0,         #right leg
+                0.0, 0.0,                           #Waist
                 0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,    #left arm
                 0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0,   #right arm
                 ][dof]
-        '''
         # posture #4
-        return [44.0, 0.0, 0.0, 60.0, 0.0, 0.0,       #left leg
-                -44.0, 0.0, 0.0, 60.0, 0.0, 0.0,         #right leg
+        return [44.0, 0.0, 70.0, 90.0, -20.0, 0.0,       #left leg
+                -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
                 0.0, 0.0,                           #Waist
-                0.0, 10.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
-                0.0, -10.0, 0.0, -90.0, 0.0, 0.0, -79.0,   #right arm
+                0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
+                0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0,   #right arm
                 ][dof]
+        '''
+        # posture #5
+        return [44.0, 0.0, 70.0, 90.0, -20.0, 0.0,       #left leg
+                -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
+                35.0, 0.0,                           #Waist
+                20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+                20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
+                ][dof]
+
+        # kuka postures
+        #return [np.pi*0.25, 0.0, np.pi*0.5, 0.0, 0.0, 0.0,
+        #        0.0, 0.0][dof]
 
     def getVelocity(self, dof):
         """ get velocity at current time for joint dof """

@@ -98,7 +98,7 @@ identifyGravityParamsOnly: 0
 # simulate torques from target values, don't use both
 simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
 
-# use RBDL for simulation (instead of iDynTree)
+# use RBDL for simulation (forward kinematics) instead of iDynTree
 useRBDL: 0
 
 # almost zero threshold for QR, SVD and other things

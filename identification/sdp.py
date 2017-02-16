@@ -233,8 +233,10 @@ class SDP(object):
                             and b not in idf.model.inertia_params) \
                             or not idf.opt['identifyGravityParamsOnly']:
                         stol = idf.opt['symmetryTolerance']
-                        D_other_blocks.append(Matrix([idf.model.param_syms[a] - sign*idf.model.param_syms[b]*(1.0-stol)]))
-                        D_other_blocks.append(Matrix([sign*idf.model.param_syms[b] - idf.model.param_syms[a]*(1.0-stol)]))
+                        #D_other_blocks.append(Matrix([idf.model.param_syms[a] - sign*idf.model.param_syms[b]*(1.0-stol)]))
+                        #D_other_blocks.append(Matrix([sign*idf.model.param_syms[b] - idf.model.param_syms[a]*(1.0-stol)]))
+                        D_other_blocks.append(Matrix([idf.model.param_syms[a] - sign*idf.model.param_syms[b] + 0.01]))
+                        D_other_blocks.append(Matrix([sign*idf.model.param_syms[b] - idf.model.param_syms[a] + 0.01]))
                         self.constr_per_param[a].append('sym')
                         self.constr_per_param[b].append('sym')
 

@@ -360,11 +360,11 @@ class URDFHelpers(object):
 
                 return bounding_box
             except FileNotFoundError:
-                print(Fore.RED + "Mesh file {} not found for link '{}'! Using a cube around a priori COM.".format(filename, link_name) + Fore.RESET)
+                print(Fore.RED + "Mesh file {} not found for link '{}'! Using a {}m cube around a priori COM.".format(filename, link_name, length) + Fore.RESET)
                 return cube
         else:
             #in case there is no stl file in urdf
-            print(Fore.RED + "No mesh file given/found for link '{}'! Using a cube around a priori COM.".format(link_name) + Fore.RESET)
+            print(Fore.RED + "No mesh file given/found for link '{}'! Using a {}m cube around a priori COM.".format(link_name, length) + Fore.RESET)
             return cube
 
     #TODO: replace with new idyntree method

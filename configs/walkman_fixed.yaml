@@ -98,8 +98,8 @@ identifyGravityParamsOnly: 1
 # simulate torques from target values, don't use both
 simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
 
-# use RBDL for simulation (instead of iDynTree)
 useRBDL: 0
+# use RBDL for simulation (forward kinematics) instead of iDynTree
 
 # almost zero threshold for QR, SVD and other things
 minTol: 0.001 #0.0000001
@@ -135,12 +135,12 @@ hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 1.0
+cubeSize: 0.5
 
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 139.15  #139.122
+limitMassVal: 139.122
 #allowed percentual change in both directions (1-range and 1+range)
 limitMassRange: 0.05
 
@@ -148,7 +148,7 @@ limitMassRange: 0.05
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.01     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -158,7 +158,7 @@ dontConstrain: []
 
 # define constraints for link symmetries (e.g. left and right arm)
 # (does not work atm for parameters that can be positive and negative!)
-useSymmetryConstraints: 1
+useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.

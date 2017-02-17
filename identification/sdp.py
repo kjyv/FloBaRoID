@@ -702,7 +702,7 @@ class SDP(object):
             objective_func = u   # 'find' problem
 
             xStd = np.delete(idf.model.xStd, self.delete_cols)
-            old_dist = la.norm(idf.model.xStdModel[idable_params] - xStd)
+            old_dist = la.norm(idf.model.xStdModel[idable_params] - xStd)**2
 
             #if idf.opt['checkAPrioriFeasibility']:
             #self.checkFeasibility(idf.model.xStd)

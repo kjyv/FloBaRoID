@@ -89,7 +89,7 @@ useRandomRegressor: 0
 floatingBase: 0
 
 # identify motor friction
-identifyFriction: 0
+identifyFriction: 1
 identifySymmetricVelFriction: 1
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
@@ -114,7 +114,7 @@ constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
-identifyClosestToCAD: 0
+identifyClosestToCAD: 1
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
 # (otherwise use SDP as well, experimental)
 constrainUsingNL: 0
@@ -142,13 +142,13 @@ limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
 limitMassVal: 139.122
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.05
+limitMassRange: 0.01
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.01     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []

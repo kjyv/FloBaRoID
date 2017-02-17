@@ -118,7 +118,7 @@ identifyClosestToCAD: 0
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
 # (otherwise use SDP as well, experimental)
 constrainUsingNL: 0
-nlOptIterations: 500
+nlOptMaxIterations: 500
 useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values

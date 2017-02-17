@@ -64,9 +64,9 @@ class Identification(object):
         self.opt['orthogonalizeBasis'] = 1
 
         # add regularization term to SDP identification that minimized CAD distance for non-identifiable params
-        self.opt['useRegressorRegularization'] = 1
+        self.opt['useRegressorRegularization'] = 0
 
-        self.opt['regularizationFactor'] = 100.0   #proportion of distance term
+        self.opt['regularizationFactor'] = 1000.0   #proportion of distance term
 
         #### end additional config flags
 

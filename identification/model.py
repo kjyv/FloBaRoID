@@ -102,19 +102,10 @@ class Model(object):
         self.N_OUT = self.generator.getNrOfOutputs()
         if self.opt['verbose']:
             if self.opt['floatingBase']:
-                print('# outputs: {} (DOFs + 6 base)'.format(self.N_OUT))
+                print('# regressor outputs: {} (DOFs + 6 base)'.format(self.N_OUT))
             else:
-                print('# outputs: {}'.format(self.N_OUT))
+                print('# regressor outputs: {}'.format(self.N_OUT))
 
-        #self.linkNames = self.generator.getDescriptionOfLinks().split()
-        self.linkNames = []
-        import re
-        for d in self.generator.getDescriptionOfParameters().strip().split("\n"):
-            link = re.findall(r"of link (.*)", d)[0]
-            if link not in self.linkNames:
-                self.linkNames.append(link)
-        if self.opt['verbose']:
-            print('({})'.format(self.linkNames))
 
         self.num_links = self.generator.getNrOfLinks()-self.generator.getNrOfFakeLinks()
         if self.opt['verbose']:
@@ -125,6 +116,16 @@ class Model(object):
         for i in range(self.num_links):
             self.mass_params.append(i*10)
             self.inertia_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
+
+        #self.linkNames = self.generator.getDescriptionOfLinks().split()
+        self.linkNames = []
+        import re
+        for d in self.generator.getDescriptionOfParameters().strip().split("\n"):
+            link = re.findall(r"of link (.*)", d)[0]
+            if link not in self.linkNames:
+                self.linkNames.append(link)
+        if self.opt['verbose']:
+            print('{}'.format({i: self.linkNames[i] for i in range(self.num_links)}))
 
         # get amount of initial inertia params (from urdf) (full params, no friction, no removed columns)
         self.num_model_params = self.num_links*10

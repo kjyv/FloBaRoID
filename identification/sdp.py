@@ -33,6 +33,9 @@ class SDP(object):
         for i in self.idf.model.identified_params:
             self.constr_per_param[i] = []
 
+    @classmethod
+    def mrepl(m,repl):
+        return m.applyfunc(lambda x: x.xreplace(repl))
 
     def checkFeasibility(self, prime):
         ''' check for a given parameter vector, e.g. a starting point, if it is within the LMI
@@ -532,8 +535,6 @@ class SDP(object):
 
             # build OLS matrix
             I = Identity
-            def mrepl(m,repl):
-                return m.applyfunc(lambda x: x.xreplace(repl))
 
             # base and standard parameter symbols
             delta = Matrix(idf.model.param_syms)
@@ -606,7 +607,7 @@ class SDP(object):
             else:
                 self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
 
-            DB_blocks = [mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
+            DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             epsilon_safemargin = 1e-6
             self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
@@ -669,65 +670,70 @@ class SDP(object):
             minimizing param distance to a-priori parameters
         '''
 
-        def mrepl(m, repl):
-            return m.applyfunc(lambda x: x.xreplace(repl))
-        I = Identity
+        with helpers.Timer() as t:
+            I = Identity
 
-        #symbols for std params
-        #delta = Matrix(idf.model.param_syms)
-        delta = Matrix(idf.model.param_syms[idf.model.identified_params])
+            #symbols for std params
+            idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
+            delta = Matrix(idf.model.param_syms[idable_params])
 
-        #ignore some params that are non-identifiable
-        for c in reversed(self.delete_cols):
-            delta.row_del(c)
+            # equations for base parameters expressed in independent std param symbols
+            beta = idf.model.base_deps #.applyfunc(lambda x: x.nsimplify())
 
-        # equations for base parameters expressed in independent std param symbols
-        beta = idf.model.base_deps #.applyfunc(lambda x: x.nsimplify())
+            epsilon_safemargin = 1e-6
+            #add explicit constraints for each base param equation and estimated value
+            D_base_val_blocks = []
+            for i in range(idf.model.num_base_params):
+                D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - epsilon_safemargin)]) )
+                D_base_val_blocks.append( Matrix([xBase[i] + (epsilon_safemargin - beta[i])]) )
+            self.D_blocks += D_base_val_blocks
 
-        epsilon_safemargin = 1e-6
-        #add explicit constraints for each base param equation and estimated value
-        D_base_val_blocks = []
-        for i in range(idf.model.num_base_params):
-            D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - epsilon_safemargin)]) )
-            D_base_val_blocks.append( Matrix([xBase[i] + (epsilon_safemargin - beta[i])]) )
-        self.D_blocks += D_base_val_blocks
+            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
-        self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
+            #closest to CAD but ignore non_identifiable params
+            sol_cad_dist = Matrix(idf.model.xStdModel[idable_params]) - delta
+            u = Symbol('u')
+            U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
+                                 [sol_cad_dist, I(len(idable_params))]])
+            U_rho = U_rho.as_explicit()
 
-        #closest to CAD but ignore non_identifiable params
-        sol_cad_dist = Matrix(idf.model.xStdModel - idf.model.param_syms)
-        u = Symbol('u')
-        U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
-                             [sol_cad_dist, I(idf.model.num_identified_params)]])
-        #                     [sol_cad_dist, I(len(idf.model.identifiable))]])
-        U_rho = U_rho.as_explicit()
+            lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
+            variables = [u] + list(delta)
+            objective_func = u   # 'find' problem
 
-        lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-        variables = [u] + list(idf.model.param_syms)
-        objective_func = u   # 'find' problem
+            xStd = np.delete(idf.model.xStd, self.delete_cols)
+            old_dist = la.norm(idf.model.xStdModel[idable_params] - xStd)
 
-        #if idf.opt['checkAPrioriFeasibility']:
-        #self.checkFeasibility(idf.model.xStd)
+            #if idf.opt['checkAPrioriFeasibility']:
+            #self.checkFeasibility(idf.model.xStd)
 
-        solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStd)
+            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
-        #try again with wider bounds and dsdp5 cmd line
-        if state is not 'optimal':
-            print("Trying again with dsdp5 solver")
-            sdp_helpers.solve_sdp = sdp_helpers.dsdp5
-            # start at CAD data to find solution faster
-            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=idf.model.xStd, wide_bounds=True)
-            sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
+            #try again with wider bounds and dsdp5 cmd line
+            if state is not 'optimal':
+                print("Trying again with dsdp5 solver")
+                sdp_helpers.solve_sdp = sdp_helpers.dsdp5
+                # start at CAD data to find solution faster
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd, wide_bounds=True)
+                sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-        u = solution[0, 0]
-        print("SDP found std solution with distance {} from CAD solution".format(u))
-        idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
+            u = solution[0, 0]
+            print("SDP found std solution with distance {} from CAD solution (compared to {})".format(u, old_dist))
+            idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
+            # prepend apriori values for 0'th link non-identifiable variables
+            for c in self.delete_cols:
+                idf.model.xStd = np.insert(idf.model.xStd, c, 0)
+            idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
+
+        if idf.opt['showTiming']:
+            print("Constrained SDP optimization took %.03f sec." % (t.interval))
 
     def findFeasibleStdFromStd(self, idf, xStd):
         ''' find closest feasible std solution for some std parameters (increases error) '''
 
-        delta = Matrix(idf.model.param_syms)
+        idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
+        delta = Matrix(idf.model.param_syms[idable_params])
         I = Identity
 
         Pd = Matrix(idf.model.Pd)
@@ -735,13 +741,13 @@ class SDP(object):
 
         u = Symbol('u')
         U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
-                               [xStd - delta,    I(idf.model.num_identified_params)]])
+                               [xStd - delta,    I(len(idable_params))]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
         variables = [u] + list(delta)
         objective_func = u
 
-        prime = idf.model.xStdModel
+        prime = idf.model.xStdModel[idable_params]
         solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u_star = solution[0,0]

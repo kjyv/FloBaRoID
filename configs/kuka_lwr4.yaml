@@ -114,7 +114,7 @@ constrainToConsistent: 1
 
 # identify in two steps: first get feasible base parameters, then minimize distance to CAD while
 # finding feasible standard parameters
-identifyClosestToCAD: 0
+identifyClosestToCAD: 1
 # after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
 # (otherwise use SDP as well, experimental)
 constrainUsingNL: 0

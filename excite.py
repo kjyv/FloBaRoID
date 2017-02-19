@@ -38,10 +38,10 @@ with open(args.config, 'r') as stream:
         print(exc)
 
 config['args'] = args
-config['model'] = args.model
+config['urdf'] = args.model
 config['plot_targets'] = args.plot_targets
 config['jointNames'] = iDynTree.StringVector([])
-if not iDynTree.dofsListFromURDF(args.model, config['jointNames']):
+if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
     sys.exit()
 config['num_dofs'] = len(config['jointNames'])
 
@@ -58,7 +58,7 @@ def main():
     if args.trajectory:
         traj_file = args.trajectory
     else:
-        traj_file = config['model'] + '.trajectory.npz'
+        traj_file = config['urdf'] + '.trajectory.npz'
 
     if config['optimizeTrajectory'] and config['useStaticTrajectories']:
         print("using fixed positions")
@@ -76,7 +76,7 @@ def main():
             sys.exit(1)
 
     # generating simulation of trajectory in any case
-    traj_data, data, model = simulateTrajectory(config, trajectory)
+    traj_data, data = simulateTrajectory(config, trajectory)
     if config['excitationSimulate'] and config['exciteMethod']:
         print(Fore.RED + 'Using simulated torques!' + Fore.RESET)
 
@@ -108,7 +108,6 @@ def main():
     # if simulating torques, prepare some arrays with proper length (needs to be same as input for
     # simulation)
     if config['excitationSimulate']:
-        #TODO: simplify this (basically gets rid of 1 off errors)
         tau_len = traj_data['Tau'].shape[0]   # get length of measured (zero) taus
         if tau_len < traj_data['torques'].shape[0]:
             #less measured samples than input samples
@@ -130,7 +129,7 @@ def main():
     # use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
     # (simulate again with measured/filtered data)
     if config['excitationSimulate']:
-        traj_data_sim, data, model = simulateTrajectory(config, trajectory, measurements=traj_data)
+        traj_data_sim, data = simulateTrajectory(config, trajectory, measurements=traj_data)
         traj_data['Tau'] = data.samples['torques']
 
     saveMeasurements(args.filename, traj_data)

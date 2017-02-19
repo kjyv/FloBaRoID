@@ -9,6 +9,7 @@ import numpy as np
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
+from identification.model import Model
 from excitation.trajectoryGenerator import TrajectoryGenerator, FixedPositionTrajectory
 from excitation.trajectoryOptimizer import TrajectoryOptimizer, simulateTrajectory
 
@@ -26,9 +27,9 @@ with open(args.config, 'r') as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
-config['model'] = args.model
+config['urdf'] = args.model
 config['jointNames'] = iDynTree.StringVector([])
-if not iDynTree.dofsListFromURDF(args.model, config['jointNames']):
+if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
     sys.exit()
 config['num_dofs'] = len(config['jointNames'])
 config['useAPriori'] = 0
@@ -39,12 +40,16 @@ def main():
     if args.filename:
         traj_file = args.filename
     else:
-        traj_file = config['model'] + '.trajectory.npz'
+        traj_file = config['urdf'] + '.trajectory.npz'
 
     if config['optimizeTrajectory']:
         # find trajectory params by optimization
-        trajectoryOptimizer = TrajectoryOptimizer(config, simulation_func=simulateTrajectory)
+        old_sim = config['simulateTorques']
+        config['simulateTorques'] = True
+        model = Model(config, config['urdf'])
+        trajectoryOptimizer = TrajectoryOptimizer(config, model, simulation_func=simulateTrajectory)
         trajectory = trajectoryOptimizer.optimizeTrajectory()
+        config['simulateTorques'] = old_sim
     else:
         # use some random params
         print("no optimized trajectory found, generating random one")

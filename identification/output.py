@@ -436,27 +436,25 @@ class OutputConsole(object):
             print()
 
         if idf.opt['showStandardParams']:
-            cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
+            if idf.opt['showTriangleConsistency']:
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
+                cons_ident = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
+                print("Consistency (including triangle inequality):")
+            else:
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel)
+                cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
+
             if False in list(cons_apriori.values()):
                 print(Fore.RED + "A priori parameters are not physical consistent!" + Fore.RESET)
                 print("Per-link physical consistency (a priori): {}".format(cons_apriori))
             else:
                 print("A priori parameters are physical consistent")
 
-            consistency = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
-            if False in list(consistency.values()):
+            if False in list(cons_ident.values()):
                 print("Identified parameters are not physical consistent,")
                 print("per-link physical consistency (identified): {}".format(consistency))
             else:
                 print("Identified parameters are physical consistent")
-
-        if idf.opt['showTriangleConsistency']:
-            consistency = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
-            if False in list(consistency.values()):
-                print("A priori parameters are not physical consistent (w/ triangle inequality),")
-                print("per-link full physical consistency (identified): {}".format(consistency))
-            else:
-                print("A priori parameters are physical consistent (w/ triangle inequality)")
 
         p_idf = idf.model.identifiable
         if idf.urdf_file_real:

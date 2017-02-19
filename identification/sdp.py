@@ -37,6 +37,7 @@ class SDP(object):
     def mrepl(m,repl):
         return m.applyfunc(lambda x: x.xreplace(repl))
 
+
     def checkFeasibility(self, prime):
         ''' check for a given parameter vector, e.g. a starting point, if it is within the LMI
         constraints '''
@@ -50,7 +51,7 @@ class SDP(object):
             replace[p] = prime[idable_params][i]
 
         feasible = True
-        for l in self.LMIs_marg:
+        for l in self.LMIs:
             const_inst = l.subs(replace).rhs
             if const_inst.shape[0] > 1:
                 if not np.all(np.linalg.eig(np.asarray(const_inst).astype(float))[0] > 0):
@@ -264,9 +265,9 @@ class SDP(object):
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
-            #self.LMIs = list(map(LMI_PD, self.D_blocks))
-            epsilon_safemargin = 1e-6
-            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
+            self.LMIs = list(map(LMI_PD, self.D_blocks))
+            self.epsilon_safemargin = 1e-6
+            self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
         if idf.opt['showTiming']:
             print("Initializing LMIs took %.03f sec." % (t.interval))
@@ -390,8 +391,8 @@ class SDP(object):
             idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
             prime = idf.model.xStdModel[idable_params]
 
-            #if idf.opt['checkAPrioriFeasibility']:
-                #self.checkFeasibility(prime)
+            if idf.opt['checkAPrioriFeasibility']:
+                self.checkFeasibility(idf.model.xStdModel)
 
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
@@ -608,8 +609,7 @@ class SDP(object):
                 self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
 
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
-            epsilon_safemargin = 1e-6
-            self.DB_LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
+            self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
             Q, R = la.qr(idf.model.YBase)
             Q1 = Q[:, 0:idf.model.num_base_params]
@@ -680,15 +680,14 @@ class SDP(object):
             # equations for base parameters expressed in independent std param symbols
             beta = idf.model.base_deps #.applyfunc(lambda x: x.nsimplify())
 
-            epsilon_safemargin = 1e-6
             #add explicit constraints for each base param equation and estimated value
             D_base_val_blocks = []
             for i in range(idf.model.num_base_params):
-                D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - epsilon_safemargin)]) )
-                D_base_val_blocks.append( Matrix([xBase[i] + (epsilon_safemargin - beta[i])]) )
+                D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]) )
+                D_base_val_blocks.append( Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]) )
             self.D_blocks += D_base_val_blocks
 
-            self.LMIs_marg = list([LMI_PSD(lm - epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
+            self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
             #closest to CAD but ignore non_identifiable params
             sol_cad_dist = Matrix(idf.model.xStdModel[idable_params]) - delta
@@ -704,8 +703,8 @@ class SDP(object):
             xStd = np.delete(idf.model.xStd, self.delete_cols)
             old_dist = la.norm(idf.model.xStdModel[idable_params] - xStd)**2
 
-            #if idf.opt['checkAPrioriFeasibility']:
-            #self.checkFeasibility(idf.model.xStd)
+            if idf.opt['checkAPrioriFeasibility']:
+                self.checkFeasibility(idf.model.xStd)
 
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 

@@ -125,7 +125,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     old_offset = config['startOffset']
     config['startOffset'] = 0
     data.init_from_data(trajectory_data)
-    model.computeRegressors(data, only_simulate=True)
+    model.computeRegressors(data)
     trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
 
     if config['floatingBase']:
@@ -353,7 +353,7 @@ class TrajectoryOptimizer(object):
     def updateGraph(self):
         # draw all optimization steps so far (yes, no updating)
 
-        if self.iter_cnt % self.updateGraphEveryVals == 0:
+        if (self.iter_cnt % self.updateGraphEveryVals) == 0:
             # go through list of constraint states and draw next line with other color if changed
             i = last_i = 0
             last_state = self.x_constr[0]
@@ -362,7 +362,7 @@ class TrajectoryOptimizer(object):
                 else: color = 'r'
                 if self.x_constr[i] == last_state:
                     # draw intermediate and at end of data
-                    if i-last_i +1 >= self.updateGraphEveryVals:
+                    if last_i == 0 or i-last_i +1 >= self.updateGraphEveryVals:
                         #need to draw one point more to properly connect to next segment
                         if last_i == 0: end = i+1
                         else: end = i+2
@@ -435,7 +435,7 @@ class TrajectoryOptimizer(object):
             # give penalty obj value for out of bounds (because we shouldn't get here)
             # TODO: for some algorithms (with augemented lagrangian added bounds) this should
             # not be very high as it is added again anyway)
-            f = 10000.0
+            f = 1000.0
             if self.config['minVelocityConstraint']:
                 g = [10.0]*self.dofs*5
             else:
@@ -461,7 +461,8 @@ class TrajectoryOptimizer(object):
         #self.config['floatingBase'] = old_floatingBase
 
         self.last_trajectory_data = trajectory_data
-        plotter(self.config, data=trajectory_data)
+        if self.config['showOptimizationTrajs']:
+            plotter(self.config, data=trajectory_data)
 
         f = np.linalg.cond(model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix

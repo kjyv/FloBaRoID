@@ -79,7 +79,7 @@ class Identification(object):
         self.data.init_from_files(measurements_files)
 
         self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
-        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model.linkNames, self.opt)
+        self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
         self.sdp = SDP(self)
 
         self.tauEstimated = list()
@@ -170,7 +170,7 @@ class Identification(object):
 
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file,
                                              output_urdf=outfile,
-                                             new_params=params, link_names=self.model.linkNames)
+                                             new_params=params)
         if self.opt['useRBDL']:
             import rbdl
             self.model.rbdlModel = rbdl.loadModel(outfile,
@@ -904,7 +904,7 @@ def main():
                         help='the file to load the validation trajectory from')
 
     parser.add_argument('--regressor', required=False, type=str,
-                        help='the file containing the regressor structure(for the iDynTree generator).\
+                        help='the file containing the regressor structure (for the iDynTree generator).\
                               Identifies on all joints if not specified.')
 
     parser.add_argument('--plot', help='whether to plot measurements', action='store_true')
@@ -979,7 +979,7 @@ def main():
             print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
             idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
-                                        new_params=idf.model.xStd, link_names=idf.model.linkNames)
+                                        new_params=idf.model.xStd)
 
     OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques()

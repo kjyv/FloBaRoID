@@ -55,8 +55,6 @@ def main():
         print("nf {}".format(trajectory.nf.tolist()))
         print("wf {}".format(trajectory.w_f_global))
 
-    from IPython import embed
-    embed()
     np.savez(traj_file, use_deg=trajectory.use_deg, a=trajectory.a, b=trajectory.b,
              q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
 

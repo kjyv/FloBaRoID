@@ -247,12 +247,12 @@ class ParamHelpers(object):
                     np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
 
 class URDFHelpers(object):
-    def __init__(self, paramHelpers, link_names, opt):
+    def __init__(self, paramHelpers, model, opt):
         self.paramHelpers = paramHelpers
-        self.link_names = link_names
+        self.model = model
         self.opt = opt
 
-    def replaceParamsInURDF(self, input_urdf, output_urdf, new_params, link_names):
+    def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
         xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
@@ -260,8 +260,8 @@ class URDFHelpers(object):
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
         for l in tree.findall('link'):
-            if l.attrib['name'] in link_names:
-                link_id = link_names.index(l.attrib['name'])
+            if l.attrib['name'] in self.model.linkNames:
+                link_id = self.model.linkNames.index(l.attrib['name'])
                 l.find('inertial/mass').attrib['value'] = '{}'.format(xStdBary[link_id*10])
                 l.find('inertial/origin').attrib['xyz'] = '{} {} {}'.format(xStdBary[link_id*10+1],
                                                                             xStdBary[link_id*10+2],
@@ -274,11 +274,26 @@ class URDFHelpers(object):
                 inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
                 inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
 
+
+        # write friction of joints
         for l in tree.findall('joint'):
-            if l.attrib['name'] in joint_names:
-                pass
-                # TODO: write friction to joints (interpret value for friction as coulomb constant,
-                # damping as velocity dependent loss)
+            if l.attrib['name'] in self.model.jointNames:
+                joint_id = self.model.jointNames.index(l.attrib['name'])
+                if self.opt['identifyFriction']:
+                    f_c = xStdBary[self.model.num_model_params + joint_id]
+                    if self.opt['identifyGravityParamsOnly']:
+                        f_v = 0
+                    else:
+                        if self.opt['identifySymmetricVelFriction']:
+                            f_v = xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id]
+                        else:
+                            print(Fore.RED + "Can't write velocity dependent friction to URDF as identified values are asymmetric. URDF only supports symmetric values.")
+                            sys.exit(1)
+                else:
+                    # parameters were identified assuming there was no friction
+                    f_c = f_v = 0.0
+                l.find('dynamics').attrib['friction'] = '{}'.format(f_c)
+                l.find('dynamics').attrib['damping'] = '{}'.format(f_v)
 
         tree.write(output_urdf, xml_declaration=True)
 
@@ -331,7 +346,7 @@ class URDFHelpers(object):
             Expects old_com in barycentric form! '''
 
         from stl import mesh   #using numpy-stl
-        link_name = self.link_names[link_nr]
+        link_name = self.model.linkNames[link_nr]
         #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
 

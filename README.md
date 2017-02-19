@@ -9,16 +9,16 @@ Modules:
 
 * excitation: find optimized trajectories and control the robot movement and record the state and torque measurements (using [Yarp](https://github.com/robotology/yarp) or ROS/MoveIt!, probably needs some customization)
 * identification: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description (providing the kinematic parameters) and from torque and force measurements
-	* parameters are constrained to physical consistent standard parameter space, improving robustness against input data that is not well-conditioned
+    * parameters are constrained to physical consistent standard parameter space, improving robustness against input data that is not well-conditioned
 * write the identified parameters into output URDF ready to use for control or simulation
 
 Details:
 
 * finds ideal excitation trajectories with non-linear global optimization (as parameters of fourier-series for periodic soft trajectories) 
 * data preprocessing
-	* derives velocity and acceleration values from position readings
-	* data is zero-phase low-pass filtered from supplied measurements
-	* it is possible to only select a combination of data blocks to yield a better condition number than all of the data
+    * derives velocity and acceleration values from position readings
+    * data is zero-phase low-pass filtered from supplied measurements
+    * it is possible to only select a combination of data blocks to yield a better condition number than all of the data
 * validation with other measurement data
 * implemented estimation methods:
   * ordinary least squares, OLS
@@ -45,7 +45,7 @@ requirements for excitation modules:
 
 known issues:
 
-* excitation modules are not really generic yet
+* excitation modules are not generic for any robot
 * using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
 * COM constraints need stl mesh files for the model to compute the enclosing hull, doesn't e.g. read geometric shape definitions for link
 
@@ -53,12 +53,22 @@ known issues:
 
 * copy one of the existing .yaml configuration files and customize for your setup
 
-* get joint torque measurements from your robotic system if
-   possible e.g. by using the excite.py script (filters the measurements as well as gets velocity and acceleration from position measurements).
-   If you are using other means of motion control and data recording, the data files of the numpy data files need to have the expected data fields (see README.md in ./excitation/) and the data needs to be filtered before running the identification on it. There is also a csv2npz script that can be customized to load data from csv text files.
+* optionally, use the trajectory.py script to generate an optimal exciting trajectory (only fixed
+  base at the moment).
 
-* run identification.py, at least supplying the measurement data file and the corresponding kinematic model in a .urdf file with some physically consistent CAD parameters as starting point (parameters are not necessary for all methods but recommended).
-Optionally supply an output .urdf file path (to which the input urdf but with the identified parameters is written) or another measurement file for validation (most options are in the .yaml file, others are explained when calling with -h)
+* get joint torque measurements from your robotic system if possible e.g. by using the excite.py
+  script (filters the measurements as well as gets velocity and acceleration from position
+  measurements).  If you are using other means of motion control and data recording, the data files
+  of the numpy data files need to have the expected data fields (see README.md in ./excitation/) and
+  the data needs to be filtered before running the identification on it. There is also a csv2npz
+  script that can be customized to load data from csv text files.
+
+* run identification.py, at least supplying the measurement data file and the corresponding
+  kinematic model in a .urdf file with some physically consistent CAD parameters as starting point
+  (parameters are not necessary for all methods but recommended).
+Optionally you can supply an output .urdf file path to which the input urdf is written with the
+identified parameters instead. Another measurements file can be supplied for validation. Most
+options are in the .yaml file, others are explained when calling the scripts with --help.
 
 
 SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)

@@ -104,13 +104,14 @@ minTol: 0.0001
 # if only torque estimation is desired, not using this option might give a better model
 # accuracy with approriate parameters
 constrainToConsistent: 1
+checkAPrioriFeasibility: 0
 
-# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
-# finding feasible standard parameters
-identifyClosestToCAD: 0
-# after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
-# (otherwise use SDP as well, experimental)
-constrainUsingNL: 1
+# identify in two steps: first get feasible solution, then minimize distance to CAD while
+# staying in previous solution nullspace (using SDP)
+identifyClosestToCAD: 1
+
+# use a non-linear gradient based solver instead of SDP
+constrainUsingNL: 0
 nlOptIterations: 500
 useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 

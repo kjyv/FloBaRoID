@@ -83,6 +83,8 @@ floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 0
+
+# identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
@@ -104,15 +106,16 @@ minTol: 0.0001
 # if only torque estimation is desired, not using this option might give a better model
 # accuracy with approriate parameters
 constrainToConsistent: 1
+checkAPrioriFeasibility: 0
 
-# identify in two steps: first get feasible base parameters, then minimize distance to CAD while
-# finding feasible standard parameters
+# identify in two steps: first get feasible solution, then minimize distance to CAD while
+# staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
-# after find std using SDP, find solution within null-space that is closest to CAD using a non-linear solver
-# (otherwise use SDP as well, experimental)
+
+# use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
-nlOptMaxIterations: 500
-useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
+nlOptIterations: 500
+useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

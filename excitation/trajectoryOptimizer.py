@@ -28,7 +28,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     else: fb = 0
 
     if not model:
-        model = Model(config, config['model'])
+        model = Model(config, config['urdf'])
 
     data = Data(config)
     trajectory_data = {}
@@ -38,7 +38,6 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     trajectory_data['torques'] = []
     trajectory_data['times'] = []
 
-    #TODO: set this in config, depends on robot and otherwise times are wrong etc.
     freq = config['excitationFrequency']
     for t in range(0, int(trajectory.getPeriodLength()*freq)):
         trajectory.setTime(t/freq)
@@ -152,7 +151,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     config['startOffset'] = old_offset
     config['simulateTorques'] = old_sim
 
-    return trajectory_data, data, model
+    return trajectory_data, data
 
 
 def plotter(config, data=None, filename=None):
@@ -279,11 +278,13 @@ def plotter(config, data=None, filename=None):
 
 
 class TrajectoryOptimizer(object):
-    def __init__(self, config, simulation_func):
+    def __init__(self, config, model, simulation_func):
         self.config = config
         self.sim_func = simulation_func
+        self.model = model
+
         # init some classes
-        self.limits = URDFHelpers.getJointLimits(config['model'], use_deg=False)  #will always be compared to rad
+        self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
         self.trajectory = TrajectoryGenerator(config['num_dofs'], use_deg = config['useDeg'])
 
         self.dofs = self.config['num_dofs']
@@ -351,31 +352,12 @@ class TrajectoryOptimizer(object):
         self.last_g = None
 
     def updateGraph(self):
-        # draw all optimization steps so far (yes, no updating)
-
+        # draw all optimization steps, mark the ones that are within constraints
         if (self.iter_cnt % self.updateGraphEveryVals) == 0:
-            # go through list of constraint states and draw next line with other color if changed
-            i = last_i = 0
-            last_state = self.x_constr[0]
-            while (i < len(self.x_constr)):
-                if self.x_constr[i]: color = 'g'
-                else: color = 'r'
-                if self.x_constr[i] == last_state:
-                    # draw intermediate and at end of data
-                    if last_i == 0 or i-last_i +1 >= self.updateGraphEveryVals:
-                        #need to draw one point more to properly connect to next segment
-                        if last_i == 0: end = i+1
-                        else: end = i+2
-                        self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color, color='0.75')
-                        last_i = i
-                else:
-                    #draw line when state has changed
-                    last_state = not last_state
-                    if last_i == 0: end = i+1
-                    else: end = i+2
-                    self.ax1.plot(self.xar[last_i:end], self.yar[last_i:end], marker='p', markerfacecolor=color, color='0.75')
-                    last_i = i
-                i+=1
+            color = 'g'
+            line = self.ax1.plot(self.xar, self.yar, marker='.', markeredgecolor=color, markerfacecolor=color, color="0.75")
+            markers = np.where(self.x_constr)[0]
+            line[0].set_markevery(list(markers))
 
         if self.iter_cnt == 1: plt.show(block=False)
         plt.pause(0.01)
@@ -418,6 +400,7 @@ class TrajectoryOptimizer(object):
             dx[i] = 0.0
         return jac.transpose()
 
+
     def objective_func(self, x):
         self.iter_cnt += 1
         print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
@@ -451,11 +434,7 @@ class TrajectoryOptimizer(object):
         self.config['verbose'] = 0
         #old_floatingBase = self.config['floatingBase']
         #self.config['floatingBase'] = 0
-        if not 'model' in locals():
-            # get model at first run, then reuse
-            trajectory_data, data, model = self.sim_func(self.config, self.trajectory)
-        else:
-            trajectory_data, data, model = self.sim_func(self.config, self.trajectory, model)
+        trajectory_data, data = self.sim_func(self.config, self.trajectory, model=self.model)
 
         self.config['verbose'] = old_verbose
         #self.config['floatingBase'] = old_floatingBase
@@ -464,7 +443,7 @@ class TrajectoryOptimizer(object):
         if self.config['showOptimizationTrajs']:
             plotter(self.config, data=trajectory_data)
 
-        f = np.linalg.cond(model.YBase)
+        f = np.linalg.cond(self.model.YBase)
         #f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
 
         #xBaseModel = np.dot(model.Binv | K, model.xStdModel)
@@ -652,8 +631,13 @@ class TrajectoryOptimizer(object):
         opt2.setOption('MAXIT', self.config['localOptIterations'])
         if self.config['verbose']:
             opt2.setOption('IPRINT', 0)
+
         #opt2 = pyOpt.IPOPT()
+        #opt2.setOption('max_iter', self.config['nlOptMaxIterations'])
+        #opt2.setOption('print_level', 3)  #0 none ... 5 max
+
         #opt2 = pyOpt.PSQP()
+
         # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
         # iterations are probably steps along the gradient. How to get proper no. of expected func calls?
         # (one call per dimension for each iteration?)

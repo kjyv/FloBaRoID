@@ -13,6 +13,7 @@ from sympy import symbols, Matrix
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
+from .quaternion import Quaternion
 
 from IPython import embed
 
@@ -186,23 +187,9 @@ class Model(object):
         # (put here so it's only done once for the loaded model)
         self.computeRegressorLinDepsQR()
 
+
     def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None):
         import rbdl
-
-        def toQuaternion(roll, pitch, yaw):
-            t0 = np.cos(yaw * 0.5)
-            t1 = np.sin(yaw * 0.5)
-            t2 = np.cos(roll * 0.5)
-            t3 = np.sin(roll * 0.5)
-            t4 = np.cos(pitch * 0.5)
-            t5 = np.sin(pitch * 0.5)
-
-            q = np.zeros(4)
-            q[0] = t0 * t2 * t4 + t1 * t3 * t5
-            q[1] = t0 * t3 * t4 - t1 * t2 * t5
-            q[2] = t0 * t2 * t5 + t1 * t3 * t4
-            q[3] = t1 * t2 * t4 - t0 * t3 * t5
-            return q
 
         # read sample data
         q = samples['positions'][sample_idx]
@@ -225,7 +212,7 @@ class Model(object):
             # the first three elements (0,1,2) of q are the position variables of the floating body
             # elements 3,4,5 of q are the x,y,z components of the quaternion of the floating body
             # the w component of the quaternion is appended at the end (why?)
-            rotq = toQuaternion(rpy[0], rpy[1], rpy[2])
+            rotq = Quaternion.fromRPY(rpy[0], rpy[1], rpy[2])
             q = np.concatenate([[0,0,0], rotq[1:4], q, rotq[0]])
 
             # the first three elements (0,1,2) of qdot is the linear velocity of the floating body

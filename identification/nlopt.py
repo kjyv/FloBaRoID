@@ -6,8 +6,9 @@ from builtins import range
 
 import numpy as np
 import numpy.linalg as la
-
 import pyOpt
+
+from .quaternion import Quaternion
 
 from IPython import embed
 

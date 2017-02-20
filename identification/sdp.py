@@ -19,6 +19,7 @@ if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
+
 from colorama import Fore, Back, Style
 
 import time

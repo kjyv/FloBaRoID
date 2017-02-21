@@ -26,6 +26,8 @@ class NLOPT(object):
             self.nl = self.model.num_links
             self.start_link = 0
 
+        self.idf.opt['optInFeasibleParamSpace'] = 1
+
         if self.idf.opt['identifyGravityParamsOnly']:
             self.per_link = 4
         else:
@@ -46,6 +48,7 @@ class NLOPT(object):
                             )
         self.inner_iter = 0
         self.last_best_u = 1e16
+        self.last_best_x = None
 
         self.param_weights = np.zeros(self.model.num_all_params - self.start_link*self.per_link)
         for p in range(len(self.param_weights)):
@@ -70,48 +73,7 @@ class NLOPT(object):
 
     def mapStdBaryToConsistent(self, params):
         # map to fully physically consistent parametrization space (Traversaro, 2016)
-        # expecting barycentric params without friction
-
-        out = np.zeros(self.nl*16)
-        for l in range(self.nl):
-            # mass m is the same
-            out[l*16] = params[l*10]
-
-            # com c is the same, R^3
-            out[l*16+1] = params[l*10+1]
-            out[l*16+2] = params[l*10+2]
-            out[l*16+3] = params[l*10+3]
-
-            J, Q = la.eig(self.idf.paramHelpers.invvech(params[l*10+4:l*10+9+1]))
-            #J_xx = L_yy + L_zz
-            #J_yy = L_xx + L_zz
-            #J_zz = L_xx + L_yy
-            #solve for L_xx, L_yy, L_zz to get L
-            P = np.array([[0,1,1],[1,0,1],[1,1,0]])
-            L = la.inv(P).dot(J)
-
-            # rotation matrix Q R^(3x3) (actually SO(3)) between body frame and frame of principal
-            # axes at COM
-            out[l*16+4] = Q[0, 0]
-            out[l*16+5] = Q[0, 1]
-            out[l*16+6] = Q[0, 2]
-            out[l*16+7] = Q[1, 0]
-            out[l*16+8] = Q[1, 1]
-            out[l*16+9] = Q[1, 2]
-            out[l*16+10] = Q[2, 0]
-            out[l*16+11] = Q[2, 1]
-            out[l*16+12] = Q[2, 2]
-
-            # central second moment of mass along principal axes, R>=^3
-            out[l*16+13] = L[0]
-            out[l*16+14] = L[1]
-            out[l*16+15] = L[2]
-
-        return out
-
-    def mapStdToConsistent(self, params):
-        # map to fully physically consistent parametrization space (Traversaro, 2016)
-        # expecting barycentric params without friction
+        # expecting barycentric params (without friction)
 
         S = self.skew
 
@@ -122,12 +84,12 @@ class NLOPT(object):
             out[l*16] = m
 
             # com c is the same, R^3
-            c = params[l*10+1:l*10+3+1]/m
+            c = params[l*10+1:l*10+3+1] #/m
             out[l*16+1] = c[0]
             out[l*16+2] = c[1]
             out[l*16+3] = c[2]
 
-            I = self.idf.paramHelpers.invvech(params[l*10+4:l*10+9+1]) + m*S(c).T.dot(S(c))
+            I = self.idf.paramHelpers.invvech(params[l*10+4:l*10+9+1]) #+ m*S(c).dot(S(c))
 
             J, Q = la.eig(I)
             #J_xx = L_yy + L_zz
@@ -137,7 +99,7 @@ class NLOPT(object):
             P = np.array([[0,1,1],[1,0,1],[1,1,0]])
             L = la.inv(P).dot(J)
 
-            # rotation matrix Q R^(3x3) (actually SO(3)) between body frame and frame of principal
+            # rotation matrix Q R^(3x3) (SO(3)) between body frame and frame of principal
             # axes at COM
             out[l*16+4] = Q[0, 0]
             out[l*16+5] = Q[0, 1]
@@ -176,14 +138,15 @@ class NLOPT(object):
             S = self.skew
             vech = self.idf.paramHelpers.vech
             Q = params[l*16+4:l*16+12+1].reshape(3,3)
-            L = params[l*16+12:l*16+14+1]
+            L = params[l*16+13:l*16+15+1]
             P = np.array([[0,1,1],[1,0,1],[1,1,0]])
             Ib = vech(Q.dot(np.diag( P.dot(L) )).dot(Q.T) - m*S(c).dot(S(c)))
             out[l*10+4:l*10+9+1] = Ib
 
         return out
 
-    def minimizeSolToCAD(self, x):
+    def minimizeSolToCADStd(self, x):
+        """ use parameters in std space """
         fail = 0
 
         #minimize estimation error
@@ -203,10 +166,6 @@ class NLOPT(object):
         else:
             cons_base = list((self.model.K[:, self.start_param:].dot(x) - self.xBase_feas))
         cons += cons_base
-
-        #test = self.mapStdToConsistent(self.model.xStd[10:self.model.num_model_params])
-        #x_back = self.mapConsistentToStd(test)
-        #embed()
 
         cons_inertia = [0.0]*self.nl*3
         cons_tri = [0.0]*self.nl*3
@@ -270,55 +229,159 @@ class NLOPT(object):
 
         return (u, cons, fail)
 
-    def addVarsAndConstraints(self, opt):
-        #TODO: remove friction from optimization (they shouldn't change and are not dependent in base params)
+    def minimizeSolToCADFeasible(self, x):
+        """ minimize in feasible parametrization space """
 
+        fail = 0
+
+        #minimize distance to CAD
+        apriori = self.model.xStdModel[self.identified_params]
+
+        #distance to CAD, weighted/normalized params
+        x_std = self.mapConsistentToStd(x)
+        x_std = np.concatenate((x_std, x[16*self.nl:]))  #add friction again
+        diff = (x_std - apriori)
+        u = np.square(la.norm(diff))
+
+        cons = []
+        # base equations == xBase as constraints
+        if self.idf.opt['useBasisProjection']:
+            cons_base = list((self.model.Binv[:, self.start_param:].dot(x_std) - self.xBase_feas))
+        else:
+            cons_base = list((self.model.K[:, self.start_param:].dot(x_std) - self.xBase_feas))
+        cons += cons_base
+
+        # constrain overall mass
+        if self.idf.opt['limitOverallMass']:
+            cons_mass_sum = [0.0]*1
+            est_mass = np.sum(x[0:self.model.num_model_params-self.start_link:self.per_link+1])
+            cons_mass_sum[0] = est_mass
+            cons += cons_mass_sum
+
+        # constrain com
+        if self.idf.opt['restrictCOMtoHull']:
+            cons_com = [0.0]*(self.nl*6)
+            for l in range(self.nl):
+                com = x[l*self.per_link+1+1:l*self.per_link+1+4]
+                cons_com[l*6+0] = com[0] - self.link_hulls[l][0][0]  #lower bound
+                cons_com[l*6+1] = com[1] - self.link_hulls[l][1][0]
+                cons_com[l*6+2] = com[2] - self.link_hulls[l][2][0]
+                cons_com[l*6+0] = self.link_hulls[l][0][1] - com[0]  #upper bound
+                cons_com[l*6+1] = self.link_hulls[l][1][1] - com[1]  #upper bound
+                cons_com[l*6+2] = self.link_hulls[l][2][1] - com[2]  #upper bound
+            cons += cons_com
+
+        # constrain norm(Q) = 1 (quaternion corresponding to rotation matrix in SO(3))
+        cons_det_q = [0.0]*(self.nl)
+        cons_ident_q = [0.0]*(self.nl)
+        for l in range(self.nl):
+            Q = x[l*16+4:l*16+12+1].reshape(3,3)
+            cons_det_q[l] = np.linalg.det(Q)
+            cons_ident_q[l] = np.sum(Q.dot(Q) - np.identity(3))
+
+        cons += cons_det_q
+        cons += cons_ident_q
+
+        return (u, cons, fail)
+
+    def addVarsAndConstraints(self, opt):
         if not self.idf.opt['identifyGravityParamsOnly']:
             # only constrain triangle inequality if it holds true for starting point
             self.use_tri_ineq = not (False in self.idf.paramHelpers.checkPhysicalConsistency(self.model.xStd).values())
         else:
             self.use_tri_ineq = False
 
-        #add all std vars and some constraints
+        #add variables for standard params
         for i in self.identified_params:
             p = self.model.param_syms[i]
             if i % self.per_link == 0 and i < self.model.num_model_params:   #mass
                 opt.addVar(str(p), type="c", lower=0.1, upper=100.0)
-                #self.idf.sdp.constr_per_param[i].append('m>0')
             else:
                 if not self.idf.opt['identifyGravityParamsOnly'] and i >= self.model.num_model_params:   #friction
+                    #TODO: remove friction from optimization (they shouldn't change and are not dependent in base params)
                     opt.addVar(str(p), type="c", lower=0.0, upper=1000)
-                    #self.idf.sdp.constr_per_param[i].append('f>0')
                 else:
-                    #(for now) unconstrained variable (could be a bit narrow)
-                    opt.addVar(str(p), type="c", lower=-100, upper=100)
+                    if i % self.per_link not in [1,2,3] and self.idf.opt['optInFeasibleParamSpace']:
+                        pass
+                    else:
+                        #inertia: unbounded variable
+                        opt.addVar(str(p), type="c", lower=-100, upper=100)
 
-        opt.addConGroup('xbase', len(self.xBase_feas), 'e', equal=0.0)   #=xBase)  # lower=-0.1, upper=0.1)
-        if not self.idf.opt['identifyGravityParamsOnly']:
-            opt.addConGroup('inertia', 3*self.nl, 'i', lower=0.0, upper=100)
-            if self.use_tri_ineq:
-                opt.addConGroup('tri_ineq', 3*self.nl, 'i', lower=0.0, upper=100)
+            # add variables for feasible parametrization space
+            if self.idf.opt['optInFeasibleParamSpace'] and not self.idf.opt['identifyGravityParamsOnly']:
+                if i % self.per_link == 4 and i < self.model.num_model_params:
+                    l = i // 10
+                    # Q as rotation matrix in R^3x3
+                    opt.addVar('q0_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q1_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q2_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q3_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q4_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q5_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q6_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q7_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q8_{}'.format(l), type="c", lower=-1, upper=1)
+                    # L ln R^3+
+                    opt.addVar('l0_{}'.format(l), type="c", lower=0, upper=10)
+                    opt.addVar('l1_{}'.format(l), type="c", lower=0, upper=10)
+                    opt.addVar('l2_{}'.format(l), type="c", lower=0, upper=10)
+
+        # add constraints for projection to feasible base parameters
+        opt.addConGroup('xbase', len(self.xBase_feas), 'e', equal=0.0)
+        if not self.idf.opt['optInFeasibleParamSpace']:
+            # add naive consistency constraints (inertia positive definite, triangel inequality)
+            if not self.idf.opt['identifyGravityParamsOnly']:
+                opt.addConGroup('inertia', 3*self.nl, 'i', lower=0.0, upper=100)
+                if self.use_tri_ineq:
+                    opt.addConGroup('tri_ineq', 3*self.nl, 'i', lower=0.0, upper=100)
+        else:
+            opt.addConGroup('det R', self.nl, 'i', lower=0.0, upper=100.0)
+            opt.addConGroup('Ientitity R', self.nl, 'i', equal=0.0)
+
+        # constraints for overall mass
         if self.idf.opt['limitOverallMass']:
             opt.addConGroup('mass sum', 1, 'i',
                             lower=self.idf.opt['limitMassVal']*(1-self.idf.opt['limitMassRange']),
                             upper=self.idf.opt['limitMassVal']*(1+self.idf.opt['limitMassRange']))
+
+        # constraints for COM in enclosing hull
         if self.idf.opt['restrictCOMtoHull']:
             opt.addConGroup('com', 6*self.nl, 'i', lower=0.0, upper=100)
-
 
     def identifyFeasibleStdFromFeasibleBase(self, xBase):
         self.xBase_feas = xBase
 
         # formulate problem as objective function
-        opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCAD)
+        if self.idf.opt['optInFeasibleParamSpace']:
+            opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCADFeasible)
+        else:
+            opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCADStd)
         opt.addObj('u')
+
+        '''
+        x_bary = self.idf.paramHelpers.paramsLink2Bary(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
+        x_cons = self.mapStdBaryToConsistent(x_bary)
+        test = self.mapConsistentToStd(x_cons)
+        print(test - self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
+        '''
 
         self.addVarsAndConstraints(opt)
 
         # set previous sol as starting point (as primal should be already within constraints for
         # most solvers to perform well)
-        for i in range(len(opt.getVarSet())):
-            opt.getVar(i).value = self.model.xStd[i+self.start_link*self.per_link]
+        if self.idf.opt['optInFeasibleParamSpace']:
+            x_bary = self.idf.paramHelpers.paramsLink2Bary(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
+            x_cons = self.mapStdBaryToConsistent(x_bary)
+            for i in range(len(opt.getVarSet())):
+                #atm, we have 16*no_link + n_dof vars
+                if i < len(x_cons):
+                    opt.getVar(i).value = x_cons[i]
+                else:
+                    j = i - len(x_cons)
+                    opt.getVar(i).value = self.model.xStd[self.idf.model.num_model_params + j]
+        else:
+            for i in range(len(opt.getVarSet())):
+                opt.getVar(i).value = self.model.xStd[i+self.start_link*self.per_link]
 
         if self.idf.opt['verbose']:
             print(opt)
@@ -351,15 +414,21 @@ class NLOPT(object):
         solver(opt)         #run optimization
 
         # set best solution again (is often different than final solver solution)
-        for i in range(len(opt.getVarSet())):
-            opt.getVar(i).value = self.last_best_x[i]
+        if self.last_best_x is not None:
+            for i in range(len(opt.getVarSet())):
+                opt.getVar(i).value = self.last_best_x[i]
+        else:
+            self.last_best_x = self.model.xStd[self.start_param:]
 
         sol = opt.solution(0)
         if self.idf.opt['verbose']:
             print(sol)
 
-        if self.idf.opt['identifyGravityParamsOnly']:
-            self.model.xStd[self.start_param:] = self.last_best_x
+        if self.idf.opt['optInFeasibleParamSpace'] and len(self.last_best_x) > len(self.model.xStd[self.start_param:]):
+            # we get consistent parameterized params as solution
+            x_std = self.mapConsistentToStd(self.last_best_x)
+            self.model.xStd[self.start_param:self.idf.model.num_model_params] = x_std
         else:
+            # we get std vars as solution
             self.model.xStd[self.start_param:] = self.last_best_x
 

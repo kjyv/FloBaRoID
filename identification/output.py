@@ -452,7 +452,7 @@ class OutputConsole(object):
 
             if False in list(cons_ident.values()):
                 print("Identified parameters are not physical consistent,")
-                print("per-link physical consistency (identified): {}".format(consistency))
+                print("per-link physical consistency (identified): {}".format(cons_ident))
             else:
                 print("Identified parameters are physical consistent")
 

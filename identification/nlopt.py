@@ -71,9 +71,9 @@ class NLOPT(object):
                           [  v[2],     0, -v[0] ],
                           [ -v[1],  v[0],   0 ] ])
 
-    def mapStdBaryToConsistent(self, params):
+    def mapStdToConsistent(self, params):
         # map to fully physically consistent parametrization space (Traversaro, 2016)
-        # expecting barycentric params (without friction)
+        # expecting link frame params (without friction)
 
         S = self.skew
 
@@ -84,14 +84,16 @@ class NLOPT(object):
             out[l*16] = m
 
             # com c is the same, R^3
-            c = params[l*10+1:l*10+3+1] #/m
+            c = params[l*10+1:l*10+3+1] / m
             out[l*16+1] = c[0]
             out[l*16+2] = c[1]
             out[l*16+3] = c[2]
 
-            I = self.idf.paramHelpers.invvech(params[l*10+4:l*10+9+1]) #+ m*S(c).dot(S(c))
+            I = self.idf.paramHelpers.invvech(params[l*10+4:l*10+9+1]) + m*S(c).dot(S(c))
 
-            J, Q = la.eig(I)
+            # get rotation matrix from eigenvectors of I
+            Q, J, Qt = la.svd(I) #la.eig(I)
+
             #J_xx = L_yy + L_zz
             #J_yy = L_xx + L_zz
             #J_zz = L_xx + L_yy
@@ -151,7 +153,7 @@ class NLOPT(object):
 
         #minimize estimation error
         #tau = self.model.torques_stack
-        #u = la.norm(tau - self.model.YStd.dot(x))**2 / self.idf.data.num_used_samples
+        #u = la.norm(tau - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
 
         #minimize distance to CAD
         apriori = self.model.xStdModel[self.identified_params]
@@ -243,6 +245,10 @@ class NLOPT(object):
         diff = (x_std - apriori)
         u = np.square(la.norm(diff))
 
+        #minimize estimation error
+        #tau = self.model.torques_stack
+        #u = la.norm(tau - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
+
         cons = []
         # base equations == xBase as constraints
         if self.idf.opt['useBasisProjection']:
@@ -251,6 +257,16 @@ class NLOPT(object):
             cons_base = list((self.model.K[:, self.start_param:].dot(x_std) - self.xBase_feas))
         cons += cons_base
 
+        # constrain norm(Q) = 1 (quaternion corresponding to rotation matrix in SO(3))
+        cons_det_q = [0.0]*(self.nl)
+        cons_ident_q = [0.0]*(self.nl)
+        for l in range(self.nl):
+            Q = x[l*16+4:l*16+12+1].reshape(3,3)
+            cons_det_q[l] = la.det(Q)
+            cons_ident_q[l] = np.sum(Q.T.dot(Q) - np.identity(3))
+
+        cons += cons_det_q
+        cons += cons_ident_q
         # constrain overall mass
         if self.idf.opt['limitOverallMass']:
             cons_mass_sum = [0.0]*1
@@ -271,16 +287,19 @@ class NLOPT(object):
                 cons_com[l*6+2] = self.link_hulls[l][2][1] - com[2]  #upper bound
             cons += cons_com
 
-        # constrain norm(Q) = 1 (quaternion corresponding to rotation matrix in SO(3))
-        cons_det_q = [0.0]*(self.nl)
-        cons_ident_q = [0.0]*(self.nl)
-        for l in range(self.nl):
-            Q = x[l*16+4:l*16+12+1].reshape(3,3)
-            cons_det_q[l] = np.linalg.det(Q)
-            cons_ident_q[l] = np.sum(Q.dot(Q) - np.identity(3))
+        # print some iter stats
+        if self.idf.opt['verbose'] and self.inner_iter % 100 == 0:
+            print("inner iter {}, u={}, base dist:{}, det Q:{}, ident Q:{}".format(self.inner_iter, u,
+                np.sum(np.array(cons_base)), np.all(np.array(cons_det_q) >= 0), np.all(np.abs(cons_ident_q) <= 0.001)))
+        self.inner_iter += 1
 
-        cons += cons_det_q
-        cons += cons_ident_q
+        #keep best solution manually (whatever these solvers are doing...)
+        if u < self.last_best_u and (np.abs(np.sum(np.array(cons_base))) - 1e-6) <= 0 and \
+            np.all(np.array(cons_det_q) >= 0) and np.all(np.abs(cons_ident_q) <= 0.001):
+                self.last_best_x = x
+                self.last_best_u = u
+                if self.idf.opt['verbose']:
+                    print("keeping new best solution")
 
         return (u, cons, fail)
 
@@ -291,43 +310,47 @@ class NLOPT(object):
         else:
             self.use_tri_ineq = False
 
-        #add variables for standard params
+        ## add variables for standard params
         for i in self.identified_params:
             p = self.model.param_syms[i]
             if i % self.per_link == 0 and i < self.model.num_model_params:   #mass
-                opt.addVar(str(p), type="c", lower=0.1, upper=100.0)
+                opt.addVar(str(p), type="c", lower=0.1, upper=np.inf)
             else:
                 if not self.idf.opt['identifyGravityParamsOnly'] and i >= self.model.num_model_params:   #friction
                     #TODO: remove friction from optimization (they shouldn't change and are not dependent in base params)
-                    opt.addVar(str(p), type="c", lower=0.0, upper=1000)
+                    opt.addVar(str(p), type="c", lower=0.0, upper=np.inf)
                 else:
                     if i % self.per_link not in [1,2,3] and self.idf.opt['optInFeasibleParamSpace']:
                         pass
                     else:
                         #inertia: unbounded variable
-                        opt.addVar(str(p), type="c", lower=-100, upper=100)
+                        opt.addVar(str(p), type="c", lower=-np.inf, upper=np.inf)
 
             # add variables for feasible parametrization space
             if self.idf.opt['optInFeasibleParamSpace'] and not self.idf.opt['identifyGravityParamsOnly']:
                 if i % self.per_link == 4 and i < self.model.num_model_params:
                     l = i // 10
                     # Q as rotation matrix in R^3x3
-                    opt.addVar('q0_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q1_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q2_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q3_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q4_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q5_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q6_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q7_{}'.format(l), type="c", lower=-1, upper=1)
-                    opt.addVar('q8_{}'.format(l), type="c", lower=-1, upper=1)
+                    opt.addVar('q0_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q1_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q2_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q3_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q4_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q5_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q6_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q7_{}'.format(l), type="c", lower=-10, upper=10)
+                    opt.addVar('q8_{}'.format(l), type="c", lower=-10, upper=10)
                     # L ln R^3+
-                    opt.addVar('l0_{}'.format(l), type="c", lower=0, upper=10)
-                    opt.addVar('l1_{}'.format(l), type="c", lower=0, upper=10)
-                    opt.addVar('l2_{}'.format(l), type="c", lower=0, upper=10)
+                    opt.addVar('l0_{}'.format(l), type="c", lower=0, upper=np.inf)
+                    opt.addVar('l1_{}'.format(l), type="c", lower=0, upper=np.inf)
+                    opt.addVar('l2_{}'.format(l), type="c", lower=0, upper=np.inf)
 
-        # add constraints for projection to feasible base parameters
+        ## constraints
+
+        # add constraints for projection to feasible base parameters (equality constraints before
+        # inequality)
         opt.addConGroup('xbase', len(self.xBase_feas), 'e', equal=0.0)
+
         if not self.idf.opt['optInFeasibleParamSpace']:
             # add naive consistency constraints (inertia positive definite, triangel inequality)
             if not self.idf.opt['identifyGravityParamsOnly']:
@@ -335,8 +358,8 @@ class NLOPT(object):
                 if self.use_tri_ineq:
                     opt.addConGroup('tri_ineq', 3*self.nl, 'i', lower=0.0, upper=100)
         else:
-            opt.addConGroup('det R', self.nl, 'i', lower=0.0, upper=100.0)
-            opt.addConGroup('Ientitity R', self.nl, 'i', equal=0.0)
+            opt.addConGroup('det R > 0', self.nl, 'i', lower=0.0, upper=np.inf)
+            opt.addConGroup('R.T*R = I', self.nl, 'i', lower=-0.001, upper=0.001) #equal=0.0)
 
         # constraints for overall mass
         if self.idf.opt['limitOverallMass']:
@@ -347,6 +370,7 @@ class NLOPT(object):
         # constraints for COM in enclosing hull
         if self.idf.opt['restrictCOMtoHull']:
             opt.addConGroup('com', 6*self.nl, 'i', lower=0.0, upper=100)
+
 
     def identifyFeasibleStdFromFeasibleBase(self, xBase):
         self.xBase_feas = xBase
@@ -359,8 +383,7 @@ class NLOPT(object):
         opt.addObj('u')
 
         '''
-        x_bary = self.idf.paramHelpers.paramsLink2Bary(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
-        x_cons = self.mapStdBaryToConsistent(x_bary)
+        x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
         test = self.mapConsistentToStd(x_cons)
         print(test - self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
         '''
@@ -370,8 +393,7 @@ class NLOPT(object):
         # set previous sol as starting point (as primal should be already within constraints for
         # most solvers to perform well)
         if self.idf.opt['optInFeasibleParamSpace']:
-            x_bary = self.idf.paramHelpers.paramsLink2Bary(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
-            x_cons = self.mapStdBaryToConsistent(x_bary)
+            x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
             for i in range(len(opt.getVarSet())):
                 #atm, we have 16*no_link + n_dof vars
                 if i < len(x_cons):

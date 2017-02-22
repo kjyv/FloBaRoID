@@ -29,35 +29,44 @@ class ParamHelpers(object):
         self.model = model
         self.opt = opt
 
-    def checkPhysicalConsistency(self, params):
+    def checkPhysicalConsistency(self, params, full=False):
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite, triangle inequaltiy for eigenvalues of inertia tensor expressed at COM)
 
         expect params relative to link frame
         returns dictionary of link ids and boolean consistency for each link
+
+        when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
         cons = {}
-        for i in range(0, len(params)):
-            if (i % 10 == 0) and i < self.model.num_model_params:   #for each link (and not friction)
-                p_vec = iDynTree.Vector10()
-                for j in range(0, 10):
-                    p_vec.setVal(j, params[i+j])
-                si = iDynTree.SpatialInertia()
-                si.fromVector(p_vec)
-                cons[i // 10] = si.isPhysicallyConsistent()
+        if self.opt['identifyGravityParamsOnly'] and not full:
+            for i in range(0, self.model.num_links):
+                #masses need to be positive
+                cons[i] = params[i*4] > 0
+        else:
+            for i in range(0, len(params)):
+                if (i % 10 == 0) and i < self.model.num_model_params:   #for each link (and not friction)
+                    p_vec = iDynTree.Vector10()
+                    for j in range(0, 10):
+                        p_vec.setVal(j, params[i+j])
+                    si = iDynTree.SpatialInertia()
+                    si.fromVector(p_vec)
+                    cons[i // 10] = si.isPhysicallyConsistent()
         return cons
 
-    def checkPhysicalConsistencyNoTriangle(self, params):
+    def checkPhysicalConsistencyNoTriangle(self, params, full=False):
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite)
 
         expect params relative to link frame
         returns dictionary of link ids and boolean consistency for each link
+
+        when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
         cons = {}
-        if self.opt['identifyGravityParamsOnly']:
+        if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
                 #masses need to be positive
                 cons[i] = params[i*4] > 0

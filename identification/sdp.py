@@ -238,13 +238,17 @@ class SDP(object):
                     if (idf.opt['identifyGravityParamsOnly'] and a not in idf.model.inertia_params \
                             and b not in idf.model.inertia_params) \
                             or not idf.opt['identifyGravityParamsOnly']:
-                        stol = idf.opt['symmetryTolerance']
-                        #D_other_blocks.append(Matrix([idf.model.param_syms[a] - sign*idf.model.param_syms[b]*(1.0-stol)]))
-                        #D_other_blocks.append(Matrix([sign*idf.model.param_syms[b] - idf.model.param_syms[a]*(1.0-stol)]))
-                        D_other_blocks.append(Matrix([idf.model.param_syms[a] - sign*idf.model.param_syms[b] + 0.01]))
-                        D_other_blocks.append(Matrix([sign*idf.model.param_syms[b] - idf.model.param_syms[a] + 0.01]))
+                        eps = idf.opt['symmetryTolerance']
+
+                        p_a = idf.model.param_syms[a]
+                        p_b = idf.model.param_syms[b]
+                        # schur matrix of (a-b)^2 == (a-b)(a-b)^T < eps
+                        sym = Matrix([[eps,   p_a - sign*p_b],
+                                      [p_a - sign*p_b,     1]])
+                        D_other_blocks.append(sym.as_mutable())
                         self.constr_per_param[a].append('sym')
                         self.constr_per_param[b].append('sym')
+
 
             if idf.opt['identifyFriction']:
                 # friction constraints, need to be positive
@@ -740,8 +744,8 @@ class SDP(object):
         delta_d = (Pd.T*delta)
 
         u = Symbol('u')
-        U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
-                               [xStd - delta,    I(len(idable_params))]])
+        U_delta = BlockMatrix([[Matrix([u]),        (xStd - delta).T],
+                               [xStd - delta,  I(len(idable_params))]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
         variables = [u] + list(delta)

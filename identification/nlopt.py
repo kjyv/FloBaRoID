@@ -26,7 +26,7 @@ class NLOPT(object):
             self.nl = self.model.num_links
             self.start_link = 0
 
-        self.idf.opt['optInFeasibleParamSpace'] = 1
+        self.idf.opt['optInFeasibleParamSpace'] = 0
 
         if self.idf.opt['identifyGravityParamsOnly']:
             self.per_link = 4

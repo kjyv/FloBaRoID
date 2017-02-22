@@ -437,11 +437,11 @@ class OutputConsole(object):
 
         if idf.opt['showStandardParams']:
             if idf.opt['showTriangleConsistency']:
-                cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel)
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel, full=True)
                 cons_ident = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
                 print("Consistency (including triangle inequality):")
             else:
-                cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel)
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel, full=True)
                 cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
 
             if False in list(cons_apriori.values()):

@@ -1,5 +1,4 @@
 <regressor>
-    <baseLinkDynamics/>
     <jointTorqueDynamics>
         <joints>
             <!-- left leg -->

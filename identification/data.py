@@ -131,7 +131,7 @@ class Data(object):
             # in samples dict
 
         if self.opt['showTiming']:
-            print("Loading samples from file took %.03f sec." % t.interval)
+            print("(loading samples from file took %.03f sec.)" % t.interval)
 
         self.inited = True
 

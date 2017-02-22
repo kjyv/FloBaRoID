@@ -87,6 +87,9 @@ class Identification(object):
         self.urdf_file_real = urdf_file_real
         self.validation_file = validation_file
 
+        progress_inst = helpers.Progress(opt)
+        self.progress = progress_inst.progress
+
 
     def estimateRegressorTorques(self, estimateWith=None, print_stats=False):
         """ get torque estimations using regressors, prepare for plotting """
@@ -153,6 +156,7 @@ class Identification(object):
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
+        #TODO: don't duplicate simulation code (also this one is possibly not up-to-date)
 
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
         # have inverse dynamics yet, so we have to go over a new urdf file for now)
@@ -185,7 +189,7 @@ class Identification(object):
         self.opt['skipSamples'] = 8
 
         self.tauEstimatedValidation = None
-        for m_idx in range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1):
+        for m_idx in self.progress(range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1)):
             if self.opt['useRBDL']:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx)
             else:
@@ -664,9 +668,12 @@ class Identification(object):
             sys.exit(1)
 
         if self.opt['verbose']:
-            print("estimating parameters from {} samples".format(self.data.num_used_samples), end=' ')
+            print("computing regressor matrix for data samples")
 
         self.model.computeRegressors(self.data)
+
+        if self.opt['verbose']:
+            print("estimating parameters using regressors", end=' ')
 
         if self.opt['useEssentialParams']:
             self.identifyBaseParameters()
@@ -746,6 +753,9 @@ class Identification(object):
 
     def plot(self, text=None):
         """Create state and torque plots."""
+
+        if self.opt['verbose']:
+            print('plotting')
 
         rel_time = self.model.T-self.model.T[0]
         if self.validation_file:
@@ -969,8 +979,6 @@ def main():
     if idf.opt['removeNearZero']:
         idf.data.removeNearZeroSamples()
 
-    if idf.opt['verbose']:
-        print("estimating output parameters...")
     idf.estimateParameters()
     idf.estimateRegressorTorques()
 

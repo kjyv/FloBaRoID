@@ -16,6 +16,8 @@ import scipy.linalg as sla
 import colorama
 from colorama import Fore, Back, Style
 
+from . import helpers
+
 from IPython import embed
 np.core.arrayprint._line_width = 160
 
@@ -520,6 +522,9 @@ class OutputMatplotlib(object):
         self.text = text
 
     def render(self, idf, filename='output.html'):
+        progress_inst = helpers.Progress(idf.opt)
+        self.progress = progress_inst.progress
+
         if idf.opt['outputFilename']:
             filename = idf.opt['outputFilename']
 
@@ -567,7 +572,7 @@ class OutputMatplotlib(object):
 
         #create figures and plots
         figures = list()
-        for ds in range(len(self.datasets)):
+        for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
             fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True)
             # scale unified scaling figures to same ranges and add some margin

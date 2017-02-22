@@ -13,7 +13,6 @@ from sympy import symbols, Matrix
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
-from .quaternion import Quaternion
 
 from IPython import embed
 
@@ -23,6 +22,9 @@ class Model(object):
     def __init__(self, opt, urdf_file, regressor_file=None):
         self.urdf_file = urdf_file
         self.opt = opt
+
+        progress_inst = helpers.Progress(opt)
+        self.progress = progress_inst.progress
 
         if 'orthogonalizeBasis' not in self.opt:
             self.opt['orthogonalizeBasis'] = 1
@@ -345,7 +347,7 @@ class Model(object):
             - stack the torques, regressors and contacts into matrices
         """
         contacts = {}
-        for sample_index in range(0, data.num_used_samples):
+        for sample_index in self.progress(range(0, data.num_used_samples)):
             m_idx = sample_index*(self.opt['skipSamples'])+sample_index
             with helpers.Timer() as t:
                 # read samples
@@ -511,18 +513,16 @@ class Model(object):
 
         # if difference between random regressor (that was used for base projection) and regressor
         # from the data is too big, the base regressor can still have linear dependencies.
-        # in that case get projection from data regressor matrix
+        # for these cases, it seems to be better to get the base columns directly from the data regressor matrix
         if not self.opt['useRandomRegressor'] and not only_simulate:
+            if self.opt['verbose']:
+                print('Getting independent base columns again from data regressor')
             self.computeRegressorLinDepsQR(self.YStd)
 
         if self.opt['useBasisProjection']:
             self.YBase = np.dot(self.YStd, self.B)   # project regressor to base regressor
         else:
             self.YBase = np.dot(self.YStd, self.Pb)  # regressor following Sousa, 2014
-
-        if self.opt['verbose']:
-            print("YStd: {}".format(self.YStd.shape), end=' ')
-            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
         if self.opt['filterRegressor']:
             order = 5                            # Filter order
@@ -542,8 +542,12 @@ class Model(object):
         self.T = data.samples['times'][0:self.sample_end:self.opt['skipSamples']+1]
 
         if self.opt['showTiming']:
-            print('Simulation for regressors took %.03f sec.' % simulate_time)
-            print('Getting regressors took %.03f sec.' % num_time)
+            print('(simulation for regressors took %.03f sec.)' % simulate_time)
+            print('(getting regressors took %.03f sec.)' % num_time)
+
+        if self.opt['verbose']:
+            print("YStd: {}".format(self.YStd.shape), end=' ')
+            print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 
 
     def getRandomRegressor(self, n_samples=None):
@@ -581,11 +585,12 @@ class Model(object):
             generate_new = True
 
         if generate_new:
-            if self.opt['verbose']:
-                print("(re-)generating random regressor")
-
             if not n_samples:
-                n_samples = self.num_dofs * 5000
+                n_samples = self.num_dofs * 1000
+
+            if self.opt['verbose']:
+                print("(re-)generating random regressor ({} positions)".format(n_samples))
+
             R = np.array((self.N_OUT, self.num_model_params))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
@@ -596,7 +601,7 @@ class Model(object):
                 q_lim_neg = [limits[jn[n]]['lower'] for n in range(self.num_dofs)]
                 dq_lim = [limits[jn[n]]['velocity'] for n in range(self.num_dofs)]
                 q_range = (np.array(q_lim_pos) - np.array(q_lim_neg)).tolist()
-            for i in range(0, n_samples):
+            for i in self.progress(range(0, n_samples)):
                 # set random system state
                 if len(limits) > 0:
                     rnd = np.random.rand(self.num_dofs) #0..1
@@ -661,7 +666,7 @@ class Model(object):
                         if self.opt['identifySymmetricVelFriction']:
                             # just use velocity directly
                             vel_diag = np.identity(self.num_dofs)*-dq.toNumPy()
-                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), vel_diag))   # add base dynamics rows
+                            friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs)), vel_diag))   # add base dynamics rows
                         else:
                             # append positive/negative velocity matrix for velocity dependent asymmetrical friction
                             dq_p = dq.toNumPy().copy()
@@ -669,7 +674,7 @@ class Model(object):
                             dq_m = dq.toNumPy().copy()
                             dq_m[dq_m > 0] = 0 #set to zero where v > 0
                             vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
-                            friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
+                            friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                         A = np.concatenate((A, friction_regressor), axis=1)
 
                 # add to previous regressors, linear dependencies don't change

@@ -130,13 +130,21 @@ def readWalkmanCSV(path, config, plot):
                              ])
 
     # shift measured torques backwards by this many samples
-    time_offset = round(200*0.09)
+    if not is_gazebo:
+        time_offset = round(200*0.09)
+    else:
+        time_offset = 0
 
     # scale feet F/T sensors so zero value is force corresponding to weight
     # walkman whole weight is 143.06 kg (could be a little wrong)
-    scale = 0.7
-    ft_left_scale = 0.90 * scale
-    ft_right_scale = 1.18 * scale
+    if not is_gazebo:
+        scale = 0.7
+        ft_left_scale = 0.90 * scale
+        ft_right_scale = 1.18 * scale
+    else:
+        scale = 1.0
+        ft_left_scale = scale
+        ft_right_scale = scale
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -173,8 +181,9 @@ def readWalkmanCSV(path, config, plot):
             ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
             ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
 
-    #correct signs and offsets (for now)
-    out['torques'] = out['torques'] * joint_signs + joint_offsets
+    #correct signs and offsets (until measurements are fixed)
+    if not is_gazebo:
+        out['torques'] = out['torques'] * joint_signs + joint_offsets
 
     filepath = os.path.join(path, 'feedbackData.csv')    # force torque and IMU
     f = np.loadtxt(filepath)
@@ -191,7 +200,7 @@ def readWalkmanCSV(path, config, plot):
         rpy_labels = ['r','p', 'y']
         acc_labels = ['x', 'y', 'z']
     for i in range(0,3):
-        if is_gazebo:
+        if not is_gazebo:
             # use data fields of LPMS IMU (LPMS-CU)
             #out['IMUrpy'][:, i] = np.deg2rad(f[:, i])    # data in deg
             out['IMUlinAcc'][:, i] = f[:, 18+i] * 9.81   # data in g -> (m/s2)/9.81
@@ -208,7 +217,7 @@ def readWalkmanCSV(path, config, plot):
             out['IMUlinAcc'][:, i] = f[:, 18+i]
             out['IMUrotVel'][:, i] = f[:, 21+i]
 
-    if is_gazebo:
+    if not is_gazebo:
         # rotate VN-100 vals to robot frame (as it is physically rotated)
         #robotToIMU = iDynTree.Rotation.RPY(np.pi, 0, 0).toNumPy()
         #for j in range(0, out['IMUlinAcc2'].shape[0]):
@@ -245,8 +254,9 @@ def readWalkmanCSV(path, config, plot):
     out['IMUlinAcc'] = np.mean([-out['IMUlinAcc'], out['IMUlinAcc2']], axis=0)
     '''
 
-    # use second IMU
-    out['IMUlinAcc'] = out['IMUlinAcc2']
+    if not is_gazebo:
+        #use second IMU
+        out['IMUlinAcc'] = out['IMUlinAcc2']
 
     if plot:
         ax5 = fig.add_subplot(3,2,5)
@@ -255,7 +265,7 @@ def readWalkmanCSV(path, config, plot):
 
     #hardware and gazebo seem to have different sign
     #hw sensors are unreliable in linear x and y axes for now
-    if is_gazebo:
+    if not is_gazebo:
         out['FTleft'][:, 0] = f[:, 3]*0
         out['FTleft'][:, 1] = f[:, 4]*0
         out['FTleft'][:, 2] = f[:, 5]
@@ -307,6 +317,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('--measurements', required=True, type=str, help='the directory to load the measurements from')
     parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
+    parser.add_argument('--regressor', required=False, type=str, help='the file to load the regressor structure from (only for simulation)')
     parser.add_argument('--outfile', type=str, help='the filename to save the measurements to')
     parser.add_argument('--plot', help='whether to plot the data', action='store_true')
     parser.add_argument('--robot', required=True, help='which robot to import data for (walkman, centauro)', type=str)
@@ -381,7 +392,7 @@ if __name__ == '__main__':
                         Fs=out['frequency'])
 
     #simulate with iDynTree if we're using gazebo data
-    if not is_gazebo:
+    if is_gazebo:
         #use all data
         old_skip = config['skipSamples']
         config['skipSamples'] = 0
@@ -390,13 +401,14 @@ if __name__ == '__main__':
         old_sim = config['simulateTorques']
         config['simulateTorques'] = 1
         data.init_from_data(out)
-        model = Model(config, config['model'])
+        model = Model(config, config['model'], args.regressor)
+        if config['verbose']:
+            print('simulating torques for motion data')
         model.computeRegressors(data)
         out['torques'] = out['torques_raw'] = model.data.samples['torques']
         config['skipSamples'] = old_skip
         config['startOffset'] = old_offset
         config['simulateTorques'] = old_sim
-
 
     if config['floatingBase']:
         np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],

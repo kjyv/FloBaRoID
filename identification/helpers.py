@@ -15,6 +15,18 @@ if (sys.version_info < (3, 0)):
     class FileNotFoundError(OSError):
         pass
 
+from tqdm import tqdm
+
+class Progress(object):
+    def __init__(self, config):
+        self.config = config
+
+    def progress(self, iter):
+        if self.config['verbose']:
+            return tqdm(iter)
+        else:
+            return iter
+
 class Timer(object):
     def __enter__(self):
         self.start = time.clock()

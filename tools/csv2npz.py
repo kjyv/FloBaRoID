@@ -263,24 +263,24 @@ def readWalkmanCSV(path, config, plot):
         ax6 = fig.add_subplot(3,2,6)
         ft_labels = ['F_x', 'F_y', 'F_z', 'M_x', 'M_y', 'M_z']
 
-    #hardware and gazebo seem to have different sign
-    #hw sensors are unreliable in linear x and y axes for now
+    #hardware and gazebo ft sensors seem to have different sign
+    #hw sensors are unreliable in linear x and y axes, but small values so ignore them for now
     if not is_gazebo:
-        out['FTleft'][:, 0] = f[:, 3]*0
-        out['FTleft'][:, 1] = f[:, 4]*0
-        out['FTleft'][:, 2] = f[:, 5]
+        out['FTleft'][:, 0] = -f[:, 3]*0
+        out['FTleft'][:, 1] = -f[:, 4]*0
+        out['FTleft'][:, 2] = -f[:, 5]
 
-        out['FTleft'][:, 3] = f[:, 6]
-        out['FTleft'][:, 4] = f[:, 7]
-        out['FTleft'][:, 5] = f[:, 8]
+        out['FTleft'][:, 3] = -f[:, 6]
+        out['FTleft'][:, 4] = -f[:, 7]
+        out['FTleft'][:, 5] = -f[:, 8]
 
-        out['FTright'][:, 0] = f[:, 9]*0
-        out['FTright'][:, 1] = f[:, 10]*0
-        out['FTright'][:, 2] = f[:, 11]
+        out['FTright'][:, 0] = -f[:, 9]*0
+        out['FTright'][:, 1] = -f[:, 10]*0
+        out['FTright'][:, 2] = -f[:, 11]
 
-        out['FTright'][:, 3] = f[:, 12]
-        out['FTright'][:, 4] = f[:, 13]
-        out['FTright'][:, 5] = f[:, 14]
+        out['FTright'][:, 3] = -f[:, 12]
+        out['FTright'][:, 4] = -f[:, 13]
+        out['FTright'][:, 5] = -f[:, 14]
 
         #FTtoWorld = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
         #for j in range(0, out['FTright'].shape[0]):

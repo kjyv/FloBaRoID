@@ -13,6 +13,7 @@ from sympy import symbols, Matrix
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
+from .quaternion import Quaternion
 
 from IPython import embed
 
@@ -215,7 +216,7 @@ class Model(object):
             # elements 3,4,5 of q are the x,y,z components of the quaternion of the floating body
             # the w component of the quaternion is appended at the end (why?)
             rotq = Quaternion.fromRPY(rpy[0], rpy[1], rpy[2])
-            q = np.concatenate([[0,0,0], rotq[1:4], q, rotq[0]])
+            q = np.concatenate((np.array([0,0,0]), rotq[0:3], q, np.array([rotq[4]])))
 
             # the first three elements (0,1,2) of qdot is the linear velocity of the floating body
             # elements 3,4,5 of qdot is the angular velocity of the floating body
@@ -224,9 +225,6 @@ class Model(object):
             # the first three elements (0,1,2) of qddot is the linear acceleration of the floating body
             # elements 3,4,5 of qddot is the angular acceleration of the floating body
             qddot = np.concatenate([base_acceleration, qddot])
-
-            # increase size of tau to hold linear forces and torques on base link
-            tau = np.concatenate([np.zeros(6), tau])
 
         # compute inverse dynamics with rbdl
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
@@ -284,7 +282,6 @@ class Model(object):
             # for identification purposes, the position does not matter but rotation is taken
             # from IMU estimation. The gravity, base velocity and acceleration all need to be
             # expressed in world frame then
-            #dynComp.setFloatingBase(self.opt['baseLinkName'])
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)
@@ -385,12 +382,12 @@ class Model(object):
                     if self.opt['simulateTorques']:
                         torq = np.nan_to_num(torques)
                     else:
+                        # write estimated base forces to measured torq vector from file
+                        # (usually can't be measured so they are simulated from the measured base motion)
                         if self.opt['floatingBase'] and len(torq) < (self.num_dofs + fb):
-                            #add estimated base forces to measured torq vector from file
                             torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
-
-                #if self.opt['addNoise'] != 0:
-                #    torq += np.random.randn(self.num_dofs+fb)*self.opt['addNoise']
+                        else:
+                            torq[0:6] = np.nan_to_num(torques[0:6])
 
             simulate_time += t.interval
 
@@ -424,7 +421,7 @@ class Model(object):
                     if self.opt['floatingBase']:
                         # the base forces are expressed in the base frame for the regressor, so transform them
                         # to world frame (inverse dynamics use world frame)
-                        to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
+                        to_world = world_T_base.getRotation().toNumPy()
                         regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                         regressor[3:6, :] = to_world.dot(regressor[3:6, :])
 
@@ -488,13 +485,13 @@ class Model(object):
 
             if self.opt['simulateTorques']:
                 #subtract measured contact wrench from torque estimation from iDynTree
-                self.torques_stack = self.torques_stack - self.contactForcesSum
+                self.torques_stack = self.torques_stack + self.contactForcesSum
             else:
                 # if not simulating, measurements of joint torques already contain contact contribution,
                 # so only add it to the (simulated) base force estimation
                 torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
                 self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
-                torques_stack_2dim[:, :6] -= self.contactForcesSum_2dim[:, :6]
+                torques_stack_2dim[:, :6] += self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
 
         if len(contacts.keys()) or self.opt['simulateTorques']:

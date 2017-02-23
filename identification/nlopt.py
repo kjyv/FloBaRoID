@@ -153,7 +153,7 @@ class NLOPT(object):
 
         #minimize estimation error
         #tau = self.model.torques_stack
-        #u = la.norm(tau - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
+        #u = la.norm( (tau + self.model.contactForcesSum) - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
 
         #minimize distance to CAD
         apriori = self.model.xStdModel[self.identified_params]
@@ -247,7 +247,7 @@ class NLOPT(object):
 
         #minimize estimation error
         #tau = self.model.torques_stack
-        #u = la.norm(tau - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
+        #u = la.norm( (tau + self.model.contactForcesSum) - self.model.YStd[:, self.start_param:].dot(x_std))**2 #/ self.idf.data.num_used_samples
 
         cons = []
         # base equations == xBase as constraints

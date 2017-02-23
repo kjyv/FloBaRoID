@@ -301,12 +301,6 @@ class SDP(object):
             YBase = idf.model.YBase
             tau = idf.model.torques_stack   #always absolute torque values
 
-            Q, R = la.qr(YBase)
-            Q1 = Q[:, 0:idf.model.num_base_params]
-            #Q2 = Q[:, idf.model.num_base_params:]
-            rho1 = Q1.T.dot(tau)
-            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])
-
             # get projection matrix so that xBase = K*xStd
             if idf.opt['useBasisProjection']:
                 K = Matrix(idf.model.Binv)
@@ -319,6 +313,11 @@ class SDP(object):
             for c in reversed(self.delete_cols):
                 K.col_del(c)
 
+            Q, R = la.qr(YBase)
+            Q1 = Q[:, 0:idf.model.num_base_params]
+            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])
+            rho1 = Q1.T.dot(tau)
+
             contactForces = Q.T.dot(idf.model.contactForcesSum)
             if idf.opt['useRegressorRegularization']:
                 p_nid = idf.model.non_id
@@ -328,11 +327,14 @@ class SDP(object):
             if idf.opt['verbose']:
                 print("Step 1...", time.ctime())
 
-            # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
+            # solving OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
 
             # get minimal regresion error
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
+            # rho2_norm_sqr = la.norm(Q2.T.dot(tau))**2
+            rho2_norm_sqr = 0
+            # since we use QR if YBase, Q2 is empty anyway, so rho2 = Q2*tau following the paper is zero
+            # the code from sousa's notebook includes a different calculation, unclear why:
+            #rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase) - idf.model.contactForcesSum)**2
 
             # get additional regression error
             if idf.opt['useRegressorRegularization'] and len(p_nid):

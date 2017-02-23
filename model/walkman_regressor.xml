@@ -1,3 +1,4 @@
+<!-- the joints in this file need to have the same order as reported when running without supplying a regressor file -->
 <regressor>
     <baseLinkDynamics/>
     <jointTorqueDynamics>
@@ -46,11 +47,11 @@
             <joint>RWrj2</joint>
         </joints>
     </jointTorqueDynamics>
-    <ignoredLink>NeckYaw</ignoredLink>
+    <!--<ignoredLink>NeckYaw</ignoredLink>
     <ignoredLink>NeckPitch</ignoredLink>
     <ignoredLink>multisense/head</ignoredLink>
     <ignoredLink>multisense/hokuyo_link</ignoredLink>
     <ignoredLink>imu_link</ignoredLink>
     <ignoredLink>imu_link2</ignoredLink>
-    <ignoredLink>multisense/head_imu_link</ignoredLink>
+    <ignoredLink>multisense/head_imu_link</ignoredLink>-->
 </regressor>

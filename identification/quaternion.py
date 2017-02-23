@@ -14,10 +14,10 @@ class Quaternion(object):
         t5 = np.sin(pitch * 0.5)
 
         q = np.zeros(4)
-        q[0] = t0 * t2 * t4 + t1 * t3 * t5
-        q[1] = t0 * t3 * t4 - t1 * t2 * t5
-        q[2] = t0 * t2 * t5 + t1 * t3 * t4
-        q[3] = t1 * t2 * t4 - t0 * t3 * t5
+        q[0] = t0 * t3 * t4 - t1 * t2 * t5  #x
+        q[1] = t0 * t2 * t5 + t1 * t3 * t4  #y
+        q[2] = t1 * t2 * t4 - t0 * t3 * t5  #z
+        q[3] = t0 * t2 * t4 + t1 * t3 * t5  #w
         return q
 
     @classmethod

@@ -113,7 +113,7 @@ class Identification(object):
             fb = 6
         else:
             fb = 0
-        tauEst -= self.model.contactForcesSum
+        tauEst += self.model.contactForcesSum
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
@@ -517,23 +517,21 @@ class Identification(object):
             self.model.xBaseModel = np.dot(self.model.K, self.model.xStdModel[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
-        # should always try to avoid inversion if possible
+        # should always try to avoid inversion of ill-conditioned matrices if possible
 
         # invert equation to get parameter vector from measurements and model + system state values
         self.model.YBaseInv = la.pinv(YBase)
 
-        # identify
-        self.model.xBase = self.model.YBaseInv.dot(tau.T) + self.model.YBaseInv.dot(self.model.contactForcesSum)
+        # identify using numpy least squares method (should be numerically more stable)
+        self.model.xBase = la.lstsq(YBase, tau)[0] - self.model.YBaseInv.dot(self.model.contactForcesSum)
 
         """
-        # ordinary least squares with numpy method (might be better in noisy situations)
-        self.model.xBase = la.lstsq(YBase, tau)[0] + self.model.YBaseInv.dot(self.model.contactForcesSum)
-        """
+        # using pseudoinverse
+        self.model.xBase = self.model.YBaseInv.dot(tau.T) - self.model.YBaseInv.dot(self.model.contactForcesSum)
 
-        """
         # damped least squares
         from scipy.sparse.linalg import lsqr
-        self.model.xBase = lsqr(YBase, tau, damp=10)[0]
+        self.model.xBase = lsqr(YBase, tau, damp=10)[0] - self.model.YBaseInv.dot(self.model.contactForcesSum)
         """
 
         # stop here if called recursively
@@ -609,6 +607,7 @@ class Identification(object):
             W_st = la.pinv(W_st_pinv)
             self.YStd_nonsing = W_st
 
+            #TODO: add contact forces
             x_est = W_st_pinv.dot(self.model.tau)
 
             if self.opt['useAPriori']:
@@ -646,6 +645,7 @@ class Identification(object):
             W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
             #W_st_e = la.pinv(W_st_e_pinv)
 
+            #TODO: add contact forces
             x_tmp = W_st_e_pinv.dot(self.model.tau)
 
             if self.opt['useAPriori']:
@@ -783,8 +783,26 @@ class Identification(object):
 
         if self.opt['plotPerJoint']:
             datasets = []
+            if self.opt['floatingBase']:
+                if self.opt['plotBaseDynamics']:
+                    for i in range(6):
+                        datasets.append(
+                            { 'unified_scaling': False,
+                              #'y_label': '$F {{ {} }}$ (Nm)'.format(i),
+                              'y_label': 'Force (N)',
+                              'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
+                              'dataset': [
+                                {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
+                                 'time': rel_time, 'title': torque_labels[i]}
+                              ]
+                            }
+                        )
+                fb = 6
+            else:
+                fb = 0
+
             # add plots for each joint
-            for i in range(self.model.num_dofs):
+            for i in range(fb, self.model.num_dofs):
                 datasets.append(
                     { 'unified_scaling': False,
                       #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),

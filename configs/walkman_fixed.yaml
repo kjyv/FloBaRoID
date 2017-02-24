@@ -81,8 +81,8 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
-# use random regressors to determine structural dependencies when getting base regressor
-# (may give issues if only limited data is available)
+# use random regressors to determine structural parameter dependencies when getting base regressor
+# (may result in linear dependencies in regressor if only limited data is used)
 useRandomRegressor: 0
 
 # fixed or floating-base dynamics

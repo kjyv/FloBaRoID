@@ -74,8 +74,8 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
-# use random regressors to determine structural dependencies when getting base regressor
-# (may give issues if only limited data is available)
+# use random regressors to determine structural parameter dependencies when getting base regressor
+# (may result in linear dependencies in regressor if only limited data is used)
 useRandomRegressor: 0
 
 # fixed or floating-base dynamics
@@ -134,7 +134,7 @@ cubeSize: 1.0
 
 # constrain overall mass
 limitOverallMass: 0
-# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
+# if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
 limitMassVal: 16.0
 #allowed percentual change in both directions (1-range and 1+range)
 limitMassRange: 0.05

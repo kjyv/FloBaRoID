@@ -81,8 +81,8 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
-# use random regressors to determine structural dependencies when getting base regressor
-# (may give some issues if only limited data is available)
+# use random regressors to determine structural parameter dependencies when getting base regressor
+# (may result in linear dependencies in regressor if only limited data is used)
 useRandomRegressor: 1
 
 # fixed or floating-base dynamics
@@ -138,14 +138,14 @@ hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 1.0
+cubeSize: 0.5
 
 # constrain overall mass
 limitOverallMass: 1
-# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 139.15  #139.122
+# if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
+limitMassVal: 139.14
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.05
+limitMassRange: 0.1
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
@@ -339,7 +339,7 @@ createPlots: 1               #create or show plots of measurements and estimated
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
 outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
 outputFilename: 'output_walkman.html'    #specify custom filename for output file
-plotBaseDynamics: 0          #when using floating base, plot base forces or not
+plotBaseDynamics: 1          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs

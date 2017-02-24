@@ -12,7 +12,7 @@ import cvxopt
 from cvxopt import matrix
 import lmi_sdp
 
-epsilon_sdptol = 1e-7
+epsilon_sdptol = 1e-6
 
 from colorama import Fore, Back
 

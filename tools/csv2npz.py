@@ -24,7 +24,7 @@ from identification.data import Data
 from identification.model import Model
 
 #set to simulate torques with iDynTree and override wrong torques from gazebo
-is_gazebo = 1
+is_gazebo = 0
 
 def readCentauroCSV(path, config, plot):
     #names in order of the supplied data
@@ -68,9 +68,6 @@ def readCentauroCSV(path, config, plot):
             ax1.plot(out['times'][::4], out['positions'][::4, dof], label=jointNames[dof])
             ax2.plot(out['times'][::4], out['torques'][::4, dof], label=jointNames[dof])
 
-    #correct signs and offsets (for now)
-    #out['torques'] = out['torques']*joint_signs + joint_offsets
-
     if plot:
         #set titles and enable legends for each subplot
         t = ['positions', 'torques']
@@ -103,29 +100,28 @@ def readWalkmanCSV(path, config, plot):
     #csv_T_urdf_indices = [12, 13, 14, 22, 23,  0, 1, 2, 3, 4, 5,  6, 7, 8, 9, 10, 11,  24, 25, 26, 27,  15,
     #                      16, 17, 18, 19, 20, 21,  28, 29, 30]
     # idyntree urdf joint order (generator and dynComp class)
-    # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat, RHipLat, RHipYaw, RHipSag, RKneeSag,
-    # RAnkSag, RAnkLat, WaistLat, WaistSag, WaistYaw, LShSag, LShLat, LShYaw, LElbj, LForearmPlate,
-    # LWrj1, LWrj2, NeckYawj, NeckPitchj, RShSag, RShLat, RShYaw, RElbj, RForearmPlate, RWrj1, RWrj2
+    # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat,
+    # RHipLat, RHipYaw, RHipSag, RKneeSag, RAnkSag, RAnkLat,
+    # WaistLat, WaistSag, WaistYaw,
+    # LShSag, LShLat, LShYaw, LElbj, LForearmPlate, LWrj1, LWrj2,
+    # NeckYawj, NeckPitchj,
+    # RShSag, RShLat, RShYaw, RElbj, RForearmPlate, RWrj1, RWrj2
     # mapping to urdf joints in indices:
     csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 
     ## apply some data correction, should be temporary
 
-    joint_signs = np.array([-1, 1, -1, -1, 1, -1,      #LHipLat -
-                            1, 1, 1, 1, -1, -1,      #RHipLat -
-                            #1,                       #WaistLat
+    joint_signs = np.array([1, -1, 1, 1, -1, 1,       #LHipLat -
+                            -1, -1, -1, -1, 1, 1,      #RHipLat -
                             1, 1,                     #WaistSag -
-                            1, -1, -1, 1, 1, -1, -1,   #LShSag -
-                            #1, 1,                     #NeckYawj -
-                            1, -1, -1, -1, 1, 1, 1  #RShSag -
+                            1, -1, -1, 1, 1, -1, -1,  #LShSag -
+                            1, -1, -1, -1, 1, 1, 1    #RShSag -
                            ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
-                              #-370,                  #WaistLat
                               0, 0,
                               0, 0, 0, 0, 0, 0, 0,
-                              #0, 0,
                               0, 0, 0, 0, 0, 0, 0
                              ])
 
@@ -136,11 +132,12 @@ def readWalkmanCSV(path, config, plot):
         time_offset = 0
 
     # scale feet F/T sensors so zero value is force corresponding to weight
-    # walkman whole weight is 143.06 kg (could be a little wrong)
+    # walkman whole weight is 139.14 kg (maybe was without protection at times? -4.7)
+    # (equalized at peaks on one leg, scaled so sum of stance on both legs corrseponds to mass)
     if not is_gazebo:
         scale = 0.7
-        ft_left_scale = 0.90 * scale
-        ft_right_scale = 1.18 * scale
+        ft_left_scale = 0.9 * scale
+        ft_right_scale = 1.15 * scale
     else:
         scale = 1.0
         ft_left_scale = scale
@@ -168,18 +165,19 @@ def readWalkmanCSV(path, config, plot):
         ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])//7
 
-    skip=0
+    ign=0
+    skip=4
     for dof in range(0, config['num_dofs']):
         if dof in ignoreJoints:
-            skip+=1
+            ign+=1
 
-        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*0]   #position reference
-        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+skip]+dofs_file*2]   #link encoders
+        out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+ign]+dofs_file*0]   #position reference
+        out['positions'][:, dof] = f[:, csv_T_urdf_indices[dof+ign]+dofs_file*2]   #link encoders
         f_len = f.shape[0]
-        out['torques'][time_offset:, dof] = f[:f_len-time_offset, csv_T_urdf_indices[dof+skip]+dofs_file*4]   #torque sensors
+        out['torques'][time_offset:, dof] = f[:f_len-time_offset, csv_T_urdf_indices[dof+ign]+dofs_file*4]   #torque sensors
         if plot:
-            ax1.plot(out['times'], out['positions'][:, dof], label=jointNames[dof])
-            ax2.plot(out['times'], out['torques'][:, dof], label=jointNames[dof])
+            ax1.plot(out['times'][::skip], out['positions'][::skip, dof], label=jointNames[dof])
+            ax2.plot(out['times'][::skip], out['torques'][::skip, dof], label=jointNames[dof])
 
     #correct signs and offsets (until measurements are fixed)
     if not is_gazebo:
@@ -235,8 +233,8 @@ def readWalkmanCSV(path, config, plot):
 
     if plot:
         for i in range(0,3):
-            ax3.plot(out['times'], out['IMUrpy'][:, i], label=rpy_labels[i])
-            ax4.plot(out['times'], out['IMUlinAcc'][:, i], label=acc_labels[i])
+            ax3.plot(out['times'][::skip], out['IMUrpy'][::skip, i], label=rpy_labels[i])
+            ax4.plot(out['times'][::skip], out['IMUlinAcc'][::skip, i], label=acc_labels[i])
 
     '''
     # use both IMUs and take average
@@ -266,21 +264,21 @@ def readWalkmanCSV(path, config, plot):
     #hardware and gazebo ft sensors seem to have different sign
     #hw sensors are unreliable in linear x and y axes, but small values so ignore them for now
     if not is_gazebo:
-        out['FTleft'][:, 0] = -f[:, 3]*0
-        out['FTleft'][:, 1] = -f[:, 4]*0
-        out['FTleft'][:, 2] = -f[:, 5]
+        out['FTleft'][:, 0] = f[:, 3]*0
+        out['FTleft'][:, 1] = f[:, 4]*0
+        out['FTleft'][:, 2] = f[:, 5]
 
-        out['FTleft'][:, 3] = -f[:, 6]
-        out['FTleft'][:, 4] = -f[:, 7]
-        out['FTleft'][:, 5] = -f[:, 8]
+        out['FTleft'][:, 3] = f[:, 6]
+        out['FTleft'][:, 4] = f[:, 7]
+        out['FTleft'][:, 5] = f[:, 8]
 
-        out['FTright'][:, 0] = -f[:, 9]*0
-        out['FTright'][:, 1] = -f[:, 10]*0
-        out['FTright'][:, 2] = -f[:, 11]
+        out['FTright'][:, 0] = f[:, 9]*0
+        out['FTright'][:, 1] = f[:, 10]*0
+        out['FTright'][:, 2] = f[:, 11]
 
-        out['FTright'][:, 3] = -f[:, 12]
-        out['FTright'][:, 4] = -f[:, 13]
-        out['FTright'][:, 5] = -f[:, 14]
+        out['FTright'][:, 3] = f[:, 12]
+        out['FTright'][:, 4] = f[:, 13]
+        out['FTright'][:, 5] = f[:, 14]
 
         #FTtoWorld = iDynTree.Rotation.RPY(0, 0, np.pi).toNumPy()
         #for j in range(0, out['FTright'].shape[0]):
@@ -296,8 +294,8 @@ def readWalkmanCSV(path, config, plot):
 
     if plot:
         for i in range(0,6):
-            ax5.plot(out['times'], out['FTleft'][:, i], label=ft_labels[i])
-            ax6.plot(out['times'], out['FTright'][:, i], label=ft_labels[i])
+            ax5.plot(out['times'][::skip], out['FTleft'][::skip, i], label=ft_labels[i])
+            ax6.plot(out['times'][::skip], out['FTright'][::skip, i], label=ft_labels[i])
 
         #set titles and enable legends for each subplot
         t = ['positions', 'torques', 'IMU rpy', 'IMU acc', 'FT left', 'FT right']

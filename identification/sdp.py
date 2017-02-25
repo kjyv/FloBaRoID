@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from builtins import zip
 from builtins import range
 import time
+from typing import Dict
 
 import numpy as np
 import numpy.linalg as la
@@ -13,6 +14,10 @@ from sympy import Symbol, solve, Matrix, BlockMatrix, Identity, eye
 from distutils.version import LooseVersion
 if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
     print("Old sympy version found (< 0.7.5)! Please update.")
+
+import os, sys
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+import identification
 
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
@@ -25,10 +30,11 @@ from IPython import embed
 
 class SDP(object):
     def __init__(self, idf):
+        # type: (Identification) -> None
         self.idf = idf
 
         # collect constraint flags for display
-        self.constr_per_param = {}
+        self.constr_per_param = {}   # type: Dict[int, List[str]]
         for i in self.idf.model.identified_params:
             self.constr_per_param[i] = []
 
@@ -38,6 +44,7 @@ class SDP(object):
 
 
     def checkFeasibility(self, prime):
+        # type: (np.ndarray) -> bool
         ''' check for a given parameter vector, e.g. a starting point, if it is within the LMI
         constraints '''
 
@@ -66,6 +73,7 @@ class SDP(object):
 
 
     def initSDP_LMIs(self, idf, remove_nonid=True):
+        # type: (Identification, bool) -> None
         ''' initialize LMI matrices to set physical consistency constraints for SDP solver
             based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
         '''
@@ -291,13 +299,10 @@ class SDP(object):
 
 
     def identifyFeasibleStandardParameters(self, idf):
+        # type: (Identification) -> None
         ''' use SDP optimization to solve constrained OLS to find globally optimal physically
             feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
         '''
-
-        #if idf.opt['useAPriori']:
-        #    print("Please disable using a priori parameters when using constrained optimization.")
-        #    sys.exit(1)
 
         with helpers.Timer() as t:
             if idf.opt['verbose']:
@@ -688,6 +693,7 @@ class SDP(object):
 
 
     def findFeasibleStdFromFeasibleBase(self, idf, xBase):
+        # type: (Identification, np.ndarray) -> None
         ''' find a std feasible solution for feasible base solution (exists by definition) while
             minimizing param distance to a-priori parameters
         '''

@@ -5,20 +5,22 @@ from builtins import str
 from builtins import range
 from builtins import object
 import time
-import iDynTree
+from typing import Dict, Iterable, Union, Text
+
 import numpy as np
 
 from colorama import Fore
+from tqdm import tqdm
 
+import iDynTree
+
+from identification import model
+
+#define exception for python < 3
 import sys
 if (sys.version_info < (3, 0)):
     class FileNotFoundError(OSError):
         pass
-
-from tqdm import tqdm
-from typing import Dict, Iterable
-
-from identification import model
 
 
 class Progress(object):
@@ -354,12 +356,12 @@ class URDFHelpers(object):
         tree.write(output_urdf, xml_declaration=True)
 
     def getMeshPath(self, input_urdf, link_name):
-        # type: (str, str) -> str
+        # type: (Text, Text) -> Text
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
 
         link_found = False
-        filepath = None
+        filepath = None  # type: Text
         for l in tree.findall('link'):
             if l.attrib['name'] == link_name:
                 link_found = True

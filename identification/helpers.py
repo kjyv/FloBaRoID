@@ -1,5 +1,6 @@
 from __future__ import division
 from __future__ import print_function
+from __future__ import absolute_import
 from builtins import str
 from builtins import range
 from builtins import object
@@ -7,8 +8,7 @@ import time
 import iDynTree
 import numpy as np
 
-import colorama
-from colorama import Fore, Back, Style
+from colorama import Fore
 
 import sys
 if (sys.version_info < (3, 0)):
@@ -16,16 +16,21 @@ if (sys.version_info < (3, 0)):
         pass
 
 from tqdm import tqdm
+from typing import Dict, Iterable
+
+from identification import model
+
 
 class Progress(object):
-    def __init__(self, config):
+    def __init__(self, config):  # type: (Dict) -> None
         self.config = config
 
-    def progress(self, iter):
+    def progress(self, iter):    # type: (Iterable) -> Iterable
         if self.config['verbose']:
             return tqdm(iter)
         else:
             return iter
+
 
 class Timer(object):
     def __enter__(self):
@@ -36,12 +41,14 @@ class Timer(object):
         self.end = time.clock()
         self.interval = self.end - self.start
 
+
 class ParamHelpers(object):
-    def __init__(self, model, opt):
+    def __init__(self, model, opt):  # type: (model.Model, Dict) -> None
         self.model = model
         self.opt = opt
 
     def checkPhysicalConsistency(self, params, full=False):
+        # type: (np.ndarray, bool) -> (Dict[int, bool])
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite, triangle inequaltiy for eigenvalues of inertia tensor expressed at COM)
@@ -57,7 +64,7 @@ class ParamHelpers(object):
                 #masses need to be positive
                 cons[i] = params[i*4] > 0
         else:
-            for i in range(0, len(params)):
+            for i in range(0, params.shape[0]):
                 if (i % 10 == 0) and i < self.model.num_model_params:   #for each link (and not friction)
                     p_vec = iDynTree.Vector10()
                     for j in range(0, 10):
@@ -68,6 +75,7 @@ class ParamHelpers(object):
         return cons
 
     def checkPhysicalConsistencyNoTriangle(self, params, full=False):
+        # type: (np.ndarray, bool) -> (Dict[int, bool])
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite)
@@ -78,6 +86,7 @@ class ParamHelpers(object):
         when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
         cons = {}
+
         if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
                 #masses need to be positive
@@ -113,6 +122,7 @@ class ParamHelpers(object):
         return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
     def invvech(self, params):
+        # type: (np.ndarray[float]) -> (np.ndarray[float])
         """give full inertia tensor from vectorized form
            expect vector of 6 values (xx, xy, xz, yy, yz, zz).T"""
         tensor = np.zeros((3,3))
@@ -140,7 +150,8 @@ class ParamHelpers(object):
         return tensor
 
     def vech(self, params):
-        #return vectorization of symmetric 3x3 matrix (only up to diagonal)
+        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        """return vectorization of symmetric 3x3 matrix (only up to diagonal)"""
         vec = np.zeros(6)
         vec[0] = params[0,0]
         vec[1] = params[0,1]
@@ -151,6 +162,7 @@ class ParamHelpers(object):
         return vec
 
     def inertiaTensorFromParams(self, params):
+        # type: (np.ndarray[float]) -> (List[np.ndarray[float]])
         """take a parameter vector and return list of full inertia tensors (one for each link)"""
         tensors = list()
         for i in range(len(params)):
@@ -160,8 +172,9 @@ class ParamHelpers(object):
         return tensors
 
     def inertiaParams2RotationalInertiaRaw(self, params):
-        #take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix
-        #expects six parameter vector
+        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        """take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix
+        expects six parameter vector"""
 
         inertia = iDynTree.RotationalInertiaRaw()
         #xx of inertia matrix w.r.t. link origin
@@ -188,8 +201,9 @@ class ParamHelpers(object):
         return inertia
 
     def paramsLink2Bary(self, params):
-        ## convert params from iDynTree values (relative to link frame) to barycentric parameters (usable in URDF)
-        ## (changed in place)
+        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        """convert params from iDynTree values (relative to link frame) to barycentric parameters
+           (usable in URDF) (changed in place)"""
 
         #mass stays the same
         #linear com is first moment of mass, so com * mass. URDF uses com
@@ -223,6 +237,7 @@ class ParamHelpers(object):
         return params
 
     def paramsBary2Link(self, params):
+        # type: (np.ndarray[float]) -> (np.ndarray[float])
         params = params.copy()
         for i in range(0, len(params)):
             if (i % 10 == 0) and i < self.model.num_model_params:   #for each link
@@ -252,6 +267,7 @@ class ParamHelpers(object):
 
     @staticmethod
     def addFrictionFromURDF(model, urdf_file, params):
+        # type: (model.Model, str, np.ndarray[float]) -> None
         ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
 
         friction = URDFHelpers.getJointFriction(urdf_file)
@@ -267,13 +283,16 @@ class ParamHelpers(object):
                 params[start+nd:end+nd] = \
                     np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
 
+
 class URDFHelpers(object):
     def __init__(self, paramHelpers, model, opt):
+        # type: (ParamHelpers, model.Model, Dict) -> None
         self.paramHelpers = paramHelpers
         self.model = model
         self.opt = opt
 
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
+        # type: (str, str, np.ndarray[float]) -> None
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
         if self.opt['identifyGravityParamsOnly']:
@@ -328,6 +347,7 @@ class URDFHelpers(object):
         tree.write(output_urdf, xml_declaration=True)
 
     def getMeshPath(self, input_urdf, link_name):
+        # type: (str, str) -> str
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
 
@@ -337,7 +357,7 @@ class URDFHelpers(object):
             if l.attrib['name'] == link_name:
                 link_found = True
                 m = l.find('visual/geometry/mesh')
-                if m != None:
+                if m is not None:
                     filepath = m.attrib['filename']
                     try:
                         self.mesh_scaling = m.attrib['scale']
@@ -427,7 +447,7 @@ class URDFHelpers(object):
             velocity = 0
             if j.attrib['type'] == 'revolute':
                 l = j.find('limit')
-                if l != None:
+                if l is not None:
                     torque = l.attrib['effort']   #this is not really the physical limit but controller limit, but well
                     lower = l.attrib['lower']
                     upper = l.attrib['upper']
@@ -458,7 +478,7 @@ class URDFHelpers(object):
             vel_dependent = 0
             if j.attrib['type'] == 'revolute':
                 l = j.find('dynamics')
-                if l != None:
+                if l is not None:
                     try:
                         constant = l.attrib['friction']
                     except KeyError:

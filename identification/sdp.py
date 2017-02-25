@@ -3,15 +3,13 @@ from __future__ import print_function
 from __future__ import absolute_import
 from builtins import zip
 from builtins import range
+import time
 
-import sys
 import numpy as np
 import numpy.linalg as la
-import scipy
-import scipy.linalg as sla
 
 import sympy
-from sympy import Symbol, solve, Matrix, BlockMatrix, ZeroMatrix, Identity, zeros, eye
+from sympy import Symbol, solve, Matrix, BlockMatrix, Identity, eye
 from distutils.version import LooseVersion
 if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
     print("Old sympy version found (< 0.7.5)! Please update.")
@@ -20,10 +18,10 @@ from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
 
-from colorama import Fore, Back, Style
+from colorama import Fore
 
-import time
 from IPython import embed
+
 
 class SDP(object):
     def __init__(self, idf):
@@ -93,7 +91,7 @@ class SDP(object):
                 if set(self.delete_cols).issubset(idf.model.non_id):
                     start_link = 1
                 else:
-                    #if 0'th link is identifiable, just include as usual
+                    # if 0'th link is identifiable, just include as usual
                     start_link = 0
                     self.delete_cols = []
             else:
@@ -109,25 +107,25 @@ class SDP(object):
                 for i in range(start_link, idf.model.num_links):
                     if i*10 not in self.delete_cols:
                         p = idf.model.mass_params[i]
-                        D_other_blocks.append( Matrix([idf.model.param_syms[p]]) )
+                        D_other_blocks.append(Matrix([idf.model.param_syms[p]]))
             else:
                 # create LMI matrices (symbols) for each link
                 # so that mass is positive, inertia matrix is positive definite
                 # (each matrix block is constrained to be >0 or >=0)
                 for i in range(start_link, idf.model.num_links):
                     m = idf.model.mass_syms[i]
-                    l = Matrix([ idf.model.param_syms[i*10+1],
-                                 idf.model.param_syms[i*10+2],
-                                 idf.model.param_syms[i*10+3] ] )
-                    L = Matrix([ [idf.model.param_syms[i*10+4+0],
-                                  idf.model.param_syms[i*10+4+1],
-                                  idf.model.param_syms[i*10+4+2]],
-                                 [idf.model.param_syms[i*10+4+1],
-                                  idf.model.param_syms[i*10+4+3],
-                                  idf.model.param_syms[i*10+4+4]],
-                                 [idf.model.param_syms[i*10+4+2],
-                                  idf.model.param_syms[i*10+4+4],
-                                  idf.model.param_syms[i*10+4+5]]
+                    l = Matrix([idf.model.param_syms[i*10+1],
+                                idf.model.param_syms[i*10+2],
+                                idf.model.param_syms[i*10+3]])
+                    L = Matrix([[idf.model.param_syms[i*10+4+0],
+                                 idf.model.param_syms[i*10+4+1],
+                                 idf.model.param_syms[i*10+4+2]],
+                                [idf.model.param_syms[i*10+4+1],
+                                 idf.model.param_syms[i*10+4+3],
+                                 idf.model.param_syms[i*10+4+4]],
+                                [idf.model.param_syms[i*10+4+2],
+                                 idf.model.param_syms[i*10+4+4],
+                                 idf.model.param_syms[i*10+4+5]]
                                ])
 
                     Di = BlockMatrix([[L,    S(l).T],
@@ -140,7 +138,7 @@ class SDP(object):
             linkConds = idf.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
             for i in range(0, idf.model.num_links):
-                robotmass_apriori+= idf.model.xStdModel[i*10]  #count a priori link masses
+                robotmass_apriori += idf.model.xStdModel[i*10]  #count a priori link masses
 
                 # for links that have too high condition number, don't change params
                 if idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']:
@@ -175,7 +173,7 @@ class SDP(object):
 
             # constrain overall mass within bounds
             if idf.opt['limitOverallMass']:
-                #use given overall mass else use overall mass from CAD
+                # use given overall mass else use overall mass from CAD
                 if idf.opt['limitMassVal']:
                     robotmaxmass = idf.opt['limitMassVal'] - sum(idf.model.xStdModel[0:start_link*10:10])
                     robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt['limitMassRange']
@@ -186,8 +184,8 @@ class SDP(object):
                     robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt['limitMassRange']
                     robotmaxmass_lb = robotmaxmass * 1.0 - idf.opt['limitMassRange']
 
-                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])])) #maximum mass
-                D_other_blocks.append(Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb])) #minimum mass
+                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])]))  # maximum mass
+                D_other_blocks.append(Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb]))  # minimum mass
 
             # constrain masses for each link separately
             if idf.opt['limitMassToApriori']:
@@ -230,18 +228,17 @@ class SDP(object):
                                 link_nr = i
                             )
                         )
-                        #print link_cuboid_hulls[i]*idf.model.xStdModel[i*10]
-                        l = Matrix( idf.model.param_syms[i*10+1:i*10+4])
+                        l = Matrix(idf.model.param_syms[i*10+1:i*10+4])
                         m = idf.model.mass_syms[i]
 
                         link_cuboid_hull = link_cuboid_hulls[i]
                         for j in range(3):
                             p = i*10+1+j
                             if p not in self.delete_cols and p not in idf.opt['dontConstrain']:
-                                lb = Matrix( [[  l[j] - m*link_cuboid_hull[j][0] ]] )
-                                ub = Matrix( [[ -l[j] + m*link_cuboid_hull[j][1] ]] )
-                                D_other_blocks.append( lb )
-                                D_other_blocks.append( ub )
+                                lb = Matrix([[ l[j] - m*link_cuboid_hull[j][0]]])
+                                ub = Matrix([[-l[j] + m*link_cuboid_hull[j][1]]])
+                                D_other_blocks.append(lb)
+                                D_other_blocks.append(ub)
                                 self.constr_per_param[p].append('hull')
             elif not idf.opt['limitCOMToApriori'] and idf.opt['identifyGravityParamsOnly']:
                     print(Fore.RED+"COM parameters are not constrained,", end=' ')
@@ -250,8 +247,8 @@ class SDP(object):
             # symmetry constraints
             if idf.opt['useSymmetryConstraints'] and idf.opt['symmetryConstraints']:
                 for (a, b, sign) in idf.opt['symmetryConstraints']:
-                    if (idf.opt['identifyGravityParamsOnly'] and a not in idf.model.inertia_params \
-                            and b not in idf.model.inertia_params) \
+                    if (idf.opt['identifyGravityParamsOnly'] and a not in idf.model.inertia_params and
+                            b not in idf.model.inertia_params) \
                             or not idf.opt['identifyGravityParamsOnly']:
                         eps = idf.opt['symmetryTolerance']
 
@@ -271,16 +268,16 @@ class SDP(object):
                 # movements, otherwise constant friction includes offsets and can be negative)
                 if not idf.opt['identifyGravityParamsOnly']:
                     for i in range(idf.model.num_dofs):
-                        #Fc > 0
-                        p = i #idf.model.num_model_params+i
+                        # Fc > 0
+                        p = i  #idf.model.num_model_params+i
                         #D_other_blocks.append( Matrix([idf.model.friction_syms[p]]) )
                         #self.constr_per_param[idf.model.num_model_params + p].append('>0')
 
-                        #Fv > 0
-                        D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]) )
+                        # Fv > 0
+                        D_other_blocks.append(Matrix([idf.model.friction_syms[p+idf.model.num_dofs]]))
                         self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs].append('>0')
                         if not idf.opt['identifySymmetricVelFriction']:
-                            D_other_blocks.append( Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]) )
+                            D_other_blocks.append(Matrix([idf.model.friction_syms[p+idf.model.num_dofs*2]]))
                             self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs * 2].append('>0')
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
@@ -309,21 +306,21 @@ class SDP(object):
             I = Identity
             delta = Matrix(idf.model.param_syms[idf.model.identified_params])
 
-            #ignore some params that are non-identifiable
+            # ignore some params that are non-identifiable
             for c in reversed(self.delete_cols):
                 delta.row_del(c)
 
             YBase = idf.model.YBase
-            tau = idf.model.torques_stack   #always absolute torque values
+            tau = idf.model.torques_stack   # always absolute torque values
 
             # get projection matrix so that xBase = K*xStd
             if idf.opt['useBasisProjection']:
                 K = Matrix(idf.model.Binv)
             else:
-                #Sousa: K = Pb.T + Kd * Pd.T (Kd==idf.model.linear_deps, [Pb Pd] == idf.model.Pp)
-                #Pb = Matrix(idf.model.Pb) #.applyfunc(lambda x: x.nsimplify())
-                #Pd = Matrix(idf.model.Pd) #.applyfunc(lambda x: x.nsimplify())
-                K = Matrix(idf.model.K) #(Pb.T + Kd * Pd.T)
+                # Sousa: K = Pb.T + Kd * Pd.T (Kd==idf.model.linear_deps, [Pb Pd] == idf.model.Pp)
+                # Pb = Matrix(idf.model.Pb) #.applyfunc(lambda x: x.nsimplify())
+                # Pd = Matrix(idf.model.Pd) #.applyfunc(lambda x: x.nsimplify())
+                K = Matrix(idf.model.K)  #(Pb.T + Kd * Pd.T)
 
             for c in reversed(self.delete_cols):
                 K.col_del(c)
@@ -337,7 +334,7 @@ class SDP(object):
             if idf.opt['useRegressorRegularization']:
                 p_nid = idf.model.non_id
                 p_nid = list(set(p_nid).difference(set(self.delete_cols)).intersection(set(idf.model.identified_params)))
-                contactForces = np.concatenate( (contactForces, np.zeros(len(p_nid))))
+                contactForces = np.concatenate((contactForces, np.zeros(len(p_nid))))
 
             if idf.opt['verbose']:
                 print("Step 1...", time.ctime())
@@ -455,7 +452,7 @@ class SDP(object):
             if idf.opt['verbose']:
                 print("Preparing SDP...")
 
-            #build OLS matrix
+            # build OLS matrix
             I = Identity
             delta = Matrix(idf.model.param_syms)
 
@@ -483,7 +480,7 @@ class SDP(object):
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # sub contact forces
             if idf.opt['useRegressorRegularization']:
-                contactForcesSum = np.concatenate( (idf.model.contactForcesSum, np.zeros(len(p_nid))))
+                contactForcesSum = np.concatenate((idf.model.contactForcesSum, np.zeros(len(p_nid))))
             else:
                 contactForcesSum = idf.model.contactForcesSum
             contactForces = Matrix(Q.T.dot(contactForcesSum))
@@ -503,8 +500,8 @@ class SDP(object):
 
             # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             u = Symbol('u')
-            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
-                                 [e_rho1,       I(idf.model.num_identified_params)]])
+            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]),      e_rho1.T],
+                                 [e_rho1, I(idf.model.num_identified_params)]])
 
             if idf.opt['verbose']:
                 print("Step 3...", time.ctime())
@@ -580,7 +577,7 @@ class SDP(object):
             #beta = K * delta
             beta = Matrix(idf.model.base_deps).applyfunc(lambda x: x.nsimplify())
 
-            ## std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
+            # std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
 
             '''
             if idf.opt['useBasisProjection']:
@@ -598,7 +595,7 @@ class SDP(object):
             '''
             delta_b = Pb.T*delta
 
-            ## std variables that are dependent, i.e. their value is a combination of independent columns
+            # std variables that are dependent, i.e. their value is a combination of independent columns
             '''
             if idf.opt['useBasisProjection']:
                 #determined from base eqns
@@ -623,7 +620,7 @@ class SDP(object):
                 # correct is to properly transpose eqn base_n = a1*x1 + a2*x2 + ... +an*xn to
                 # 1*xi = a1*x1/ai + a2*x2/ai + ... + an*xn/ai - base_n/ai )
                 transposed_beta = Matrix([solve(beta[i], delta_b[i])[0] for i in range(len(beta))])
-                self.varchange_dict = dict(zip(delta_b,  beta_symbs + transposed_beta))
+                self.varchange_dict = dict(zip(delta_b, beta_symbs + transposed_beta))
 
                 #add free vars to variables for optimization
                 for eq in transposed_beta:
@@ -631,7 +628,7 @@ class SDP(object):
                         if s not in delta_d:
                             delta_d = delta_d.col_join(Matrix([s]))
             else:
-                self.varchange_dict = dict(zip(delta_b,  beta_symbs - (beta - delta_b)))
+                self.varchange_dict = dict(zip(delta_b, beta_symbs - (beta - delta_b)))
 
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
@@ -698,23 +695,23 @@ class SDP(object):
         with helpers.Timer() as t:
             I = Identity
 
-            #symbols for std params
+            # symbols for std params
             idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
             delta = Matrix(idf.model.param_syms[idable_params])
 
             # equations for base parameters expressed in independent std param symbols
-            beta = idf.model.base_deps #.applyfunc(lambda x: x.nsimplify())
+            beta = idf.model.base_deps  #.applyfunc(lambda x: x.nsimplify())
 
-            #add explicit constraints for each base param equation and estimated value
+            # add explicit constraints for each base param equation and estimated value
             D_base_val_blocks = []
             for i in range(idf.model.num_base_params):
-                D_base_val_blocks.append( Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]) )
-                D_base_val_blocks.append( Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]) )
+                D_base_val_blocks.append(Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]))
+                D_base_val_blocks.append(Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]))
             self.D_blocks += D_base_val_blocks
 
             self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 
-            #closest to CAD but ignore non_identifiable params
+            # closest to CAD but ignore non_identifiable params
             sol_cad_dist = Matrix(idf.model.xStdModel[idable_params]) - delta
             u = Symbol('u')
             U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T],
@@ -733,7 +730,7 @@ class SDP(object):
 
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
-            #try again with wider bounds and dsdp5 cmd line
+            # try again with wider bounds and dsdp5 cmd line
             if state is not 'optimal':
                 print("Trying again with dsdp5 solver")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
@@ -760,12 +757,12 @@ class SDP(object):
         delta = Matrix(idf.model.param_syms[idable_params])
         I = Identity
 
-        Pd = Matrix(idf.model.Pd)
-        delta_d = (Pd.T*delta)
+        #Pd = Matrix(idf.model.Pd)
+        #delta_d = (Pd.T*delta)
 
         u = Symbol('u')
-        U_delta = BlockMatrix([[Matrix([u]),        (xStd - delta).T],
-                               [xStd - delta,  I(len(idable_params))]])
+        U_delta = BlockMatrix([[Matrix([u]),       (xStd - delta).T],
+                               [xStd - delta, I(len(idable_params))]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
         variables = [u] + list(delta)
@@ -774,7 +771,7 @@ class SDP(object):
         prime = idf.model.xStdModel[idable_params]
         solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u_star = solution[0,0]
+        u_star = solution[0, 0]
         if u_star:
             print("SDP found std solution with {} error increase from previous solution".format(u_star))
         delta_star = np.matrix(solution[1:])

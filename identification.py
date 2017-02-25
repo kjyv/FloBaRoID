@@ -9,6 +9,7 @@ from builtins import zip
 from builtins import range
 from builtins import object
 import sys
+from typing import Dict, List, Iterable
 
 # math
 import numpy as np
@@ -18,7 +19,6 @@ import scipy.linalg as sla
 import scipy.stats as stats
 
 # plotting
-import matplotlib
 import matplotlib.pyplot as plt
 
 # kinematics, dynamics and URDF reading
@@ -31,9 +31,9 @@ from identification.output import OutputConsole
 from identification.sdp import SDP
 from identification import helpers
 
-from colorama import Fore, Back, Style
-
+from colorama import Fore
 from IPython import embed
+
 np.core.arrayprint._line_width = 160
 
 # Referenced papers:
@@ -51,9 +51,10 @@ np.core.arrayprint._line_width = 160
 
 class Identification(object):
     def __init__(self, opt, urdf_file, urdf_file_real, measurements_files, regressor_file, validation_file):
+        # type: (Dict, str, str, str, str, str) -> None
         self.opt = opt
 
-        ## some additional options (experiments)
+        # some additional options (experiments)
 
         # in order ot get regressor and base equations, use basis projection matrix or use
         # permutation from QR directly (Gautier/Sousa method)
@@ -68,7 +69,7 @@ class Identification(object):
 
         self.opt['regularizationFactor'] = 1000.0   #proportion of distance term
 
-        #### end additional config flags
+        # end additional config flags
 
 
         # load model description and initialize
@@ -82,7 +83,7 @@ class Identification(object):
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
         self.sdp = SDP(self)
 
-        self.tauEstimated = list()
+        self.tauEstimated = None  # type: np.ndarray
         self.res_error = 100        #last residual error in percent
         self.urdf_file_real = urdf_file_real
         self.validation_file = validation_file
@@ -92,6 +93,7 @@ class Identification(object):
 
 
     def estimateRegressorTorques(self, estimateWith=None, print_stats=False):
+        # type: (str, bool) -> None
         """ get torque estimations using regressors, prepare for plotting """
 
         if not estimateWith:
@@ -178,8 +180,8 @@ class Identification(object):
         if self.opt['useRBDL']:
             import rbdl
             self.model.rbdlModel = rbdl.loadModel(outfile,
-                                            floating_base=self.opt['floatingBase'],
-                                            verbose=False)
+                                                  floating_base=self.opt['floatingBase'],
+                                                  verbose=False)
             self.model.rbdlModel.gravity = np.array([0, 0, -9.81])
         else:
             dynComp.loadRobotModelFromFile(outfile)
@@ -209,14 +211,15 @@ class Identification(object):
 
         # add simulated base forces also to measurements
         if self.opt['floatingBase']:
-            self.tauMeasuredValidation = np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
+            self.tauMeasuredValidation = \
+                np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
 
         #TODO: add contact forces to estimation, so far validation is only proper for fixed-base!
 
         self.opt['skipSamples'] = old_skip
 
         self.val_error = sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation) \
-                            *100/sla.norm(self.tauMeasuredValidation)
+                                  * 100 / sla.norm(self.tauMeasuredValidation)
         print("Relative validation error: {}%".format(self.val_error))
         self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation, axis=1))
         print("Absolute validation error: {} Nm".format(self.val_residual))
@@ -244,6 +247,7 @@ class Identification(object):
         if self.opt['useAPriori']:
             self.model.xStd += self.model.xStdModel[self.model.identified_params]
 
+
     def getStdDevForParams(self):
         # this might not be working correctly
         if self.opt['useAPriori']:
@@ -255,9 +259,9 @@ class Identification(object):
         else: fb = 0
 
         # get relative standard deviation of measurement and modeling error \sigma_{rho}^2
-        r = self.data.num_used_samples*(self.model.num_dofs+fb)
+        r = self.data.num_used_samples * (self.model.num_dofs + fb)
         rho = np.square(sla.norm(tauDiff))
-        sigma_rho = rho/(r - self.model.num_base_params)
+        sigma_rho = rho / (r - self.model.num_base_params)
 
         # get standard deviation \sigma_{x} (of the estimated parameter vector x)
         C_xx = sigma_rho * (sla.pinv(np.dot(self.model.YBase.T, self.model.YBase)))
@@ -477,9 +481,9 @@ class Identification(object):
                 if p == 0:
                     v = 0.1
                     p_start = idx // 10 * 10
-                    if idx % 10 in [1,2,3]:   #com value
+                    if idx % 10 in [1,2,3]:   # com value
                         v = np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1
-                    elif idx % 10 in [4,5,6,7,8,9]:  #inertia value
+                    elif idx % 10 in [4,5,6,7,8,9]:  # inertia value
                         inertia_range = np.array([4,5,6,7,8,9])+p_start
                         v = np.mean(self.model.xStdModel[np.where(self.model.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1
                     if v == 0:
@@ -503,6 +507,7 @@ class Identification(object):
 
 
     def identifyBaseParameters(self, YBase=None, tau=None, id_only=False):
+        # type: (np.ndarray, np.ndarray, bool) -> None
         """use previously computed regressors and identify base parameter vector using ordinary or
            weighted least squares."""
 
@@ -512,9 +517,9 @@ class Identification(object):
             tau = self.model.tau
 
         if self.opt['useBasisProjection']:
-            self.model.xBaseModel = np.dot(self.model.xStdModel, self.model.B)
+            self.model.xBaseModel = self.model.xStdModel.dot(self.model.B)
         else:
-            self.model.xBaseModel = np.dot(self.model.K, self.model.xStdModel[self.model.identified_params])
+            self.model.xBaseModel = self.model.K.dot(self.model.xStdModel[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion of ill-conditioned matrices if possible
@@ -541,7 +546,7 @@ class Identification(object):
         if self.opt['showBaseParams'] or self.opt['verbose'] or self.opt['useRegressorRegularization']:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques('base', print_stats=True)
-            if not 'selectingBlocks' in self.opt or not self.opt['selectingBlocks']:
+            if 'selectingBlocks' not in self.opt or not self.opt['selectingBlocks']:
                 self.p_sigma_x = self.getStdDevForParams()
 
         if self.opt['useWLS']:
@@ -661,7 +666,7 @@ class Identification(object):
         '''identify parameters using data and regressor (method depends on chosen options)'''
 
         if not self.data.num_used_samples > self.model.num_identified_params*2 \
-            and 'selectingBlocks' in self.opt and not self.opt['selectingBlocks']:
+                and 'selectingBlocks' in self.opt and not self.opt['selectingBlocks']:
             print(Fore.RED+"not enough samples for identification!"+Fore.RESET)
             if self.opt['startOffset'] > 0:
                 print("(startOffset is at {})".format(self.opt['startOffset']))
@@ -752,6 +757,7 @@ class Identification(object):
 
 
     def plot(self, text=None):
+        # type: (str) -> None
         """Create state and torque plots."""
 
         if self.opt['verbose']:
@@ -786,16 +792,15 @@ class Identification(object):
             if self.opt['floatingBase']:
                 if self.opt['plotBaseDynamics']:
                     for i in range(6):
-                        datasets.append(
-                            { 'unified_scaling': False,
-                              #'y_label': '$F {{ {} }}$ (Nm)'.format(i),
-                              'y_label': 'Force (N)',
-                              'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
-                              'dataset': [
-                                {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
-                                 'time': rel_time, 'title': torque_labels[i]}
-                              ]
-                            }
+                        datasets.append({
+                            'unified_scaling': False,
+                            #'y_label': '$F {{ {} }}$ (Nm)'.format(i),
+                            'y_label': 'Force (N)',
+                            'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
+                            'dataset': [{
+                                'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
+                                'time': rel_time, 'title': torque_labels[i]}
+                            ]}
                         )
                 fb = 6
             else:
@@ -803,16 +808,15 @@ class Identification(object):
 
             # add plots for each joint
             for i in range(fb, self.model.num_dofs):
-                datasets.append(
-                    { 'unified_scaling': False,
-                      #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
-                      'y_label': 'Torque (Nm)',
-                      'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
-                      'dataset': [
-                        {'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
-                         'time': rel_time, 'title': torque_labels[i]}
-                      ]
-                    }
+                datasets.append({
+                    'unified_scaling': False,
+                    #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
+                    'y_label': 'Torque (Nm)',
+                    'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
+                    'dataset': [{
+                        'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
+                        'time': rel_time, 'title': torque_labels[i]}
+                    ]}
                 )
                 if self.opt['plotPrioriTorques']:
                     #plot a priori torques
@@ -883,16 +887,16 @@ class Identification(object):
 
         if self.validation_file:
             datasets.append(
-                { 'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
-                    'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
-                    'dataset':
-                    [#{'data': [self.tauMeasuredValidation],
-                     # 'time': rel_vtime, 'title': 'Measured Validation'},
-                     {'data': [tauEstimatedValidation],
-                      'time': rel_vtime, 'title': 'Estimated Validation'},
-                     {'data': [tauEstimatedValidation-tauMeasuredValidation],
-                      'time': rel_vtime, 'title': 'Validation Error'}
-                    ]
+                {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                   'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
+                   'dataset':
+                   [#{'data': [self.tauMeasuredValidation],
+                    # 'time': rel_vtime, 'title': 'Measured Validation'},
+                    {'data': [tauEstimatedValidation],
+                     'time': rel_vtime, 'title': 'Estimated Validation'},
+                    {'data': [tauEstimatedValidation-tauMeasuredValidation],
+                     'time': rel_vtime, 'title': 'Validation Error'}
+                   ]
                 }
             )
 
@@ -908,13 +912,14 @@ class Identification(object):
         import humanize
         total = 0
         print("Memory usage:")
-        for v in self.__dict__.keys():
+        for v in self.__dict__:
             if type(self.__dict__[v]).__module__ == np.__name__:
                 size = self.__dict__[v].nbytes
                 total += size
-                print("{}: {} ".format( v, (humanize.naturalsize(size, binary=True)) ), end=' ')
+                print("{}: {} ".format(v, (humanize.naturalsize(size, binary=True))), end=' ')
             #TODO: extend for builtins
         print("- total: {}".format(humanize.naturalsize(total, binary=True)))
+
 
 def main():
     import argparse
@@ -1004,8 +1009,8 @@ def main():
         if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
             print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
-            idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output, \
-                                        new_params=idf.model.xStd)
+            idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output,
+                                                new_params=idf.model.xStd)
 
     OutputConsole.render(idf)
     if args.validation: idf.estimateValidationTorques()
@@ -1013,9 +1018,10 @@ def main():
     if idf.opt['createPlots']: idf.plot(text=logger.log)
     if idf.opt['showMemUsage']: idf.printMemUsage()
 
+
 if __name__ == '__main__':
-   # import ipdb
-   # import traceback
+    #import ipdb
+    #import traceback
     #try:
     main()
     print("\n")

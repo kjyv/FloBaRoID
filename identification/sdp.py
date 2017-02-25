@@ -34,8 +34,8 @@ class SDP(object):
         for i in self.idf.model.identified_params:
             self.constr_per_param[i] = []
 
-    @classmethod
-    def mrepl(m,repl):
+    @staticmethod
+    def mrepl(m, repl):
         return m.applyfunc(lambda x: x.xreplace(repl))
 
 
@@ -77,9 +77,9 @@ class SDP(object):
                 print("Initializing LMIs...")
 
             def skew(v):
-                return Matrix([ [     0, -v[2],  v[1] ],
-                                [  v[2],     0, -v[0] ],
-                                [ -v[1],  v[0],   0 ] ])
+                return Matrix([[    0,-v[2], v[1]],
+                               [ v[2],    0,-v[0]],
+                               [-v[1], v[0],  0 ]])
             I = Identity
             S = skew
 
@@ -204,6 +204,21 @@ class SDP(object):
                             D_other_blocks.append(lb)
                             self.constr_per_param[p].append('mA')
 
+            # constrain masses for each link separately
+            if idf.opt['limitCOMToApriori']:
+                # constrain each mass to env of a priori value
+                for i in range(start_link, idf.model.num_links):
+                    if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
+                        for p in range(i*10+1, i*10+4):
+                            if p not in idf.opt['dontConstrain']:
+                                ub = Matrix([idf.model.xStdModel[p]*(1+idf.opt['limitCOMAprioriBoundary']) -
+                                            idf.model.param_syms[p]])
+                                lb = Matrix([idf.model.param_syms[p] -
+                                             idf.model.xStdModel[p]*(1-idf.opt['limitCOMAprioriBoundary'])])
+                                D_other_blocks.append(ub)
+                                D_other_blocks.append(lb)
+                                self.constr_per_param[p].append('A')
+
             if idf.opt['restrictCOMtoHull']:
                 link_cuboid_hulls = np.zeros((idf.model.num_links, 3, 2))
                 for i in range(start_link, idf.model.num_links):
@@ -228,9 +243,9 @@ class SDP(object):
                                 D_other_blocks.append( lb )
                                 D_other_blocks.append( ub )
                                 self.constr_per_param[p].append('hull')
-            else:
-                if idf.opt['identifyGravityParamsOnly']:
-                    print(Fore.RED+"COM parameters are not constrained, might result in rank deficiency when solving SDP problem!"+Fore.RESET)
+            elif not idf.opt['limitCOMToApriori'] and idf.opt['identifyGravityParamsOnly']:
+                    print(Fore.RED+"COM parameters are not constrained,", end=' ')
+                    print("might result in rank deficiency when solving SDP problem!"+Fore.RESET)
 
             # symmetry constraints
             if idf.opt['useSymmetryConstraints'] and idf.opt['symmetryConstraints']:
@@ -401,16 +416,19 @@ class SDP(object):
             if idf.opt['checkAPrioriFeasibility']:
                 self.checkFeasibility(idf.model.xStdModel)
 
-            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+            idf.opt['onlyUseDSDP'] = 0
+            if not idf.opt['onlyUseDSDP']:
+                print("Solving with cvxopt")
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':  # or not idf.paramHelpers.isPhysicalConsistent(np.squeeze(np.asarray(solution[1:]))):
-                print("Trying again with dsdp5 solver")
+            if idf.opt['onlyUseDSDP'] or state is not 'optimal':
+                print("Solving with dsdp5")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u_star = solution[0,0]
+            u_star = solution[0, 0]
             if u_star:
                 print("SDP found std solution with {} squared residual error".format(u_star))
             delta_star = np.matrix(solution[1:])

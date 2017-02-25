@@ -140,18 +140,22 @@ meshBaseDir: 'meshes'
 # fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
 cubeSize: 0.5
 
+# force COM values to stay close to a priori values (disable hull constraints when enabled)
+limitCOMToApriori: 1
+limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
+
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
 limitMassVal: 139.14
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.1
+limitMassRange: 0.01
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.05     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -162,7 +166,7 @@ dontConstrain: []
 # define constraints for link symmetries (e.g. left and right arm)
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
-symmetryTolerance: 0.05
+symmetryTolerance: 0.1
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
 # [p1, p2, sign]
 symmetryConstraints:

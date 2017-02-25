@@ -139,6 +139,10 @@ meshBaseDir: 'meshes'
 # fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
 cubeSize: 1.0
 
+# force COM values to stay close to a priori values (disable hull constraints when enabled)
+limitCOMToApriori: 0
+limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
+
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, use a priori mass sum

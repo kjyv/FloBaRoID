@@ -250,8 +250,8 @@ class ParamHelpers(object):
 
         return params
 
-    @classmethod
-    def addFrictionFromURDF(self, model, urdf_file, params):
+    @staticmethod
+    def addFrictionFromURDF(model, urdf_file, params):
         ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
 
         friction = URDFHelpers.getJointFriction(urdf_file)
@@ -276,24 +276,33 @@ class URDFHelpers(object):
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
-        xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
+        if self.opt['identifyGravityParamsOnly']:
+            per_link = 4
+            xStdBary = new_params.copy()
+            for i in range(len(new_params)):
+                if i % per_link == 0:
+                    xStdBary[i+1:i+3+1] /= xStdBary[i]
+        else:
+            per_link = 10
+            xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
 
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
         for l in tree.findall('link'):
             if l.attrib['name'] in self.model.linkNames:
                 link_id = self.model.linkNames.index(l.attrib['name'])
-                l.find('inertial/mass').attrib['value'] = '{}'.format(xStdBary[link_id*10])
-                l.find('inertial/origin').attrib['xyz'] = '{} {} {}'.format(xStdBary[link_id*10+1],
-                                                                            xStdBary[link_id*10+2],
-                                                                            xStdBary[link_id*10+3])
-                inert = l.find('inertial/inertia')
-                inert.attrib['ixx'] = '{}'.format(xStdBary[link_id*10+4])
-                inert.attrib['ixy'] = '{}'.format(xStdBary[link_id*10+5])
-                inert.attrib['ixz'] = '{}'.format(xStdBary[link_id*10+6])
-                inert.attrib['iyy'] = '{}'.format(xStdBary[link_id*10+7])
-                inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
-                inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
+                l.find('inertial/mass').attrib['value'] = '{}'.format(xStdBary[link_id*per_link])
+                l.find('inertial/origin').attrib['xyz'] = '{} {} {}'.format(xStdBary[link_id*per_link+1],
+                                                                            xStdBary[link_id*per_link+2],
+                                                                            xStdBary[link_id*per_link+3])
+                if not self.opt['identifyGravityParamsOnly']:
+                    inert = l.find('inertial/inertia')
+                    inert.attrib['ixx'] = '{}'.format(xStdBary[link_id*10+4])
+                    inert.attrib['ixy'] = '{}'.format(xStdBary[link_id*10+5])
+                    inert.attrib['ixz'] = '{}'.format(xStdBary[link_id*10+6])
+                    inert.attrib['iyy'] = '{}'.format(xStdBary[link_id*10+7])
+                    inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
+                    inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
 
 
         # write friction of joints
@@ -301,9 +310,9 @@ class URDFHelpers(object):
             if l.attrib['name'] in self.model.jointNames:
                 joint_id = self.model.jointNames.index(l.attrib['name'])
                 if self.opt['identifyFriction']:
-                    f_c = xStdBary[self.model.num_model_params + joint_id]
+                    f_c = xStdBary[self.model.num_links*per_link + joint_id]
                     if self.opt['identifyGravityParamsOnly']:
-                        f_v = 0
+                        f_v = 0.0
                     else:
                         if self.opt['identifySymmetricVelFriction']:
                             f_v = xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id]
@@ -405,8 +414,8 @@ class URDFHelpers(object):
             return cube
 
     #TODO: replace with new idyntree method
-    @classmethod
-    def getJointLimits(self, input_urdf, use_deg=True):
+    @staticmethod
+    def getJointLimits(input_urdf, use_deg=True):
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
         limits = {}
@@ -436,8 +445,8 @@ class URDFHelpers(object):
                         limits[name]['velocity'] = float(velocity)
         return limits
 
-    @classmethod
-    def getJointFriction(self, input_urdf):
+    @staticmethod
+    def getJointFriction(input_urdf):
         ''' return friction values for each revolute joint from a urdf'''
 
         import xml.etree.ElementTree as ET

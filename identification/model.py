@@ -556,7 +556,10 @@ class Model(object):
         (partly ported from iDynTree)
         """
 
-        regr_filename = self.urdf_file + '.regressor.npz'
+        if self.opt['identifyGravityParamsOnly']:
+            regr_filename = self.urdf_file + '.gravity_regressor.npz'
+        else:
+            regr_filename = self.urdf_file + '.regressor.npz'
         generate_new = False
         fb = self.opt['floatingBase']
 

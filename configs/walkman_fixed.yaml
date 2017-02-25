@@ -140,10 +140,14 @@ meshBaseDir: 'meshes'
 # fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
 cubeSize: 0.5
 
+# force COM values to stay close to a priori values (disable hull constraints when enabled)
+limitCOMToApriori: 0
+limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
+
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 139.122
+limitMassVal: 139.142
 #allowed percentual change in both directions (1-range and 1+range)
 limitMassRange: 0.01
 
@@ -151,7 +155,7 @@ limitMassRange: 0.01
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.001     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []

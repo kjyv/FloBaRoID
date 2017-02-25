@@ -82,7 +82,7 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 #### identification
 
 # use random regressors to determine structural parameter dependencies when getting base regressor
-# (may result in linear dependencies in regressor if only limited data is used)
+# (generally recommended but may result in linear dependencies in regressor if only limited data is used)
 useRandomRegressor: 1
 
 # fixed or floating-base dynamics
@@ -128,10 +128,9 @@ useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOp
 # (to prevent very big changes for parameters that are not expressed in the data)
 noChange: 0
 noChangeThresh: 2200
-# allow to make thresh = cond(YBase) / N_LINKS (-1)
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 1
+restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
@@ -147,7 +146,7 @@ limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- direc
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
-limitMassVal: 139.14
+limitMassVal: 139.142
 #allowed percentual change in both directions (1-range and 1+range)
 limitMassRange: 0.01
 
@@ -354,11 +353,11 @@ showErrorHistogram: 0        #show estimation error distribution
 
 # options for console output
 showMemUsage: 0              #print used memory for different variables
-showTiming: 1                #show times various steps have taken
-showEssentialSteps: 0        #stop after every reduction step and show values
+showTiming: 0                #show times various steps have taken
+showEssentialSteps: 0        #stop after every reduction step and show values (for essential params)
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
-showBaseParams: 0            #display a list of identified base params (if appliable)
+showBaseParams: 0            #display a list of identified base params (if applicable)
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality

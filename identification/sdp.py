@@ -143,7 +143,8 @@ class SDP(object):
             params_to_skip = []
 
             # ignore depending on sub-regressor condition numbers per link
-            linkConds = idf.model.getSubregressorsConditionNumbers()
+            if idf.opt['noChange']:
+                linkConds = idf.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
             for i in range(0, idf.model.num_links):
                 robotmass_apriori += idf.model.xStdModel[i*10]  #count a priori link masses
@@ -708,12 +709,18 @@ class SDP(object):
             # equations for base parameters expressed in independent std param symbols
             beta = idf.model.base_deps  #.applyfunc(lambda x: x.nsimplify())
 
+            if idf.opt['verbose']:
+                print("adding base param LMIs...", end=' ')
+
             # add explicit constraints for each base param equation and estimated value
             D_base_val_blocks = []
             for i in range(idf.model.num_base_params):
                 D_base_val_blocks.append(Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]))
                 D_base_val_blocks.append(Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]))
             self.D_blocks += D_base_val_blocks
+
+            if idf.opt['verbose']:
+                print("done.")
 
             self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 

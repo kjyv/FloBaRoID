@@ -763,36 +763,38 @@ class Model(object):
 
         # collect grouped columns for each independent column
         # and build base matrix
-        self.B = np.zeros((self.num_identified_params, self.num_base_params))
-        for j in range(0, self.linear_deps.shape[0]):
-            indep_idx = self.independent_cols[j]
-            for i in range(0, self.linear_deps.shape[1]):
-                for k in range(r, self.P.size):
-                    #factor = round(self.linear_deps[j, k-r], 5)
-                    factor = self.linear_deps[j, k-r]
-                    if np.abs(factor)>self.opt['minTol']: self.B[self.P[k],j] = factor
-            self.B[indep_idx,j] = 1
+        # (slow too, save to file)
+        if self.opt['useBasisProjection']:
+            self.B = np.zeros((self.num_identified_params, self.num_base_params))
+            for j in range(0, self.linear_deps.shape[0]):
+                indep_idx = self.independent_cols[j]
+                for i in range(0, self.linear_deps.shape[1]):
+                    for k in range(r, self.P.size):
+                        #factor = round(self.linear_deps[j, k-r], 5)
+                        factor = self.linear_deps[j, k-r]
+                        if np.abs(factor)>self.opt['minTol']: self.B[self.P[k],j] = factor
+                self.B[indep_idx,j] = 1
 
-        if self.opt['orthogonalizeBasis']:
-            #orthogonalize, so linear relationships can be inverted (if B is square, will orthonormalize)
-            Q_B_qr, R_B_qr = la.qr(self.B)
-            Q_B_qr[np.abs(Q_B_qr) < self.opt['minTol']] = 0
-            S = np.zeros_like(R_B_qr)
-            for i in range(R_B_qr.shape[0]):
-                if np.abs(R_B_qr[i,i]) < self.opt['minTol']:
-                    continue
-                if R_B_qr[i,i] < 0:
-                    S[i,i] = -1
-                if R_B_qr[i,i] > 0:
-                    S[i,i] = 1
-            self.B = Q_B_qr.dot(S)
-            #self.B = Q_B_qr
-            self.Binv = self.B.T
-        else:
-            # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
-            # (using QR on B yields orthonormal base if necessary)
-            # in general, pinv is always working (but is numerically a bit different)
-            self.Binv = la.pinv(self.B)
+            if self.opt['orthogonalizeBasis']:
+                #orthogonalize, so linear relationships can be inverted (if B is square, will orthonormalize)
+                Q_B_qr, R_B_qr = la.qr(self.B)
+                Q_B_qr[np.abs(Q_B_qr) < self.opt['minTol']] = 0
+                S = np.zeros_like(R_B_qr)
+                for i in range(R_B_qr.shape[0]):
+                    if np.abs(R_B_qr[i,i]) < self.opt['minTol']:
+                        continue
+                    if R_B_qr[i,i] < 0:
+                        S[i,i] = -1
+                    if R_B_qr[i,i] > 0:
+                        S[i,i] = 1
+                self.B = Q_B_qr.dot(S)
+                #self.B = Q_B_qr
+                self.Binv = self.B.T
+            else:
+                # in case B is not an orthogonal base (B.T != B^-1), we have to use pinv instead of T
+                # (using QR on B yields orthonormal base if necessary)
+                # in general, pinv is always working (but is numerically a bit different)
+                self.Binv = la.pinv(self.B)
 
         # define sympy symbols for each std column
         self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i),real=True) for i in range(self.num_base_params)])
@@ -871,6 +873,7 @@ class Model(object):
 
         # find std parameters that have no effect on estimation (not single or contributing to base
         # equations)
+        # TODO: also put this in regressor cache file
         base_deps_syms = []
         for i in range(self.base_deps.shape[0]):
             for s in self.base_deps[i].free_symbols:

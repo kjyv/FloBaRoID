@@ -94,7 +94,7 @@ class Identification(object):
 
     def estimateRegressorTorques(self, estimateWith=None, print_stats=False):
         # type: (str, bool) -> None
-        """ get torque estimations using regressors, prepare for plotting """
+        """ get torque estimations using regressor, prepare for plotting """
 
         if not estimateWith:
             # use global parameter choice if none is given specifically
@@ -678,7 +678,7 @@ class Identification(object):
         self.model.computeRegressors(self.data)
 
         if self.opt['verbose']:
-            print("estimating parameters using regressors", end=' ')
+            print("estimating parameters using regressor", end=' ')
 
         if self.opt['useEssentialParams']:
             self.identifyBaseParameters()
@@ -707,6 +707,8 @@ class Identification(object):
                         self.model.xBase = self.model.Binv.dot(self.model.xStd)
                     else:
                         self.model.xBase = self.model.K.dot(self.model.xStd)
+
+                    print("Trying to find equal solution closer to a priori values")
 
                     if self.opt['constrainUsingNL']:
                         from identification.nlopt import NLOPT
@@ -1003,7 +1005,7 @@ def main():
         idf.data.removeNearZeroSamples()
 
     idf.estimateParameters()
-    idf.estimateRegressorTorques()
+    idf.estimateRegressorTorques(print_stats=False)
 
     if args.model_output:
         if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):

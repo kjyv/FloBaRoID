@@ -76,7 +76,7 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 #### identification
 
 # use random regressors to determine structural parameter dependencies when getting base regressor
-# (may result in linear dependencies in regressor if only limited data is used)
+# (generally recommended but may result in linear dependencies in regressor if only limited data is used)
 useRandomRegressor: 1
 
 # fixed or floating-base dynamics
@@ -279,7 +279,7 @@ showTiming: 0                #show times various steps have taken
 showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
-showBaseParams: 1            #display a list of identified base params (if appliable)
+showBaseParams: 1            #display a list of identified base params (if applicable)
 showBaseEqns: 1              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality

@@ -5,7 +5,7 @@ import numpy as np
 class Quaternion(object):
 
     @classmethod
-    def fromRPY(self, roll, pitch, yaw):
+    def fromRPY(cls, roll, pitch, yaw):
         t0 = np.cos(yaw * 0.5)
         t1 = np.sin(yaw * 0.5)
         t2 = np.cos(roll * 0.5)
@@ -21,7 +21,7 @@ class Quaternion(object):
         return q
 
     @classmethod
-    def fromSO3(self, rotMat):
+    def fromSO3(cls, rotMat):
         """ Return quaternion from rotation matrix. """
 
         """
@@ -85,7 +85,7 @@ class Quaternion(object):
         return q
 
     @classmethod
-    def toSO3(self, quaternion):
+    def toSO3(cls, quaternion):
         """return rotation matrix for quaternion q"""
 
         """
@@ -116,7 +116,7 @@ class Quaternion(object):
         wx = w * x
 
         return np.array([
-            [2*(ww + xx) - 1,  2*(xy - wz),         2*(xz + wy)],
-            [2*(xy + wz),      2*(ww + yy) - 1,     2*(yz - wx)],
-            [2*(xz - wy),      2*(yz + wx),     2*(ww + zz) - 1]
-            ])
+                [2*(ww + xx) - 1, 2*(xy - wz),         2*(xz + wy)],
+                [2*(xy + wz),     2*(ww + yy) - 1,     2*(yz - wx)],
+                [2*(xz - wy),     2*(yz + wx),     2*(ww + zz) - 1]
+               ])

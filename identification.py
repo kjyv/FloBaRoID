@@ -923,7 +923,7 @@ def main():
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--model_real', required=False, type=str, help='the file to load the model params for\
                         comparison from')
-    parser.add_argument('-o', '--model_output', required=False, type=str, help='the file to save the identified params to')
+    parser.add_argument('-o', '--model_output', '--output', required=False, type=str, help='the file to save the identified params to')
 
     parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,
                         help='the file(s) to load the measurements from')

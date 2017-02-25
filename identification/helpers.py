@@ -306,7 +306,14 @@ class URDFHelpers(object):
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
 
         import xml.etree.ElementTree as ET
-        tree = ET.parse(input_urdf)
+        # preserve comments
+        class PCBuilder(ET.TreeBuilder):
+            def comment(self, data):
+                self.start(ET.Comment, {})
+                self.data(data)
+                self.end(ET.Comment)
+        tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
+
         for l in tree.findall('link'):
             if l.attrib['name'] in self.model.linkNames:
                 link_id = self.model.linkNames.index(l.attrib['name'])

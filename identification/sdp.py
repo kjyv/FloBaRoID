@@ -218,13 +218,17 @@ class SDP(object):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
                         for p in range(i*10+1, i*10+4):
                             if p not in idf.opt['dontConstrain']:
-                                ub = Matrix([idf.model.xStdModel[p]*(1+idf.opt['limitCOMAprioriBoundary']) -
-                                            idf.model.param_syms[p]])
+                                bound = np.abs(idf.model.xStdModel[p]) * idf.opt['limitCOMAprioriBoundary']
+                                if np.abs(idf.model.xStdModel[p]) < 0.1:
+                                    bound += 0.1
+
                                 lb = Matrix([idf.model.param_syms[p] -
-                                             idf.model.xStdModel[p]*(1-idf.opt['limitCOMAprioriBoundary'])])
+                                             (idf.model.xStdModel[p] - bound)])
+                                ub = Matrix([-idf.model.param_syms[p] +
+                                             (idf.model.xStdModel[p] + bound)])
                                 D_other_blocks.append(ub)
                                 D_other_blocks.append(lb)
-                                self.constr_per_param[p].append('A')
+                                self.constr_per_param[p].append('cA')
 
             if idf.opt['restrictCOMtoHull']:
                 link_cuboid_hulls = np.zeros((idf.model.num_links, 3, 2))
@@ -709,18 +713,12 @@ class SDP(object):
             # equations for base parameters expressed in independent std param symbols
             beta = idf.model.base_deps  #.applyfunc(lambda x: x.nsimplify())
 
-            if idf.opt['verbose']:
-                print("adding base param LMIs...", end=' ')
-
             # add explicit constraints for each base param equation and estimated value
             D_base_val_blocks = []
             for i in range(idf.model.num_base_params):
                 D_base_val_blocks.append(Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]))
                 D_base_val_blocks.append(Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]))
             self.D_blocks += D_base_val_blocks
-
-            if idf.opt['verbose']:
-                print("done.")
 
             self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in self.D_blocks])
 

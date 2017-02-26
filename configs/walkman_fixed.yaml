@@ -155,7 +155,7 @@ limitMassRange: 0.01
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.001     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.0005     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -164,8 +164,7 @@ dontChangeParams: []
 dontConstrain: []
 
 # define constraints for link symmetries (e.g. left and right arm)
-# (does not work atm for parameters that can be positive and negative!)
-useSymmetryConstraints: 1
+useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.

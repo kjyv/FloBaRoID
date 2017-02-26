@@ -1,11 +1,10 @@
 from __future__ import division
 from __future__ import print_function
-from __future__ import absolute_import
 from builtins import str
 from builtins import range
 from builtins import object
 import time
-from typing import Dict, Iterable, Union, Text
+from typing import Dict, Iterable, Union, Tuple, AnyStr, Text
 
 import numpy as np
 
@@ -13,8 +12,6 @@ from colorama import Fore
 from tqdm import tqdm
 
 import iDynTree
-
-from identification import model
 
 #define exception for python < 3
 import sys
@@ -45,7 +42,7 @@ class Timer(object):
 
 
 class ParamHelpers(object):
-    def __init__(self, model, opt):  # type: (model.Model, Dict) -> None
+    def __init__(self, model, opt):  # type: (Model, Dict) -> None
         self.model = model
         self.opt = opt
 
@@ -120,6 +117,7 @@ class ParamHelpers(object):
         return cons
 
     def isPhysicalConsistent(self, params):
+        # type: (np.ndarray[float]) -> bool
         """give boolean consistency statement for a set of parameters"""
         return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
@@ -269,26 +267,28 @@ class ParamHelpers(object):
 
     @staticmethod
     def addFrictionFromURDF(model, urdf_file, params):
-        # type: (model.Model, str, np.ndarray[float]) -> None
+        # type: (Model, str, np.ndarray[float]) -> None
         ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
 
         friction = URDFHelpers.getJointFriction(urdf_file)
         nd = model.num_dofs
         start = model.num_model_params
-        end = start + nd
-        params[start:end] = np.array([friction[f]['f_constant'] for f in sorted(friction.keys())])
-        if not model.opt['identifyGravityParamsOnly']:
-            start = model.num_model_params+nd
-            end = start + nd
-            params[start:end] = np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
-            if not model.opt['identifySymmetricVelFriction']:
-                params[start+nd:end+nd] = \
-                    np.array([friction[f]['f_velocity'] for f in sorted(friction.keys())])
+
+        for i in range(len(model.jointNames)):
+            j = model.jointNames[i]
+            params[start+i] = friction[j]['f_constant']
+
+            if not model.opt['identifyGravityParamsOnly']:
+                params[start+nd+i] = friction[j]['f_velocity']
+
+                if not model.opt['identifySymmetricVelFriction']:
+                    # same value again for asymmetric value since urdf does only have one value
+                    params[start+nd+nd+i] = friction[j]['f_velocity']
 
 
 class URDFHelpers(object):
     def __init__(self, paramHelpers, model, opt):
-        # type: (ParamHelpers, model.Model, Dict) -> None
+        # type: (ParamHelpers, Model, Dict) -> None
         self.paramHelpers = paramHelpers
         self.model = model
         self.opt = opt
@@ -300,9 +300,8 @@ class URDFHelpers(object):
         if self.opt['identifyGravityParamsOnly']:
             per_link = 4
             xStdBary = new_params.copy()
-            for i in range(len(new_params)):
-                if i % per_link == 0:
-                    xStdBary[i+1:i+3+1] /= xStdBary[i]
+            for i in range(self.model.num_links):
+                xStdBary[i*per_link+1:i*per_link+3+1] /= xStdBary[i*per_link]
         else:
             per_link = 10
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
@@ -332,7 +331,6 @@ class URDFHelpers(object):
                     inert.attrib['iyz'] = '{}'.format(xStdBary[link_id*10+8])
                     inert.attrib['izz'] = '{}'.format(xStdBary[link_id*10+9])
 
-
         # write friction of joints
         for l in tree.findall('joint'):
             if l.attrib['name'] in self.model.jointNames:
@@ -351,17 +349,18 @@ class URDFHelpers(object):
                     # parameters were identified assuming there was no friction
                     f_c = f_v = 0.0
                 l.find('dynamics').attrib['friction'] = '{}'.format(f_c)
-                l.find('dynamics').attrib['damping'] = '{}'.format(f_v)
+                if not self.opt['identifyGravityParamsOnly']:
+                    l.find('dynamics').attrib['damping'] = '{}'.format(f_v)
 
         tree.write(output_urdf, xml_declaration=True)
 
     def getMeshPath(self, input_urdf, link_name):
-        # type: (Text, Text) -> Text
+        # type: (AnyStr, AnyStr) -> AnyStr
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
 
         link_found = False
-        filepath = None  # type: Text
+        filepath = None  # type: AnyStr
         for l in tree.findall('link'):
             if l.attrib['name'] == link_name:
                 link_found = True
@@ -476,29 +475,30 @@ class URDFHelpers(object):
 
     @staticmethod
     def getJointFriction(input_urdf):
+        # type: (AnyStr) -> Dict[AnyStr, Dict[AnyStr, float]]
         ''' return friction values for each revolute joint from a urdf'''
 
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
-        friction = {}
+        friction = {}  # type: Dict[AnyStr, float]
         for j in tree.findall('joint'):
             name = j.attrib['name']
-            constant = 0
-            vel_dependent = 0
+            constant = 0.0
+            vel_dependent = 0.0
             if j.attrib['type'] == 'revolute':
                 l = j.find('dynamics')
                 if l is not None:
                     try:
-                        constant = l.attrib['friction']
+                        constant = float(l.attrib['friction'])
                     except KeyError:
                         constant = 0
 
                     try:
-                        vel_dependent = l.attrib['damping']
+                        vel_dependent = float(l.attrib['damping'])
                     except KeyError:
                         vel_dependent = 0
 
                     friction[name] = {}
-                    friction[name]['f_constant'] = float(constant)
-                    friction[name]['f_velocity'] = float(vel_dependent)
+                    friction[name]['f_constant'] = constant
+                    friction[name]['f_velocity'] = vel_dependent
         return friction

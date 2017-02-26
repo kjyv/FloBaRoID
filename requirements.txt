@@ -14,3 +14,4 @@ mpld3
 jinja2
 IPython
 tqdm
+typing

@@ -30,14 +30,15 @@ Details:
 requirements for identification module:
 
 * python 2.7 or >=3.3
-* python modules: numpy (> 1.8), scipy, sympy (>= 1.0), iDynTree, pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm, future (when using Python 2.7)
+* python modules: numpy (> 1.8), scipy, sympy (>= 1.0), iDynTree, pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
+* when using Python 2.7: future, typing
+* dsdp5 (command line executable)
 
-optional python modules
+optional python modules  
+
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (when using html plots)
-
-others
-* dsdp5 (as command line executable e.g. from your systems package manager)
+* rbdl (alternative for inverse dynamics)
 
 requirements for excitation modules:
 
@@ -51,7 +52,7 @@ known issues:
 
 * excitation modules are not generic for any robot
 * using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
-* COM constraints need stl mesh files for the model to compute the enclosing hull, doesn't e.g. read geometric shape definitions for link
+* COM constraints need an stl mesh files for the model to compute the enclosing hull, doesn't e.g. read geometric shape definitions for link
 
 (more or less) Quick start :
 

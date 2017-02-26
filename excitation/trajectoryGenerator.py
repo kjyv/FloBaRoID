@@ -159,7 +159,6 @@ class FixedPositionTrajectory(object):
                 20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
                 20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
-        '''
         # posture #6
         return [45.0, 0.0, 70.0, 130.0, -20.0, 0.0,       #left leg
                 -45.0, 0.0, -70.0, 130.0, -20.0, 0.0,         #right leg
@@ -167,10 +166,15 @@ class FixedPositionTrajectory(object):
                 20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
                 90.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #right arm
                 ][dof]
+        '''
+        # posture #7
+        return [20.0, 0.0, 70.0, 0.0, -20.0, 0.0,       #left leg
+                20.0, 0.0, -70.0, 0.0, -20.0, 0.0,         #right leg
+                0.0, 0.0,                           #Waist
+                0.0, 45.0, 0.0, -45.0, 0.0, 0.0, 0.0,    #left arm
+                0.0, -45.0, 0.0, -45.0, 0.0, 0.0, 0.0,   #right arm
+                ][dof]
 
-        # kuka postures
-        #return [np.pi*0.25, 0.0, np.pi*0.5, 0.0, 0.0, 0.0,
-        #        0.0, 0.0][dof]
 
     def getVelocity(self, dof):
         """ get velocity at current time for joint dof """

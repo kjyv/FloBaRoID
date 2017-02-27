@@ -65,7 +65,7 @@ filterLowPass3: [3.0, 4]        # low-pass for external contact force data and I
 
 # use subset of samples
 startOffset: 650    #how many samples from the beginning of each measurement file are skipped
-skipSamples: 2      #how many values to skip before using the next sample
+skipSamples: 6      #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
@@ -117,7 +117,7 @@ checkAPrioriFeasibility: 0
 
 # identify in two steps: first get feasible solution, then minimize distance to CAD while
 # staying in previous solution nullspace (using SDP)
-identifyClosestToCAD: 1
+identifyClosestToCAD: 0
 
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
@@ -130,7 +130,7 @@ noChange: 0
 noChangeThresh: 2200
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 0
+restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
@@ -140,7 +140,7 @@ meshBaseDir: 'meshes'
 cubeSize: 0.5
 
 # force COM values to stay close to a priori values (disable hull constraints when enabled)
-limitCOMToApriori: 1
+limitCOMToApriori: 0
 limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # constrain overall mass
@@ -154,7 +154,7 @@ limitMassRange: 0.01
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []

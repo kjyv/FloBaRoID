@@ -219,8 +219,8 @@ class SDP(object):
                         for p in range(i*10+1, i*10+4):
                             if p not in idf.opt['dontConstrain']:
                                 bound = np.abs(idf.model.xStdModel[p]) * idf.opt['limitCOMAprioriBoundary']
-                                if np.abs(idf.model.xStdModel[p]) < 0.1:
-                                    bound += 0.1
+                                if np.abs(idf.model.xStdModel[p]) < 0.01:
+                                    bound += 0.01
 
                                 lb = Matrix([idf.model.param_syms[p] -
                                              (idf.model.xStdModel[p] - bound)])

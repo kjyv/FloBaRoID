@@ -282,7 +282,7 @@ class Model(object):
             # expressed in world frame
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
-            world_T_base = iDynTree.Transform(rot, pos)
+            world_T_base = iDynTree.Transform(rot, pos).inverse()
             # The twist (linear, angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
             base_velocity = iDynTree.Twist.fromList(base_vel)
@@ -338,7 +338,7 @@ class Model(object):
         self.torquesAP_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         num_contacts = len(data.samples['contacts'].item().keys()) if 'contacts' in data.samples else 0
-        self.contacts_stack = np.zeros(shape=(num_contacts, 6*data.num_used_samples))
+        self.contacts_stack = np.zeros(shape=(num_contacts, (self.num_dofs+fb)*data.num_used_samples))
         self.contactForcesSum = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         """loop over measurement data, optionally skip some values
@@ -411,7 +411,7 @@ class Model(object):
                         rpy = data.samples['base_rpy'][m_idx]
                         rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                         pos = iDynTree.Position.Zero()
-                        world_T_base = iDynTree.Transform(rot, pos)
+                        world_T_base = iDynTree.Transform(rot, pos).inverse()
                         base_velocity = iDynTree.Twist.fromList(base_vel)
                         base_acceleration = iDynTree.Twist.fromList(base_acc)
 
@@ -469,39 +469,41 @@ class Model(object):
             if self.opt['useAPriori']:
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.num_dofs+fb], torqAP)
 
-            contact_idx = (sample_index*6)
-            for i in range(self.contacts_stack.shape[0]):
-                frame = list(contacts.keys())[i]
-                np.copyto(self.contacts_stack[i][contact_idx:contact_idx+6], contacts[frame])
+            if len(contacts.keys()):
+                #convert contact wrenches into torque contribution
+                for c in range(num_contacts):
+                    frame = list(contacts.keys())[c]
 
-        if len(contacts.keys()):
-            #convert contact wrenches into torque contribution
-            for i in range(self.contacts_stack.shape[0]):
-                frame = list(contacts.keys())[i]
+                    dim = self.num_dofs+fb
+                    # get jacobian and contact wrench for each contact frame and measurement sample
+                    jacobian = iDynTree.MatrixDynSize(6, dim)
+                    if not self.dynComp.getFrameJacobian(str(frame), jacobian):
+                        continue
+                    jacobian = jacobian.toNumPy()
 
-                dim = self.num_dofs+fb
-                # get jacobian and contact wrench for each contact frame and measurement sample
-                jacobian = iDynTree.MatrixDynSize(6, dim)
-                if not self.dynComp.getFrameJacobian(str(frame), jacobian):
-                    continue
-                jacobian = jacobian.toNumPy()
+                    # mul each sample of measured contact wrenches with frame jacobian
+                    contacts_torq = np.empty(dim)
+                    contacts_torq = jacobian.T.dot(contacts[frame])
 
-                # mul each sample of measured contact wrenches with frame jacobian
-                contacts_torq = np.empty(dim*self.data.num_used_samples)
-                for s in range(self.data.num_used_samples):
-                    contacts_torq[s*dim:(s+1)*dim] = jacobian.T.dot(self.contacts_stack[i][s*6:(s+1)*6])
-                self.contactForcesSum += contacts_torq
+                    contact_idx = (sample_index*dim)
+                    np.copyto(self.contacts_stack[c][contact_idx:contact_idx+dim], contacts_torq)
 
-            if self.opt['simulateTorques']:
-                #subtract measured contact wrench from torque estimation from iDynTree
-                self.torques_stack = self.torques_stack + self.contactForcesSum
-            else:
-                # if not simulating, measurements of joint torques already contain contact contribution,
-                # so only add it to the (simulated) base force estimation
-                torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
-                self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
-                torques_stack_2dim[:, :6] += self.contactForcesSum_2dim[:, :6]
-                self.torques_stack = torques_stack_2dim.flatten()
+        # finished looping over samples
+
+        # sum over (contact torques) for each contact frame
+        self.contactForcesSum = np.sum(self.contacts_stack, axis=0)
+
+        if self.opt['simulateTorques']:
+            # add measured contact wrench to torque estimation from iDynTree
+            self.torques_stack = self.torques_stack + self.contactForcesSum
+        else:
+            # if not simulating, measurements of joint torques already contain contact contribution,
+            # so only add it to the (simulated) base force estimation
+            torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
+            self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
+            torques_stack_2dim[:, :6] += self.contactForcesSum_2dim[:, :6]
+            self.torques_stack = torques_stack_2dim.flatten()
+
 
         if len(contacts.keys()) or self.opt['simulateTorques']:
             # write back torques to data object when simulating or contacts were added
@@ -637,13 +639,14 @@ class Model(object):
                     if self.opt['identifyGravityParamsOnly']:
                         #set vel and acc to zero for static case (reduces resulting amount of base dependencies)
                         base_vel[:] = 0.0
-                        #base_acc[:] = 0.0
-                    base_velocity = iDynTree.Twist.fromList(base_vel)
-                    base_acceleration = iDynTree.Twist.fromList(base_acc)
+                        base_acc[:] = 0.0
                     rpy = np.random.ranf(3)*0.1
                     rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                     pos = iDynTree.Position.Zero()
-                    world_T_base = iDynTree.Transform(rot, pos)
+                    world_T_base = iDynTree.Transform(rot, pos).inverse()
+                    base_velocity = iDynTree.Twist.fromList(base_vel)
+                    base_acceleration = iDynTree.Twist.fromList(base_acc)
+
                     self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
                 else:
                     self.generator.setRobotState(q,dq,ddq, self.gravity_twist)

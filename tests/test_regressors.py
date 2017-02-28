@@ -11,7 +11,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import os
-urdf_file = os.path.join(os.path.dirname(__file__), "../model/walkman_right_leg.urdf")
+urdf_file = os.path.join(os.path.dirname(__file__), "../model/twoLinks.urdf")
 
 def test_regressors():
     #get some random state values and compare inverse dynamics torques with torques
@@ -81,7 +81,7 @@ def test_regressors():
         np.copyto(regressor_stack[row_index:row_index+n_dofs+6], regressor)
 
         #inverse dynamics
-        dynComp.setFloatingBase('Waist')
+        #dynComp.setFloatingBase('base_link')
         dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration_acc, gravity_acc)
         torques = iDynTree.VectorDynSize(n_dofs)
         baseReactionForce = iDynTree.Wrench()
@@ -94,7 +94,8 @@ def test_regressors():
 
     error = np.reshape(regressor_torques-idyn_torques, (num_samples, n_dofs+6))
 
-    #plt.plot(range(0,num_samples), error)
+    #plots = plt.plot(range(0, num_samples), error)
+    #plt.legend(plots, ['f_x', 'f_y', 'f_z', 'm_x', 'm_y', 'm_z', 'j_0'])
     #plt.show()
     assert la.norm(error) <= 0.01
 

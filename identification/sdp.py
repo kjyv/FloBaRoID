@@ -203,12 +203,16 @@ class SDP(object):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
                         p = i*10
                         if p not in idf.opt['dontConstrain']:
-                            ub = Matrix([idf.model.xStdModel[p]*(1+idf.opt['limitMassAprioriBoundary']) -
-                                        idf.model.mass_syms[i]])
+                            bound = np.abs(idf.model.xStdModel[p]) * idf.opt['limitMassAprioriBoundary']
+                            #if np.abs(idf.model.xStdModel[p]) < 0.001:
+                            #    bound += 0.001
+
                             lb = Matrix([idf.model.mass_syms[i] -
-                                         idf.model.xStdModel[p]*(1-idf.opt['limitMassAprioriBoundary'])])
-                            D_other_blocks.append(ub)
+                                         (idf.model.xStdModel[p] - bound)])
+                            ub = Matrix([-idf.model.mass_syms[i] +
+                                         (idf.model.xStdModel[p] + bound)])
                             D_other_blocks.append(lb)
+                            D_other_blocks.append(ub)
                             self.constr_per_param[p].append('mA')
 
             # constrain masses for each link separately
@@ -226,8 +230,8 @@ class SDP(object):
                                              (idf.model.xStdModel[p] - bound)])
                                 ub = Matrix([-idf.model.param_syms[p] +
                                              (idf.model.xStdModel[p] + bound)])
-                                D_other_blocks.append(ub)
                                 D_other_blocks.append(lb)
+                                D_other_blocks.append(ub)
                                 self.constr_per_param[p].append('cA')
 
             if idf.opt['restrictCOMtoHull']:

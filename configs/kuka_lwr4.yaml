@@ -119,7 +119,7 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
 
-# use a non-linear gradient based solver instead of SDP
+# use a non-linear gradient based solver instead of SDP (for closest to CAD)
 constrainUsingNL: 0
 nlOptMaxIterations: 500
 useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)

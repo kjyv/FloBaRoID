@@ -9,7 +9,7 @@ from builtins import zip
 from builtins import range
 from builtins import object
 import sys
-from typing import Dict, List, Iterable
+from typing import Dict, AnyStr
 
 # math
 import numpy as np
@@ -52,12 +52,12 @@ def plotErrors(errors, num_links, labels):
     std_dev = np.zeros(num_vals)
 
     index = np.arange(num_vals)
-    bar_width = 0.2
+    bar_width = 1/len(errors) - 0.1
 
     opacity = 0.4
     error_config = {'ecolor': '0.3'}
 
-    colors = ['r', 'g', 'b']
+    colors = ['r', 'g', 'b', 'y']
 
     for i in range(len(errors)):
         plt.bar(index+bar_width*i, errors[i], bar_width,
@@ -77,7 +77,7 @@ def plotErrors(errors, num_links, labels):
     plt.show()
 
 def getParamErrors(ref_model, p_model, num_links, group="COM"):
-    # type: (iDynTree.DynamicsComputations) -> (List[float])
+    # type: (iDynTree.DynamicsComputations, iDynTree.DynamicsComputations, int, AnyStr) -> (List[float])
     """ give error for groups of params """
 
     errors = []
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     generator.loadRegressorStructureFromString(regrXml)
     num_links = generator.getNrOfLinks() - generator.getNrOfFakeLinks()
 
-    linkNames = []
+    linkNames = []    # types: List[AnyStr]
     import re
     for d in generator.getDescriptionOfParameters().strip().split("\n"):
         link = re.findall(r"of link (.*)", d)[0]
@@ -131,24 +131,29 @@ if __name__ == '__main__':
 
     methods_com_errors = []
     methods_inertia_errors = []
+
+    # check input order
+    print(args.model)
+
     for file in args.model:
         p_model = loadModelfromURDF(file[0])
 
         # mass error norm
-        mass_errors = np.linalg.norm(getParamErrors(ref_model, p_model, num_links, group='mass'))
+        mass_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group='mass'))
 
         # com error norm
-        com_errors = np.linalg.norm(getParamErrors(ref_model, p_model, num_links, group='COM'), axis=1)
+        com_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group='COM'), axis=1)
 
         # inertia error norm
         inertia_error_tensors = getParamErrors(ref_model, p_model, num_links, group='inertia')
         inertia_errors = []
         for i in range(len(inertia_error_tensors)):
-            inertia_errors.append(np.linalg.norm(inertia_error_tensors[i]))
+            inertia_errors.append(la.norm(inertia_error_tensors[i]))
 
         #methods_mass_errors.append(mass_errors)
         methods_com_errors.append(com_errors)
         methods_inertia_errors.append(inertia_errors)
 
-    plotErrors(methods_com_errors, num_links, labels=['ID COM (Kown Mass)', "ID Inertia (Known Mass + ID'd COM)", 'ID Inertia + COM (Known Mass)'])
-    plotErrors(methods_inertia_errors, num_links, labels=['ID COM (Kown Mass)', "ID Inertia (Known Mass + ID'd COM)", 'ID Inertia + COM (Known Mass)'])
+    labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
+    plotErrors(methods_com_errors, num_links, labels=labels)
+    plotErrors(methods_inertia_errors, num_links, labels=labels)

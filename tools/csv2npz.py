@@ -24,7 +24,7 @@ from identification.data import Data
 from identification.model import Model
 
 #set to simulate torques with iDynTree and override wrong torques from gazebo
-is_gazebo = 0
+is_gazebo = 1
 
 def readCentauroCSV(path, config, plot):
     #names in order of the supplied data
@@ -49,13 +49,13 @@ def readCentauroCSV(path, config, plot):
 
         if dof == 0:
             # generate some empty arrays, will be calculated in preprocess()
-            out['positions'] = np.empty( (f.shape[0], config['num_dofs']) )
-            out['target_positions'] = np.empty( (f.shape[0], config['num_dofs']) )
-            out['torques'] = np.empty( (f.shape[0], config['num_dofs']) )
-#            out['currents'] = np.empty( (f.shape[0], config['num_dofs']) )
+            out['positions'] = np.zeros( (f.shape[0], config['num_dofs']) )
+            out['target_positions'] = np.zeros( (f.shape[0], config['num_dofs']) )
+            out['torques'] = np.zeros( (f.shape[0], config['num_dofs']) )
+#            out['currents'] = np.zeros( (f.shape[0], config['num_dofs']) )
             out['velocities'] = np.zeros_like(out['positions'])
             out['accelerations'] = np.zeros_like(out['positions'])
-            out['times'] = np.empty( f.shape[0] )
+            out['times'] = np.zeros( f.shape[0] )
             #out['times'][:] = np.arange(0, f.shape[0])*sampleTime
             out['times'][:] = f[:, 0]/1e9
 
@@ -149,11 +149,11 @@ def readWalkmanCSV(path, config, plot):
 
     filepath = os.path.join(path, 'jointLog.csv')     #joint positions and torques
     f = np.loadtxt(filepath)
-    out['positions'] = np.empty( (f.shape[0], config['num_dofs']) )
+    out['positions'] = np.zeros( (f.shape[0], config['num_dofs']) )
     out['torques'] = np.zeros( (f.shape[0], config['num_dofs']) )
-    out['times'] = np.empty( f.shape[0] )
+    out['times'] = np.zeros( f.shape[0] )
     out['times'][:] = np.arange(0, f.shape[0])*sampleTime
-    out['target_positions'] = np.empty( (f.shape[0], config['num_dofs']) )
+    out['target_positions'] = np.zeros( (f.shape[0], config['num_dofs']) )
 
     # generate some empty arrays, will be calculated in preprocess()
     out['velocities'] = np.zeros_like(out['positions'])
@@ -165,10 +165,10 @@ def readWalkmanCSV(path, config, plot):
         ax2 = fig.add_subplot(3,2,2)
     dofs_file = len(f[1])//7
 
-    ign=0
-    skip=4
-    for dof in range(0, config['num_dofs']):
-        if dof in ignoreJoints:
+    ign = 0    # when link is ignored, count offset to skip column in csv
+    skip = 4   # skip some values when plotting
+    for dof in range(0, config['num_dofs']):   # go though amount of links without ignored
+        while dof+ign in ignoreJoints:
             ign+=1
 
         out['target_positions'][:, dof] = f[:, csv_T_urdf_indices[dof+ign]+dofs_file*0]   #position reference
@@ -185,9 +185,9 @@ def readWalkmanCSV(path, config, plot):
 
     filepath = os.path.join(path, 'feedbackData.csv')    # force torque and IMU
     f = np.loadtxt(filepath)
-    out['FTleft'] = np.empty((f.shape[0], 6))       # FT left foot, 3 force, 3 torque values
-    out['FTright'] = np.empty((f.shape[0], 6))      # FT right foot, 3 force, 3 torque values
-    out['IMUrpy'] = np.empty((f.shape[0], 3))       # IMU orientation, r,p,y
+    out['FTleft'] = np.zeros((f.shape[0], 6))       # FT left foot, 3 force, 3 torque values
+    out['FTright'] = np.zeros((f.shape[0], 6))      # FT right foot, 3 force, 3 torque values
+    out['IMUrpy'] = np.zeros((f.shape[0], 3))       # IMU orientation, r,p,y
     out['IMUlinAcc'] = np.zeros((f.shape[0], 3))    # IMU linear acceleration
     out['IMUlinAcc2'] = np.zeros((f.shape[0], 3))   # IMU linear acceleration 2nd IMU
     out['IMUrotVel'] = np.zeros((f.shape[0], 3))    # IMU rotational velocity
@@ -341,12 +341,12 @@ if __name__ == '__main__':
     data = Data(config)
 
     #init empty arrays for preprocess
-    out['torques_raw'] = np.empty_like( out['torques'])
+    out['torques_raw'] = np.zeros_like( out['torques'])
 
     #filter, diff, integrate
     if args.robot == 'walkman' and config['floatingBase']:
-        out['IMUlinVel'] = np.empty( (out['times'].shape[0], 3) ) #IMU linear velocity
-        out['IMUrotAcc'] = np.empty( (out['times'].shape[0], 3) ) #IMU rotational acceleration
+        out['IMUlinVel'] = np.zeros( (out['times'].shape[0], 3) ) #IMU linear velocity
+        out['IMUrotAcc'] = np.zeros( (out['times'].shape[0], 3) ) #IMU rotational acceleration
         data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
                         Tau=out['torques'], Tau_raw=out['torques_raw'], T=out['times'],
                         Fs=out['frequency'], IMUlinVel=out['IMUlinVel'], IMUrotVel=out['IMUrotVel'],

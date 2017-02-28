@@ -119,9 +119,9 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 0
 
-# use a non-linear gradient based solver instead of SDP
+# use a non-linear gradient based solver instead of SDP (for closest to CAD)
 constrainUsingNL: 0
-nlOptIterations: 500
+nlOptMaxIterations: 500
 useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values

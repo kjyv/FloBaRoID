@@ -126,7 +126,7 @@ class Identification(object):
 
             #how gaussian is the error of the data vs estimation?
             #http://stats.stackexchange.com/questions/62291/can-one-measure-the-degree-of-empirical-data-being-gaussian
-            if self.opt['verbose']:
+            if self.opt['verbose'] >= 2:
                 '''
                 W, p = stats.shapiro(error)
                 if p > 0.05:
@@ -1007,15 +1007,15 @@ def main():
     idf.estimateParameters()
     idf.estimateRegressorTorques(print_stats=False)
 
+    OutputConsole.render(idf)
+    if args.validation: idf.estimateValidationTorques()
+
     if args.model_output:
         if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
             print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
             idf.urdfHelpers.replaceParamsInURDF(input_urdf=args.model, output_urdf=args.model_output,
                                                 new_params=idf.model.xStd)
-
-    OutputConsole.render(idf)
-    if args.validation: idf.estimateValidationTorques()
 
     if idf.opt['createPlots']: idf.plot(text=logger.log)
     if idf.opt['showMemUsage']: idf.printMemUsage()

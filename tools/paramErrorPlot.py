@@ -57,7 +57,7 @@ def plotErrors(errors, num_links, labels):
     opacity = 0.4
     error_config = {'ecolor': '0.3'}
 
-    colors = ['r', 'g', 'b', 'y']
+    colors = ['g', 'r', 'b', 'y']
 
     for i in range(len(errors)):
         plt.bar(index+bar_width*i, errors[i], bar_width,
@@ -154,6 +154,7 @@ if __name__ == '__main__':
         methods_com_errors.append(com_errors)
         methods_inertia_errors.append(inertia_errors)
 
-    labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
+    #labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
+    labels = ['ID Inertia + COM (Known Mass)', 'ID all parameters (20% wrong masses)']
     plotErrors(methods_com_errors, num_links, labels=labels)
     plotErrors(methods_inertia_errors, num_links, labels=labels)

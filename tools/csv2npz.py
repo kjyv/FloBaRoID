@@ -112,11 +112,19 @@ def readWalkmanCSV(path, config, plot):
 
     ## apply some data correction, should be temporary
 
+    """
     joint_signs = np.array([1, -1, 1, 1, -1, 1,       #LHipLat -
                             -1, -1, -1, -1, 1, 1,      #RHipLat -
                             1, 1,                     #WaistSag -
                             1, -1, -1, 1, 1, -1, -1,  #LShSag -
                             1, -1, -1, -1, 1, 1, 1    #RShSag -
+                           ])
+    """
+    joint_signs = np.array([-1, 1, -1, -1, 1, -1,       #LHipLat -
+                            1, 1, 1, 1, -1, -1,      #RHipLat -
+                            -1, -1,                     #WaistSag -
+                            -1, 1, 1, -1, -1, 1, 1,  #LShSag -
+                            -1, 1, 1, 1, -1, -1, -1    #RShSag -
                            ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
@@ -134,14 +142,18 @@ def readWalkmanCSV(path, config, plot):
     # scale feet F/T sensors so zero value is force corresponding to weight
     # walkman whole weight is 139.14 kg (maybe was without protection at times? -4.7)
     # (equalized at peaks on one leg, scaled so sum of stance on both legs corrseponds to mass)
+    # the F/T linear z axis should be negative
+    # imu should have -9.81 in idle phases on the z component
     if not is_gazebo:
-        scale = 0.7
+        scale = -1.02
         ft_left_scale = 0.9 * scale
         ft_right_scale = 1.15 * scale
+        imu_scale = -1.035
     else:
-        scale = 1.0
+        scale = -1.03
         ft_left_scale = scale
         ft_right_scale = scale
+        imu_scale = -1.0
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -231,11 +243,6 @@ def readWalkmanCSV(path, config, plot):
         # correct rotation estimation (should have roll +- 180 deg but doesn't?)
         #out['IMUrpy'][:, 0] -= np.pi
 
-    if plot:
-        for i in range(0,3):
-            ax3.plot(out['times'][::skip], out['IMUrpy'][::skip, i], label=rpy_labels[i])
-            ax4.plot(out['times'][::skip], out['IMUlinAcc'][::skip, i], label=acc_labels[i])
-
     '''
     # use both IMUs and take average
     grav_norm = np.mean(la.norm(out['IMUlinAcc'], axis=1))
@@ -255,6 +262,15 @@ def readWalkmanCSV(path, config, plot):
     if not is_gazebo:
         #use second IMU
         out['IMUlinAcc'] = out['IMUlinAcc2']
+
+    # gravity should point downward
+
+    out['IMUlinAcc'] *= imu_scale
+
+    if plot:
+        for i in range(0,3):
+            ax3.plot(out['times'][::skip], out['IMUrpy'][::skip, i], label=rpy_labels[i])
+            ax4.plot(out['times'][::skip], out['IMUlinAcc'][::skip, i], label=acc_labels[i])
 
     if plot:
         ax5 = fig.add_subplot(3,2,5)

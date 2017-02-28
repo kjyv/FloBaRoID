@@ -98,8 +98,6 @@ class Model(object):
         if self.opt['verbose']:
             print('# DOFs: {}'.format(self.num_dofs))
             print('Joints: {}'.format(self.jointNames))
-            #print('Joints: {}'.format(self.generator.getDescriptionOfDegreesOfFreedom().replace(r"DOF Index:", "").replace("Name: ", "").replace("\n", " ")))
-            #print('\nJoints: {}'.format([self.idyn_model.getJointName(i) for i in range(0, self.idyn_model.getNrOfDOFs())]))
 
         # Get the number of outputs of the regressor
         # (should eq #dofs + #base vals)
@@ -205,25 +203,32 @@ class Model(object):
             fb = 6
             # The twist (linear/angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
+            # (samples are base frame)
             base_velocity = samples['base_velocity'][sample_idx]
             # The 6d classical acceleration (linear/angular acceleration) of the base
             # expressed in the world orientation frame and with respect to the base
             # origin
+            # (samples are base frame)
             base_acceleration = samples['base_acceleration'][sample_idx]
             rpy = samples['base_rpy'][sample_idx]
 
             # the first three elements (0,1,2) of q are the position variables of the floating body
             # elements 3,4,5 of q are the x,y,z components of the quaternion of the floating body
-            # the w component of the quaternion is appended at the end (why?)
+            # the w component of the quaternion is appended at the end (?)
             rotq = Quaternion.fromRPY(rpy[0], rpy[1], rpy[2])
-            q = np.concatenate((np.array([0,0,0]), rotq[0:3], q, np.array([rotq[4]])))
+            q = np.concatenate((np.array([0,0,0]), rotq[0:3], q, np.array([rotq[3]])))
+
+            #q = np.concatenate((np.array([0,0,0, 0,0,0]), q, np.array([0])))
+            #self.rbdlModel.SetQuaternion(0, rotq, q)
 
             # the first three elements (0,1,2) of qdot is the linear velocity of the floating body
             # elements 3,4,5 of qdot is the angular velocity of the floating body
+            # (world or base frame?)
             qdot = np.concatenate([base_velocity, qdot])
 
             # the first three elements (0,1,2) of qddot is the linear acceleration of the floating body
             # elements 3,4,5 of qddot is the angular acceleration of the floating body
+            # (world or base frame?)
             qddot = np.concatenate([base_acceleration, qddot])
 
         # compute inverse dynamics with rbdl
@@ -258,15 +263,8 @@ class Model(object):
         acc = samples['accelerations'][sample_idx]
 
         if self.opt['floatingBase']:
-            # The twist (linear/angular velocity) of the base, expressed in the world
-            # orientation frame and with respect to the base origin
             base_vel = samples['base_velocity'][sample_idx]
-            base_velocity = iDynTree.Twist.fromList(base_vel)
-            # The 6d classical acceleration (linear/angular acceleration) of the base
-            # expressed in the world orientation frame and with respect to the base
-            # origin
             base_acc = samples['base_acceleration'][sample_idx]
-            base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
             rpy = samples['base_rpy'][sample_idx]
 
         # system state for iDynTree
@@ -281,10 +279,16 @@ class Model(object):
             # reference frame, i.e. pos_world = world_T_base*pos_base
             # for identification purposes, the position does not matter but rotation is taken
             # from IMU estimation. The gravity, base velocity and acceleration all need to be
-            # expressed in world frame then
+            # expressed in world frame
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos)
+            # The twist (linear, angular velocity) of the base, expressed in the world
+            # orientation frame and with respect to the base origin
+            base_velocity = iDynTree.Twist.fromList(base_vel)
+            # The 6d classical acceleration (linear, angular acceleration) of the base
+            # expressed in the world orientation frame and with respect to the base origin
+            base_acceleration = iDynTree.ClassicalAcc.fromList(base_acc)
 
             dynComp.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration,
                                   world_gravity)
@@ -344,7 +348,7 @@ class Model(object):
             - stack the torques, regressors and contacts into matrices
         """
         contacts = {}
-        for sample_index in self.progress(range(0, data.num_used_samples)):
+        for sample_index in self.progress(range(data.num_used_samples)):
             m_idx = sample_index*(self.opt['skipSamples'])+sample_index
             with helpers.Timer() as t:
                 # read samples
@@ -384,10 +388,11 @@ class Model(object):
                     else:
                         # write estimated base forces to measured torq vector from file
                         # (usually can't be measured so they are simulated from the measured base motion)
-                        if self.opt['floatingBase'] and len(torq) < (self.num_dofs + fb):
-                            torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
-                        else:
-                            torq[0:6] = np.nan_to_num(torques[0:6])
+                        if self.opt['floatingBase']:
+                            if len(torq) < (self.num_dofs + fb):
+                                torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
+                            else:
+                                torq[0:6] = np.nan_to_num(torques[0:6])
 
             simulate_time += t.interval
 
@@ -401,13 +406,17 @@ class Model(object):
                     if self.opt['floatingBase']:
                         base_vel = data.samples['base_velocity'][m_idx]
                         base_acc = data.samples['base_acceleration'][m_idx]
+
+                        # get transform from base to world
                         rpy = data.samples['base_rpy'][m_idx]
-                        base_velocity = iDynTree.Twist.fromList(base_vel)
-                        base_acceleration = iDynTree.Twist.fromList(base_acc)
                         rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                         pos = iDynTree.Position.Zero()
                         world_T_base = iDynTree.Transform(rot, pos)
-                        self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration, self.gravity_twist)
+                        base_velocity = iDynTree.Twist.fromList(base_vel)
+                        base_acceleration = iDynTree.Twist.fromList(base_acc)
+
+                        self.generator.setRobotState(q,dq,ddq, world_T_base, base_velocity, base_acceleration,
+                                                     self.gravity_twist)
                     else:
                         self.generator.setRobotState(q,dq,ddq, self.gravity_twist)
 
@@ -542,7 +551,7 @@ class Model(object):
             print('(simulation for regressors took %.03f sec.)' % simulate_time)
             print('(getting regressors took %.03f sec.)' % num_time)
 
-        if self.opt['verbose']:
+        if self.opt['verbose'] == 2:
             print("YStd: {}".format(self.YStd.shape), end=' ')
             print("YBase: {}, cond: {}".format(self.YBase.shape, la.cond(self.YBase)))
 

@@ -1,6 +1,5 @@
 <!-- the joints in this file need to have the same order as reported when running without supplying a regressor file -->
 <regressor>
-    <baseLinkDynamics/>
     <jointTorqueDynamics>
         <joints>
             <!-- left leg -->

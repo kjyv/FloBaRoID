@@ -7,6 +7,7 @@ import time
 from typing import Dict, Iterable, Union, Tuple, AnyStr, Text
 
 import numpy as np
+import numpy.linalg as la
 
 from colorama import Fore
 from tqdm import tqdm
@@ -57,7 +58,7 @@ class ParamHelpers(object):
 
         when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
-        cons = {}
+        cons = {}  # type: (Dict[int, bool])
         if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
                 #masses need to be positive
@@ -84,7 +85,7 @@ class ParamHelpers(object):
 
         when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
-        cons = {}
+        cons = {}   # type: (Dict[int, bool])
 
         if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
@@ -99,9 +100,9 @@ class ParamHelpers(object):
                         continue
                     #check if inertia tensor is positive definite (only then cholesky decomp exists)
                     try:
-                        np.linalg.cholesky(tensors[i // 10])
+                        la.cholesky(tensors[i // 10])
                         cons[i // 10] = True
-                    except np.linalg.linalg.LinAlgError:
+                    except la.LinAlgError:
                         cons[i // 10] = False
                 else:
                     #TODO: check friction params >0

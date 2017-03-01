@@ -81,12 +81,16 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
-# use random regressors to determine structural parameter dependencies when getting base regressor
-# (generally recommended but may result in linear dependencies in regressor if only limited data is used)
-useRandomRegressor: 1
+# use a number of random regressors to determine structural parameter dependencies when getting base regressor
+# (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
+useStructuralRegressor: 0
+randomSamples: 10000
+
+# almost zero threshold for QR, SVD and other things
+minTol: 0.001
 
 # fixed or floating-base dynamics
-floatingBase: 1
+floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 1
@@ -102,9 +106,6 @@ simulateTorques: 0    #simulate torque for measured angles etc using idyntree (i
 
 # use RBDL for simulation (forward kinematics) instead of iDynTree
 useRBDL: 0
-
-# almost zero threshold for QR, SVD and other things
-minTol: 0.001
 
 ## constrained SDP to solve OLS
 
@@ -130,7 +131,7 @@ noChange: 0
 noChangeThresh: 2200
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 0
+restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
@@ -146,15 +147,15 @@ limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- direc
 # constrain overall mass
 limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
-limitMassVal: 139.142
+limitMassVal: 139.142 #114.94
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.1
+limitMassRange: 0.2
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.2     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.05     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -357,7 +358,7 @@ showTiming: 0                #show times various steps have taken
 showEssentialSteps: 0        #stop after every reduction step and show values (for essential params)
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params
-showBaseParams: 0            #display a list of identified base params (if applicable)
+showBaseParams: 1            #display a list of identified base params (if applicable)
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality

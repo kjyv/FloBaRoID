@@ -115,9 +115,33 @@ class Identification(object):
             fb = 6
         else:
             fb = 0
-        tauEst += self.model.contactForcesSum
 
-        self.tauEstimated = tauEst.reshape((self.data.num_used_samples, self.model.num_dofs + fb))
+        if self.opt['floatingBase']:
+            # the base forces are expressed in the base frame for the regressor, so transform them
+            # to world frame (inverse dynamics use world frame)
+
+            '''
+            pos = iDynTree.Position.Zero()
+            tau_2dim = tauEst.reshape((self.data.num_used_samples, self.model.num_dofs+fb))
+            for i in range(self.data.num_used_samples):
+                idx = i*(self.opt['skipSamples'])+i
+                rpy = self.data.samples['base_rpy'][idx]
+                rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
+                world_T_base = iDynTree.Transform(rot, pos).inverse()
+                to_world = world_T_base.getRotation().toNumPy()
+                tau_2dim[i, :3] = to_world.dot(tau_2dim[i, :3])
+                tau_2dim[i, 3:6] = to_world.dot(tau_2dim[i, 3:6])
+            tauEst = tau_2dim.flatten()
+            '''
+
+        if self.opt['addContacts']:
+            tauEst += self.model.contactForcesSum
+
+        if estimateWith == 'urdf':
+            sim_error = sla.norm(self.model.sim_torq_stack - tauEst)
+            print("Error between inverse dynamics and regressor simulation: {}".format(sim_error))
+
+        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 
         # give some data statistics
@@ -182,7 +206,7 @@ class Identification(object):
             self.model.rbdlModel = rbdl.loadModel(outfile,
                                                   floating_base=self.opt['floatingBase'],
                                                   verbose=False)
-            self.model.rbdlModel.gravity = np.array([0, 0, -9.81])
+            self.model.rbdlModel.gravity = np.array(self.model.gravity)
         else:
             dynComp.loadRobotModelFromFile(outfile)
         os.remove(outfile)
@@ -528,7 +552,9 @@ class Identification(object):
         self.model.YBaseInv = la.pinv(YBase)
 
         # identify using numpy least squares method (should be numerically more stable)
-        self.model.xBase = la.lstsq(YBase, tau)[0] - self.model.YBaseInv.dot(self.model.contactForcesSum)
+        self.model.xBase = la.lstsq(YBase, tau)[0]
+        if self.opt['addContacts']:
+            self.model.xBase -=  self.model.YBaseInv.dot(self.model.contactForcesSum)
 
         """
         # using pseudoinverse
@@ -678,7 +704,7 @@ class Identification(object):
         self.model.computeRegressors(self.data)
 
         if self.opt['verbose']:
-            print("estimating parameters using regressor", end=' ')
+            print("estimating parameters using regressor")
 
         if self.opt['useEssentialParams']:
             self.identifyBaseParameters()
@@ -739,12 +765,14 @@ class Identification(object):
 
                 # correct std solution to feasible if necessary (e.g. infeasible solution from
                 # unsuccessful optimization run)
+                """
                 if not self.paramHelpers.isPhysicalConsistent(self.model.xStd) and not self.opt['constrainUsingNL']:
                     #get full LMIs again
                     self.opt['deleteFixedBase'] = 0
                     self.sdp.initSDP_LMIs(self, remove_nonid=False)
                     print("Correcting solution to feasible std (non-optimal)")
                     self.model.xStd = self.sdp.findFeasibleStdFromStd(self, self.model.xStd)
+                """
             else:
                 #identify with OLS only
 
@@ -769,11 +797,6 @@ class Identification(object):
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
 
-        if self.opt['floatingBase'] and self.opt['plotBaseDynamics']:
-            torque_labels = self.model.baseNames + self.model.jointNames
-        else:
-            torque_labels = self.model.jointNames
-
         if self.opt['floatingBase'] and not self.opt['plotBaseDynamics']:
             tauMeasured = self.model.tauMeasured[:, 6:]
             tauEstimated = self.tauEstimated[:, 6:]
@@ -781,6 +804,7 @@ class Identification(object):
             if self.validation_file:
                 tauEstimatedValidation = self.tauEstimatedValidation[:, 6:]
                 tauMeasuredValidation = self.tauMeasuredValidation[:, 6:]
+            torque_labels = self.model.jointNames
         else:
             tauMeasured = self.model.tauMeasured
             tauEstimated = self.tauEstimated
@@ -788,6 +812,7 @@ class Identification(object):
             if self.validation_file:
                 tauEstimatedValidation = self.tauEstimatedValidation
                 tauMeasuredValidation = self.tauMeasuredValidation
+            torque_labels = self.model.baseNames + self.model.jointNames
 
         if self.opt['plotPerJoint']:
             datasets = []
@@ -809,7 +834,7 @@ class Identification(object):
                 fb = 0
 
             # add plots for each joint
-            for i in range(fb, self.model.num_dofs):
+            for i in range(0, self.model.num_dofs):
                 datasets.append({
                     'unified_scaling': False,
                     #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
@@ -817,7 +842,7 @@ class Identification(object):
                     'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                     'dataset': [{
                         'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
-                        'time': rel_time, 'title': torque_labels[i]}
+                        'time': rel_time, 'title': torque_labels[fb+i]}
                     ]}
                 )
                 if self.opt['plotPrioriTorques']:

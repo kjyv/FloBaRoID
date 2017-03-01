@@ -17,7 +17,6 @@ if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
 
 import os, sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
-import identification
 
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
@@ -196,6 +195,9 @@ class SDP(object):
                 D_other_blocks.append(Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])]))  # maximum mass
                 D_other_blocks.append(Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb]))  # minimum mass
 
+            # start with pudb
+            #import pudb; pu.db
+
             # constrain masses for each link separately
             if idf.opt['limitMassToApriori']:
                 # constrain each mass to env of a priori value
@@ -355,12 +357,11 @@ class SDP(object):
 
             # solving OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
 
-            # get minimal regresion error
-            # rho2_norm_sqr = la.norm(Q2.T.dot(tau))**2
-            rho2_norm_sqr = 0
+            # get upper bound for regression error
+            # rho2_norm_sqr = la.norm(Q2.T.dot(tau))**2 = 0
             # since we use QR if YBase, Q2 is empty anyway, so rho2 = Q2*tau following the paper is zero
-            # the code from sousa's notebook includes a different calculation, unclear why:
-            #rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase) - idf.model.contactForcesSum)**2
+            # the code from sousa's notebook includes a different calculation for the upper bound:
+            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))**2
 
             # get additional regression error
             if idf.opt['useRegressorRegularization'] and len(p_nid):
@@ -439,9 +440,9 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u_star = solution[0, 0]
-            if u_star:
-                print("SDP found std solution with {} squared residual error".format(u_star))
+            u = solution[0, 0]
+            if u:
+                print("SDP found std solution with {} squared residual error".format(u))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -547,9 +548,9 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u_star = solution[0,0]
-            if u_star:
-                print("SDP found std solution with {} squared residual error".format(u_star))
+            u = solution[0,0]
+            if u:
+                print("SDP found std solution with {} squared residual error".format(u))
             delta_star = np.matrix(solution[1:])
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
@@ -690,9 +691,9 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u_star = solution[0,0]
-            if u_star:
-                print("SDP found base solution with {} error increase from OLS solution".format(u_star))
+            u = solution[0,0]
+            if u:
+                print("SDP found base solution with {} error increase from OLS solution".format(u))
             beta_star = np.matrix(solution[1:1+idf.model.num_base_params])
 
             idf.model.xBase = np.squeeze(np.asarray(beta_star))
@@ -743,14 +744,15 @@ class SDP(object):
             if idf.opt['checkAPrioriFeasibility']:
                 self.checkFeasibility(idf.model.xStd)
 
-            idf.opt['onlyUseDSDP'] = 0
-            if not idf.opt['onlyUseDSDP']:
-                print("Solving with cvxopt")
+            # don't use cvxopt atm because it won't use primal and fail anyway
+            onlyUseDSDP = 1
+            if not onlyUseDSDP:
+                print("Solving with cvxopt...", end=' ')
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
             # try again with wider bounds and dsdp5 cmd line
-            if idf.opt['onlyUseDSDP'] or state is not 'optimal':
-                print("Solving with dsdp5")
+            if onlyUseDSDP or state is not 'optimal':
+                print("Solving with dsdp5...", end=' ')
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 # start at CAD data to find solution faster
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd, wide_bounds=True)
@@ -789,9 +791,9 @@ class SDP(object):
         prime = idf.model.xStdModel[idable_params]
         solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u_star = solution[0, 0]
-        if u_star:
-            print("SDP found std solution with {} error increase from previous solution".format(u_star))
+        u = solution[0, 0]
+        if u:
+            print("SDP found std solution with {} error increase from previous solution".format(u))
         delta_star = np.matrix(solution[1:])
         xStd = np.squeeze(np.asarray(delta_star))
 

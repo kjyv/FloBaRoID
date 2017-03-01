@@ -27,6 +27,12 @@
             </geometry>
         </collision>
     </link>
+    <link name="contact_ft" />
+    <joint name="contact_ft_joint" type="fixed">
+        <parent link="link2"/>
+        <child link="contact_ft"/>
+        <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    </joint>
     <joint name="joint_1_2" type="revolute">
         <origin xyz="1 0 0" rpy="0 -0 0" />
         <axis xyz="0 0 1" />

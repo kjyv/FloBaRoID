@@ -74,12 +74,16 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 #### identification
 
-# use random regressors to determine structural parameter dependencies when getting base regressor
-# (generally recommended but may result in linear dependencies in regressor if only limited data is used)
-useRandomRegressor: 0
+# use a number of random regressors to determine structural parameter dependencies when getting base regressor
+# (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
+useStructuralRegressor: 0
+randomSamples: 2000
+
+# zero threshold for QR to get regressor linear dependencies. possibly set larger for more DoFs
+minTol: 0.0001
 
 # fixed or floating-base dynamics
-floatingBase: 0
+floatingBase: 1
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 0
@@ -94,10 +98,7 @@ identifyGravityParamsOnly: 0
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 
 # use RBDL for simulation (forward kinematics) instead of iDynTree
-useRBDL: 1
-
-# almost zero threshold for QR, SVD and other things
-minTol: 0.0001
+useRBDL: 0
 
 ## constrained SDP to solve OLS
 
@@ -110,7 +111,7 @@ checkAPrioriFeasibility: 0
 
 # identify in two steps: first get feasible solution, then minimize distance to CAD while
 # staying in previous solution nullspace (using SDP)
-identifyClosestToCAD: 1
+identifyClosestToCAD: 0
 
 # use a non-linear gradient based solver instead of SDP (for closest to CAD)
 constrainUsingNL: 0
@@ -123,14 +124,14 @@ noChange: 0
 noChangeThresh: 400
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 0
+restrictCOMtoHull: 1
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 1.0
+cubeSize: .5
 
 # force COM values to stay close to a priori values (disable hull constraints when enabled)
 limitCOMToApriori: 0
@@ -141,13 +142,13 @@ limitOverallMass: 1
 # if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
 limitMassVal: 3.0
 #allowed percentual change in both directions (1-range and 1+range)
-limitMassRange: 0.05
+limitMassRange: 0.5
 
 # enforce staying around the a priori masses (only set this or a combination of the other
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassAprioriBoundary: 0.2     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -196,7 +197,7 @@ createPlots: 1               #create or show plots of measurements and estimated
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
 outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
 outputFilename: 'output_threelink.html'    #specify custom filename for output file
-plotBaseDynamics: 0          #when using floating base, plot base forces or not
+plotBaseDynamics: 1          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs

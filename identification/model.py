@@ -14,6 +14,7 @@ from sympy import symbols, Matrix
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from . import helpers
 from .quaternion import Quaternion
+from .data import Data
 
 from IPython import embed
 
@@ -27,11 +28,16 @@ class Model(object):
         progress_inst = helpers.Progress(opt)
         self.progress = progress_inst.progress
 
+        # set these options in case model was not instanciated from Identification
         if 'orthogonalizeBasis' not in self.opt:
             self.opt['orthogonalizeBasis'] = 1
 
         if 'useBasisProjection' not in self.opt:
             self.opt['useBasisProjection'] = 0
+
+        # debug options
+        self.opt['useRegressorForSimulation'] = 1
+        self.opt['addContacts'] = 1
 
         # create generator instance and load model
         self.generator = iDynTree.DynamicsRegressorGenerator()
@@ -157,15 +163,16 @@ class Model(object):
 
         self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
 
-        self.gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
+        self.gravity = [0,0,-9.81,0,0,0]
 
-        if opt['simulateTorques'] or opt['useAPriori'] or opt['floatingBase']:
-            if self.opt['useRBDL']:
-                import rbdl
-                self.rbdlModel = rbdl.loadModel(self.urdf_file, floating_base=self.opt['floatingBase'], verbose=False)
-                self.rbdlModel.gravity = np.array([0, 0, -9.81])
-            self.dynComp = iDynTree.DynamicsComputations()
-            self.dynComp.loadRobotModelFromFile(self.urdf_file)
+        self.gravity_twist = iDynTree.Twist.fromList(self.gravity)
+
+        if self.opt['useRBDL']:
+            import rbdl
+            self.rbdlModel = rbdl.loadModel(self.urdf_file, floating_base=self.opt['floatingBase'], verbose=False)
+            self.rbdlModel.gravity = np.array(self.gravity[0:3])
+        self.dynComp = iDynTree.DynamicsComputations()
+        self.dynComp.loadRobotModelFromFile(self.urdf_file)
 
         # get model parameters
         xStdModel = iDynTree.VectorDynSize(self.generator.getNrOfParameters())
@@ -255,7 +262,7 @@ class Model(object):
 
         if not dynComp:
             dynComp = self.dynComp
-        world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
+        world_gravity = iDynTree.SpatialAcc.fromList(self.gravity)
 
         # read sample data
         pos = samples['positions'][sample_idx]
@@ -283,6 +290,16 @@ class Model(object):
             rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
             pos = iDynTree.Position.Zero()
             world_T_base = iDynTree.Transform(rot, pos).inverse()
+
+            '''
+            # rotate base vel and acc to world frame
+            to_world = world_T_base.getRotation().toNumPy()
+            base_vel[0:3] = to_world.dot(base_vel[0:3])
+            base_vel[3:] = to_world.dot(base_vel[3:])
+            base_acc[0:3] = to_world.dot(base_acc[0:3])
+            base_acc[3:] = to_world.dot(base_acc[3:])
+            '''
+
             # The twist (linear, angular velocity) of the base, expressed in the world
             # orientation frame and with respect to the base origin
             base_velocity = iDynTree.Twist.fromList(base_vel)
@@ -320,6 +337,7 @@ class Model(object):
             return torques
 
     def computeRegressors(self, data, only_simulate=False):
+        # type: (Model, Data, bool) -> (None)
         """ compute regressors from measurements for each time step of the measurement data
             and stack them vertically. also stack measured torques and get simulation data.
             for floating base, get estimated base forces (6D wrench) and add to torque measure stack
@@ -335,6 +353,7 @@ class Model(object):
         else: fb = 0
         self.regressor_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples, self.num_identified_params))
         self.torques_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
+        self.sim_torq_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
         self.torquesAP_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
         num_contacts = len(data.samples['contacts'].item().keys()) if 'contacts' in data.samples else 0
@@ -383,17 +402,21 @@ class Model(object):
                         # torques sometimes contain nans, just a very small C number that gets converted to nan?
                         torqAP = np.nan_to_num(sim_torques)
 
-                    if self.opt['simulateTorques']:
-                        torq = np.nan_to_num(sim_torques)
-                    else:
-                        # write estimated base forces to measured torq vector from file (usually
-                        # can't be measured so they are simulated from the measured base motion,
-                        # contacts are added further down)
-                        if self.opt['floatingBase']:
-                            if len(torq) < (self.num_dofs + fb):
-                                torq = np.concatenate((np.nan_to_num(sim_torques[0:6]), torq))
-                            else:
-                                torq[0:6] = np.nan_to_num(sim_torques[0:6])
+                    if not self.opt['useRegressorForSimulation']:
+                        if self.opt['simulateTorques']:
+                            torq = np.nan_to_num(sim_torques)
+                        else:
+                            # write estimated base forces to measured torq vector from file (usually
+                            # can't be measured so they are simulated from the measured base motion,
+                            # contacts are added further down)
+                            if self.opt['floatingBase']:
+                                if len(torq) < (self.num_dofs + fb):
+                                    torq = np.concatenate((np.nan_to_num(sim_torques[0:6]), torq))
+                                else:
+                                    torq[0:6] = np.nan_to_num(sim_torques[0:6])
+
+                        #TODO: remove me again
+                        torques_simulated = np.nan_to_num(sim_torques)
 
             simulate_time += t.interval
 
@@ -413,6 +436,16 @@ class Model(object):
                         rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                         pos = iDynTree.Position.Zero()
                         world_T_base = iDynTree.Transform(rot, pos).inverse()
+
+                        '''
+                        # rotate base vel and acc to world frame
+                        to_world = world_T_base.getRotation().toNumPy()
+                        base_vel[0:3] = to_world.dot(base_vel[0:3])
+                        base_vel[3:] = to_world.dot(base_vel[3:])
+                        base_acc[0:3] = to_world.dot(base_acc[0:3])
+                        base_acc[3:] = to_world.dot(base_acc[3:])
+                        '''
+
                         base_velocity = iDynTree.Twist.fromList(base_vel)
                         base_acceleration = iDynTree.Twist.fromList(base_acc)
 
@@ -429,8 +462,8 @@ class Model(object):
 
                     regressor = regressor.toNumPy()
                     if self.opt['floatingBase']:
-                        # the base forces are expressed in the base frame for the regressor, so transform them
-                        # to world frame (inverse dynamics use world frame)
+                        # the base forces are expressed in the base frame for the regressor, so
+                        # rotate them to world frame (inverse dynamics use world frame)
                         to_world = world_T_base.getRotation().toNumPy()
                         regressor[0:3, :] = to_world.dot(regressor[0:3, :])
                         regressor[3:6, :] = to_world.dot(regressor[3:6, :])
@@ -461,12 +494,34 @@ class Model(object):
                                 friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                             regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
+                    # simulate with regressor
+                    if self.opt['useRegressorForSimulation'] and (self.opt['simulateTorques'] or
+                            self.opt['useAPriori'] or self.opt['floatingBase']):
+                        torques = regressor.dot(self.xStdModel)
+                        if self.opt['simulateTorques']:
+                            torq = torques
+                        else:
+                            # write estimated base forces to measured torq vector from file (usually
+                            # can't be measured so they are simulated from the measured base motion,
+                            # contacts are added further down)
+                            if self.opt['floatingBase']:
+                                if len(torq) < (self.num_dofs + fb):
+                                    torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
+                                else:
+                                    torq[0:6] = np.nan_to_num(torques[0:6])
+                        torques_simulated = np.nan_to_num(torques)
+
                     # stack on previous regressors
                     np.copyto(self.regressor_stack[row_index:row_index+self.num_dofs+fb], regressor)
                 num_time += t.interval
 
             # stack results onto matrices of previous time steps
             np.copyto(self.torques_stack[row_index:row_index+self.num_dofs+fb], torq)
+
+            # TODO: remove me
+            if not only_simulate and (self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floatingBase']):
+                np.copyto(self.sim_torq_stack[row_index:row_index+self.num_dofs+fb], torques_simulated)
+
             if self.opt['useAPriori']:
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.num_dofs+fb], torqAP)
 
@@ -487,7 +542,7 @@ class Model(object):
                     contacts_torq = jacobian.T.dot(contacts[frame])
 
                     contact_idx = (sample_index*dim)
-                    np.copyto(self.contacts_stack[c][contact_idx:contact_idx+dim], contacts_torq)
+                    np.copyto(self.contacts_stack[c][contact_idx:contact_idx+dim], contacts_torq[-dim:])
 
         # finished looping over samples
 
@@ -497,15 +552,19 @@ class Model(object):
         if self.opt['floatingBase']:
             if self.opt['simulateTorques']:
                 # add measured contact wrench to torque estimation from iDynTree
-                self.torques_stack = self.torques_stack + self.contactForcesSum
+                if self.opt['addContacts']:
+                    self.torques_stack = self.torques_stack + self.contactForcesSum
             else:
                 # if not simulating, measurements of joint torques already contain contact contribution,
                 # so only add it to the (always simulated) base force estimation
                 torques_stack_2dim = np.reshape(self.torques_stack, (data.num_used_samples, self.num_dofs+fb))
                 self.contactForcesSum_2dim = np.reshape(self.contactForcesSum, (data.num_used_samples, self.num_dofs+fb))
-                torques_stack_2dim[:, :6] += self.contactForcesSum_2dim[:, :6]
+                if self.opt['addContacts']:
+                    torques_stack_2dim[:, :6] += self.contactForcesSum_2dim[:, :6]
                 self.torques_stack = torques_stack_2dim.flatten()
 
+        if self.opt['addContacts']:
+            self.sim_torq_stack = self.sim_torq_stack + self.contactForcesSum
 
         if len(contacts.keys()) or self.opt['simulateTorques']:
             # write back torques to data object when simulating or contacts were added
@@ -524,7 +583,7 @@ class Model(object):
         # if difference between random regressor (that was used for base projection) and regressor
         # from the data is too big, the base regressor can still have linear dependencies.
         # for these cases, it seems to be better to get the base columns directly from the data regressor matrix
-        if not self.opt['useRandomRegressor'] and not only_simulate:
+        if not self.opt['useStructuralRegressor'] and not only_simulate:
             if self.opt['verbose']:
                 print('Getting independent base columns again from data regressor')
             self.computeRegressorLinDepsQR(self.YStd)
@@ -588,7 +647,7 @@ class Model(object):
             fric = regr_file['fric']
             fric_sym = regr_file['fric_sym']
             if self.opt['verbose']:
-                print("loaded random regressor from {}".format(regr_filename))
+                print("loaded random structural regressor from {}".format(regr_filename))
             if n != n_samples or fbase != fb or R.shape[0] != self.num_identified_params or \
                     self.opt['identifyGravityParamsOnly'] != grav or \
                     fric != self.opt['identifyFriction'] or fric_sym != self.opt['identifySymmetricVelFriction']:
@@ -602,7 +661,7 @@ class Model(object):
                 n_samples = self.num_dofs * 1000
 
             if self.opt['verbose']:
-                print("(re-)generating random regressor ({} positions)".format(n_samples))
+                print("(re-)generating structural regressor ({} random positions)".format(n_samples))
 
             R = np.array((self.N_OUT, self.num_model_params))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
@@ -646,6 +705,16 @@ class Model(object):
                     rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
                     pos = iDynTree.Position.Zero()
                     world_T_base = iDynTree.Transform(rot, pos).inverse()
+
+                    '''
+                    # rotate base vel and acc to world frame
+                    to_world = world_T_base.getRotation().toNumPy()
+                    base_vel[0:3] = to_world.dot(base_vel[0:3])
+                    base_vel[3:] = to_world.dot(base_vel[3:])
+                    base_acc[0:3] = to_world.dot(base_acc[0:3])
+                    base_acc[3:] = to_world.dot(base_acc[3:])
+                    '''
+
                     base_velocity = iDynTree.Twist.fromList(base_vel)
                     base_acceleration = iDynTree.Twist.fromList(base_acc)
 
@@ -659,7 +728,7 @@ class Model(object):
 
                 A = regressor.toNumPy()
 
-                #the base forces are expressed in the base frame for the regressor, so transform them
+                #the base forces are expressed in the base frame for the regressor, so rotate them
                 if self.opt['floatingBase']:
                     to_world = np.fromstring(world_T_base.getRotation().toString(), sep=' ').reshape((3,3))
                     A[0:3, :] = to_world.dot(A[0:3, :])
@@ -724,7 +793,7 @@ class Model(object):
         else:
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix (Gautier, 1990)
-            Y, self.Q, self.R, self.P = self.getRandomRegressor(n_samples=5000)
+            Y, self.Q, self.R, self.P = self.getRandomRegressor(n_samples=self.opt['randomSamples'])
 
         """
         # get basis directly from regressor matrix using QR

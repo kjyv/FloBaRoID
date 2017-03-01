@@ -26,7 +26,7 @@ class NLOPT(object):
             self.nl = self.model.num_links
             self.start_link = 0
 
-        self.idf.opt['optInFeasibleParamSpace'] = 0
+        self.idf.opt['optInFeasibleParamSpace'] = 1
 
         if self.idf.opt['identifyGravityParamsOnly']:
             self.per_link = 4
@@ -150,6 +150,9 @@ class NLOPT(object):
     def minimizeSolToCADStd(self, x):
         """ use parameters in std space """
         fail = 0
+        if False in np.isfinite(x):
+            fail = 1
+            return (0, [], fail)
 
         #minimize estimation error
         #tau = self.model.torques_stack
@@ -233,6 +236,9 @@ class NLOPT(object):
 
     def minimizeSolToCADFeasible(self, x):
         """ minimize in feasible parametrization space """
+        if False in np.isfinite(x):
+            fail = 1
+            return (0, [], fail)
 
         fail = 0
 
@@ -425,6 +431,7 @@ class NLOPT(object):
             solver.setOption('bound_relax_factor', 0.0) #1e-16)
         else:
             # solve optimization problem
+            '''
             if self.idf.opt['verbose']:
                 print('Using PSQP to get closer to a priori')
             solver = pyOpt.PSQP(disp_opts=True)
@@ -432,6 +439,17 @@ class NLOPT(object):
             solver.setOption('TOLC', 1e-16)
             if self.idf.opt['verbose']:
                 solver.setOption('IPRINT', 1)
+            '''
+            if self.idf.opt['verbose']:
+                print('Using ALPSO to get closer to a priori')
+            solver = pyOpt.ALPSO(disp_opts=True)
+            solver.setOption('stopCriteria', 0)
+            solver.setOption('maxInnerIter', 3)
+            solver.setOption('maxOuterIter', self.idf.opt['nlOptMaxIterations'])
+            solver.setOption('printInnerIters', 1)
+            solver.setOption('printOuterIters', 1)
+            solver.setOption('SwarmSize', 30)
+            solver.setOption('xinit', 1)
 
         solver(opt)         #run optimization
 

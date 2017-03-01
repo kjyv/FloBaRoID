@@ -85,20 +85,19 @@ def readWalkmanCSV(path, config, plot):
     out = {}
     #field order in csv file
     jointNames = ['R-HIP_R', 'R-HIP_Y', 'R-HIP_P', 'R-KNEE', 'R-ANK_P', 'R-ANK_R', 'L-HIP_R',
-                  'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R', 'WaistLat', 'WaistSag',
-                  'WaistYaw', 'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1',
+                  'L-HIP_Y', 'L-HIP_P', 'L-KNEE', 'L-ANK_P', 'L-ANK_R',
+                  'WaistLat', 'WaistSag', 'WaistYaw',
+                  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1',
                   'LWrj2', 'NeckYawj', 'NeckPitchj', 'RShSag', 'RShLat', 'RShYaw', 'RElbj',
                   'RForearmPlate', 'RWrj1', 'RWrj2']
     #fields to leave out
+    # len(jointNames) - len(ignoreJoints) needs to match DOFs that are defined in regressor xml or
+    # are found automatically!
+    #ignoreJoints = []
+
+    # walkman with some fixed joints (not included in regressor)
     ignoreJoints = [jointNames.index('WaistLat'), jointNames.index('NeckYawj'), jointNames.index('NeckPitchj')]
 
-    # idyntree urdf joint order (model class):
-    # WaistLat, WaistSag, WaistYaw, NeckYawj, NeckPitchj, RHipLat, RHipYaw, RHipSag, RKneeSag,
-    # RAnkSag, RAnkLat, LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat, RShSag, RShLat,
-    # RShYaw, RElbj, LShSag, LShLat, LShYaw, LElbj, LForearmPlate, LWrj1, LWrj2, RForearmPlate,
-    # RWrj1, RWrj2
-    #csv_T_urdf_indices = [12, 13, 14, 22, 23,  0, 1, 2, 3, 4, 5,  6, 7, 8, 9, 10, 11,  24, 25, 26, 27,  15,
-    #                      16, 17, 18, 19, 20, 21,  28, 29, 30]
     # idyntree urdf joint order (generator and dynComp class)
     # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat,
     # RHipLat, RHipYaw, RHipSag, RKneeSag, RAnkSag, RAnkLat,
@@ -107,7 +106,8 @@ def readWalkmanCSV(path, config, plot):
     # NeckYawj, NeckPitchj,
     # RShSag, RShLat, RShYaw, RElbj, RForearmPlate, RWrj1, RWrj2
     # mapping to urdf joints in indices:
-    csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,  12, 13, 14,  15, 16, 17, 18, 19, 20,
+    csv_T_urdf_indices = [6, 7, 8, 9, 10, 11,  0, 1, 2, 3, 4, 5,
+                          12, 13, 14,  15, 16, 17, 18, 19, 20,
                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 
     ## apply some data correction, should be temporary
@@ -120,14 +120,16 @@ def readWalkmanCSV(path, config, plot):
                             1, -1, -1, -1, 1, 1, 1    #RShSag -
                            ])
     """
-    joint_signs = np.array([-1, 1, -1, -1, 1, -1,       #LHipLat -
-                            1, 1, 1, 1, -1, -1,      #RHipLat -
-                            -1, -1,                     #WaistSag -
-                            -1, 1, 1, -1, -1, 1, 1,  #LShSag -
-                            -1, 1, 1, 1, -1, -1, -1    #RShSag -
+    joint_signs = np.array([-1, 1, -1, -1, 1, -1,     #LHipLat -
+                            1, 1, 1, 1, -1, -1,       #RHipLat -
+                            #1,                        #WaistLat
+                            -1, -1,                   #WaistSag -
+                            -1, 1, 1, -1, -1, 1, 1,   #LShSag -
+                            -1, 1, 1, 1, -1, -1, -1   #RShSag -
                            ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
+                              #0,                      #WaistLat
                               0, 0,
                               0, 0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0, 0
@@ -148,12 +150,12 @@ def readWalkmanCSV(path, config, plot):
         scale = -1.02
         ft_left_scale = 0.9 * scale
         ft_right_scale = 1.15 * scale
-        imu_scale = -1.035
+        imu_scale = 1.035
     else:
         scale = -1.03
         ft_left_scale = scale
         ft_right_scale = scale
-        imu_scale = -1.0
+        imu_scale = 1.0
 
     print(np.array(jointNames)[csv_T_urdf_indices])
 
@@ -304,7 +306,7 @@ def readWalkmanCSV(path, config, plot):
         out['FTleft'][:, 0:6] = f[:, 3:9]
         out['FTright'][:, 0:6] = f[:, 9:15]
 
-
+    # scale/invert all or just z?
     out['FTleft'] *= ft_left_scale
     out['FTright'] *= ft_right_scale
 
@@ -360,7 +362,7 @@ if __name__ == '__main__':
     out['torques_raw'] = np.zeros_like( out['torques'])
 
     #filter, diff, integrate
-    if args.robot == 'walkman' and config['floatingBase']:
+    if args.robot == 'walkman':
         out['IMUlinVel'] = np.zeros( (out['times'].shape[0], 3) ) #IMU linear velocity
         out['IMUrotAcc'] = np.zeros( (out['times'].shape[0], 3) ) #IMU rotational acceleration
         data.preprocess(Q=out['positions'], V=out['velocities'], Vdot=out['accelerations'],
@@ -436,7 +438,7 @@ if __name__ == '__main__':
         np.savez(args.outfile, positions=out['positions'], positions_raw=out['positions'],
                  velocities=out['velocities'], velocities_raw=out['velocities'],
                  accelerations=out['accelerations'], torques=out['torques'],
-                 torques_raw=out['torques_raw'], times=out['times'], frequency=out['frequency'])
+                 torques_raw=out['torques_raw'], contacts=out['contacts'], times=out['times'], frequency=out['frequency'])
 
     print("Saved csv data as {}".format(args.outfile))
     print("Samples: {}, Time: {}s, Frequency: {} Hz".format(out['times'].shape[0], out['times'][-1], out['frequency']))

@@ -4,6 +4,8 @@ from __future__ import division
 from builtins import range
 from builtins import object
 import sys
+from typing import Any, Dict, List
+
 import numpy as np
 import numpy.linalg as la
 from scipy import signal
@@ -12,9 +14,9 @@ import sympy
 from sympy import symbols, Matrix
 
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from . import helpers
-from .quaternion import Quaternion
-from .data import Data
+import identification.helpers as helpers
+from identification.quaternion import Quaternion
+from identification.data import Data
 
 from IPython import embed
 
@@ -22,6 +24,7 @@ np.core.arrayprint._line_width = 160
 
 class Model(object):
     def __init__(self, opt, urdf_file, regressor_file=None):
+        # (Dict[str, Any, str, str]) -> None
         self.urdf_file = urdf_file
         self.opt = opt
 
@@ -65,7 +68,7 @@ class Model(object):
             with open(regressor_file, 'r') as filename:
                 regrXml = filename.read()
 
-            self.jointNames = []
+            self.jointNames = []   # type: List[str]
             import xml.etree.ElementTree as ET
             tree = ET.fromstring(regrXml)
             for l in tree.iter():
@@ -119,14 +122,14 @@ class Model(object):
         if self.opt['verbose']:
             print('# links: {} (+ {} fake)'.format(self.num_links, self.generator.getNrOfFakeLinks()))
 
-        self.inertia_params = list()
-        self.mass_params = list()
+        self.inertia_params = list()  # type: List[int]
+        self.mass_params = list()     # type: List[int]
         for i in range(self.num_links):
             self.mass_params.append(i*10)
             self.inertia_params.extend([i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9])
 
         #self.linkNames = self.generator.getDescriptionOfLinks().split()
-        self.linkNames = []
+        self.linkNames = []  # type: List[str]
         import re
         for d in self.generator.getDescriptionOfParameters().strip().split("\n"):
             link = re.findall(r"of link (.*)", d)[0]
@@ -881,10 +884,11 @@ class Model(object):
 
         # define sympy symbols for each std column
         self.base_syms = sympy.Matrix([sympy.Symbol('beta'+str(i),real=True) for i in range(self.num_base_params)])
-        self.param_syms = list()
-        self.mass_syms = list()
-        self.friction_syms = list()
-        self.identified_params = list()  #indices of params within full param vector that are going to be identified
+        self.param_syms = list()     # type: List[sympy.Symbol]
+        self.mass_syms = list()      # type: List[sympy.Symbol]
+        self.friction_syms = list()  # type: List[sympy.Symbol]
+        #indices of params within full param vector that are going to be identified
+        self.identified_params = list()  # type: List[int]
         for i in range(0, self.num_links):
             #mass
             m = symbols('m_{}'.format(i))
@@ -957,7 +961,7 @@ class Model(object):
         # find std parameters that have no effect on estimation (not single or contributing to base
         # equations)
         # TODO: also put this in regressor cache file
-        base_deps_syms = []
+        base_deps_syms = []   # type: List[sympy.Symbol]
         for i in range(self.base_deps.shape[0]):
             for s in self.base_deps[i].free_symbols:
                 if s not in base_deps_syms:
@@ -982,7 +986,7 @@ class Model(object):
 
             # use base column dependencies to get combined params of base regressor with
             # coontribution on each each link (a bit inexact I guess)
-            base_columns = list()
+            base_columns = list()  # type: List[int]
             for k in range(i*10, i*10+9+1):
                 for j in range(0, self.num_base_params):
                     if self.param_syms[k] in self.base_deps[j].free_symbols:

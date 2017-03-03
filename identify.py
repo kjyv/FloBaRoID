@@ -9,7 +9,7 @@ from builtins import zip
 from builtins import range
 from builtins import object
 import sys
-from typing import Dict, List, Iterable
+from typing import cast, Dict, List, Iterable
 
 # math
 import numpy as np
@@ -28,8 +28,8 @@ import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from identification.model import Model
 from identification.data import Data
 from identification.output import OutputConsole
-from identification.sdp import SDP
-from identification import helpers
+from identification import sdp
+import identification.helpers as helpers
 
 from colorama import Fore
 from IPython import embed
@@ -81,7 +81,7 @@ class Identification(object):
 
         self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
-        self.sdp = SDP(self)
+        self.sdp = sdp.SDP(self)
 
         self.tauEstimated = None  # type: np.ndarray
         self.res_error = 100        #last residual error in percent
@@ -468,7 +468,7 @@ class Identification(object):
         useCADWeighting = 0   # usually produces exact same result, but might be good for some tests
         if self.opt['useDependents']:
             # also get the ones that are linearly dependent on them -> base params
-            dependents = []
+            dependents = []   # type: List[int]
             #to_delete = []
             for i in range(0, self.model.base_deps.shape[0]):
                 if i in self.baseEssentialIdx:
@@ -506,10 +506,10 @@ class Identification(object):
                     v = 0.1
                     p_start = idx // 10 * 10
                     if idx % 10 in [1,2,3]:   # com value
-                        v = np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1
+                        v = cast(float, np.mean(self.model.xStdModel[p_start + 1:p_start + 4]) * 0.1)
                     elif idx % 10 in [4,5,6,7,8,9]:  # inertia value
                         inertia_range = np.array([4,5,6,7,8,9])+p_start
-                        v = np.mean(self.model.xStdModel[np.where(self.model.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1
+                        v = cast(float, np.mean(self.model.xStdModel[np.where(self.model.xStdModel[inertia_range] != 0)[0]+p_start+4]) * 0.1)
                     if v == 0:
                         v = 0.1
                     self.xStdEssential[idx] = v
@@ -606,7 +606,7 @@ class Identification(object):
             #G = scipy.sparse.spdiags(np.tile(1/self.sigma_rho, self.num_used_samples), 0,
             #        self.num_dofs*self.num_used_samples, self.num_dofs*self.num_used_samples)
             #G = scipy.sparse.spdiags(np.repeat(1/np.sqrt(self.sigma_rho), self.data.num_used_samples), 0, r, r)
-            G = scipy.sparse.spdiags(np.repeat(1/self.p_sigma_x, self.data.num_used_samples), 0, r, r)
+            G = scipy.sparse.spdiags(np.repeat(np.array([1/self.p_sigma_x]), self.data.num_used_samples), 0, r, r)
 
             # weigh Y and tau with deviations
             self.model.YBase = G.dot(self.model.YBase)
@@ -991,7 +991,7 @@ def main():
         def flush(self):
             self.terminal.flush()
 
-    sys.stdout = Logger()
+    sys.stdout = Logger()  # type: ignore
     logger = sys.stdout
 
     #for ipython, reset this with

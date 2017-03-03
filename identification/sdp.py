@@ -4,7 +4,7 @@ from __future__ import absolute_import
 from builtins import zip
 from builtins import range
 import time
-from typing import Dict
+from typing import List, Dict
 
 import numpy as np
 import numpy.linalg as la
@@ -18,6 +18,7 @@ if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
 import os, sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
+from identify import Identification
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
@@ -59,7 +60,7 @@ class SDP(object):
         for l in self.LMIs:
             const_inst = l.subs(replace).rhs
             if const_inst.shape[0] > 1:
-                if not np.all(np.linalg.eig(np.asarray(const_inst).astype(float))[0] > 0):
+                if not np.all(la.eig(np.asarray(const_inst).astype(float))[0] > 0):
                     # matrix needs to be positive definite
                     print("Constraint {} does not hold true for CAD params".format(l))
                     feasible = False
@@ -456,6 +457,7 @@ class SDP(object):
 
 
     def identifyFeasibleStandardParametersDirect(self, idf):
+        # type: (Identification) -> None
         ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
             feasible std parameters. Based on code from Sousa, 2014, using direct regressor from Gautier, 2013
         '''
@@ -564,6 +566,7 @@ class SDP(object):
 
 
     def identifyFeasibleBaseParameters(self, idf):
+        # type: (Identification) -> None
         ''' use SDP optimization to solve OLS to find physically feasible base parameters (i.e. for
             which a consistent std solution exists), based on code from github.com/cdsousa/wam7_dyn_ident
         '''
@@ -771,6 +774,7 @@ class SDP(object):
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
 
     def findFeasibleStdFromStd(self, idf, xStd):
+        # type: (Identification, np.ndarray) -> (np.ndarray)
         ''' find closest feasible std solution for some std parameters (increases error) '''
 
         idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))

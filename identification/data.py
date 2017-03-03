@@ -3,12 +3,15 @@ from __future__ import print_function
 from __future__ import absolute_import
 from builtins import range
 from builtins import object
+
+from typing import List, Dict, Any
+
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
 from scipy import signal
 from scipy import misc
-from . import helpers
+from identification.helpers import Timer
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import matplotlib.pyplot as plt
@@ -16,20 +19,22 @@ from IPython import embed
 
 class Data(object):
     def __init__(self, opt):
+        # type: (Dict[str, Any]) -> None
         self.opt = opt
-        self.measurements = {}   #loaded data
+        self.measurements = {}  # type: Dict[str, np.ndarray]   #loaded data
         self.num_loaded_samples = 0    # no of samples from file
         self.num_used_samples = 0      # no of samples after skipping
-        self.samples = {}        #selected data (when using block selection)
+        self.samples = {}     # type: Dict[str, np.ndarray]   #selected data (when using block selection)
 
-        self.usedBlocks = list()
-        self.unusedBlocks = list()
-        self.seenBlocks = list()
+        self.usedBlocks = list()     # type: List[int]
+        self.unusedBlocks = list()   # type: List[int]
+        self.seenBlocks = list()     # type: List[int]
 
         # has some data been loaded?
         self.inited = False
 
     def init_from_data(self, data):
+        # type: (Dict[str, np.ndarray]) -> None
         '''load data from numpy array'''
 
         self.samples = self.measurements = data.copy()
@@ -44,7 +49,7 @@ class Data(object):
     def init_from_files(self, measurements_files):
         '''load data from measurements_files, optionally skipping some values'''
 
-        with helpers.Timer() as t:
+        with Timer() as t:
             so = self.opt['startOffset']
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
@@ -386,7 +391,7 @@ class Data(object):
             # Plot the frequency and phase response of the filter
             w, h = sp.signal.freqz(b, a, worN=8000)
             plt.subplot(2, 1, 1)
-            plt.plot(0.5*Fs*w/np.pi, np.abs(h), 'b')
+            plt.plot(0.5*Fs*w / np.pi, np.abs(h), 'b')
             plt.plot(fc, 0.5*np.sqrt(2), 'ko')
             plt.axvline(fc, color='k')
             plt.xlim(0, 0.5*Fs)

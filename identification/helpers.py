@@ -1,10 +1,11 @@
 from __future__ import division
+from __future__ import absolute_import
 from __future__ import print_function
 from builtins import str
 from builtins import range
 from builtins import object
 import time
-from typing import Dict, Iterable, Union, Tuple, AnyStr, Text
+from typing import cast, Any, List, Dict, Iterable, Union, Tuple, AnyStr
 
 import numpy as np
 import numpy.linalg as la
@@ -20,12 +21,15 @@ if (sys.version_info < (3, 0)):
     class FileNotFoundError(OSError):
         pass
 
+import identification.model
 
 class Progress(object):
-    def __init__(self, config):  # type: (Dict) -> None
-        self.config = config
+    def __init__(self, config):
+        # type: (Dict[str, Any]) -> None
+        self.config = config   # type: Dict[str, Any]
 
-    def progress(self, iter):    # type: (Iterable) -> Iterable
+    def progress(self, iter):
+        # type: (Iterable) -> Iterable
         if self.config['verbose']:
             return tqdm(iter)
         else:
@@ -43,7 +47,8 @@ class Timer(object):
 
 
 class ParamHelpers(object):
-    def __init__(self, model, opt):  # type: (Model, Dict) -> None
+    def __init__(self, model, opt):
+        # type: (Model, Dict[str, Any]) -> None
         self.model = model
         self.opt = opt
 
@@ -62,7 +67,7 @@ class ParamHelpers(object):
         if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
                 #masses need to be positive
-                cons[i] = params[i*4] > 0
+                cons[i] = cast(bool, params[i*4] > 0)
         else:
             for i in range(0, params.shape[0]):
                 if (i % 10 == 0) and i < self.model.num_model_params:   #for each link (and not friction)
@@ -90,7 +95,7 @@ class ParamHelpers(object):
         if self.opt['identifyGravityParamsOnly'] and not full:
             for i in range(0, self.model.num_links):
                 #masses need to be positive
-                cons[i] = params[i*4] > 0
+                cons[i] = cast(bool, params[i*4] > 0)
         else:
             tensors = self.inertiaTensorFromParams(params)
             for i in range(0, len(params)):
@@ -302,7 +307,7 @@ class URDFHelpers(object):
             per_link = 4
             xStdBary = new_params.copy()
             for i in range(self.model.num_links):
-                xStdBary[i*per_link+1:i*per_link+3+1] /= xStdBary[i*per_link]
+                xStdBary[i*per_link+1:i*per_link+3+1] /= xStdBary[i*per_link]  # type: ignore
         else:
             per_link = 10
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
@@ -337,12 +342,12 @@ class URDFHelpers(object):
             if l.attrib['name'] in self.model.jointNames:
                 joint_id = self.model.jointNames.index(l.attrib['name'])
                 if self.opt['identifyFriction']:
-                    f_c = xStdBary[self.model.num_links*per_link + joint_id]
+                    f_c = cast(float, xStdBary[self.model.num_links*per_link + joint_id])
                     if self.opt['identifyGravityParamsOnly']:
                         f_v = 0.0
                     else:
                         if self.opt['identifySymmetricVelFriction']:
-                            f_v = xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id]
+                            f_v = cast(float, xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id])
                         else:
                             print(Fore.RED + "Can't write velocity dependent friction to URDF as identified values are asymmetric. URDF only supports symmetric values.")
                             sys.exit(1)
@@ -445,33 +450,34 @@ class URDFHelpers(object):
     #TODO: replace with new idyntree method
     @staticmethod
     def getJointLimits(input_urdf, use_deg=True):
+        # type: (str, bool) -> Dict[str, Dict[str, float]]
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
-        limits = {}
+        limits = {}    # type: Dict[str, Dict[str, float]]
         for j in tree.findall('joint'):
             name = j.attrib['name']
-            torque = 0
-            lower = 0
-            upper = 0
-            velocity = 0
+            torque = 0.0
+            lower = 0.0
+            upper = 0.0
+            velocity = 0.0
             if j.attrib['type'] == 'revolute':
                 l = j.find('limit')
                 if l is not None:
-                    torque = l.attrib['effort']   #this is not really the physical limit but controller limit, but well
-                    lower = l.attrib['lower']
-                    upper = l.attrib['upper']
-                    velocity = l.attrib['velocity']
+                    torque = float(l.attrib['effort'])  #this is not really the physical limit but controller limit, but well
+                    lower = float(l.attrib['lower'])
+                    upper = float(l.attrib['upper'])
+                    velocity = float(l.attrib['velocity'])
 
                     limits[name] = {}
                     limits[name]['torque'] = float(torque)
                     if use_deg:
-                        limits[name]['lower'] = np.rad2deg(float(lower))
-                        limits[name]['upper'] = np.rad2deg(float(upper))
-                        limits[name]['velocity'] = np.rad2deg(float(velocity))
+                        limits[name]['lower'] = np.rad2deg(lower)       # type: ignore
+                        limits[name]['upper'] = np.rad2deg(upper)       # type: ignore
+                        limits[name]['velocity'] = np.rad2deg(velocity)  # type: ignore
                     else:
-                        limits[name]['lower'] = float(lower)
-                        limits[name]['upper'] = float(upper)
-                        limits[name]['velocity'] = float(velocity)
+                        limits[name]['lower'] = lower
+                        limits[name]['upper'] = upper
+                        limits[name]['velocity'] = velocity
         return limits
 
     @staticmethod
@@ -481,7 +487,7 @@ class URDFHelpers(object):
 
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
-        friction = {}  # type: Dict[AnyStr, float]
+        friction = {}  # type: Dict[AnyStr, Dict[AnyStr, float]]
         for j in tree.findall('joint'):
             name = j.attrib['name']
             constant = 0.0

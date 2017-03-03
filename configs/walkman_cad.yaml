@@ -90,7 +90,7 @@ randomSamples: 10000
 minTol: 0.001
 
 # fixed or floating-base dynamics
-floatingBase: 0
+floatingBase: 1
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
 identifyFriction: 1

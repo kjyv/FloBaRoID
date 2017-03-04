@@ -105,7 +105,7 @@ identifyGravityParamsOnly: 0
 simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 
 # use RBDL for simulation (forward kinematics) instead of iDynTree
-useRBDL: 1
+useRBDL: 0
 
 ## constrained SDP to solve OLS
 

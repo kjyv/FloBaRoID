@@ -214,7 +214,7 @@ class Identification(object):
         old_skip = self.opt['skipSamples']
         self.opt['skipSamples'] = 8
 
-        self.tauEstimatedValidation = None
+        self.tauEstimatedValidation = None   # type: np.ndarray
         for m_idx in self.progress(range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1)):
             if self.opt['useRBDL']:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx)
@@ -323,7 +323,7 @@ class Identification(object):
 
             # list of param indices to keep the original indices when deleting columns
             base_idx = list(range(0, self.model.num_base_params))
-            not_essential_idx = list()
+            not_essential_idx = list()   # type: List[int]
             ratio = 0
 
             # get initial errors of estimation

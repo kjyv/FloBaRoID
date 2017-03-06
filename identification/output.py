@@ -16,7 +16,7 @@ import scipy.linalg as sla
 import colorama
 from colorama import Fore, Back, Style
 
-from . import helpers
+from identification import helpers
 
 from IPython import embed
 np.core.arrayprint._line_width = 160

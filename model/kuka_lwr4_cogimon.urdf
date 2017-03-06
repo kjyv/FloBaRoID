@@ -30,7 +30,7 @@
     <joint name="arm_world_joint" type="fixed">
         <origin rpy="0 0 0" xyz="0 0 0.01" />
         <parent link="world" />
-        <child link="lwr_arm_base_link" />
+        <child link="lwr_base_link" />
     </joint>
     <!--link name="world_link">
     <inertial>
@@ -55,9 +55,9 @@
     <!--joint name="world_lwr_arm_base_joint" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 1.1"/>
     <parent link="world_link"/>
-    <child link="lwr_arm_base_link"/>
+    <child link="lwr_base_link"/>
   </joint-->
-    <link name="lwr_arm_base_link">
+    <link name="lwr_base_link">
         <inertial>
             <mass value="1.2" />
             <origin rpy="0 0 0" xyz="0 0 0.055" />
@@ -77,28 +77,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_base_link">
+    <gazebo reference="lwr_base_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_0_joint" type="revolute">
+    <joint name="lwr_0_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.11" />
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="5.0" />
-        <parent link="lwr_arm_base_link" />
-        <child link="lwr_arm_1_link" />
+        <parent link="lwr_base_link" />
+        <child link="lwr_1_link" />
     </joint>
-    <gazebo reference="lwr_arm_0_joint">
+    <gazebo reference="lwr_0_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_0_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_0_motor" />
-        <joint name="lwr_arm_0_joint" />
+    <transmission name="lwr_0_trans" type="SimpleTransmission">
+        <actuator name="lwr_0_motor" />
+        <joint name="lwr_0_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_1_link">
+    <link name="lwr_1_link">
         <inertial>
             <mass value="2.0" />
             <origin rpy="0 0 0" xyz="0 0 0.130" />
@@ -118,28 +118,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_1_link">
+    <gazebo reference="lwr_1_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_1_joint" type="revolute">
+    <joint name="lwr_1_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 -1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="5.0" />
-        <parent link="lwr_arm_1_link" />
-        <child link="lwr_arm_2_link" />
+        <parent link="lwr_1_link" />
+        <child link="lwr_2_link" />
     </joint>
-    <gazebo reference="lwr_arm_1_joint">
+    <gazebo reference="lwr_1_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_1_trans" type="pr2_mechanism_model/SimpleTransmission">
-        <actuator name="lwr_arm_1_motor" />
-        <joint name="lwr_arm_1_joint" />
+    <transmission name="lwr_1_trans" type="pr2_mechanism_model/SimpleTransmission">
+        <actuator name="lwr_1_motor" />
+        <joint name="lwr_1_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_2_link">
+    <link name="lwr_2_link">
         <inertial>
             <mass value="2.0" />
             <origin rpy="0 0 0" xyz="0 -0.06 0.07" />
@@ -159,28 +159,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_2_link">
+    <gazebo reference="lwr_2_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_2_joint" type="revolute">
+    <joint name="lwr_2_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="3.0" />
-        <parent link="lwr_arm_2_link" />
-        <child link="lwr_arm_3_link" />
+        <parent link="lwr_2_link" />
+        <child link="lwr_3_link" />
     </joint>
-    <gazebo reference="lwr_arm_2_joint">
+    <gazebo reference="lwr_2_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_2_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_2_motor" />
-        <joint name="lwr_arm_2_joint" />
+    <transmission name="lwr_2_trans" type="SimpleTransmission">
+        <actuator name="lwr_2_motor" />
+        <joint name="lwr_2_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_3_link">
+    <link name="lwr_3_link">
         <inertial>
             <mass value="2.0" />
             <origin rpy="0 0 0" xyz="0 -0.06 0.130" />
@@ -200,28 +200,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_3_link">
+    <gazebo reference="lwr_3_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_3_joint" type="revolute">
+    <joint name="lwr_3_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="3.0" />
-        <parent link="lwr_arm_3_link" />
-        <child link="lwr_arm_4_link" />
+        <parent link="lwr_3_link" />
+        <child link="lwr_4_link" />
     </joint>
-    <gazebo reference="lwr_arm_3_joint">
+    <gazebo reference="lwr_3_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_3_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_3_motor" />
-        <joint name="lwr_arm_3_joint" />
+    <transmission name="lwr_3_trans" type="SimpleTransmission">
+        <actuator name="lwr_3_motor" />
+        <joint name="lwr_3_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_4_link">
+    <link name="lwr_4_link">
         <inertial>
             <mass value="2.0" />
             <origin rpy="0 0 0" xyz="0 0.06 0.07" />
@@ -241,28 +241,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_4_link">
+    <gazebo reference="lwr_4_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_4_joint" type="revolute">
+    <joint name="lwr_4_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="1.0" />
-        <parent link="lwr_arm_4_link" />
-        <child link="lwr_arm_5_link" />
+        <parent link="lwr_4_link" />
+        <child link="lwr_5_link" />
     </joint>
-    <gazebo reference="lwr_arm_4_joint">
+    <gazebo reference="lwr_4_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_4_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_4_motor" />
-        <joint name="lwr_arm_4_joint" />
+    <transmission name="lwr_4_trans" type="SimpleTransmission">
+        <actuator name="lwr_4_motor" />
+        <joint name="lwr_4_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_5_link">
+    <link name="lwr_5_link">
         <inertial>
             <mass value="2.0" />
             <origin rpy="0 0 0" xyz="0 0 0.124" />
@@ -270,7 +270,7 @@
         </inertial>
         <visual>
             <origin rpy="0 0 3.14159265359" xyz="0 0 0" />
-            <geometry name="lwr_arm_5_geom">
+            <geometry name="lwr_5_geom">
                 <mesh filename="package://lwr_description/meshes/kuka/link_5.STL" />
             </geometry>
             <material name="Orange" />
@@ -282,28 +282,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_5_link">
+    <gazebo reference="lwr_5_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_5_joint" type="revolute">
+    <joint name="lwr_5_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.19" />
         <axis xyz="0 -1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="1.0" />
-        <parent link="lwr_arm_5_link" />
-        <child link="lwr_arm_6_link" />
+        <parent link="lwr_5_link" />
+        <child link="lwr_6_link" />
     </joint>
-    <gazebo reference="lwr_arm_5_joint">
+    <gazebo reference="lwr_5_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_5_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_5_motor" />
-        <joint name="lwr_arm_5_joint" />
+    <transmission name="lwr_5_trans" type="SimpleTransmission">
+        <actuator name="lwr_5_motor" />
+        <joint name="lwr_5_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_6_link">
+    <link name="lwr_6_link">
         <inertial>
             <mass value="1.0" />
             <origin rpy="0 0 0" xyz="0 0 0.0" />
@@ -323,28 +323,28 @@
             </geometry>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_6_link">
+    <gazebo reference="lwr_6_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <joint name="lwr_arm_6_joint" type="revolute">
+    <joint name="lwr_6_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.078" />
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="1.0" />
-        <parent link="lwr_arm_6_link" />
-        <child link="lwr_arm_7_link" />
+        <parent link="lwr_6_link" />
+        <child link="lwr_7_link" />
     </joint>
-    <gazebo reference="lwr_arm_6_joint">
+    <gazebo reference="lwr_6_joint">
         <provideFeedback>1</provideFeedback>
         <implicitSpringDamper>1</implicitSpringDamper>
     </gazebo>
-    <transmission name="lwr_arm_6_trans" type="SimpleTransmission">
-        <actuator name="lwr_arm_6_motor" />
-        <joint name="lwr_arm_6_joint" />
+    <transmission name="lwr_6_trans" type="SimpleTransmission">
+        <actuator name="lwr_6_motor" />
+        <joint name="lwr_6_joint" />
         <mechanicalReduction>1.0</mechanicalReduction>
     </transmission>
-    <link name="lwr_arm_7_link">
+    <link name="lwr_7_link">
         <inertial>
             <mass value="0.2" />
             <origin xyz="0 0 0" />
@@ -373,11 +373,11 @@
             </surface>
         </collision>
     </link>
-    <gazebo reference="lwr_arm_7_link">
+    <gazebo reference="lwr_7_link">
         <!--<material value="kuka-lwr.material"/>-->
     </gazebo>
-    <!--joint name="lwr_arm_hand_fixed_joint" type="fixed">
-    <parent link="lwr_arm_7_link"/>
+    <!--joint name="lwr_hand_fixed_joint" type="fixed">
+    <parent link="lwr_7_link"/>
     <child link="lwr_tool_mount"/>
   </joint>
   <link name="lwr_tool_mount"/-->

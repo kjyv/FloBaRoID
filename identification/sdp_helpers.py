@@ -1,8 +1,11 @@
 from __future__ import print_function
 from builtins import str
 from builtins import range
+
+from typing import Tuple, List
+
 import sympy
-from sympy import Basic, BlockDiagMatrix, sympify
+from sympy import Basic, BlockDiagMatrix, Symbol, sympify
 from distutils.version import LooseVersion
 old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
 
@@ -18,6 +21,7 @@ from colorama import Fore, Back
 
 #simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
 def LMI_PD(lhs, rhs=0):
+    # type: (sympy.Eq, sympy.Eq) -> (sympy.Eq)
     if old_sympy:
         lmi = lmi_sdp.LMI_PD(lhs, rhs)
     else:
@@ -26,6 +30,7 @@ def LMI_PD(lhs, rhs=0):
     return lmi
 
 def LMI_PSD(lhs, rhs=0):
+    # type: (sympy.Eq, sympy.Eq) -> (sympy.Eq)
     if old_sympy:
         lmi = lmi_sdp.LMI_PSD(lhs, rhs)
     else:
@@ -34,9 +39,7 @@ def LMI_PSD(lhs, rhs=0):
 
 ##copied some methods from lmi_sdp here for compatibility changes
 def lmi_to_coeffs(lmi, variables, split_blocks=False):
-    if old_sympy:
-        return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
-
+    # type: (List[sympy.Matrix], List[Symbol], bool) -> List[sympy.Matrix]
     """Transforms LMIs from symbolic to numerical.
 
     Parameters
@@ -74,6 +77,10 @@ def lmi_to_coeffs(lmi, variables, split_blocks=False):
            [ 0.,  1.]])], array([[ 3., -2.],
            [-2.,  0.]]))]
     """
+
+    if old_sympy:
+        return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
+
     if isinstance(lmi, Basic):
         lmis = [lmi]
     else:
@@ -169,12 +176,25 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
     return s
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # using cvxopt conelp (no structure exploitation)
-    # TODO: currently not using primal as starting point (benefits?)
-    # primalstart['sl'] - initial value of u?
-    # primalsstart['x'] - initial values of x
-    # primalsstart['ss'] - value like hs for initial x values (lmis replaced with primal values
-    # and converted to cvxopt matrix format), must be within constraints
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray) -> Tuple[np.matrix, str]
+    ''' using cvxopt conelp to solve SDP program
+
+        a more exact but possibly less robust solver than dsdp5
+
+        TODO: is currently not using primalstart argument (benefits?)
+        primalstart['sl'] - initial value of u?
+        primalsstart['x'] - initial values of x
+        primalsstart['ss'] - value like hs for initial x values (lmis replaced with primal values
+        and converted to cvxopt matrix format), must be within constraints
+
+        Notes:
+         - Errors of the form "Rank(A) < p or Rank([G; A]) < n" mean that there are linear
+           dependencies in the problem matrix A, i.e. too many base parameters/columns are
+           determined (depends on proper base regressor, dependent e.g. on minTol value. If data has
+           too little dependencies, use structural regressor) or in the constraints G (one might
+           need to add constraints).
+    '''
+
     import cvxopt.solvers
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     cvxopt.solvers.options['maxiters'] = 100
@@ -194,6 +214,7 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
 
 
 def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray, bool) -> Tuple[np.matrix, str]
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
@@ -213,7 +234,8 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
 
 
 def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # use dsdp5 directly (faster than cvxopt, can use starting points, more robust)
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray, bool) -> Tuple[np.matrix, str]
+    ''' use dsdp5 directly (faster than cvxopt, can use starting points, more robust) '''
     import subprocess
     import os
 

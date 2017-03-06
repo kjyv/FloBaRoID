@@ -56,7 +56,7 @@ class Identification(object):
 
         # some additional options (experiments)
 
-        # in order ot get regressor and base equations, use basis projection matrix or use
+        # in order ot get regressor and base equations, use basis projection matrix. Otherwise use
         # permutation from QR directly (Gautier/Sousa method)
         self.opt['useBasisProjection'] = 0
 
@@ -250,6 +250,7 @@ class Identification(object):
 
 
     def getBaseParamsFromParamError(self):
+        # type: () -> None
         self.model.xBase += self.model.xBaseModel   # both param vecs link relative linearized
 
         if self.opt['useEssentialParams']:
@@ -257,6 +258,7 @@ class Identification(object):
 
 
     def findStdFromBaseParameters(self):
+        # type: () -> None
         '''find std parameter from base parameters (simply projection method)'''
         # Note: assumes that xBase is still in error form if using a priori
         # i.e. don't call after getBaseParamsFromParamError
@@ -273,6 +275,7 @@ class Identification(object):
 
 
     def getStdDevForParams(self):
+        # type: () -> (np.ndarray[float])
         # this might not be working correctly
         if self.opt['useAPriori']:
             tauDiff = self.model.tauMeasured - self.tauEstimated
@@ -358,7 +361,7 @@ class Identification(object):
             print("starting percentual error {}".format(pham_percent_start))
 
             #rho_start = np.square(sla.norm(tauDiff))
-            p_sigma_x = 0
+            p_sigma_x = np.array([0])
 
             has_run_once = 0
             # start removing non-essential parameters
@@ -419,7 +422,7 @@ class Identification(object):
                     has_run_once = 1
 
                 # cancel the parameter with largest deviation
-                param_idx = np.argmax(p_sigma_x)
+                param_idx = cast(int, np.argmax(p_sigma_x))
                 # get its index among the base params (otherwise it doesnt take deletion into account)
                 param_base_idx = base_idx[param_idx]
                 if param_base_idx not in not_essential_idx:
@@ -699,7 +702,7 @@ class Identification(object):
             sys.exit(1)
 
         if self.opt['verbose']:
-            print("computing regressor matrix for data samples")
+            print("computing standard regressor matrix for data samples")
 
         self.model.computeRegressors(self.data)
 

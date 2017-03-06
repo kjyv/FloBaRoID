@@ -792,7 +792,7 @@ class Model(object):
         if regressor is not None:
             # if supplied, get dependencies from specific regressor
             Y = regressor
-            self.Q, self.R, self.P = sla.qr(regressor, pivoting=True, mode='economic')
+            self.Q, self.R, self.P = sla.qr(Y, pivoting=True, mode='economic')
         else:
             #using random regressor gives us structural base params, not dependent on excitation
             #QR of transposed gives us basis of column space of original matrix (Gautier, 1990)

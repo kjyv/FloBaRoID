@@ -18,7 +18,7 @@ if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
 import os, sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
-from identify import Identification
+#from identify import Identification
 from identification import sdp_helpers
 from identification.sdp_helpers import LMI_PSD, LMI_PD
 from identification import helpers
@@ -444,7 +444,7 @@ class SDP(object):
             u = solution[0, 0]
             if u:
                 print("SDP found std solution with {} squared residual error".format(u))
-            delta_star = np.matrix(solution[1:])
+            delta_star = np.matrix(solution[1:])  # type: np.matrix
             idf.model.xStd = np.squeeze(np.asarray(delta_star))
 
             # prepend apriori values for 0'th link non-identifiable variables
@@ -495,7 +495,7 @@ class SDP(object):
             R1 = np.matrix(R[:idf.model.num_identified_params, :idf.model.num_identified_params])
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
+            # add contact forces
             if idf.opt['useRegressorRegularization']:
                 contactForcesSum = np.concatenate((idf.model.contactForcesSum, np.zeros(len(p_nid))))
             else:
@@ -597,11 +597,10 @@ class SDP(object):
 
             # std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
 
-            '''
             if idf.opt['useBasisProjection']:
                 # determined through base matrix, which included other variables too
                 # (find first variable in eq, chosen as independent here)
-                delta_b_syms = []
+                delta_b_syms = []   # type: List[sympy.Symbol]
                 for i in range(idf.model.base_deps.shape[0]):
                     for s in idf.model.base_deps[i].free_symbols:
                         if s not in delta_b_syms:
@@ -610,25 +609,23 @@ class SDP(object):
                 delta_b = Matrix(delta_b_syms)
             else:
                 # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
-            '''
-            delta_b = Pb.T*delta
+                delta_b = Pb.T*delta
 
             # std variables that are dependent, i.e. their value is a combination of independent columns
-            '''
+            # (they don't appear in base params but in feasibility constraints)
             if idf.opt['useBasisProjection']:
                 #determined from base eqns
                 delta_not_d = idf.model.base_deps[0].free_symbols
                 for e in idf.model.base_deps:
                     delta_not_d = delta_not_d.union(e.free_symbols)
-                delta_d = []
+                delta_d_syms = []
                 for s in delta:
                     if s not in delta_not_d:
-                        delta_d.append(s)
-                delta_d = Matrix(delta_d)
+                        delta_d_syms.append(s)
+                delta_d = Matrix(delta_d_syms)
             else:
                 # determined through permutation matrix from QR (not correct if base matrix is orthogonalized afterwards)
-            '''
-            delta_d = Pd.T*delta
+                delta_d = Pd.T*delta
 
             # rewrite LMIs for base params
 
@@ -651,17 +648,15 @@ class SDP(object):
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
-            Q, R = la.qr(idf.model.YBase)
-            Q1 = Q[:, 0:idf.model.num_base_params]
+            Q, R = la.qr(idf.model.YBase)  # type: (np.ndarray[float], np.ndarray[float])
+            #Q1 = Q[:, 0:idf.model.num_base_params]
             #Q2 = Q[:, idf.model.num_base_params:]
-            rho1 = Q1.T.dot(idf.model.torques_stack)
-            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])
+            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])  # type: np.matrix[float]
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
-            # sub contact forces
-            contactForces = Q.T.dot(idf.model.contactForcesSum)
+            rho1 = Q.T.dot(idf.model.torques_stack - idf.model.contactForcesSum)
 
-            e_rho1 = Matrix(rho1 - contactForces) - (R1*beta_symbs)
+            e_rho1 = Matrix(rho1) - (R1*beta_symbs)
 
             rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))**2
             u = Symbol('u')
@@ -681,14 +676,16 @@ class SDP(object):
             if idf.opt['verbose']:
                 print("Solving constrained OLS as SDP")
 
-            # start at CAD data, might increase convergence speed (atm only works with dsdp5,
-            # otherwise returns primal as solution when failing)
+            # start at CAD data, might increase convergence speed (atm only works with dsdp5.
+            # with cvxopt, only returns primal as solution when failing)
             prime = np.concatenate((idf.model.xBaseModel, np.array(Pd.T*idf.model.xStdModel)[:,0]))
-            #import ipdb; ipdb.set_trace()
-            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
+
+            onlyUseDSDP = 1
+            if not onlyUseDSDP:
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':
+            if onlyUseDSDP or state is not 'optimal':
                 print("Trying again with dsdp5 solver")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
@@ -697,7 +694,7 @@ class SDP(object):
             u = solution[0,0]
             if u:
                 print("SDP found base solution with {} error increase from OLS solution".format(u))
-            beta_star = np.matrix(solution[1:1+idf.model.num_base_params])
+            beta_star = np.matrix(solution[1:1+idf.model.num_base_params])  # type: np.matrix[float]
 
             idf.model.xBase = np.squeeze(np.asarray(beta_star))
 

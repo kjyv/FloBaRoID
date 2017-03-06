@@ -273,7 +273,7 @@ class ParamHelpers(object):
 
     @staticmethod
     def addFrictionFromURDF(model, urdf_file, params):
-        # type: (Model, str, np.ndarray[float]) -> None
+        # type: (model.Model, str, np.ndarray[float]) -> None
         ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
 
         friction = URDFHelpers.getJointFriction(urdf_file)
@@ -294,7 +294,7 @@ class ParamHelpers(object):
 
 class URDFHelpers(object):
     def __init__(self, paramHelpers, model, opt):
-        # type: (ParamHelpers, Model, Dict) -> None
+        # type: (ParamHelpers, model.Model, Dict) -> None
         self.paramHelpers = paramHelpers
         self.model = model
         self.opt = opt
@@ -505,7 +505,7 @@ class URDFHelpers(object):
                     except KeyError:
                         vel_dependent = 0
 
-                    friction[name] = {}
-                    friction[name]['f_constant'] = constant
-                    friction[name]['f_velocity'] = vel_dependent
+                friction[name] = {}
+                friction[name]['f_constant'] = constant
+                friction[name]['f_velocity'] = vel_dependent
         return friction

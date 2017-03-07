@@ -71,3 +71,4 @@ identification/sdpa_dat
 .swm
 .swn
 data
+.mypy_cache

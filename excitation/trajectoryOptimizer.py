@@ -2,297 +2,28 @@ from __future__ import division
 from __future__ import print_function
 from builtins import range
 from builtins import object
+from typing import List, Dict, Tuple, Union
+
 import numpy as np
 import numpy.linalg as la
-
-import matplotlib
 import matplotlib.pyplot as plt
-
-from distutils.version import LooseVersion
-if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
-    plt.style.use('seaborn-pastel')
-
+import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 from identification.model import Model
 from identification.data import Data
 from identification.helpers import URDFHelpers
-from excitation.trajectoryGenerator import TrajectoryGenerator
-
-def simulateTrajectory(config, trajectory, model=None, measurements=None):
-    # generate data arrays for simulation and regressor building
-    old_sim = config['simulateTorques']
-    config['simulateTorques'] = True
-
-    if config['floatingBase']: fb = 6
-    else: fb = 0
-
-    if not model:
-        model = Model(config, config['urdf'])
-
-    data = Data(config)
-    trajectory_data = {}
-    trajectory_data['target_positions'] = []
-    trajectory_data['target_velocities'] = []
-    trajectory_data['target_accelerations'] = []
-    trajectory_data['torques'] = []
-    trajectory_data['times'] = []
-
-    freq = config['excitationFrequency']
-    for t in range(0, int(trajectory.getPeriodLength()*freq)):
-        trajectory.setTime(t/freq)
-        q = [trajectory.getAngle(d) for d in range(config['num_dofs'])]
-        q = np.array(q)
-        if config['useDeg']:
-            q = np.deg2rad(q)
-        trajectory_data['target_positions'].append(q)
-
-        qdot = [trajectory.getVelocity(d) for d in range(config['num_dofs'])]
-        qdot = np.array(qdot)
-        if config['useDeg']:
-            qdot = np.deg2rad(qdot)
-        trajectory_data['target_velocities'].append(qdot)
-
-        qddot = [trajectory.getAcceleration(d) for d in range(config['num_dofs'])]
-        qddot = np.array(qddot)
-        if config['useDeg']:
-            qddot = np.deg2rad(qddot)
-        trajectory_data['target_accelerations'].append(qddot)
-
-        trajectory_data['times'].append(t/freq)
-        trajectory_data['torques'].append(np.zeros(config['num_dofs']+fb))
-
-    num_samples = len(trajectory_data['times'])
-
-    #convert lists to numpy arrays
-    trajectory_data['target_positions'] = np.array(trajectory_data['target_positions'])
-    trajectory_data['positions'] = trajectory_data['target_positions']
-    trajectory_data['target_velocities'] = np.array(trajectory_data['target_velocities'])
-    trajectory_data['velocities'] = trajectory_data['target_velocities']
-    trajectory_data['target_accelerations'] = np.array(trajectory_data['target_accelerations'])
-    trajectory_data['accelerations'] = trajectory_data['target_accelerations']
-    trajectory_data['torques'] = np.array(trajectory_data['torques'])
-    trajectory_data['times'] = np.array(trajectory_data['times'])
-    trajectory_data['measured_frequency'] = freq
-    trajectory_data['base_velocity'] = np.zeros( (num_samples, 6) )
-    trajectory_data['base_acceleration'] = np.zeros( (num_samples, 6) )
-
-    trajectory_data['base_rpy'] = np.zeros( (num_samples, 3) )
-
-    # add static contact force
-    contacts = 1
-    if config['floatingBase'] and contacts:
-        contactFrame = 'contact_ft'
-        # get base acceleration that results from acceleration at contact frame
-        #contact_wrench =  np.zeros(6)
-        #contact_wrench[2] = 9.81 * 3.0 # -g * mass
-        contact_wrench = np.random.rand(6) * 10
-
-        trajectory_data['base_rpy'] = np.random.rand((3*num_samples)).reshape(num_samples, 3)*0.5
-
-        """
-        contact_wrench[2] = 9.81 # * 139.122814
-        len_contact = la.norm(contact_wrench[0:3])
-
-        # get vector from contact frame to robot center of mass
-        model_com = iDynTree.Position()
-        model_com = model.dynComp.getWorldTransform(contactFrame).inverse()*model.dynComp.getCenterOfMass()
-        model_com = model_com.toNumPy()
-
-        # rotate contact wrench to be in line with COM (so that base link is not rotationally accelerated)
-        contact_wrench[0:3] = (-model_com) / la.norm(model_com) * len_contact
-
-        # rotate base accordingly (ore rather the whole robot) so gravity is parallel to contact force
-        a_xz = np.array([0,9.81])      #xz of non-rotated contact force
-        b_xz = contact_wrench[[0,2]]     #rotated contact force vec projected to xz
-        pitch = np.arccos( (a_xz.dot(b_xz))/(la.norm(a_xz)*la.norm(b_xz)) )   #angle in xz layer
-        a_yz = np.array([0,9.81])        #yz of non-rotated contact force
-        b_yz = contact_wrench[[1,2]]     #rotated contact force vec projected to yz
-        roll = np.arccos( (a_yz.dot(b_yz))/(la.norm(a_yz)*la.norm(b_yz)) )   #angle in yz layer
-        yaw = 0
-
-        trajectory_data['base_rpy'][:] += np.array([roll, pitch, yaw])
-        """
-        trajectory_data['contacts'] = np.array({contactFrame: np.tile(contact_wrench, (num_samples,1))})
-    else:
-        #TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
-        trajectory_data['contacts'] = np.array({})
-
-    if measurements:
-        trajectory_data['positions'] = measurements['Q']
-        trajectory_data['velocities'] = measurements['V']
-        trajectory_data['accelerations'] = measurements['Vdot']
-        trajectory_data['measured_frequency'] = measurements['measured_frequency']
-
-    old_skip = config['skipSamples']
-    config['skipSamples'] = 0
-    old_offset = config['startOffset']
-    config['startOffset'] = 0
-    data.init_from_data(trajectory_data)
-    model.computeRegressors(data)
-    trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
-
-    '''
-    if config['floatingBase']:
-        # add force of contact to keep robot fixed in space (always accelerate exactly against gravity)
-        # floating base orientation has to be rotated so that accelerations resulting from hanging
-        # are zero, i.e. the vector COM - contact point is parallel to gravity.
-        if contacts:
-            # get jacobian of contact frame at current posture
-            dim = model.num_dofs+fb
-            jacobian = iDynTree.MatrixDynSize(6, dim)
-            model.dynComp.getFrameJacobian(contactFrame, jacobian)
-            jacobian = jacobian.toNumPy()
-
-            # get base link vel and acc and torques that result from contact force / acceleration
-            contacts_torq = np.zeros(dim)
-            contacts_torq = jacobian.T.dot(contact_wrench)
-            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / 139.122
-            data.samples['base_acceleration'][:,:] = trajectory_data['base_acceleration'][:,:]
-            # simulate again with proper base acceleration
-            model.computeRegressors(data, only_simulate=True)
-            trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
-    '''
-
-    config['skipSamples'] = old_skip
-    config['startOffset'] = old_offset
-    config['simulateTorques'] = old_sim
-
-    return trajectory_data, data
+from excitation.trajectoryGenerator import simulateTrajectory, Trajectory, PulsedTrajectory
+from excitation.optimizer import plotter, Optimizer
 
 
-def plotter(config, data=None, filename=None):
-    fig = plt.figure(1)
-    fig.clear()
-    if False:
-        from random import sample
-        from itertools import permutations
-
-        # get a random color wheel
-        Nlines = 200
-        color_lvl = 8
-        rgb = np.array(list(permutations(list(range(0,256,color_lvl),3))))/255.0
-        colors = sample(rgb,Nlines)
-        print(colors[0:config['num_dofs']])
-    else:
-        # set some fixed colors
-        colors = []
-        colors = [[ 0.97254902,  0.62745098,  0.40784314],
-                  [ 0.0627451 ,  0.53333333,  0.84705882],
-                  [ 0.15686275,  0.75294118,  0.37647059],
-                  [ 0.90980392,  0.37647059,  0.84705882],
-                  [ 0.84705882,  0.        ,  0.1254902 ],
-                  [ 0.18823529,  0.31372549,  0.09411765],
-                  [ 0.50196078,  0.40784314,  0.15686275]
-                 ]
-
-        from palettable.tableau import Tableau_10, Tableau_20
-        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
-
-    if not data:
-        # reload measurements from this or last run (if run dry)
-        measurements = np.load(filename)
-        Q = measurements['positions']
-        Qraw = measurements['positions_raw']
-        V = measurements['velocities']
-        Vraw = measurements['velocities_raw']
-        dV = measurements['accelerations']
-        Tau = measurements['torques']
-        TauRaw = measurements['torques_raw']
-        if 'plot_targets' in config and config['plot_targets']:
-            Q_t = measurements['target_positions']
-            V_t = measurements['target_velocities']
-            dV_t = measurements['target_accelerations']
-        T = measurements['times']
-        num_samples = measurements['positions'].shape[0]
-    else:
-        Q = data['positions']
-        Qraw = data['positions']
-        Q_t = data['target_positions']
-        V = data['velocities']
-        Vraw = data['velocities']
-        V_t = data['target_velocities']
-        dV = data['accelerations']
-        dV_t = data['target_accelerations']
-        Tau = data['torques']
-        TauRaw = data['torques']
-        T = data['times']
-        num_samples = data['positions'].shape[0]
-
-    print('loaded {} measurement samples'.format(num_samples))
-
-    if 'plot_targets' in config and config['plot_targets']:
-        print("tracking error per joint:")
-        for i in range(0, config['num_dofs']):
-            sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
-            print("joint {}: {}".format(i, sse))
-
-    print("histogram of time diffs")
-    dT = np.diff(T)
-    H, B = np.histogram(dT)
-    #plt.hist(H, B)
-    late_msgs = (1 - float(np.sum(H)-np.sum(H[1:])) / float(np.sum(H))) * 100
-    print("bins: {}".format(B))
-    print("sums: {}".format(H))
-    print("({}% messages too late)\n".format(late_msgs))
-
-    # what to plot (each tuple has a title and one or multiple data arrays)
-    if 'plot_targets' in config and config['plot_targets']:
-        datasets = [
-            ([Q_t,], 'Target Positions'),
-            ([V_t,], 'Target Velocities'),
-            ([dV_t,], 'Target Accelerations')
-            ]
-    else:   #plot measurements and raw data (from measurements file)
-        if np.sum(Qraw - Q) != 0:
-            datasets = [
-                ([Q, Qraw], 'Positions'),
-                ([V, Vraw],'Velocities'),
-                ([dV,], 'Accelerations'),
-                ([Tau, TauRaw],'Measured Torques')
-                ]
-        else:
-            datasets = [
-                ([Q], 'Positions'),
-                ([V],'Velocities'),
-                ([dV,], 'Accelerations'),
-                ([Tau],'Measured Torques')
-                ]
-
-    d = 0
-    cols = 2.0
-    rows = round(len(datasets)/cols)
-    for (data, title) in datasets:
-        plt.subplot(rows, cols, d+1)
-        plt.title(title)
-        lines = list()
-        labels = list()
-        for d_i in range(0, len(data)):
-            if len(data[d_i].shape) > 1:
-                for i in range(0, config['num_dofs']):
-                    l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
-                    labels.append(l)
-                    line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
-                    lines.append(line[0])
-            else:
-                #data vector
-                plt.plot(T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
-        d+=1
-    leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
-    leg.draggable()
-
-    plt.show()
-
-
-class TrajectoryOptimizer(object):
+class TrajectoryOptimizer(Optimizer):
     def __init__(self, config, model, simulation_func):
-        self.config = config
-        self.sim_func = simulation_func
-        self.model = model
+        super(TrajectoryOptimizer, self).__init__(config, model, simulation_func)
 
         # init some classes
         self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
-        self.trajectory = TrajectoryGenerator(config['num_dofs'], use_deg = config['useDeg'])
+        self.trajectory = PulsedTrajectory(config['num_dofs'], use_deg = config['useDeg'])
 
         self.dofs = self.config['num_dofs']
 
@@ -306,9 +37,9 @@ class TrajectoryOptimizer(object):
         self.wf_init = self.config['trajectoryPulseInit']
         #angle offsets
         if self.config['trajectoryAngleRanges'][0] is not None:
-            self.qmin = []
-            self.qmax = []
-            self.qinit = []
+            self.qmin = []  # type: List[float]
+            self.qmax = []  # type: List[float]
+            self.qinit = []  # type: List[float]
             for i in range(0, self.dofs):
                 low = self.config['trajectoryAngleRanges'][i][0]
                 high = self.config['trajectoryAngleRanges'][i][1]
@@ -338,36 +69,7 @@ class TrajectoryOptimizer(object):
                 #                  ((self.amax-self.config['trajectoryCoeffInit'])/(self.dofs-i))
                 self.ainit[i,j] = self.binit[i,j] = self.config['trajectoryCoeffInit']
 
-        self.last_best_f = float('inf')
         self.last_best_f_f1 = 0
-        self.last_best_sol = None
-
-    def initGraph(self):
-        # init graphing of objective function value
-        self.fig = plt.figure(0)
-        self.ax1 = self.fig.add_subplot(1,1,1)
-        plt.ion()
-        self.xar = []
-        self.yar = []
-        self.x_constr = []
-        self.ax1.plot(self.xar,self.yar)
-
-        self.updateGraphEveryVals = 5
-
-        # 'globals' for objfunc
-        self.iter_cnt = 0   #iteration counter
-        self.last_g = None
-
-    def updateGraph(self):
-        # draw all optimization steps, mark the ones that are within constraints
-        if (self.iter_cnt % self.updateGraphEveryVals) == 0:
-            color = 'g'
-            line = self.ax1.plot(self.xar, self.yar, marker='.', markeredgecolor=color, markerfacecolor=color, color="0.75")
-            markers = np.where(self.x_constr)[0]
-            line[0].set_markevery(list(markers))
-
-        if self.iter_cnt == 1: plt.show(block=False)
-        plt.pause(0.01)
 
 
     def vecToParams(self, x):
@@ -399,7 +101,7 @@ class TrajectoryOptimizer(object):
 
         x0 = np.asfarray(x)
         f0 = f(*((x0,)+args))
-        jac = np.zeros([x0.size,f0.size])
+        jac = np.zeros((x0.size, f0.size))
         dx = np.zeros(x0.size)
         for i in range(x0.size):
             dx[i] = epsilon
@@ -408,7 +110,7 @@ class TrajectoryOptimizer(object):
         return jac.transpose()
 
 
-    def objective_func(self, x):
+    def objectiveFunc(self, x):
         self.iter_cnt += 1
         print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
 
@@ -526,6 +228,7 @@ class TrajectoryOptimizer(object):
         #return funcs, fail
         return f, g, fail
 
+
     def testBounds(self, x):
         #test variable bounds
         wf, q, a, b = self.vecToParams(x)
@@ -539,6 +242,7 @@ class TrajectoryOptimizer(object):
             print("bounds violated")
 
         return res
+
 
     def testConstraints(self, g):
         res = np.all(np.array(g) <= self.config['minTolConstr'])
@@ -561,26 +265,16 @@ class TrajectoryOptimizer(object):
             #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
         return res
 
+
     def testParams(self, **kwargs):
         x = kwargs['x_new']
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
-    def optimizeTrajectory(self):
-        # use non-linear optimization to find parameters for minimal
-        # condition number trajectory
 
-        if self.config['showOptimizationGraph']:
-            self.initGraph()
+    def addVarsAndConstraints(self, opt_prob):
+        # type: (pyOpt.Optimization) -> None
+        ''' add variables, define bounds '''
 
-        ## describe optimization problem with pyOpt classes
-
-        import pyOpt
-
-        # Instanciate Optimization Problem
-        opt_prob = pyOpt.Optimization('Trajectory optimization', self.objective_func)
-        opt_prob.addObj('f')
-
-        # add variables, define bounds
         # w_f - pulsation
         opt_prob.addVar('wf', 'c', value=self.wf_init, lower=self.wf_min, upper=self.wf_max)
 
@@ -602,84 +296,20 @@ class TrajectoryOptimizer(object):
             opt_prob.addConGroup('g', self.dofs*4, type='i')
         #print opt_prob
 
-        initial = [v.value for v in list(opt_prob.getVarSet().values())]
 
-        if self.config['useGlobalOptimization']:
-            ### optimize using pyOpt (global)
-            opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
-            opt.setOption('stopCriteria', 0)
-            opt.setOption('maxInnerIter', 3)
-            opt.setOption('maxOuterIter', self.config['globalOptIterations'])
-            opt.setOption('printInnerIters', 1)
-            opt.setOption('printOuterIters', 1)
-            opt.setOption('SwarmSize', 30)
-            opt.setOption('xinit', 1)
-            #TODO: how to properly limit max number of function calls?
-            # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-            self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
-                opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
+    def optimizeTrajectory(self):
+        # type: () -> PulsedTrajectory
+        # use non-linear optimization to find parameters for minimal
+        # condition number trajectory
 
-            # run fist (global) optimization
-            try:
-                #reuse history
-                opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
-            except NameError:
-                opt(opt_prob, store_hst=False) #, xstart=initial)
-            print(opt_prob.solution(0))
+        # Instanciate Optimization Problem
+        opt_prob = pyOpt.Optimization('Trajectory optimization', self.objectiveFunc)
+        opt_prob.addObj('f')
 
-        ### pyOpt local
+        self.addVarsAndConstraints(opt_prob)
+        sol_vec = self.runOptimizer(opt_prob)
 
-        #TODO: run local optimization for e.g. the three last best results (global solutions could be more or less optimal
-        # within their local minima)
-
-        # after using global optimization, get more exact solution with
-        # gradient based method init optimizer (only local)
-        opt2 = pyOpt.SLSQP()   #sequential least squares
-        opt2.setOption('MAXIT', self.config['localOptIterations'])
-        if self.config['verbose']:
-            opt2.setOption('IPRINT', 0)
-
-        #opt2 = pyOpt.IPOPT()
-        #opt2.setOption('max_iter', self.config['nlOptMaxIterations'])
-        #opt2.setOption('print_level', 3)  #0 none ... 5 max
-
-        #opt2 = pyOpt.PSQP()
-
-        # TODO: amount of function calls depends on amount of variables and iterations to approximate gradient
-        # iterations are probably steps along the gradient. How to get proper no. of expected func calls?
-        # (one call per dimension for each iteration?)
-        self.iter_max = "(unknown)"
-
-        if self.config['useGlobalOptimization']:
-            if self.last_best_sol is not None:
-                #use best constrained solution (might be better than what solver thinks)
-                for i in range(len(opt_prob.getVarSet())):
-                    opt_prob.getVar(i).value = self.last_best_sol[i]
-
-            opt2(opt_prob, store_hst=False, sens_step=0.1)
-        else:
-            try:
-                #reuse history
-                opt2(opt_prob, store_hst=True, hot_start=True, sens_step=0.1)
-            except NameError:
-                opt2(opt_prob, store_hst=True, sens_step=0.1)
-
-        local_sol = opt_prob.solution(0)
-        if not self.config['useGlobalOptimization']:
-            print(local_sol)
-        local_sol_vec = np.array([local_sol.getVar(x).value for x in range(0,len(local_sol.getVarSet()))])
-
-        if self.last_best_sol is not None:
-            local_sol_vec = self.last_best_sol
-            print("using last best constrained solution instead of given solver solution.")
-
-        sol_wf, sol_q, sol_a, sol_b = self.vecToParams(local_sol_vec)
-
-        print("testing final solution")
-        self.iter_cnt = 0
-        self.objective_func(local_sol_vec)
-        print("\n")
-
+        sol_wf, sol_q, sol_a, sol_b = self.vecToParams(sol_vec)
         self.trajectory.initWithParams(sol_a, sol_b, sol_q, self.nf, sol_wf)
 
         if self.config['showOptimizationGraph']:

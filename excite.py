@@ -5,6 +5,8 @@ from __future__ import division
 from __future__ import print_function
 from builtins import range
 import sys
+from typing import Dict
+
 import numpy as np
 import scipy as sp
 from scipy import signal
@@ -49,10 +51,11 @@ config['num_dofs'] = len(config['jointNames'])
 #import os
 #sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
-from excitation.trajectoryGenerator import TrajectoryGenerator, FixedPositionTrajectory
-from excitation.trajectoryOptimizer import plotter, simulateTrajectory
+from excitation.optimizer import plotter
+from excitation.trajectoryGenerator import PulsedTrajectory, FixedPositionTrajectory
+from excitation.trajectoryOptimizer import simulateTrajectory
 
-traj_data = {}   #hold some global data vars in here
+traj_data = {}   # type: Dict[str, np.ndarray]   # hold some global data vars in here
 
 def main():
     if args.trajectory:
@@ -68,7 +71,7 @@ def main():
         try:
             # replay optimized trajectory if found
             tf = np.load(traj_file)
-            trajectory = TrajectoryGenerator(config['num_dofs'], use_deg=tf['use_deg'])
+            trajectory = PulsedTrajectory(config['num_dofs'], use_deg=tf['use_deg'])
             trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
             print("using trajectory from file {}".format(traj_file))
         except IOError:
@@ -88,6 +91,7 @@ def main():
         from excitation.robotCommunication import ros_moveit
         ros_moveit.main(config, trajectory, traj_data, move_group="full_lwr")
     else:
+        # or just use simulation data
         print("No excitation method given! Only doing simulation")
         saveMeasurements(args.filename, traj_data)
         return
@@ -136,7 +140,6 @@ def main():
 
 def saveMeasurements(filename, data):
     # write sample arrays to data file
-    # TODO: if possible, save motor currents
     if config['exciteMethod']:
         np.savez(filename,
                  positions=data['Q'], positions_raw=data['Qraw'],

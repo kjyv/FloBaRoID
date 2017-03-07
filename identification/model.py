@@ -500,7 +500,7 @@ class Model(object):
                     # simulate with regressor
                     if self.opt['useRegressorForSimulation'] and (self.opt['simulateTorques'] or
                             self.opt['useAPriori'] or self.opt['floatingBase']):
-                        torques = regressor.dot(self.xStdModel)
+                        torques = regressor.dot(self.xStdModel[self.identified_params])
                         if self.opt['simulateTorques']:
                             torq = torques
                         else:

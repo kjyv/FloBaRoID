@@ -307,7 +307,7 @@ class URDFHelpers(object):
             per_link = 4
             xStdBary = new_params.copy()
             for i in range(self.model.num_links):
-                xStdBary[i*per_link+1:i*per_link+3+1] /= xStdBary[i*per_link]  # type: ignore
+                xStdBary[i*per_link+1:i*per_link+3+1] /= xStdBary[i*per_link]
         else:
             per_link = 10
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
@@ -405,6 +405,7 @@ class URDFHelpers(object):
         return filepath
 
     def getBoundingBox(self, input_urdf, old_com, link_nr):
+        # type: (str, List[float], int) -> List[List[float]]
         ''' Return bounding box for one link derived from mesh file if possible.
             If no mesh file is found, a cube around the old COM is returned.
             Expects old_com in barycentric form! '''
@@ -416,8 +417,8 @@ class URDFHelpers(object):
 
         # box around current COM in case no mesh is availabe
         length = self.opt['cubeSize']
-        cube = [(-0.5*length+old_com[0], 0.5*length+old_com[0]), (-0.5*length+old_com[1], 0.5*length+old_com[1]),
-                (-0.5*length+old_com[2], 0.5*length+old_com[2])]
+        cube = [[-0.5*length+old_com[0], 0.5*length+old_com[0]], [-0.5*length+old_com[1], 0.5*length+old_com[1]],
+                [-0.5*length+old_com[2], 0.5*length+old_com[2]]]
         #TODO: if <visual><box> is specified, use the size from there (also ellipsoid etc. could be done)
 
         if filename:
@@ -447,9 +448,8 @@ class URDFHelpers(object):
             print(Fore.YELLOW + "No mesh file given/found for link '{}'! Using a {}m cube around a priori COM.".format(link_name, length) + Fore.RESET)
             return cube
 
-    #TODO: replace with new idyntree method
     @staticmethod
-    def getJointLimits(input_urdf, use_deg=True):
+    def getJointLimits(input_urdf, use_deg=False):
         # type: (str, bool) -> Dict[str, Dict[str, float]]
         import xml.etree.ElementTree as ET
         tree = ET.parse(input_urdf)
@@ -463,7 +463,7 @@ class URDFHelpers(object):
             if j.attrib['type'] == 'revolute':
                 l = j.find('limit')
                 if l is not None:
-                    torque = float(l.attrib['effort'])  #this is not really the physical limit but controller limit, but well
+                    torque = float(l.attrib['effort'])  #this is not really the physical limit but controller limit
                     lower = float(l.attrib['lower'])
                     upper = float(l.attrib['upper'])
                     velocity = float(l.attrib['velocity'])
@@ -471,9 +471,9 @@ class URDFHelpers(object):
                     limits[name] = {}
                     limits[name]['torque'] = float(torque)
                     if use_deg:
-                        limits[name]['lower'] = np.rad2deg(lower)       # type: ignore
-                        limits[name]['upper'] = np.rad2deg(upper)       # type: ignore
-                        limits[name]['velocity'] = np.rad2deg(velocity)  # type: ignore
+                        limits[name]['lower'] = np.rad2deg(lower)
+                        limits[name]['upper'] = np.rad2deg(upper)
+                        limits[name]['velocity'] = np.rad2deg(velocity)
                     else:
                         limits[name]['lower'] = lower
                         limits[name]['upper'] = upper

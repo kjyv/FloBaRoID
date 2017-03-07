@@ -77,7 +77,8 @@ class Identification(object):
 
         # load measurements
         self.data = Data(self.opt)
-        self.data.init_from_files(measurements_files)
+        if measurements_files:
+            self.data.init_from_files(measurements_files)
 
         self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
@@ -85,7 +86,22 @@ class Identification(object):
 
         self.tauEstimated = None  # type: np.ndarray
         self.res_error = 100        #last residual error in percent
+
         self.urdf_file_real = urdf_file_real
+        if self.urdf_file_real:
+            dc = iDynTree.DynamicsRegressorGenerator()
+            if not dc.loadRobotAndSensorsModelFromFile(urdf_file_real):
+                sys.exit()
+            tmp = iDynTree.VectorDynSize(self.model.num_model_params)
+            #set regressor, otherwise getModelParameters segfaults
+            dc.loadRegressorStructureFromString(self.model.regrXml)
+            dc.getModelParameters(tmp)
+            self.xStdReal = tmp.toNumPy()
+            #add some zeros for friction
+            self.xStdReal = np.concatenate((self.xStdReal, np.zeros(self.model.num_all_params-self.model.num_model_params)))
+            if self.opt['identifyFriction']:
+                self.paramHelpers.addFrictionFromURDF(self.model, self.urdf_file_real, self.xStdReal)
+
         self.validation_file = validation_file
 
         progress_inst = helpers.Progress(opt)
@@ -547,6 +563,12 @@ class Identification(object):
             self.model.xBaseModel = self.model.xStdModel.dot(self.model.B)
         else:
             self.model.xBaseModel = self.model.K.dot(self.model.xStdModel[self.model.identified_params])
+
+        if self.urdf_file_real:
+            if self.opt['useBasisProjection']:
+                self.xBaseReal = np.dot(self.model.Binv, self.xStdReal[self.model.identified_params])
+            else:
+                self.xBaseReal = self.model.K.dot(self.xStdReal[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion of ill-conditioned matrices if possible

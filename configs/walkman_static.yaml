@@ -8,11 +8,12 @@ useDeg: 1                        #encode angles in degrees for excitation (inter
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+numStaticPostures: 20
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
-useGlobalOptimization: 1         #do global optimization before using local refinement (does not use initial values)
-globalOptIterations: 10
-localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+globalOptIterations: 2
+useLocalOptimization: 0          #do local optimization after using global solver
+localOptIterations: 1            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 
 # initial values to start optimization from (if using global opt not really important)

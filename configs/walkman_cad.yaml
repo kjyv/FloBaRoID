@@ -7,11 +7,12 @@ excitationFrequency: 200.0       #data frequency for generating trajectories (sh
 useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
-useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+useStaticTrajectories: 0         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+numStaticPostures: 10
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
-useGlobalOptimization: 1         #do global optimization before using local refinement (does not use initial values)
 globalOptIterations: 10
+useLocalOptimization: 1          #do local optimization after using global solver
 localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 

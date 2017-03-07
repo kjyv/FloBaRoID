@@ -78,25 +78,10 @@ class OutputConsole(object):
             idf.stdEssentialIdx = list(range(0, idf.model.num_identified_params))
             idf.stdNonEssentialIdx = []
 
-        import iDynTree
         #if requested, load params from other urdf for comparison
         if idf.urdf_file_real:
-            dc = iDynTree.DynamicsRegressorGenerator()
-            if not dc.loadRobotAndSensorsModelFromFile(idf.urdf_file_real):
-                sys.exit()
-            tmp = iDynTree.VectorDynSize(idf.model.num_model_params)
-            #set regressor, otherwise getModelParameters segfaults
-            dc.loadRegressorStructureFromString(idf.model.regrXml)
-            dc.getModelParameters(tmp)
-            xStdReal = tmp.toNumPy()
-            #add some zeros for friction
-            xStdReal = np.concatenate((xStdReal, np.zeros(idf.model.num_all_params-idf.model.num_model_params)))
-            if idf.opt['identifyFriction']:
-                idf.paramHelpers.addFrictionFromURDF(idf.model, idf.urdf_file_real, xStdReal)
-            if idf.opt['useBasisProjection']:
-                xBaseReal = np.dot(idf.model.Binv, xStdReal[idf.model.identified_params])
-            else:
-                xBaseReal = idf.model.K.dot(xStdReal[idf.model.identified_params])
+            xStdReal = idf.xStdReal
+            xBaseReal = idf.xBaseReal
 
         if idf.opt['showStandardParams']:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)

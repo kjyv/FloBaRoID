@@ -419,7 +419,8 @@ class URDFHelpers(object):
         length = self.opt['cubeSize']
         cube = [[-0.5*length+old_com[0], 0.5*length+old_com[0]], [-0.5*length+old_com[1], 0.5*length+old_com[1]],
                 [-0.5*length+old_com[2], 0.5*length+old_com[2]]]
-        #TODO: if <visual><box> is specified, use the size from there (also ellipsoid etc. could be done)
+        # TODO: if <visual><box> or <collision> is specified, use the size from there (also ellipsoid
+        # etc. could be done)
 
         if filename:
             try:

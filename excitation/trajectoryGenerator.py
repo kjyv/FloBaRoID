@@ -435,8 +435,8 @@ class FixedPositionTrajectory(Trajectory):
         return 0.0
 
     def getPeriodLength(self):
-        ''' get the period length of the oscillation in seconds '''
-        return self.angles[-1]['start_time']
+        ''' get the length of the trajectory in seconds '''
+        return self.angles[1]['start_time']*len(self.angles)
 
     def setTime(self, time):
         '''set current time in seconds'''

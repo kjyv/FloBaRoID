@@ -12,10 +12,6 @@ import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from fcl import fcl, collision_data, transform
 
-from distutils.version import LooseVersion
-if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
-    plt.style.use('seaborn-pastel')
-
 from identification.model import Model
 from identification.data import Data
 from identification.helpers import URDFHelpers
@@ -31,13 +27,16 @@ class PostureOptimizer(Optimizer):
 
         self.idf = idf
 
-        # init some classes
+        # get joint ranges
         self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
+
         self.trajectory = FixedPositionTrajectory(self.config)
 
         self.num_dofs = self.config['num_dofs']
         self.num_postures = self.config['numStaticPostures']
-        self.num_constraints = self.model.num_links**2
+
+        #self.model.num_links**2 * self.num_postures
+        self.num_constraints = self.num_postures * (self.model.num_links * (self.model.num_links-1) // 2)
         self.posture_time = 0.05  # time in s per posture
 
         self.link_cuboid_hulls = []  # type: List[np.ndarray]
@@ -50,15 +49,20 @@ class PostureOptimizer(Optimizer):
                 )
             ))
 
-    def testConstraints(self, g):
-        return np.all(np.array(g) > 0.0)
+        vel = [0.0]*self.num_dofs
+        self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
+        self.world_gravity = iDynTree.SpatialAcc.fromList(self.model.gravity)
 
-    def getLinkDistance(self, l0, l1):
-        '''get distance from link with id l0 to link with id l1'''
+    def testConstraints(self, g):
+        return np.all(g > 0.0)
+
+    def getLinkDistance(self, l0, l1, joint_q):
+        '''get distance from link with id l0 to link with id l1 for posture joint_q'''
 
         #get link rotation and position in world frame
-        #TODO: check that this is correct (dependent on angle?)
-        #self.model.dynComp.setRobotState()
+        q = iDynTree.VectorDynSize.fromList(joint_q)
+        self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+
         f0 = self.model.dynComp.getFrameIndex(self.model.linkNames[l0])
         t0 = self.model.dynComp.getWorldTransform(f0)
         rot0 = t0.getRotation().toNumPy()
@@ -78,9 +82,24 @@ class PostureOptimizer(Optimizer):
         o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0))
         o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1))
 
-        distance, result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
+        distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
+
+        if distance < 0:
+            print("Collision of {} and {}".format(self.model.linkNames[l0], self.model.linkNames[l1]))
+
+            # get proper collision and depth since optimization should also know how much constraint is violated
+            cr = collision_data.CollisionRequest()
+            cr.enable_contact = True
+            cr.enable_cost = True
+            collision, c_result = fcl.collide(o0, o1, cr)
+
+            # sometimes no collision is found?
+            if len(c_result.contacts):
+                distance = c_result.contacts[0].penetration_depth
+
 
         return distance
+
 
     def objectiveFunc(self, x):
         self.iter_cnt += 1
@@ -89,22 +108,28 @@ class PostureOptimizer(Optimizer):
         # init vars
         fail = False
         f = 0.0
-        g = [0.0]*self.num_constraints
+        #g = np.zeros((self.num_postures, self.model.num_links, self.model.num_links))
+        #assert(g.size == self.num_constraints)  # needs to stay in sync
+        g = np.zeros(self.num_constraints)
 
         # test constraints
         # check for each link that it does not collide with any other link (parent/child shouldn't be possible)
-        for l0 in range(self.model.num_links):
-            for l1 in range(self.model.num_links):
-                if np.abs(l0 - l1) <= 2:  # same link or neighbors won't collide
-                    g[l0*self.model.num_links + l1] = 10.0
-                    continue
+        g_cnt = 0
+        for p in range(self.num_postures):
+            q = x[p*self.num_dofs:(p+1)*self.num_dofs]
+            for l0 in range(self.model.num_links-1):
+                for l1 in range(self.model.num_links):
+                    if (l0 == l1): # same link never collides
+                        continue
 
-                # only need upper triangular part of coefficient matrix (distance l0,l1 = l1,l0)
-                if l0 < l1:
-                    g[l0*self.model.num_links + l1] = self.getLinkDistance(l0, l1)
-                else:
-                    # get symmetrical entry (already calculated)
-                    g[l0*self.model.num_links + l1] = g[l1*self.model.num_links + l0]
+                    if (l1 - l0) == 1:    # neighbors should not be able to collide because of joint range
+                        g[g_cnt] = 10.0
+                        g_cnt += 1
+                        continue
+
+                    if l0 < l1:
+                        g[g_cnt] = self.getLinkDistance(l0, l1, q)
+                        g_cnt += 1
 
         # check those links that are very close or collide again with mesh (simplified versions or full)
         # TODO: possibly limit distance of overall COM from hip (simple balance?)
@@ -130,22 +155,27 @@ class PostureOptimizer(Optimizer):
         f = np.linalg.norm(param_error)**2
 
         c = self.testConstraints(g)
-        if self.config['showOptimizationGraph']:
+        if not self.opt_prob.is_gradient and self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
             self.updateGraph()
 
-        #if self.config['verbose']:
-        print("Angles: {}".format(angles))
-        print("Parameters: {}".format(param_error))
-        print("Constraints (link distances): {}".format(np.reshape(g, (self.model.num_links, self.model.num_links))))
-        print("objective function value: {} (last best: {})".format(f, self.last_best_f))
+        print("Objective function value: {} (last best: {})".format(f, self.last_best_f))
+        if self.opt_prob.is_gradient:
+            print("(Gradient evaluation)")
+        print("Parameter error: {}".format(param_error))
+
+        if self.config['verbose']:
+            #print("Angles: {}".format(angles))
+            print("Constraints (link distances): {}".format(g))
 
         #keep last best solution (some solvers don't keep it)
         if c and f < self.last_best_f:
             self.last_best_f = f
             self.last_best_sol = x
+        elif not c:
+            print('Constraints not met.')
 
         return f, g, fail
 
@@ -164,14 +194,23 @@ class PostureOptimizer(Optimizer):
         for p in range(self.num_postures):
             for d in range(self.num_dofs):
                 d_n = self.model.jointNames[d]
-                initial = (self.limits[d_n]['upper'] - self.limits[d_n]['lower']) / 2
+                if len(self.config['trajectoryAngleRanges']) > d and \
+                        self.config['trajectoryAngleRanges'][d] is not None:
+                    low = self.config['trajectoryAngleRanges'][d][0]
+                    high = self.config['trajectoryAngleRanges'][d][1]
+                else:
+                    low = self.limits[d_n]['lower']
+                    high = self.limits[d_n]['upper']
+                #initial = (high - low) / 2
+                initial = 0.0
+
                 opt_prob.addVar('p_{} q_{}'.format(p, d), type='c', value=initial,
-                                lower=self.limits[d_n]['lower'], upper=self.limits[d_n]['upper'])
+                                lower=low, upper=high)
 
         # add constraints (functions are calculated in objectiveFunc())
         # for each link mesh distance to each other link, should be >0
-        # TODO: reduce this to physically possible collisions
-        opt_prob.addConGroup('g', self.num_constraints, type='i', lower=0.0)
+        # TODO: reduce this to physically possible collisions from table
+        opt_prob.addConGroup('g', self.num_constraints, type='i', lower=0.0, upper=np.inf)
 
     def vecToParam(self, x):
         # type: (np.ndarray) -> List[Dict[str, Any]]
@@ -192,13 +231,28 @@ class PostureOptimizer(Optimizer):
         # Instanciate Optimization Problem
         self.opt_prob = pyOpt.Optimization('Posture optimization', self.objectiveFunc)
 
+        # set if the available pyOpt doesn't have gradient flag (telling when objfunc is called for gradient)
+        if 'is_gradient' not in self.opt_prob.__dict__:
+            self.opt_prob.is_gradient = False
+
         self.addVarsAndConstraints(self.opt_prob)
+        #print(self.opt_prob)
+
+        #slsqp/psqp
+        #self.local_iter_max = self.num_postures * self.num_dofs * self.config['localOptIterations']  # num of gradient evals
+        #self.local_iter_max += self.config['localOptIterations']*2  # some steps for each iter?
+
+        #ipopt, not really correct
+        num_vars = self.num_postures * self.num_dofs
+        self.local_iter_max = (2*num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars
+
         sol_vec = self.runOptimizer(self.opt_prob)
 
         angles = self.vecToParam(sol_vec)
         self.trajectory.initWithAngles(angles)
 
-        #if self.config['showOptimizationGraph']:
-        #plt.ioff()
+        # keep plot windows open (if any)
+        plt.ioff()
+        plt.show(block=True)
 
         return self.trajectory

@@ -40,7 +40,6 @@ config['jointNames'] = iDynTree.StringVector([])
 if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
     sys.exit()
 config['num_dofs'] = len(config['jointNames'])
-config['useAPriori'] = 0
 config['skipSamples'] = 0
 
 def main():
@@ -75,6 +74,8 @@ def main():
         print("q {}".format(trajectory.q.tolist()))
         print("nf {}".format(trajectory.nf.tolist()))
         print("wf {}".format(trajectory.w_f_global))
+
+    print("Saving found trajectory to {}".format(traj_file))
 
     if config['useStaticTrajectories']:
         np.savez(traj_file, use_deg=trajectory.use_deg, static=True, angles=trajectory.angles)

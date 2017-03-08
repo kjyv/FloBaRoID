@@ -3,6 +3,7 @@ from __future__ import print_function
 from builtins import range
 from builtins import object
 from typing import List, Tuple, Dict
+import sys
 
 import numpy as np
 import numpy.linalg as la
@@ -135,6 +136,9 @@ def plotter(config, data=None, filename=None):
     leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
     leg.draggable()
 
+    plt.subplots_adjust(hspace=2)
+    plt.set_tight_layout(True)
+
     plt.show()
 
 
@@ -154,6 +158,8 @@ class Optimizer(object):
         if self.config['showOptimizationGraph']:
             self.initGraph()
 
+        self.local_iter_max = "(unknown)"
+
     def testBounds(self, x):
         # type: (np.ndarray) -> bool
         raise NotImplementedError
@@ -163,7 +169,7 @@ class Optimizer(object):
         raise NotImplementedError
 
     def objectiveFunc(self, x):
-        # type: (nd.ndarray[float]) -> Tuple[float, np.ndarray, bool]
+        # type: (np.ndarray[float]) -> Tuple[float, np.ndarray, bool]
         ''' calculate objective function and return objective function value f, constraint values g
         and a fail flag'''
         raise NotImplementedError
@@ -182,11 +188,11 @@ class Optimizer(object):
 
     def updateGraph(self):
         # draw all optimization steps, mark the ones that are within constraints
-        if (self.iter_cnt % self.updateGraphEveryVals) == 0:
-            color = 'g'
-            line = self.ax1.plot(self.xar, self.yar, marker='.', markeredgecolor=color, markerfacecolor=color, color="0.75")
-            markers = np.where(self.x_constr)[0]
-            line[0].set_markevery(list(markers))
+        #if (self.iter_cnt % self.updateGraphEveryVals) == 0:
+        color = 'g'
+        line = self.ax1.plot(self.xar, self.yar, marker='.', markeredgecolor=color, markerfacecolor=color, color="0.75")
+        markers = np.where(self.x_constr)[0]
+        line[0].set_markevery(list(markers))
 
         if self.iter_cnt == 1: plt.show(block=False)
 
@@ -228,27 +234,28 @@ class Optimizer(object):
 
         initial = [v.value for v in list(opt_prob.getVarSet().values())]
 
-        ### optimize using pyOpt (global)
-        opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
-        opt.setOption('stopCriteria', 0)
-        opt.setOption('maxInnerIter', 3)
-        opt.setOption('maxOuterIter', self.config['globalOptIterations'])
-        opt.setOption('printInnerIters', 1)
-        opt.setOption('printOuterIters', 1)
-        opt.setOption('SwarmSize', 30)
-        opt.setOption('xinit', 1)
-        #TODO: how to properly limit max number of function calls?
-        # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-        self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
-            opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
+        if self.config['useGlobalOptimization']:
+            ### optimize using pyOpt (global)
+            opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
+            opt.setOption('stopCriteria', 0)
+            opt.setOption('maxInnerIter', 3)
+            opt.setOption('maxOuterIter', self.config['globalOptIterations'])
+            opt.setOption('printInnerIters', 1)
+            opt.setOption('printOuterIters', 1)
+            opt.setOption('SwarmSize', 30)
+            opt.setOption('xinit', 1)
+            #TODO: how to properly limit max number of function calls?
+            # no. func calls = (SwarmSize * inner) * outer + SwarmSize
+            self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
+                opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
 
-        # run fist (global) optimization
-        #try:
-            #reuse history
-        #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
-        #except NameError:
-        opt(opt_prob, store_hst=False) #, xstart=initial)
-        print(opt_prob.solution(0))
+            # run fist (global) optimization
+            #try:
+                #reuse history
+            #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
+            #except NameError:
+            opt(opt_prob, store_hst=False) #, xstart=initial)
+            print(opt_prob.solution(0))
 
         ### pyOpt local
         if self.config['useLocalOptimization']:
@@ -259,23 +266,25 @@ class Optimizer(object):
 
             # after using global optimization, get more exact solution with
             # gradient based method init optimizer (only local)
-            opt2 = pyOpt.SLSQP()   #sequential least squares
-            opt2.setOption('MAXIT', self.config['localOptIterations'])
-            if self.config['verbose']:
-                opt2.setOption('IPRINT', 0)
+            #opt2 = pyOpt.SLSQP()   #sequential least squares
+            #opt2.setOption('MAXIT', self.config['localOptIterations'])
+            #if self.config['verbose']:
+            #    opt2.setOption('IPRINT', 0)
 
-            #opt2 = pyOpt.IPOPT()
-            #opt2.setOption('max_iter', self.config['nlOptMaxIterations'])
-            #opt2.setOption('print_level', 3)  #0 none ... 5 max
+            opt2 = pyOpt.IPOPT()
+            opt2.setOption('max_iter', self.config['localOptIterations'])
+            opt2.setOption('print_level', 4)  #0 none ... 5 max
 
             #opt2 = pyOpt.PSQP()
+            #opt2.setOption('MIT', self.config['localOptIterations'])  # max iterations
+            #opt2.setOption('MFV', ??)  # max iterations
 
             # TODO: amount of function calls depends on amount of variables and iterations to
             # approximate gradient ('iterations' are probably the actual steps along the gradient). How
             # to get proper no. of expected func calls? (one call per dimension for each iteration?)
-            self.iter_max = "(unknown)"
+            self.iter_max = self.local_iter_max
 
-            if self.last_best_sol is not None:
+            if self.last_best_sol.size > 0:
                 #use best constrained solution (might be better than what solver thinks)
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
@@ -286,14 +295,17 @@ class Optimizer(object):
         #print(sol)
         sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
-        if self.last_best_sol is not None:
+        if self.last_best_sol.size > 0:
             sol_vec = self.last_best_sol
             print("using last best constrained solution instead of given solver solution.")
 
-        print("testing final solution")
-        self.iter_cnt = 0
-        self.objectiveFunc(sol_vec)
-        print("\n")
+            print("testing final solution")
+            self.iter_cnt = 0
+            self.objectiveFunc(sol_vec)
+            print("\n")
+            return sol_vec
+        else:
+            print("No feasible solution found!")
+            sys.exit(-1)
 
-        return sol_vec
 

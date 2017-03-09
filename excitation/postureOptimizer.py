@@ -53,6 +53,44 @@ class PostureOptimizer(Optimizer):
         self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
         self.world_gravity = iDynTree.SpatialAcc.fromList(self.model.gravity)
 
+        self.idyn_model = iDynTree.Model()
+        iDynTree.modelFromURDF(self.config['urdf'], self.idyn_model)
+
+        # get neighbors for each link
+        self.neighbors = {}   # type: Dict[str, Dict[str, List[int]]]
+        for l in range(self.idyn_model.getNrOfLinks()):
+            link_name = self.idyn_model.getLinkName(l)
+            #if link_name not in self.model.linkNames:  # ignore links that are ignored in the generator
+            #    continue
+            self.neighbors[link_name] = {'links':[], 'joints':[]}
+            num_neighbors = self.idyn_model.getNrOfNeighbors(l)
+            for n in range(num_neighbors):
+                nb = self.idyn_model.getNeighbor(l, n)
+                self.neighbors[link_name]['links'].append(self.idyn_model.getLinkName(nb.neighborLink))
+                self.neighbors[link_name]['joints'].append(self.idyn_model.getJointName(nb.neighborJoint))
+
+        # for each neighbor link, add links connected via a fixed joint also as neighbors
+        self.neighbors_tmp = self.neighbors.copy()  # don't modify in place so no recursive loops happen
+        for l in range(self.idyn_model.getNrOfLinks()):
+            link_name = self.idyn_model.getLinkName(l)
+            for nb in self.neighbors_tmp[link_name]['links']:  # look at all neighbors of l
+                for j_name in self.neighbors_tmp[nb]['joints']:  # check each joint of a neighbor of l
+                    j = self.idyn_model.getJoint(self.idyn_model.getJointIndex(j_name))
+                    # check all connected joints if they are fixed, if so add connected link as neighbor
+                    if j.isFixedJoint():
+                        j_l0 = j.getFirstAttachedLink()
+                        j_l1 = j.getSecondAttachedLink()
+                        if j_l0 == self.idyn_model.getLinkIndex(nb):
+                            nb_fixed = j_l1
+                        else:
+                            nb_fixed = j_l0
+                        nb_fixed_name = self.idyn_model.getLinkName(nb_fixed)
+                        if nb_fixed != l and nb_fixed_name not in self.neighbors[link_name]['links']:
+                            self.neighbors[link_name]['links'].append(nb_fixed_name)
+
+        #from IPython import embed
+        #embed()
+
     def testConstraints(self, g):
         return np.all(g > 0.0)
 
@@ -97,7 +135,6 @@ class PostureOptimizer(Optimizer):
             if len(c_result.contacts):
                 distance = c_result.contacts[0].penetration_depth
 
-
         return distance
 
 
@@ -119,10 +156,24 @@ class PostureOptimizer(Optimizer):
             q = x[p*self.num_dofs:(p+1)*self.num_dofs]
             for l0 in range(self.model.num_links-1):
                 for l1 in range(self.model.num_links):
+                    if (l0 > l1):  # don't need, distance is the same in both directions
+                        continue
                     if (l0 == l1): # same link never collides
                         continue
+                    l0_name = self.model.linkNames[l0]
+                    l1_name = self.model.linkNames[l1]
+                    if l0_name in self.config['ignoreLinksForCollision'] \
+                            or l1_name in self.config['ignoreLinksForCollision']:
+                        g[g_cnt] = 10.0
+                        g_cnt += 1
+                        continue
+                    if [l0_name, l1_name] in self.config['ignoreLinkPairsForCollision']:
+                        g[g_cnt] = 10.0
+                        g_cnt += 1
+                        continue
 
-                    if (l1 - l0) == 1:    # neighbors should not be able to collide because of joint range
+                    # neighbors should not be able to collide because of joint range
+                    if l0_name in self.neighbors[l1_name]['links'] or l1_name in self.neighbors[l0_name]['links']:
                         g[g_cnt] = 10.0
                         g_cnt += 1
                         continue
@@ -167,7 +218,7 @@ class PostureOptimizer(Optimizer):
         print("Parameter error: {}".format(param_error))
 
         if self.config['verbose']:
-            #print("Angles: {}".format(angles))
+            print("Angles: {}".format(angles))
             print("Constraints (link distances): {}".format(g))
 
         #keep last best solution (some solvers don't keep it)
@@ -202,7 +253,11 @@ class PostureOptimizer(Optimizer):
                     low = self.limits[d_n]['lower']
                     high = self.limits[d_n]['upper']
                 #initial = (high - low) / 2
-                initial = 0.0
+                #initial = 0.0
+                if len(self.config['initialPostures']) > p:
+                    initial = self.config['initialPostures'][p][d]
+                else:
+                    initial = 0.0
 
                 opt_prob.addVar('p_{} q_{}'.format(p, d), type='c', value=initial,
                                 lower=low, upper=high)

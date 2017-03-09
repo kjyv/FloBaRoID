@@ -137,7 +137,7 @@ def plotter(config, data=None, filename=None):
     leg.draggable()
 
     plt.subplots_adjust(hspace=2)
-    plt.set_tight_layout(True)
+    plt.tight_layout()
 
     plt.show()
 

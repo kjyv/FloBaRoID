@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from builtins import zip
 from builtins import range
+from typing import List, Dict, Any
 
 import numpy as np
 import numpy.linalg as la
@@ -37,18 +38,19 @@ class NLOPT(object):
         self.identified_params = sorted(list(set(self.idf.model.identified_params).difference(range(self.start_param))))
 
         #get COM boundaries
-        self.link_hulls = np.zeros((self.nl, 3, 2))
+        self.link_cuboid_hulls = {}   # type: Dict[str, np.ndarray]
         for i in range(self.start_link, idf.model.num_links):
-            self.link_hulls[i - self.start_link] = np.array(
-                                idf.urdfHelpers.getBoundingBox(
-                                    input_urdf = idf.model.urdf_file,
-                                    old_com = idf.model.xStdModel[i*self.per_link+1:i*self.per_link+4] / idf.model.xStdModel[i*self.per_link],
-                                    link_nr = i
-                                )
-                            )
+            link_name = idf.model.linkNames[i]
+            self.link_hulls[idf.model.linkNames[i - self.start_link]] = np.array(
+                idf.urdfHelpers.getBoundingBox(
+                    input_urdf = idf.model.urdf_file,
+                    old_com = idf.model.xStdModel[i*self.per_link+1:i*self.per_link+4] / idf.model.xStdModel[i*self.per_link],
+                    link_name = link_name
+                )
+            )
         self.inner_iter = 0
         self.last_best_u = 1e16
-        self.last_best_x = None
+        self.last_best_x = None  # type: List
 
         self.param_weights = np.zeros(self.model.num_all_params - self.start_link*self.per_link)
         for p in range(len(self.param_weights)):

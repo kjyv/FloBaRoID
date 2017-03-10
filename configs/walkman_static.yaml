@@ -8,15 +8,78 @@ useDeg: 1                        #encode angles in degrees for excitation (inter
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
-numStaticPostures: 20
+numStaticPostures: 10
+ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link', 'TorsoProtections']
+ignoreLinkPairsForCollision: 
+    - ['LForearm', 'LSoftHandLink']
+    - ['RForearm', 'RSoftHandLink']
+    - ['LForearm', 'LWrMot3']
+    - ['RForearm', 'RWrMot3']
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
-showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
+showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
+showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
 useGlobalOptimization: 0         #use global solver first
 globalOptIterations: 1
 useLocalOptimization: 1          #do local optimization after using global solver
-localOptIterations: 5            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 
+# ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
+#  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',
+#  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
+#  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
+#  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
+initialPostures: [
+    # posture #0
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
+     0.0, 0.0,                           #Waist
+     0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    ],
+    # posture #1
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
+       0.0, 0.0,                           #Waist
+       20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+       20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    ],
+    # posture #2
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
+       0.0, 0.0,                           #Waist
+       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    ],
+    # posture #3
+    [0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #left leg
+       0.0, 0.0, -70.0, 90.0, -79.0, 0.0,         #right leg
+       0.0, 0.0,                           #Waist
+       0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,    #left arm
+       0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0   #right arm
+    ],
+    # posture #4
+    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
+        0.0, 0.0,                           #Waist
+        0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
+        0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0   #right arm
+    ],
+    # posture #5
+    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
+        35.0, 0.0,                           #Waist
+        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+        20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    ],
+    # posture #6
+    [35.0, 0.0, 0.0, 130.0, -20.0, 0.0,       #left leg
+        -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
+        -20.0, -45.0,                           #Waist
+        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+        85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    ]
+    ]
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.5
@@ -141,7 +204,7 @@ hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 0.5
+cubeSize: 0.2
 
 # force COM values to stay close to a priori values (disable hull constraints when enabled)
 limitCOMToApriori: 0
@@ -281,7 +344,7 @@ showBaseParams: 0            #display a list of identified base params (if appli
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
-verbose: 1                   #show more messages
+verbose: 2                   #show more messages, [0,1,2]
 
 # which parameters to use when estimating torques for validation. Set to one of
 # ['base', 'std', 'urdf']

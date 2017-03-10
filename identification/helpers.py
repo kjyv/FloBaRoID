@@ -404,14 +404,13 @@ class URDFHelpers(object):
 
         return filepath
 
-    def getBoundingBox(self, input_urdf, old_com, link_nr):
-        # type: (str, List[float], int) -> List[List[float]]
+    def getBoundingBox(self, input_urdf, old_com, link_name):
+        # type: (str, List[float], str) -> List[List[float]]
         ''' Return bounding box for one link derived from mesh file if possible.
             If no mesh file is found, a cube around the old COM is returned.
             Expects old_com in barycentric form! '''
 
         from stl import mesh   #using numpy-stl
-        link_name = self.model.linkNames[link_nr]
         #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
 

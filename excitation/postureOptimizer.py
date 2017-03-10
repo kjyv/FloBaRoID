@@ -17,6 +17,7 @@ from identification.data import Data
 from identification.helpers import URDFHelpers
 from excitation.trajectoryGenerator import Trajectory, FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
+from excitation.visualizer import Visualizer
 
 
 class PostureOptimizer(Optimizer):
@@ -39,15 +40,16 @@ class PostureOptimizer(Optimizer):
         self.num_constraints = self.num_postures * (self.model.num_links * (self.model.num_links-1) // 2)
         self.posture_time = 0.05  # time in s per posture
 
-        self.link_cuboid_hulls = []  # type: List[np.ndarray]
+        self.link_cuboid_hulls = {}  # type: Dict[str, np.ndarray]
         for i in range(self.model.num_links):
-            self.link_cuboid_hulls.append(np.array(
+            link_name = self.model.linkNames[i]
+            self.link_cuboid_hulls[link_name] = np.array(
                 idf.urdfHelpers.getBoundingBox(
                     input_urdf = idf.model.urdf_file,
                     old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
-                    link_nr = i
+                    link_name = link_name
                 )
-            ))
+            )
 
         vel = [0.0]*self.num_dofs
         self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
@@ -88,8 +90,9 @@ class PostureOptimizer(Optimizer):
                         if nb_fixed != l and nb_fixed_name not in self.neighbors[link_name]['links']:
                             self.neighbors[link_name]['links'].append(nb_fixed_name)
 
-        #from IPython import embed
-        #embed()
+        if self.config['showModelVisualization']:
+            self.visualizer = Visualizer()
+
 
     def testConstraints(self, g):
         return np.all(g > 0.0)
@@ -111,10 +114,13 @@ class PostureOptimizer(Optimizer):
         rot1 = t1.getRotation().toNumPy()
         pos1 = t1.getPosition().toNumPy()
 
-        b = self.link_cuboid_hulls[l0]
+        l0_name = self.model.linkNames[l0]
+        l1_name = self.model.linkNames[l1]
+
+        b = self.link_cuboid_hulls[l0_name]
         b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
-        b = self.link_cuboid_hulls[l1]
+        b = self.link_cuboid_hulls[l1_name]
         b1 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
         o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0))
@@ -123,7 +129,8 @@ class PostureOptimizer(Optimizer):
         distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
 
         if distance < 0:
-            print("Collision of {} and {}".format(self.model.linkNames[l0], self.model.linkNames[l1]))
+            if self.config['verbose'] > 1:
+                print("Collision of {} and {}".format(self.model.linkNames[l0], self.model.linkNames[l1]))
 
             # get proper collision and depth since optimization should also know how much constraint is violated
             cr = collision_data.CollisionRequest()
@@ -151,9 +158,22 @@ class PostureOptimizer(Optimizer):
 
         # test constraints
         # check for each link that it does not collide with any other link (parent/child shouldn't be possible)
+
+        if self.config['showModelVisualization']:
+            p_id = 1
+            q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
+            q = iDynTree.VectorDynSize.fromList(q0)
+            self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+            self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
+                                             self.model.linkNames, self.config['ignoreLinksForCollision'])
+            self.visualizer.run()
+
         g_cnt = 0
         for p in range(self.num_postures):
+            if self.config['verbose'] > 1:
+                print("Posture {}".format(p))
             q = x[p*self.num_dofs:(p+1)*self.num_dofs]
+
             for l0 in range(self.model.num_links-1):
                 for l1 in range(self.model.num_links):
                     if (l0 > l1):  # don't need, distance is the same in both directions
@@ -256,6 +276,8 @@ class PostureOptimizer(Optimizer):
                 #initial = 0.0
                 if len(self.config['initialPostures']) > p:
                     initial = self.config['initialPostures'][p][d]
+                    if self.config['useDeg']:
+                        initial = np.deg2rad(initial)
                 else:
                     initial = 0.0
 

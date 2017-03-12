@@ -7,16 +7,25 @@ excitationFrequency: 200.0       #data frequency for generating trajectories (sh
 useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
+
 useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
-numStaticPostures: 10
+numStaticPostures: 8             #must be >1
 ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link', 'TorsoProtections']
 ignoreLinkPairsForCollision: 
     - ['LForearm', 'LSoftHandLink']
     - ['RForearm', 'RSoftHandLink']
     - ['LForearm', 'LWrMot3']
     - ['RForearm', 'RWrMot3']
-showOptimizationGraph: 1         #display updating graph during trajectory optimization
-showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
+    - ['LLowLeg', 'LFoot']
+    - ['RLowLeg', 'RFoot']
+    - ['DWYTorso', 'LShr']
+    - ['DWYTorso', 'RShr']
+    - ['DWYTorso', 'LShy']
+    - ['DWYTorso', 'RShy']
+scaleCollisionHull: 0.8
+
+showOptimizationGraph: 0         #display updating graph during trajectory optimization
+showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
 showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
 useGlobalOptimization: 0         #use global solver first
 globalOptIterations: 1
@@ -75,7 +84,7 @@ initialPostures: [
     # posture #6
     [35.0, 0.0, 0.0, 130.0, -20.0, 0.0,       #left leg
         -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
-        -20.0, -45.0,                           #Waist
+        -10.0, -25.0,                           #Waist
         20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
         85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
     ]

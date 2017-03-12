@@ -272,6 +272,7 @@ class Optimizer(object):
             #    opt2.setOption('IPRINT', 0)
 
             opt2 = pyOpt.IPOPT()
+            opt2.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             opt2.setOption('max_iter', self.config['localOptIterations'])
             opt2.setOption('print_level', 4)  #0 none ... 5 max
 

@@ -17,7 +17,7 @@ from identification.data import Data
 from identification.helpers import URDFHelpers
 from excitation.trajectoryGenerator import Trajectory, FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
-from excitation.visualizer import Visualizer
+from visualizer import Visualizer
 
 
 class PostureOptimizer(Optimizer):
@@ -37,8 +37,7 @@ class PostureOptimizer(Optimizer):
         self.num_postures = self.config['numStaticPostures']
 
         #self.model.num_links**2 * self.num_postures
-        self.num_constraints = self.num_postures * (self.model.num_links * (self.model.num_links-1) // 2)
-        self.posture_time = 0.05  # time in s per posture
+        self.posture_time = 0.01  # time in s per posture (*freq = equal samples)
 
         self.link_cuboid_hulls = {}  # type: Dict[str, np.ndarray]
         for i in range(self.model.num_links):
@@ -90,8 +89,27 @@ class PostureOptimizer(Optimizer):
                         if nb_fixed != l and nb_fixed_name not in self.neighbors[link_name]['links']:
                             self.neighbors[link_name]['links'].append(nb_fixed_name)
 
+        # amount of collision checks to be done
+        eff_links = self.model.num_links - len(self.config['ignoreLinksForCollision'])
+        self.num_constraints = self.num_postures * (eff_links * (eff_links-1) // 2)
+
+        #subtract neighbors
+        nb_pairs = []  # type: List[Tuple]
+        for link in self.neighbors:
+            if link in self.config['ignoreLinksForCollision']:
+                continue
+            if link not in self.model.linkNames:
+                continue
+            nb_real = set(self.neighbors[link]['links']).difference(
+                self.config['ignoreLinksForCollision']).intersection(self.model.linkNames)
+            for l in nb_real:
+                if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
+                    nb_pairs.append((link, l))
+        self.num_constraints -= self.num_postures * (len(nb_pairs) +        # neighbors
+                                       len(self.config['ignoreLinkPairsForCollision']))  # custom combinations
+
         if self.config['showModelVisualization']:
-            self.visualizer = Visualizer()
+            self.visualizer = Visualizer(self.config)
 
 
     def testConstraints(self, g):
@@ -117,14 +135,22 @@ class PostureOptimizer(Optimizer):
         l0_name = self.model.linkNames[l0]
         l1_name = self.model.linkNames[l1]
 
-        b = self.link_cuboid_hulls[l0_name]
+
+        b = self.link_cuboid_hulls[l0_name] * self.config['scaleCollisionHull']
+        b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[1][0]),
+                                  np.abs(b[2][1])-np.abs(b[2][0])])
         b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
-        b = self.link_cuboid_hulls[l1_name]
+        b = self.link_cuboid_hulls[l1_name] * self.config['scaleCollisionHull']
+        b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[1][0]),
+                                  np.abs(b[2][1])-np.abs(b[2][0])])
         b1 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
-        o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0))
-        o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1))
+        # move box to pos + box center pos (model has pos in link origin, box has zero at center)
+        o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0+b0_center))
+        o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1+b1_center))
 
         distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
 
@@ -160,42 +186,40 @@ class PostureOptimizer(Optimizer):
         # check for each link that it does not collide with any other link (parent/child shouldn't be possible)
 
         if self.config['showModelVisualization']:
-            p_id = 1
-            q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
-            q = iDynTree.VectorDynSize.fromList(q0)
-            self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
-            self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
-                                             self.model.linkNames, self.config['ignoreLinksForCollision'])
-            self.visualizer.run()
+            def draw_model():
+                p_id = self.visualizer.display_index
+                q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
+                q = iDynTree.VectorDynSize.fromList(q0)
+                self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+                self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
+                                                 self.model.linkNames, self.config['ignoreLinksForCollision'])
+                self.visualizer.run()
+            self.visualizer.event_callback = draw_model
+            self.visualizer.event_callback()
 
         g_cnt = 0
+        if self.config['verbose'] > 1:
+            print('checking collisions')
         for p in range(self.num_postures):
             if self.config['verbose'] > 1:
                 print("Posture {}".format(p))
             q = x[p*self.num_dofs:(p+1)*self.num_dofs]
 
-            for l0 in range(self.model.num_links-1):
+            for l0 in range(self.model.num_links):
                 for l1 in range(self.model.num_links):
-                    if (l0 > l1):  # don't need, distance is the same in both directions
-                        continue
-                    if (l0 == l1): # same link never collides
+                    if (l0 >= l1):  # don't need, distance is the same in both directions; same link never collides
                         continue
                     l0_name = self.model.linkNames[l0]
                     l1_name = self.model.linkNames[l1]
                     if l0_name in self.config['ignoreLinksForCollision'] \
                             or l1_name in self.config['ignoreLinksForCollision']:
-                        g[g_cnt] = 10.0
-                        g_cnt += 1
                         continue
-                    if [l0_name, l1_name] in self.config['ignoreLinkPairsForCollision']:
-                        g[g_cnt] = 10.0
-                        g_cnt += 1
+                    if [l0_name, l1_name] in self.config['ignoreLinkPairsForCollision'] or \
+                       [l1_name, l0_name] in self.config['ignoreLinkPairsForCollision']:
                         continue
 
-                    # neighbors should not be able to collide because of joint range
+                    # neighbors can't collide with a proper joint range, so ignore
                     if l0_name in self.neighbors[l1_name]['links'] or l1_name in self.neighbors[l0_name]['links']:
-                        g[g_cnt] = 10.0
-                        g_cnt += 1
                         continue
 
                     if l0 < l1:
@@ -239,7 +263,7 @@ class PostureOptimizer(Optimizer):
 
         if self.config['verbose']:
             print("Angles: {}".format(angles))
-            print("Constraints (link distances): {}".format(g))
+            #print("Constraints (link distances): {}".format(g))
 
         #keep last best solution (some solvers don't keep it)
         if c and f < self.last_best_f:
@@ -286,7 +310,6 @@ class PostureOptimizer(Optimizer):
 
         # add constraints (functions are calculated in objectiveFunc())
         # for each link mesh distance to each other link, should be >0
-        # TODO: reduce this to physically possible collisions from table
         opt_prob.addConGroup('g', self.num_constraints, type='i', lower=0.0, upper=np.inf)
 
     def vecToParam(self, x):
@@ -321,7 +344,7 @@ class PostureOptimizer(Optimizer):
 
         #ipopt, not really correct
         num_vars = self.num_postures * self.num_dofs
-        self.local_iter_max = (2*num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars
+        self.local_iter_max = ((num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars)//2
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

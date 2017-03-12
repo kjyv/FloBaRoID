@@ -7,20 +7,28 @@ excitationFrequency: 200.0       #data frequency for generating trajectories (sh
 useDeg: 0                        #encode angles in degrees for excitation (internal and data is always in rad)
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
+
 useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
 numStaticPostures: 5
 ignoreLinksForCollision: []
 ignoreLinkPairsForCollision: []
+scaleCollisionHull: 0.8
+
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
 showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
 useGlobalOptimization: 0         #use global solver first
 globalOptIterations: 2
 useLocalOptimization: 1          #do local optimization after using global solver
-localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
+localOptIterations: 20            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 
-initialPostures: []
+initialPostures:
+    - [0,0,0,0,0,0,0]
+    - [0,0.1,0,0.8,0,-0.4,0]
+    - [0,0,0,-0.8,0,0,0]
+    - [0,0.75,0,0,0,0,0]
+    - [0,-0.75,0,0,0.4,0,0]
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)

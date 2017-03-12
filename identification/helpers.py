@@ -21,8 +21,6 @@ if (sys.version_info < (3, 0)):
     class FileNotFoundError(OSError):
         pass
 
-import identification.model
-
 class Progress(object):
     def __init__(self, config):
         # type: (Dict[str, Any]) -> None

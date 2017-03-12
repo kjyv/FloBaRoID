@@ -78,8 +78,10 @@ def main():
     print("Saving found trajectory to {}".format(traj_file))
 
     if config['useStaticTrajectories']:
-        np.savez(traj_file, use_deg=trajectory.use_deg, static=True, angles=trajectory.angles)
+        # always saved with rad angles
+        np.savez(traj_file, static=True, angles=trajectory.angles)
     else:
+        # TODO: remove degrees option
         np.savez(traj_file, use_deg=trajectory.use_deg, static=False, a=trajectory.a, b=trajectory.b,
                  q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
 

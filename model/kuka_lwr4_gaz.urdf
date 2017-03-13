@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
-<!-- inertial parameter from Claudio Gaz, 2016: Extracting Feasible Robot Parameters from Dynamic Coefficients using Nonlinear Optimization Methods -->
 <robot name="kuka-lwr" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- inertial parameter from Claudio Gaz, 2016: Extracting Feasible Robot Parameters from Dynamic Coefficients using Nonlinear Optimization Methods -->
     <material name="DarkGrey">
         <color rgba="0.3 0.3 0.3 1.0" />
     </material>
@@ -87,7 +87,7 @@
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
-        <dynamics damping="5.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_base_link" />
         <child link="lwr_arm_1_link" />
     </joint>
@@ -128,7 +128,7 @@
         <axis xyz="0 -1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
-        <dynamics damping="5.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_1_link" />
         <child link="lwr_arm_2_link" />
     </joint>
@@ -169,7 +169,7 @@
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
-        <dynamics damping="3.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_2_link" />
         <child link="lwr_arm_3_link" />
     </joint>
@@ -210,7 +210,7 @@
         <axis xyz="0 1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
-        <dynamics damping="3.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_3_link" />
         <child link="lwr_arm_4_link" />
     </joint>
@@ -251,7 +251,7 @@
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
-        <dynamics damping="1.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_4_link" />
         <child link="lwr_arm_5_link" />
     </joint>
@@ -292,7 +292,7 @@
         <axis xyz="0 -1 0" />
         <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
-        <dynamics damping="1.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_5_link" />
         <child link="lwr_arm_6_link" />
     </joint>
@@ -333,7 +333,7 @@
         <axis xyz="0 0 1" />
         <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
-        <dynamics damping="1.0" />
+        <dynamics damping="0.0" />
         <parent link="lwr_arm_6_link" />
         <child link="lwr_arm_7_link" />
     </joint>

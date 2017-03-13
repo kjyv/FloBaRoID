@@ -347,7 +347,7 @@ class URDFHelpers(object):
                         if self.opt['identifySymmetricVelFriction']:
                             f_v = cast(float, xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id])
                         else:
-                            print(Fore.RED + "Can't write velocity dependent friction to URDF as identified values are asymmetric. URDF only supports symmetric values.")
+                            print(Fore.RED + "Can't write velocity dependent friction to URDF as identified values are asymmetric. URDF only supports symmetric values." + Fore.RESET)
                             sys.exit(1)
                 else:
                     # parameters were identified assuming there was no friction

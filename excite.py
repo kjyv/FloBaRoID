@@ -63,20 +63,16 @@ def main():
     else:
         traj_file = config['urdf'] + '.trajectory.npz'
 
-    if config['optimizeTrajectory'] and config['useStaticTrajectories']:
-        print("using fixed positions")
-        trajectory = FixedPositionTrajectory()
-    else:
-        #load from file
-        try:
-            # replay optimized trajectory if found
-            tf = np.load(traj_file)
-            trajectory = PulsedTrajectory(config['num_dofs'], use_deg=tf['use_deg'])
-            trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
-            print("using trajectory from file {}".format(traj_file))
-        except IOError:
-            print("No trajectory file found, can't excite ({})!".format(traj_file))
-            sys.exit(1)
+    #load from file
+    try:
+        # replay optimized trajectory if found
+        tf = np.load(traj_file)
+        trajectory = PulsedTrajectory(config['num_dofs'], use_deg=tf['use_deg'])
+        trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
+        print("using trajectory from file {}".format(traj_file))
+    except IOError:
+        print("No trajectory file found, can't excite ({})!".format(traj_file))
+        sys.exit(1)
 
     # generating simulation of trajectory in any case
     traj_data, data = simulateTrajectory(config, trajectory)

@@ -7,6 +7,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import range
 from builtins import object
+from typing import Tuple, Dict
 
 import sys
 import os
@@ -268,9 +269,9 @@ class OutputConsole(object):
                     header = inspect.cleandoc(r"""
                             \begin{minipage}[t]{0.32\linewidth}
                                 \resizebox{0.97\textwidth}{!}{%
-                                \begin{tabular}[t]{c c c t}
+                                \begin{tabular}[t]{c c c}
                                     \hline
-                                    \rule{0pt}{12pt} Parameter & Real Value & Ident. Value \\[2pt]
+                                    \rule{0pt}{12pt} Parameter & Prior & Identified \\[2pt]
                                     \hline\rule{0pt}{12pt}
                     """)
                     footer = inspect.cleandoc(r"""
@@ -589,7 +590,7 @@ class OutputMatplotlib(object):
                                 ls = 'dashed'
                             else:
                                 ls = '-'
-                            dashes = ()
+                            dashes = ()      # type: Tuple
                             if idf.opt['plotErrors']:
                                 if i == 2:
                                     ls = 'dashed'

@@ -84,11 +84,11 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 # use a number of random regressors to determine structural parameter dependencies when getting base regressor
 # (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
-useStructuralRegressor: 0
+useStructuralRegressor: 1
 randomSamples: 10000
 
 # almost zero threshold for QR, SVD and other things
-minTol: 0.001
+minTol: 0.005
 
 # fixed or floating-base dynamics
 floatingBase: 1

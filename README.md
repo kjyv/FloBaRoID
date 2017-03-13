@@ -40,6 +40,7 @@ optional python modules
 
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (when using html plots)
+* matplotlib2tikz
 * rbdl (alternative for inverse dynamics)
 * pyglet, pyOpenGL
 * pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt)

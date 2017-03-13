@@ -255,16 +255,18 @@ class Model(object):
             if not self.opt['identifyGravityParamsOnly']:
                 # (take only first half of params as they are not direction dependent in urdf anyway)
                 p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
-                tau[fb:] += self.xStdModel[p_vel]*-qdot[fb:]
+                tau[fb:] += self.xStdModel[p_vel]*qdot[fb:]
 
         return tau
 
 
-    def simulateDynamicsIDynTree(self, samples, sample_idx, dynComp=None):
+    def simulateDynamicsIDynTree(self, samples, sample_idx, dynComp=None, xStdModel=None):
         """ compute torques for one time step of measurements """
 
         if not dynComp:
             dynComp = self.dynComp
+        if xStdModel is None:
+            xStdModel = self.xStdModel
         world_gravity = iDynTree.SpatialAcc.fromList(self.gravity)
 
         # read sample data
@@ -326,13 +328,13 @@ class Model(object):
             # constant
             sign = 1 #np.sign(vel)
             p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
-            torques += sign*self.xStdModel[p_constant]
+            torques += sign*xStdModel[p_constant]
 
             # vel dependents
             if not self.opt['identifyGravityParamsOnly']:
                 # (take only first half of params as they are not direction dependent in urdf anyway)
                 p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
-                torques += self.xStdModel[p_vel]*-vel
+                torques += xStdModel[p_vel]*vel
 
         if self.opt['floatingBase']:
             return np.concatenate((baseReactionForce.toNumPy(), torques))
@@ -485,7 +487,7 @@ class Model(object):
                         if not self.opt['identifyGravityParamsOnly']:
                             if self.opt['identifySymmetricVelFriction']:
                                 # just use velocity directly
-                                vel_diag = np.identity(self.num_dofs)*-dq.toNumPy()
+                                vel_diag = np.identity(self.num_dofs)*dq.toNumPy()
                                 friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs)), vel_diag))   # add base dynamics rows
                             else:
                                 # append positive/negative velocity matrix for velocity dependent asymmetrical friction
@@ -493,7 +495,7 @@ class Model(object):
                                 dq_p[dq_p < 0] = 0 #set to zero where v < 0
                                 dq_m = dq.toNumPy().copy()
                                 dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                                vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
+                                vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
                                 friction_regressor = np.vstack( (np.zeros((fb, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                             regressor = np.concatenate((regressor, friction_regressor), axis=1)
 
@@ -751,7 +753,7 @@ class Model(object):
                     if not self.opt['identifyGravityParamsOnly']:
                         if self.opt['identifySymmetricVelFriction']:
                             # just use velocity directly
-                            vel_diag = np.identity(self.num_dofs)*-dq.toNumPy()
+                            vel_diag = np.identity(self.num_dofs)*dq.toNumPy()
                             friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs)), vel_diag))   # add base dynamics rows
                         else:
                             # append positive/negative velocity matrix for velocity dependent asymmetrical friction
@@ -759,7 +761,7 @@ class Model(object):
                             dq_p[dq_p < 0] = 0 #set to zero where v < 0
                             dq_m = dq.toNumPy().copy()
                             dq_m[dq_m > 0] = 0 #set to zero where v > 0
-                            vel_diag = np.hstack((np.identity(self.num_dofs)*-dq_p, np.identity(self.num_dofs)*-dq_m))
+                            vel_diag = np.hstack((np.identity(self.num_dofs)*dq_p, np.identity(self.num_dofs)*dq_m))
                             friction_regressor = np.vstack( (np.zeros((fb*6, self.num_dofs*2)), vel_diag))   # add base dynamics rows
                         A = np.concatenate((A, friction_regressor), axis=1)
 

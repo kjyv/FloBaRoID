@@ -108,7 +108,11 @@ class PostureOptimizer(Optimizer):
         self.num_constraints -= self.num_postures * (len(nb_pairs) +        # neighbors
                                        len(self.config['ignoreLinkPairsForCollision']))  # custom combinations
 
-        if self.config['showModelVisualization']:
+        # only generate output from main process
+        if self.mpi_rank > 0:
+            self.config['verbose'] = 0
+
+        if self.config['showModelVisualization'] and self.mpi_rank == 0:
             self.visualizer = Visualizer(self.config)
 
 
@@ -173,7 +177,10 @@ class PostureOptimizer(Optimizer):
 
     def objectiveFunc(self, x):
         self.iter_cnt += 1
-        print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
+        if self.mpi_size > 1:
+            print("process {}, iter #{}/{}".format(self.mpi_rank, self.iter_cnt, self.iter_max))
+        else:
+            print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
 
         # init vars
         fail = False
@@ -185,7 +192,7 @@ class PostureOptimizer(Optimizer):
         # test constraints
         # check for each link that it does not collide with any other link (parent/child shouldn't be possible)
 
-        if self.config['showModelVisualization']:
+        if self.config['showModelVisualization'] and self.mpi_rank == 0:
             def draw_model():
                 p_id = self.visualizer.display_index
                 q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
@@ -194,6 +201,7 @@ class PostureOptimizer(Optimizer):
                 self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
                                                  self.model.linkNames, self.config['ignoreLinksForCollision'])
                 self.visualizer.run()
+            self.visualizer.display_max = self.num_postures
             self.visualizer.event_callback = draw_model
             self.visualizer.event_callback()
 
@@ -257,11 +265,11 @@ class PostureOptimizer(Optimizer):
             self.updateGraph()
 
         print("Objective function value: {} (last best: {})".format(f, self.last_best_f))
-        if self.opt_prob.is_gradient:
-            print("(Gradient evaluation)")
-        print("Parameter error: {}".format(param_error))
 
         if self.config['verbose']:
+            if self.opt_prob.is_gradient:
+                print("(Gradient evaluation)")
+            print("Parameter error: {}".format(param_error))
             print("Angles: {}".format(angles))
             #print("Constraints (link distances): {}".format(g))
 
@@ -344,7 +352,9 @@ class PostureOptimizer(Optimizer):
 
         #ipopt, not really correct
         num_vars = self.num_postures * self.num_dofs
-        self.local_iter_max = ((num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars)//2
+        self.local_iter_max = ((num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars)
+        if self.parallel:
+            self.local_iter_max = self.local_iter_max // self.mpi_size
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

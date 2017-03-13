@@ -240,17 +240,17 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     import os
 
     sdpadat = to_sdpa_sparse(objf, lmis, variables)
-    path = os.path.dirname(os.path.abspath(__file__))
-    try:
-        os.mkdir(os.path.join(path, 'sdpa_dat'))
-    except:
-        pass
-    with open(os.path.join(path, 'sdpa_dat', 'sdp.dat-s'), 'w') as f:
+    import uuid
+    dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sdpa_dat_{}'.format(uuid.uuid4()))
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    with open(os.path.join(dir, 'sdp.dat-s'), 'w') as f:
         f.write(sdpadat)
 
     if primalstart is None:
         primalstart = np.zeros(len(variables)-1)
-    with open(os.path.join(path, 'sdpa_dat', 'primal.dat'), 'wb') as f:
+    with open(os.path.join(dir, 'primal.dat'), 'wb') as f:
             np.savetxt(f, primalstart)
 
     # change options to allow for far away solutions
@@ -263,7 +263,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         result = subprocess.check_output(['dsdp5', 'sdp.dat-s', '-save', 'dsdp5.out', '-gaptol',
                                          '{}'.format(epsilon_sdptol)] + bounds +
                                          ['-y0', 'primal.dat'],
-                                         cwd = os.path.join(path, 'sdpa_dat')).decode('utf-8')
+                                         cwd = dir).decode('utf-8')
         state = 'optimal'
     except subprocess.CalledProcessError as e:
         print("DSDP stopped early: {}".format(e.returncode))
@@ -291,8 +291,12 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         print(Fore.RED + error[0] + Fore.RESET)
     else:
         print(state)
-    outfile = open(os.path.join(path, 'sdpa_dat', 'dsdp5.out'), 'r').readlines()
+    outfile = open(os.path.join(dir, 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
+
+    # remove tmp dir again
+    import shutil
+    shutil.rmtree(dir)
 
     return np.matrix(sol).T, state
 

@@ -229,6 +229,7 @@ class Visualizer(object):
         self.window_closed = False
         self.mode = 'b'  # 'b' - blocking or 'c' - continous
         self.display_index = 0   # current index for displaying e.g. postures from file
+        self.display_max = 1
         self.config = config
 
         # keep a list of bodies
@@ -409,14 +410,16 @@ class Visualizer(object):
             self._initCamera()
 
         if symbol == key.RIGHT:
-            self.display_index +=1
-            if self.event_callback:
-                self.event_callback()
+            if self.display_index < self.display_max - 1:
+                self.display_index +=1
+                if self.event_callback:
+                    self.event_callback()
 
         if symbol == key.LEFT:
-            self.display_index -=1
-            if self.event_callback:
-                self.event_callback()
+            if self.display_index > 0:
+                self.display_index -=1
+                if self.event_callback:
+                    self.event_callback()
 
         '''
         if symbol in self.pressed_keys:
@@ -661,7 +664,6 @@ if __name__ == '__main__':
     n_dof = dynComp.getNrOfDegreesOfFreedom()
 
 
-    '''
     # TODO: get this from generator / model class (other order than dynComp)
     linkNames = ['Waist', 'LHipMot', 'LThighUpLeg', 'LThighLowLeg', 'LLowLeg', 'LFootmot', 'LFoot',
                 'RHipMot', 'RThighUpLeg', 'RThighLowLeg', 'RLowLeg', 'RFootmot', 'RFoot', 'DWL', 'DWS',
@@ -673,6 +675,7 @@ if __name__ == '__main__':
     # kuka
     linkNames = ['lwr_base_link', 'lwr_1_link', 'lwr_2_link', 'lwr_3_link', 'lwr_4_link',
                  'lwr_5_link', 'lwr_6_link', 'lwr_7_link']
+    '''
 
     # get bounding boxes for model
     from identification.helpers import URDFHelpers, ParamHelpers
@@ -703,6 +706,7 @@ if __name__ == '__main__':
         dynComp.setRobotState(q, dq, dq, world_gravity)
         v.addIDynTreeModel(dynComp, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
 
+    v.display_max = len(data['angles'])
     v.event_callback = draw_model
     v.event_callback()
     v.run()

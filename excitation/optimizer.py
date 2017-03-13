@@ -15,6 +15,13 @@ if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
     plt.style.use('seaborn-pastel')
 
 import pyOpt
+try:
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    nprocs = comm.Get_size()
+    parallel = True
+except:
+    parallel = False
 
 def plotter(config, data=None, filename=None):
     fig = plt.figure(1)
@@ -160,6 +167,11 @@ class Optimizer(object):
 
         self.local_iter_max = "(unknown)"
 
+        self.parallel = parallel
+        if parallel:
+            self.mpi_size = nprocs
+            self.mpi_rank = comm.Get_rank()
+
     def testBounds(self, x):
         # type: (np.ndarray) -> bool
         raise NotImplementedError
@@ -274,7 +286,10 @@ class Optimizer(object):
             opt2 = pyOpt.IPOPT()
             opt2.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             opt2.setOption('max_iter', self.config['localOptIterations'])
-            opt2.setOption('print_level', 4)  #0 none ... 5 max
+            if self.config['verbose']:
+                opt2.setOption('print_level', 4)  #0 none ... 5 max
+            else:
+                opt2.setOption('print_level', 0)  #0 none ... 5 max
 
             #opt2 = pyOpt.PSQP()
             #opt2.setOption('MIT', self.config['localOptIterations'])  # max iterations
@@ -290,23 +305,27 @@ class Optimizer(object):
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 
-            opt2(opt_prob, store_hst=False, sens_step=0.1)
+            opt2(opt_prob, sens_mode='pgc', store_hst=False)
 
         sol = opt_prob.solution(0)
         #print(sol)
         sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
-        if self.last_best_sol.size > 0:
-            sol_vec = self.last_best_sol
-            print("using last best constrained solution instead of given solver solution.")
+        if self.mpi_rank == 0:
+            if self.last_best_sol.size > 0:
+                sol_vec = self.last_best_sol
+                print("using last best constrained solution instead of given solver solution.")
 
-            print("testing final solution")
-            self.iter_cnt = 0
-            self.objectiveFunc(sol_vec)
-            print("\n")
-            return sol_vec
+                print("testing final solution")
+                self.iter_cnt = 0
+                self.objectiveFunc(sol_vec)
+                print("\n")
+                return sol_vec
+            else:
+                print("No feasible solution found!")
+                sys.exit(-1)
         else:
-            print("No feasible solution found!")
-            sys.exit(-1)
+            # parallel sub-processes, close
+            sys.exit(0)
 
 

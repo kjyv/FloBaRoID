@@ -443,7 +443,8 @@ class URDFHelpers(object):
                 return cube
         else:
             #in case there is no stl file in urdf
-            print(Fore.YELLOW + "No mesh file given/found for link '{}'! Using a {}m cube around a priori COM.".format(link_name, length) + Fore.RESET)
+            if self.opt['verbose']:
+                print(Fore.YELLOW + "No mesh file given/found for link '{}'! Using a {}m cube around a priori COM.".format(link_name, length) + Fore.RESET)
             return cube
 
     @staticmethod

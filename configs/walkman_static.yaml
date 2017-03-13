@@ -345,7 +345,7 @@ showErrorHistogram: 0        #show estimation error distribution
 
 # options for console output
 showMemUsage: 0              #print used memory for different variables
-showTiming: 1                #show times various steps have taken
+showTiming: 0                #show times various steps have taken
 showEssentialSteps: 0        #stop after every reduction step and show values
 outputBarycentric: 0         #output all values in barycentric (e.g. urdf) form
 showStandardParams: 1        #display a list of identified standard params

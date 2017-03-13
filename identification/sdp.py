@@ -354,7 +354,7 @@ class SDP(object):
                 p_nid = list(set(p_nid).difference(set(self.delete_cols)).intersection(set(idf.model.identified_params)))
                 contactForces = np.concatenate((contactForces, np.zeros(len(p_nid))))
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 1...", time.ctime())
 
             # solving OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
@@ -396,7 +396,7 @@ class SDP(object):
                     Y = R1*(K*delta)
                     e_rho1 = Matrix(rho1 - contactForces) - Y
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 2...", time.ctime())
 
             # minimize estimation error of to-be-found parameters delta
@@ -405,11 +405,11 @@ class SDP(object):
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T],
                                  [e_rho1,            I(e_rho1.shape[0])]])
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 4...", time.ctime())
 
             if idf.opt['verbose']:
@@ -681,7 +681,7 @@ class SDP(object):
             # with cvxopt, only returns primal as solution when failing)
             prime = np.concatenate((idf.model.xBaseModel, np.array(Pd.T*idf.model.xStdModel)[:,0]))
 
-            onlyUseDSDP = 1
+            onlyUseDSDP = 0
             if not onlyUseDSDP:
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 

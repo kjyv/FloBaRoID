@@ -21,7 +21,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     else: fb = 0
 
     if not model:
-        if config['urdf_real']:
+        if 'urdf_real' in config and config['urdf_real']:
             print('Simulating using "real" model parameters.')
             urdf = config['urdf_real']
         else:

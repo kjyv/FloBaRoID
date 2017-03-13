@@ -198,7 +198,7 @@ class Identification(object):
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
-        #TODO: don't duplicate simulation code (also this one is possibly not up-to-date)
+        #TODO: don't duplicate simulation code
 
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
         # have inverse dynamics yet, so we have to go over a new urdf file for now)
@@ -235,7 +235,7 @@ class Identification(object):
             if self.opt['useRBDL']:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx)
             else:
-                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp)
+                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp, params)
 
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques
@@ -254,7 +254,8 @@ class Identification(object):
             self.tauMeasuredValidation = \
                 np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
 
-        #TODO: add contact forces to estimation, so far validation is only proper for fixed-base!
+            #TODO: add contact forces to estimation, so far validation is only proper for fixed-base!
+            print(Fore.RED+'No proper validation for floating base yet!'+Fore.RESET)
 
         self.opt['skipSamples'] = old_skip
 
@@ -867,7 +868,7 @@ class Identification(object):
                     'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                     'dataset': [{
                         'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
-                        'time': rel_time, 'title': torque_labels[fb+i]}
+                        'time': rel_time, 'title': torque_labels[6-fb+i]}
                     ]}
                 )
                 if self.opt['plotPrioriTorques']:
@@ -904,7 +905,7 @@ class Identification(object):
                  ]
                 }
             )
-        else:
+        else:   #don't plot per joint
             datasets = [
                 {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
@@ -938,15 +939,19 @@ class Identification(object):
                 datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skipSamples']+1])
 
         if self.validation_file:
+            if self.opt['floatingBase']:
+                fb = 6
+            else:
+                fb = 0
             datasets.append(
-                {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
+                    {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels[6-fb:],
                    'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                    'dataset':
                    [#{'data': [self.tauMeasuredValidation],
                     # 'time': rel_vtime, 'title': 'Measured Validation'},
                     {'data': [tauEstimatedValidation],
                      'time': rel_vtime, 'title': 'Estimated Validation'},
-                    {'data': [tauEstimatedValidation-tauMeasuredValidation],
+                    {'data': [tauEstimatedValidation - tauMeasuredValidation],
                      'time': rel_vtime, 'title': 'Validation Error'}
                    ]
                 }

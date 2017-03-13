@@ -31,7 +31,9 @@ requirements for identification module:
 
 * python 2.7 or >=3.3
 * python modules: numpy (> 1.8), scipy, sympy (>= 1.0), iDynTree, pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
-* when using Python 2.7: future, typing
+* when using Python 2.7: future
+* when using Python <3.5: typing
+
 * dsdp5 (command line executable)
 
 optional python modules  
@@ -39,6 +41,9 @@ optional python modules
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (when using html plots)
 * rbdl (alternative for inverse dynamics)
+* pyglet, pyOpenGL
+* pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt)
+
 
 requirements for excitation modules:
 

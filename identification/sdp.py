@@ -503,14 +503,14 @@ class SDP(object):
                 contactForcesSum = idf.model.contactForcesSum
             contactForces = Matrix(Q.T.dot(contactForcesSum))
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 1...", time.ctime())
 
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contacts should be close to measured torques)
             e_rho1 = Matrix(rho1 - contactForces) - (R1*delta)
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
@@ -521,11 +521,11 @@ class SDP(object):
             U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]),      e_rho1.T],
                                  [e_rho1, I(idf.model.num_identified_params)]])
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 3...", time.ctime())
             U_rho = U_rho.as_explicit()
 
-            if idf.opt['verbose']:
+            if idf.opt['verbose'] > 1:
                 print("Step 4...", time.ctime())
 
             if idf.opt['verbose']:

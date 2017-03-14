@@ -4,19 +4,13 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-from builtins import input
-from builtins import zip
 from builtins import range
-from builtins import object
 import sys
 from typing import AnyStr, List
 
 # math
 import numpy as np
 import numpy.linalg as la
-import scipy
-import scipy.linalg as sla
-import scipy.stats as stats
 
 # plotting
 import matplotlib.pyplot as plt

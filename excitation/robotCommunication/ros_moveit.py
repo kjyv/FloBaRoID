@@ -36,10 +36,11 @@ class RecordJointStates(object):
         self.torques.append(msg.effort)   #ros "effort" is force for linear or torque for rotational joints
         self.times.append(msg.header.stamp.secs + msg.header.stamp.nsecs / 1.0e9)
 
-def main(config, trajectory, data, move_group):
+def main(config, trajectory, data):
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node('excitation_move_group', anonymous=False)
     #robot = moveit_commander.RobotCommander()
+    move_group = config['ros_move_group']
     group = moveit_commander.MoveGroupCommander(move_group)
 
     # in case there are previous executions still running

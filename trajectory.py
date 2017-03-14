@@ -5,14 +5,13 @@ from __future__ import division
 from __future__ import print_function
 from builtins import range
 import sys
-from typing import Union
 
 import numpy as np
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 from identify import Identification
 from identification.model import Model
-from excitation.trajectoryGenerator import PulsedTrajectory, FixedPositionTrajectory
+from excitation.trajectoryGenerator import PulsedTrajectory
 from excitation.trajectoryOptimizer import TrajectoryOptimizer, simulateTrajectory
 from excitation.postureOptimizer import PostureOptimizer
 

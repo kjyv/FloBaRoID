@@ -5,17 +5,13 @@ from builtins import object
 from typing import List, Tuple, Dict, Callable, Any
 
 import numpy as np
-import numpy.linalg as la
-import matplotlib
 import matplotlib.pyplot as plt
 import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from fcl import fcl, collision_data, transform
 
-from identification.model import Model
-from identification.data import Data
 from identification.helpers import URDFHelpers
-from excitation.trajectoryGenerator import Trajectory, FixedPositionTrajectory
+from excitation.trajectoryGenerator import FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
 from visualizer import Visualizer
 

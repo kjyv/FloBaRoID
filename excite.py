@@ -8,15 +8,8 @@ import sys
 from typing import Dict
 
 import numpy as np
-import scipy as sp
-from scipy import signal
-from scipy import sparse
-
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from IPython import embed
-
-import colorama
 from colorama import Fore, Back, Style
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
 import argparse
 parser = argparse.ArgumentParser(description='Send an excitation trajectory and record measurements to <filename>.')

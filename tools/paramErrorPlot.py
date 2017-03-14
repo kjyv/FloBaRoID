@@ -9,7 +9,7 @@ from builtins import zip
 from builtins import range
 from builtins import object
 import sys
-from typing import Dict, AnyStr
+from typing import AnyStr, List
 
 # math
 import numpy as np
@@ -23,8 +23,6 @@ import matplotlib.pyplot as plt
 
 # kinematics, dynamics and URDF reading
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-
-from IPython import embed
 
 import argparse
 parser = argparse.ArgumentParser(description='Scale mass and inertia from <model>.')
@@ -45,7 +43,7 @@ def matToNumPy(mat):
 def vecToNumPy(vec):
     return np.fromstring(vec.toString(), sep=' ')
 
-def plotErrors(errors, num_links, labels):
+def plotErrors(errors, labels):
     fig, ax = plt.subplots()
 
     num_vals = len(errors[0])
@@ -106,6 +104,7 @@ def getParamErrors(ref_model, p_model, num_links, group="COM"):
 
     return errors
 
+
 if __name__ == '__main__':
 
     ref_model = loadModelfromURDF(args.ref_model)
@@ -122,7 +121,7 @@ if __name__ == '__main__':
     generator.loadRegressorStructureFromString(regrXml)
     num_links = generator.getNrOfLinks() - generator.getNrOfFakeLinks()
 
-    linkNames = []    # types: List[AnyStr]
+    linkNames = []    # type: List[AnyStr]
     import re
     for d in generator.getDescriptionOfParameters().strip().split("\n"):
         link = re.findall(r"of link (.*)", d)[0]
@@ -135,8 +134,8 @@ if __name__ == '__main__':
     # check input order
     print(args.model)
 
-    for file in args.model:
-        p_model = loadModelfromURDF(file[0])
+    for filename in args.model:
+        p_model = loadModelfromURDF(filename[0])
 
         # mass error norm
         mass_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group='mass'))
@@ -156,5 +155,6 @@ if __name__ == '__main__':
 
     #labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
     labels = ['ID Inertia + COM (Known Mass)', 'ID all parameters (20% wrong masses)']
-    plotErrors(methods_com_errors, num_links, labels=labels)
-    plotErrors(methods_inertia_errors, num_links, labels=labels)
+    plotErrors(methods_com_errors, labels=labels)
+    plotErrors(methods_inertia_errors, labels=labels)
+

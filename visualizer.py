@@ -5,15 +5,13 @@ from __future__ import division
 from __future__ import print_function
 from builtins import range
 from builtins import object
-from typing import List, Tuple, Dict, Callable, Any
+from typing import List, Dict, Callable, Any
 
 import numpy as np
-import numpy.linalg as la
 import math
 import collections
 
 import os, sys
-import time
 
 from OpenGL import GLU
 from OpenGL.GL.shaders import compileShader, compileProgram
@@ -558,11 +556,13 @@ class Visualizer(object):
         r,p,y = self.rotationMatrixToEulerAngles(R)
         R = self.eulerAnglesToRotationMatrix([r,p,y])
 
+        '''
         # homogenous transform
         trans = [R[0,0], R[0,1], R[0,2], 0.,
                  R[1,0], R[1,1], R[1,2], 0.,
                  R[2,0], R[2,1], R[2,2], 0.,
-                 0,      0,      0,      1.0]
+                 pos[0], pos[1], pos[2], 1.0]
+        '''
 
         gl.glPushMatrix()
         gl.glTranslatef(-pos[0], -pos[1], pos[2])

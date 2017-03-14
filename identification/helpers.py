@@ -21,6 +21,29 @@ if (sys.version_info < (3, 0)):
     class FileNotFoundError(OSError):
         pass
 
+def getNRMSE(data_ref, data_est, normalize=True, limits=None):
+    # type: (np.ndarray, np.ndarray, bool) -> np.ndarray[float]
+    '''get (normalized) root mean square error between estimated values and "standard".
+    if limits is supplied, normalization is done from maximum range of torques rather than observed
+    range in the data '''
+
+    error = data_est - data_ref
+    rmsd = np.sqrt(np.mean(error**2, axis=0))
+
+    if normalize:
+        if limits:
+            #get min/max from urdf
+            ymax = np.array(limits)
+            ymin = -np.array(limits)
+        else:
+            # get min/max from data
+            ymax = np.max(data_ref)
+            ymin = np.min(data_ref)
+        return rmsd / (ymax - ymin)
+    else:
+        return rmsd
+
+
 class Progress(object):
     def __init__(self, config):
         # type: (Dict[str, Any]) -> None

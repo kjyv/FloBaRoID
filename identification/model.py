@@ -138,6 +138,8 @@ class Model(object):
         if self.opt['verbose']:
             print('{}'.format({i: self.linkNames[i] for i in range(self.num_links)}))
 
+        self.limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
+
         # get amount of initial inertia params (from urdf) (full params, no friction, no removed columns)
         self.num_model_params = self.num_links*10
         self.num_all_params = self.num_model_params
@@ -167,7 +169,6 @@ class Model(object):
         self.baseNames = ['base f_x', 'base f_y', 'base f_z', 'base m_x', 'base m_y', 'base m_z']
 
         self.gravity = [0,0,-9.81,0,0,0]
-
         self.gravity_twist = iDynTree.Twist.fromList(self.gravity)
 
         if self.opt['useRBDL']:
@@ -199,7 +200,7 @@ class Model(object):
         self.computeRegressorLinDepsQR()
 
 
-    def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None):
+    def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None, xStdModel=None):
         import rbdl
 
         # read sample data
@@ -208,6 +209,9 @@ class Model(object):
         qddot = samples['accelerations'][sample_idx]
         tau = samples['torques'][sample_idx].copy()
         fb = 0
+
+        if xStdModel is None:
+            xStdModel = self.xStdModel
 
         if self.opt['floatingBase']:
             fb = 6
@@ -249,13 +253,13 @@ class Model(object):
             # constant
             sign = 1 #np.sign(vel)
             p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
-            tau[fb:] += sign*self.xStdModel[p_constant]
+            tau[fb:] += sign*xStdModel[p_constant]
 
             # vel dependents
             if not self.opt['identifyGravityParamsOnly']:
                 # (take only first half of params as they are not direction dependent in urdf anyway)
                 p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
-                tau[fb:] += self.xStdModel[p_vel]*qdot[fb:]
+                tau[fb:] += xStdModel[p_vel]*qdot[fb:]
 
         return tau
 
@@ -671,16 +675,15 @@ class Model(object):
             R = np.array((self.N_OUT, self.num_model_params))
             regressor = iDynTree.MatrixDynSize(self.N_OUT, self.num_model_params)
             knownTerms = iDynTree.VectorDynSize(self.N_OUT)
-            limits = helpers.URDFHelpers.getJointLimits(self.urdf_file, use_deg=False)
-            if len(limits) > 0:
+            if len(self.limits) > 0:
                 jn = self.jointNames
-                q_lim_pos = [limits[jn[n]]['upper'] for n in range(self.num_dofs)]
-                q_lim_neg = [limits[jn[n]]['lower'] for n in range(self.num_dofs)]
-                dq_lim = [limits[jn[n]]['velocity'] for n in range(self.num_dofs)]
+                q_lim_pos = [self.limits[jn[n]]['upper'] for n in range(self.num_dofs)]
+                q_lim_neg = [self.limits[jn[n]]['lower'] for n in range(self.num_dofs)]
+                dq_lim = [self.limits[jn[n]]['velocity'] for n in range(self.num_dofs)]
                 q_range = (np.array(q_lim_pos) - np.array(q_lim_neg)).tolist()
             for i in self.progress(range(0, n_samples)):
                 # set random system state
-                if len(limits) > 0:
+                if len(self.limits) > 0:
                     rnd = np.random.rand(self.num_dofs) #0..1
                     q = iDynTree.VectorDynSize.fromList((q_lim_neg+q_range*rnd))
                     if self.opt['identifyGravityParamsOnly']:

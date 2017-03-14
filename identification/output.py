@@ -499,8 +499,14 @@ class OutputConsole(object):
 
         idf.abs_apriori_error = np.mean(sla.norm(idf.tauAPriori-idf.model.tauMeasured, axis=1))
         idf.abs_res_error = idf.base_error #np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
-        # get absolute error (i.e. how big is the mean torque prediction error in Nm)
-        print("Absolute mean residual error: {} Nm vs. A priori: {} Nm".format(idf.abs_res_error, idf.abs_apriori_error))
+        print("Absolute mean residual error: {} vs. A priori: {}".format(idf.abs_res_error, idf.abs_apriori_error))
+
+        torque_limits = []
+        for joint in idf.model.jointNames:
+            torque_limits.append(idf.model.limits[joint]['torque'])
+        idf.abs_apriori_error = np.mean(helpers.getNRMSE(idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits))*100
+        idf.abs_res_error = np.mean(helpers.getNRMSE(idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits))*100
+        print("NRMS of residual error: {}% vs. A priori: {}%".format(idf.abs_res_error, idf.abs_apriori_error))
 
 class OutputMatplotlib(object):
     def __init__(self, datasets, text=None):

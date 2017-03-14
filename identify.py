@@ -233,7 +233,7 @@ class Identification(object):
         self.tauEstimatedValidation = None   # type: np.ndarray
         for m_idx in self.progress(range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1)):
             if self.opt['useRBDL']:
-                torques = self.model.simulateDynamicsRBDL(v_data, m_idx)
+                torques = self.model.simulateDynamicsRBDL(v_data, m_idx, params)
             else:
                 torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp, params)
 
@@ -264,6 +264,8 @@ class Identification(object):
         print("Relative validation error: {}%".format(self.val_error))
         self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation, axis=1))
         print("Absolute validation error: {} Nm".format(self.val_residual))
+        self.val_nrms = np.mean(helpers.getNRMSE(self.tauMeasuredValidation, self.tauEstimatedValidation))
+        print("NRMS validation error: {}".format(self.val_nrms))
 
 
     def getBaseParamsFromParamError(self):

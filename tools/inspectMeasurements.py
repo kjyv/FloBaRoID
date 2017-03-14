@@ -47,6 +47,8 @@ def mapToJointNames(matrix, row=None):
 
     if args.fb:
         fb = 6
+    else:
+        fb = 0
 
     if row:
         return {jointNames[j-fb]:matrix[row,j] for j in range(matrix.shape[1])}

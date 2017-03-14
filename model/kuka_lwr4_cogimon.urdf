@@ -83,7 +83,7 @@
     <joint name="lwr_0_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.11" />
         <axis xyz="0 0 1" />
-        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719" />
+        <limit effort="176" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="5.0" />
         <parent link="lwr_base_link" />
@@ -124,7 +124,7 @@
     <joint name="lwr_1_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 -1 0" />
-        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719" />
+        <limit effort="176" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="5.0" />
         <parent link="lwr_1_link" />
@@ -165,7 +165,7 @@
     <joint name="lwr_2_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 0 1" />
-        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
+        <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="3.0" />
         <parent link="lwr_2_link" />
@@ -206,7 +206,7 @@
     <joint name="lwr_3_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 1 0" />
-        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="2.26892802759" />
+        <limit effort="100" lower="-2.09439510239" upper="2.09439510239" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="3.0" />
         <parent link="lwr_3_link" />
@@ -247,7 +247,7 @@
     <joint name="lwr_4_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.20" />
         <axis xyz="0 0 1" />
-        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
+        <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.26892802759" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="1.0" />
         <parent link="lwr_4_link" />
@@ -288,7 +288,7 @@
     <joint name="lwr_5_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.19" />
         <axis xyz="0 -1 0" />
-        <limit effort="306" lower="-2.09439510239" upper="2.09439510239" velocity="3.14159265359" />
+        <limit effort="38" lower="-2.09439510239" upper="2.09439510239" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.05948851735" soft_upper_limit="2.05948851735" />
         <dynamics damping="1.0" />
         <parent link="lwr_5_link" />
@@ -329,7 +329,7 @@
     <joint name="lwr_6_joint" type="revolute">
         <origin rpy="0 0 0" xyz="0 0 0.078" />
         <axis xyz="0 0 1" />
-        <limit effort="204" lower="-2.96705972839" upper="2.96705972839" velocity="3.14159265359" />
+        <limit effort="38" lower="-2.96705972839" upper="2.96705972839" velocity="3.14159265359" />
         <safety_controller k_position="100" k_velocity="2" soft_lower_limit="-2.93215314335" soft_upper_limit="2.93215314335" />
         <dynamics damping="1.0" />
         <parent link="lwr_6_link" />

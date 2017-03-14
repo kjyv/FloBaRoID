@@ -3,6 +3,7 @@
 
 excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. with Gazebo)
 exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
+ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                        #encode angles in degrees for excitation (internal and data is always in rad)
 

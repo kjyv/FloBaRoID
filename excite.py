@@ -19,10 +19,9 @@ parser.add_argument('--trajectory', type=str, help='the file to load the traject
 parser.add_argument('--config', required=True, type=str, help="use options from given config file")
 parser.add_argument('--dryrun', help="don't actually send the trajectory", action='store_true')
 
-parser.add_argument('--periods', type=int, help='how many periods to run the trajectory')
 parser.add_argument('--plot', help='plot measured data', action='store_true')
 parser.add_argument('--plot-targets', dest='plot_targets', help="plot targets instead of measurements", action='store_true')
-parser.set_defaults(plot=False, plot_targets=False, dryrun=False, filename='measurements.npz', periods=1)
+parser.set_defaults(plot=False, plot_targets=False, dryrun=False, filename='measurements.npz')
 args = parser.parse_args()
 
 import yaml
@@ -72,13 +71,16 @@ def main():
     if config['excitationSimulate'] and config['exciteMethod']:
         print(Fore.RED + 'Using simulated torques!' + Fore.RESET)
 
+    if args.dryrun:
+        return
+
     # excite real robot
     if config['exciteMethod'] == 'yarp':
         from excitation.robotCommunication import yarp_gym
         yarp_gym.main(config, trajectory, traj_data)
     elif config['exciteMethod'] == 'ros':
         from excitation.robotCommunication import ros_moveit
-        ros_moveit.main(config, trajectory, traj_data, move_group="full_lwr")
+        ros_moveit.main(config, trajectory, traj_data)
     else:
         # or just use simulation data
         print("No excitation method given! Only doing simulation")
@@ -156,7 +158,6 @@ def saveMeasurements(filename, data):
     print("saved measurements to {}".format(args.filename))
 
 if __name__ == '__main__':
-    if not args.dryrun:
-        main()
+    main()
     if(args.plot):
         plotter(config, filename=args.filename)

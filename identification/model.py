@@ -39,7 +39,7 @@ class Model(object):
             self.opt['useBasisProjection'] = 0
 
         # debug options
-        self.opt['useRegressorForSimulation'] = 1
+        self.opt['useRegressorForSimulation'] = 0
         self.opt['addContacts'] = 1
 
         # create generator instance and load model

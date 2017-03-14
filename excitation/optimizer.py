@@ -162,15 +162,18 @@ class Optimizer(object):
         self.iter_cnt = 0   # iteration counter
         self.last_g = None  # type: List[float]    # last constraint values
 
+        self.parallel = parallel
+        if parallel:
+            self.mpi_size = nprocs   # number of processes
+            self.mpi_rank = comm.Get_rank()  # current process
+        else:
+            self.mpi_size = 1
+            self.mpi_rank = 0
+
         if self.config['showOptimizationGraph']:
             self.initGraph()
 
         self.local_iter_max = "(unknown)"
-
-        self.parallel = parallel
-        if parallel:
-            self.mpi_size = nprocs
-            self.mpi_rank = comm.Get_rank()
 
     def testBounds(self, x):
         # type: (np.ndarray) -> bool
@@ -187,6 +190,8 @@ class Optimizer(object):
         raise NotImplementedError
 
     def initGraph(self):
+        if self.mpi_rank > 0:
+            return
         # init graphing of objective function value
         self.fig = plt.figure(0)
         self.ax1 = self.fig.add_subplot(1,1,1)
@@ -199,6 +204,8 @@ class Optimizer(object):
         self.updateGraphEveryVals = 5
 
     def updateGraph(self):
+        if self.mpi_rank > 0:
+            return
         # draw all optimization steps, mark the ones that are within constraints
         #if (self.iter_cnt % self.updateGraphEveryVals) == 0:
         color = 'g'
@@ -248,7 +255,10 @@ class Optimizer(object):
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
-            opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
+            if parallel:
+                opt = pyOpt.ALPSO(pll_type='POA')  #augmented lagrange particle swarm optimization
+            else:
+                opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
             opt.setOption('stopCriteria', 0)
             opt.setOption('maxInnerIter', 3)
             opt.setOption('maxOuterIter', self.config['globalOptIterations'])
@@ -261,13 +271,17 @@ class Optimizer(object):
             self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
                 opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
 
+            self.iter_max = self.iter_max // self.mpi_size
+
             # run fist (global) optimization
             #try:
                 #reuse history
             #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
             #except NameError:
             opt(opt_prob, store_hst=False) #, xstart=initial)
-            print(opt_prob.solution(0))
+
+            if self.mpi_rank == 0:
+                print(opt_prob.solution(0))
 
         ### pyOpt local
         if self.config['useLocalOptimization']:
@@ -305,13 +319,17 @@ class Optimizer(object):
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 
-            opt2(opt_prob, sens_mode='pgc', store_hst=False)
+            if parallel:
+                opt2(opt_prob, sens_mode='pgc', store_hst=False)
+            else:
+                opt2(opt_prob, store_hst=False)
 
-        sol = opt_prob.solution(0)
-        #print(sol)
-        sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
         if self.mpi_rank == 0:
+            sol = opt_prob.solution(0)
+            #print(sol)
+            sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
+
             if self.last_best_sol.size > 0:
                 sol_vec = self.last_best_sol
                 print("using last best constrained solution instead of given solver solution.")

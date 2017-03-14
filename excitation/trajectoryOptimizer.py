@@ -31,10 +31,12 @@ class TrajectoryOptimizer(Optimizer):
         # number of fourier partial sums (same for all joints atm)
         # (needs to be larger for larger dofs? means a lot more variables)
         self.nf = [4]*self.dofs
+
         #pulsation
         self.wf_min = self.config['trajectoryPulseMin']
         self.wf_max = self.config['trajectoryPulseMax']
         self.wf_init = self.config['trajectoryPulseInit']
+
         #angle offsets
         if self.config['trajectoryAngleRanges'][0] is not None:
             self.qmin = []  # type: List[float]
@@ -205,13 +207,14 @@ class TrajectoryOptimizer(Optimizer):
             print("added cost: {}".format(f1))
 
         c = self.testConstraints(g)
-        if self.config['showOptimizationGraph']:
+        if self.mpi_rank == 0 and self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
             self.updateGraph()
 
-        #TODO: add cartesian/collision constraints, e.g. using fcl
+        # TODO: add cartesian/collision constraints using fcl
+        # for whole trajectory, get closest distance of all link pairs
 
         #keep last best solution (some solvers don't keep it)
         if c and f < self.last_best_f:

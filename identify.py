@@ -990,7 +990,7 @@ def main():
     parser.add_argument('--measurements', required=True, nargs='+', action='append', type=str,
                         help='the file(s) to load the measurements from')
 
-    parser.add_argument('--validation', required=False, type=str,
+    parser.add_argument('--validation', '--verification', '--verifiy', required=False, type=str,
                         help='the file to load the validation trajectory from')
 
     parser.add_argument('--regressor', required=False, type=str,

@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
-<!-- Inertial parameters from https://github.com/CentroEPiaggio/kuka-lwr (with modifications) -->
 <robot name="kuka-lwr" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Inertial parameters from https://github.com/CentroEPiaggio/kuka-lwr (with modifications) -->
   <!-- Include all models -->
   <!-- utils /-->
   <!-- Little helper macro to define the inertia matrix needed for links. -->

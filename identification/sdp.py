@@ -238,21 +238,20 @@ class SDP(object):
                                 self.constr_per_param[p].append('cA')
 
             if idf.opt['restrictCOMtoHull']:
-                link_cuboid_hulls = {}   # type: Dict[str, np.ndarray]
+                link_cuboid_hulls = {}   # type: Dict[str, Tuple[List, List, List]]
                 for i in range(start_link, idf.model.num_links):
                     if not (idf.opt['noChange'] and linkConds[i] > idf.opt['noChangeThresh']):
                         link_name = idf.model.linkNames[i]
-                        link_cuboid_hulls[link_name] = np.array(
-                            idf.urdfHelpers.getBoundingBox(
-                                input_urdf = idf.model.urdf_file,
-                                old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
-                                link_name = link_name
-                            )
+                        box, pos, rot = idf.urdfHelpers.getBoundingBox(
+                            input_urdf = idf.model.urdf_file,
+                            old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
+                            link_name = link_name
                         )
+                        link_cuboid_hulls[link_name] = (box, pos, rot)
                         l = Matrix(idf.model.param_syms[i*10+1:i*10+4])
                         m = idf.model.mass_syms[i]
 
-                        link_cuboid_hull = link_cuboid_hulls[link_name]
+                        link_cuboid_hull = link_cuboid_hulls[link_name][0]
                         for j in range(3):
                             p = i*10+1+j
                             if p not in self.delete_cols and p not in idf.opt['dontConstrain']:

@@ -38,16 +38,15 @@ class NLOPT(object):
         self.identified_params = sorted(list(set(self.idf.model.identified_params).difference(range(self.start_param))))
 
         #get COM boundaries
-        self.link_cuboid_hulls = {}   # type: Dict[str, np.ndarray]
         for i in range(self.start_link, idf.model.num_links):
             link_name = idf.model.linkNames[i]
-            self.link_hulls[idf.model.linkNames[i - self.start_link]] = np.array(
-                idf.urdfHelpers.getBoundingBox(
+            box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf = idf.model.urdf_file,
                     old_com = idf.model.xStdModel[i*self.per_link+1:i*self.per_link+4] / idf.model.xStdModel[i*self.per_link],
                     link_name = link_name
                 )
-            )
+            self.link_hulls[idf.model.linkNames[i - self.start_link]] = (box, pos, rot)
+
         self.inner_iter = 0
         self.last_best_u = 1e16
         self.last_best_x = None  # type: List
@@ -210,12 +209,12 @@ class NLOPT(object):
             cons_com = [0.0]*(self.nl*6)
             for l in range(self.nl):
                 com = x[l*self.per_link+1:l*self.per_link+4]/x[l*self.per_link]
-                cons_com[l*6+0] = com[0] - self.link_hulls[l][0][0]  #lower bound
-                cons_com[l*6+1] = com[1] - self.link_hulls[l][1][0]
-                cons_com[l*6+2] = com[2] - self.link_hulls[l][2][0]
-                cons_com[l*6+0] = self.link_hulls[l][0][1] - com[0]  #upper bound
-                cons_com[l*6+1] = self.link_hulls[l][1][1] - com[1]  #upper bound
-                cons_com[l*6+2] = self.link_hulls[l][2][1] - com[2]  #upper bound
+                cons_com[l*6+0] = com[0] - self.link_hulls[l][0][0][0]  #lower bound
+                cons_com[l*6+1] = com[1] - self.link_hulls[l][0][1][0]
+                cons_com[l*6+2] = com[2] - self.link_hulls[l][0][2][0]
+                cons_com[l*6+0] = self.link_hulls[l][0][0][1] - com[0]  #upper bound
+                cons_com[l*6+1] = self.link_hulls[l][0][1][1] - com[1]  #upper bound
+                cons_com[l*6+2] = self.link_hulls[l][0][2][1] - com[2]  #upper bound
             cons += cons_com
 
         # print some iter stats
@@ -287,12 +286,12 @@ class NLOPT(object):
             cons_com = [0.0]*(self.nl*6)
             for l in range(self.nl):
                 com = x[l*self.per_link+1+1:l*self.per_link+1+4]
-                cons_com[l*6+0] = com[0] - self.link_hulls[l][0][0]  #lower bound
-                cons_com[l*6+1] = com[1] - self.link_hulls[l][1][0]
-                cons_com[l*6+2] = com[2] - self.link_hulls[l][2][0]
-                cons_com[l*6+0] = self.link_hulls[l][0][1] - com[0]  #upper bound
-                cons_com[l*6+1] = self.link_hulls[l][1][1] - com[1]  #upper bound
-                cons_com[l*6+2] = self.link_hulls[l][2][1] - com[2]  #upper bound
+                cons_com[l*6+0] = com[0] - self.link_hulls[l][0][0][0]  #lower bound
+                cons_com[l*6+1] = com[1] - self.link_hulls[l][0][1][0]
+                cons_com[l*6+2] = com[2] - self.link_hulls[l][0][2][0]
+                cons_com[l*6+0] = self.link_hulls[l][0][0][1] - com[0]  #upper bound
+                cons_com[l*6+1] = self.link_hulls[l][0][1][1] - com[1]  #upper bound
+                cons_com[l*6+2] = self.link_hulls[l][0][2][1] - com[2]  #upper bound
             cons += cons_com
 
         # print some iter stats

@@ -5,7 +5,7 @@ from __future__ import division
 from __future__ import print_function
 from builtins import range
 from builtins import object
-from typing import List, Dict, Callable, Any
+from typing import Tuple, List, Dict, Callable, Any
 
 import numpy as np
 import math
@@ -223,7 +223,7 @@ class Visualizer(object):
         # type: (Dict[str]) -> None
         # some vars
         #self.pressed_keys = []   # type: List[Any]
-        self.program = None   # type: List[Any]
+        self.default_shader = None   # type: List[Any]
         self.window_closed = False
         self.mode = 'b'  # 'b' - blocking or 'c' - continous
         self.display_index = 0   # current index for displaying e.g. postures from file
@@ -298,10 +298,10 @@ class Visualizer(object):
         #gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)   # Wireframe
 
         if not gl.glUseProgram:
-            print( 'Missing Shader Objects!' )
+            print("Can't run shaders!")
             sys.exit(1)
 
-        self.program = compileProgram(
+        self.default_shader = compileProgram(
             compileShader('''
                 varying vec3 N;
                 varying vec3 v;
@@ -444,8 +444,8 @@ class Visualizer(object):
         self.camera.draw()
 
         # run shaders
-        if self.program:
-            gl.glUseProgram(self.program)
+        if self.default_shader:
+            gl.glUseProgram(self.default_shader)
 
         self.drawGrid()
         for b in self.bodies:
@@ -503,7 +503,7 @@ class Visualizer(object):
         body['geometry'] = 'box'
         body['boxsize'] = np.array([1.0, 1.0, 1.0])
         body['position'] = np.array([1.0, 1.0, 1.0])*np.random.rand(3)
-        body['rotation'] = np.identity(3)
+        body['rotation'] = np.array([1.0, 1.0, 1.0])*np.random.rand(3)
         self.bodies.append(body)
         print("Bodies: {}".format(self.bodies))
 
@@ -552,9 +552,9 @@ class Visualizer(object):
         """Draw a body"""
 
         pos = body['position']
-        R = body['rotation']
-        r,p,y = self.rotationMatrixToEulerAngles(R)
-        R = self.eulerAnglesToRotationMatrix([r,p,y])
+        rpy = body['rotation']
+        r,p,y = rpy[0], rpy[1], rpy[2]
+        #R = self.eulerAnglesToRotationMatrix([r,p,y])
 
         '''
         # homogenous transform
@@ -563,7 +563,6 @@ class Visualizer(object):
                  R[2,0], R[2,1], R[2,2], 0.,
                  pos[0], pos[1], pos[2], 1.0]
         '''
-
         gl.glPushMatrix()
         gl.glTranslatef(-pos[0], -pos[1], pos[2])
         gl.glRotatef(np.rad2deg(y), 0.0, 0.0, 1.0)
@@ -577,21 +576,44 @@ class Visualizer(object):
         rel_pos = body['center']
         gl.glTranslatef(rel_pos[0], rel_pos[1], rel_pos[2])
 
+        transparent = 'transparent' in body and body['transparent']
         if body['geometry'] is 'box':
             dim = body['boxsize']
             gl.glScalef(dim[0], dim[1], dim[2])
+            if transparent:
+                gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)   # Wireframe
+                #gl.glEnable(gl.GL_BLEND)
+                #gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
             self.drawCube()
+            if transparent:
+                #gl.glDisable(gl.GL_BLEND)
+                gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
         gl.glPopMatrix()
+
+    def addWorld(self, boxes):
+        # type: (Dict) -> None
+        for linkName in boxes:
+            body = {}  # type: Dict[str, Any]
+            body['geometry'] = 'box'
+            b = np.array(boxes[linkName][0])
+            body['boxsize'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
+            body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                           np.abs(b[1][1])-np.abs(b[1][0]),
+                                           np.abs(b[2][1])-np.abs(b[2][0])])
+            body['position'] = boxes[linkName][1]
+            body['rotation'] = boxes[linkName][2]
+            self.bodies.append(body)
+
 
     def addIDynTreeModel(self,
                   model,          # type: iDynTree.DynamicsComputations
-                  boxes,          # type: Dict                      # link hulls
-                  real_links,     # type: List[str]                 # all the links that are not fake
-                  ignore_links    # type: List[str]                 # links that will not be drawn
+                  boxes,          # type: Dict[str, List]     # link hulls
+                  real_links,     # type: List[str]           # all the links that are not fake
+                  ignore_links    # type: List[str]           # links that will not be drawn
                   ):
         # type: (...) -> None
-        ''' helper frunction that adds boxes for iDynTree model at position and rotations for given
-        joint angles'''
+        ''' helper frunction that adds boxes for iDynTree model at position and rotations for
+        given joint angles'''
 
         if self.window_closed:
             self._initWindow()
@@ -607,7 +629,7 @@ class Visualizer(object):
             body = {}  # type: Dict[str, Any]
             body['geometry'] = 'box'
             try:
-                b = boxes[n_name] * self.config['scaleCollisionHull']
+                b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
                 body['boxsize'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
             except KeyError:
                 print('using cube for {}'.format(n_name))
@@ -617,7 +639,9 @@ class Visualizer(object):
                                            np.abs(b[2][1])-np.abs(b[2][0])])
             t = model.getWorldTransform(l)
             body['position'] = t.getPosition().toNumPy()
-            body['rotation'] = t.getRotation().toNumPy()
+            body['rotation'] = self.rotationMatrixToEulerAngles(t.getRotation().toNumPy())
+            if n_name in self.config['transparentLinks']:
+                body['transparent'] = True
             self.bodies.append(body)
 
     def stop(self, dt):
@@ -647,7 +671,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Visualize postures or trajectories from file')
     parser.add_argument('--config', required=True, type=str, help="use options from given config file")
     parser.add_argument('-m', '--model', required=True, type=str, help='the file to load the robot model from')
-    parser.add_argument('--filename', required=True, type=str, help='the file to load the trajectory from')
+    parser.add_argument('--trajectory', required=False, type=str, help='the file to load the trajectory from')
+    parser.add_argument('--world', required=False, type=str, help='the file to load world links from')
     args = parser.parse_args()
 
     import yaml
@@ -662,7 +687,6 @@ if __name__ == '__main__':
     dynComp.loadRobotModelFromFile(args.model)
     world_gravity = iDynTree.SpatialAcc.fromList([0,0,-9.81,0,0,0])
     n_dof = dynComp.getNrOfDegreesOfFreedom()
-
 
     # TODO: get this from generator / model class (other order than dynComp)
     linkNames = ['Waist', 'LHipMot', 'LThighUpLeg', 'LThighLowLeg', 'LLowLeg', 'LFootmot', 'LFoot',
@@ -682,31 +706,63 @@ if __name__ == '__main__':
     paramHelpers = ParamHelpers(None, config)
     urdfHelpers = URDFHelpers(paramHelpers, None, config)
 
-    link_cuboid_hulls = {}  # type: Dict[str, np.ndarray]
+    link_cuboid_hulls = {}  # type: Dict[str, Tuple[List, List, List]]
     for i in range(len(linkNames)):
         link_name = linkNames[i]
-        link_cuboid_hulls[link_name] = np.array(
-            urdfHelpers.getBoundingBox(
+        box, pos, rot = urdfHelpers.getBoundingBox(
                 input_urdf = args.model,
-                old_com = [0,0,0],  # not important if proper hulls exist, only used for fallback cubes
+                old_com = [0,0,0],  # TODO: get from params (not important if proper hulls exist, only used for fallback)
+                link_name = link_name
+        )
+        link_cuboid_hulls[link_name] = (box, pos, rot)
+
+    world_boxes = {} # type: Dict[str, Tuple[List, List, List]]
+    if args.world:
+        world_links = urdfHelpers.getLinkNames(args.world)
+        for link_name in world_links:
+            box, pos, rot = urdfHelpers.getBoundingBox(
+                input_urdf = args.world,
+                old_com = [0,0,0],
                 link_name = link_name
             )
-        )
+            world_boxes[link_name] = (box, pos, rot)
 
     v = Visualizer(config)
 
-    if config['useStaticTrajectories']:
-        data = np.load(args.filename, encoding='latin1')
+    if args.trajectory:
+        # display trajectory
+        data = np.load(args.trajectory, encoding='latin1')
+        if 'angles' in data:
+            data_is_static = True
+        else:
+            data_is_static = False
+    else:
+        # just diplay model
+        data_is_static = False
 
     def draw_model():
-        print('posture {}'.format(v.display_index))
-        q0 = data['angles'][v.display_index]['angles']
+        if not args.trajectory:
+            # just displaying model, no data
+            q0 = [0.0]*n_dof
+        else:
+            # take angles from data
+            if data_is_static:
+                print('posture {}'.format(v.display_index))
+                q0 = data['angles'][v.display_index]['angles']
+            else:
+                #TODO: get data for trajectory
+                pass
+
         dq = iDynTree.VectorDynSize.fromList([0.0]*n_dof)
         q = iDynTree.VectorDynSize.fromList(q0)
         dynComp.setRobotState(q, dq, dq, world_gravity)
         v.addIDynTreeModel(dynComp, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
 
-    v.display_max = len(data['angles'])
+        if args.world:
+            v.addWorld(world_boxes)
+
+    if data_is_static:
+        v.display_max = len(data['angles'])  # number of postures
     v.event_callback = draw_model
     v.event_callback()
     v.run()

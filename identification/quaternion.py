@@ -3,6 +3,47 @@ import math
 import numpy as np
 
 class Quaternion(object):
+    @classmethod
+    def rotateVbyQ(cls, v, q):
+        ''' rotate vector v (v0,v1,v2) b quaternion q (x,y,z,w) '''
+        qv = np.zeros(4)
+        qv[:3] = v.copy()
+
+        qconj = Quaternion.conjugate(q)
+        q_prime = Quaternion.prod( Quaternion.prod(q, qv), qconj )
+        return q_prime[:3]
+
+    def prod(q1, q2):
+        """ Perform the Hamiltonian product of two quaternions. Note that this product
+            is non-commutative -- this function returns q1 x q2. """
+
+        if (len(q1) != 4) or (len(q2) != 4):
+            raise TypeError('Parameters cannot be interpreted as quaternions')
+
+        qprod = np.zeros(4)
+
+        qprod[0] = q1[3]*q2[0] + q1[0]*q2[3] + q1[1]*q2[2] - q1[2]*q2[1]
+        qprod[1] = q1[3]*q2[1] - q1[0]*q2[2] + q1[1]*q2[3] + q1[2]*q2[0]
+        qprod[2] = q1[3]*q2[2] + q1[0]*q2[1] - q1[1]*q2[0] + q1[2]*q2[3]
+        qprod[3] = q1[3]*q2[3] - q1[0]*q2[0] - q1[1]*q2[1] - q1[2]*q2[2]
+
+        return qprod
+
+    @classmethod
+    def conjugate(cls, q):
+        """ Compute the quaternion conjugate of q.  """
+
+        if len(q) != 4:
+            raise TypeError('Parameter `q` cannot be interpreted as a quaternion')
+
+        qconj = np.zeros(4)
+        qconj[0] = -q[0]
+        qconj[1] = -q[1]
+        qconj[2] = -q[2]
+        qconj[3] = q[3]
+
+        return qconj
+
 
     @classmethod
     def fromRPY(cls, roll, pitch, yaw):

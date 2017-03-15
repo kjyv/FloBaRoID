@@ -6,9 +6,12 @@ from builtins import range
 from builtins import object
 import time
 from typing import cast, Any, List, Dict, Iterable, Union, Tuple, AnyStr
+import os
 
 import numpy as np
 import numpy.linalg as la
+
+import xml.etree.ElementTree as ET
 
 from colorama import Fore
 from tqdm import tqdm
@@ -22,7 +25,7 @@ if (sys.version_info < (3, 0)):
         pass
 
 def getNRMSE(data_ref, data_est, normalize=True, limits=None):
-    # type: (np.ndarray, np.ndarray, bool) -> np.ndarray[float]
+    # type: (np.ndarray, np.ndarray, bool, np.ndarray) -> np.ndarray[float]
     '''get (normalized) root mean square error between estimated values and "standard".
     if limits is supplied, normalization is done from maximum range of torques rather than observed
     range in the data '''
@@ -320,6 +323,17 @@ class URDFHelpers(object):
         self.model = model
         self.opt = opt
 
+    def parseURDF(self, input_urdf):
+        # type: (str) -> xml.etree.ElementTree
+        # preserve comments
+        class PCBuilder(ET.TreeBuilder):
+            def comment(self, data):
+                self.start(ET.Comment, {})
+                self.data(data)
+                self.end(ET.Comment)
+        tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
+        return tree
+
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
         # type: (str, str, np.ndarray[float]) -> None
         """ set new inertia parameters from params and urdf_file, write to new temp file """
@@ -333,14 +347,7 @@ class URDFHelpers(object):
             per_link = 10
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
 
-        import xml.etree.ElementTree as ET
-        # preserve comments
-        class PCBuilder(ET.TreeBuilder):
-            def comment(self, data):
-                self.start(ET.Comment, {})
-                self.data(data)
-                self.end(ET.Comment)
-        tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
+        tree = self.parseURDF(input_urdf)
 
         for l in tree.findall('link'):
             if l.attrib['name'] in self.model.linkNames:
@@ -381,11 +388,20 @@ class URDFHelpers(object):
 
         tree.write(output_urdf, xml_declaration=True)
 
+    def getLinkNames(self, input_urdf):
+        # type: (str) -> List[str]
+
+        links = []
+        tree = self.parseURDF(input_urdf)
+        for l in tree.findall('link'):
+            if len(l.getchildren()) > 0:   # ignore fake links
+                links.append(l.attrib['name'])
+        return links
+
     def getMeshPath(self, input_urdf, link_name):
         # type: (AnyStr, AnyStr) -> AnyStr
-        import xml.etree.ElementTree as ET
-        tree = ET.parse(input_urdf)
 
+        tree = self.parseURDF(input_urdf)
         link_found = False
         filepath = None  # type: AnyStr
         for l in tree.findall('link'):
@@ -425,8 +441,43 @@ class URDFHelpers(object):
 
         return filepath
 
+    def getLinkGeometry(self, input_urdf, link_name):
+        # type: (str, str) -> Tuple[List[float], List[float], List[float]]
+
+        tree = self.parseURDF(input_urdf)
+
+        def getBoxAttribs(m, l):
+            box_size = m.attrib['size']
+            m = l.find('visual/origin')
+            if m is not None:
+                box_rpy = m.attrib['rpy']
+                box_pos = m.attrib['xyz']
+            else:
+                box_pos = box_rpy = '0 0 0'
+            return box_size, box_pos, box_rpy
+
+        box_size = box_pos = box_rpy = [0.0, 0.0, 0.0]
+        for l in tree.findall('link'):
+            if l.attrib['name'] == link_name:
+                link_found = True
+                m = l.find('visual/geometry/box')
+                if m is not None:
+                    box_size, box_pos, box_rpy = getBoxAttribs(m, l)
+                else:
+                    m = l.find('visual/collision/box')
+                    if m is not None:
+                        box_size, box_pos, box_rpy = getBoxAttribs(m, l)
+                    else:
+                        box_size = box_pos = box_rpy = '0 0 0'   # type: ignore
+                box_size = [float(i) for i in box_size.split()]
+                box_pos = [float(i) for i in box_pos.split()]
+                box_rpy = [float(i) for i in box_rpy.split()]
+                break
+        return (box_size, box_pos, box_rpy)
+
+
     def getBoundingBox(self, input_urdf, old_com, link_name):
-        # type: (str, List[float], str) -> List[List[float]]
+        # type: (str, List[float], str) -> List[List[float]], List[float], np.array
         ''' Return bounding box for one link derived from mesh file if possible.
             If no mesh file is found, a cube around the old COM is returned.
             Expects old_com in barycentric form! '''
@@ -439,36 +490,39 @@ class URDFHelpers(object):
         length = self.opt['cubeSize']
         cube = [[-0.5*length+old_com[0], 0.5*length+old_com[0]], [-0.5*length+old_com[1], 0.5*length+old_com[1]],
                 [-0.5*length+old_com[2], 0.5*length+old_com[2]]]
-        # TODO: if <visual><box> or <collision> is specified, use the size from there (also ellipsoid
-        # etc. could be done)
+        scale = self.opt['hullScaling']
+        pos_0 = [0.0, 0.0, 0.0]
+        rot_0 = np.identity(3)
 
-        if filename:
-            try:
-                stl_mesh = mesh.Mesh.from_file(filename)
-                scale = self.opt['hullScaling']
+        if filename and os.path.exists(filename):
+            stl_mesh = mesh.Mesh.from_file(filename)
+            #TODO: get mesh origin attributes, rotate and shift mesh data
 
-                #gazebo and urdf use 1m for 1 stl unit
-                scale_x = float(self.mesh_scaling.split()[0])
-                scale_y = float(self.mesh_scaling.split()[1])
-                scale_z = float(self.mesh_scaling.split()[2])
+            #gazebo and urdf use 1m for 1 stl unit
+            scale_x = float(self.mesh_scaling.split()[0])
+            scale_y = float(self.mesh_scaling.split()[1])
+            scale_z = float(self.mesh_scaling.split()[2])
 
-                bounding_box = [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
-                                [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
-                                [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
-                # switch order of min/max if scaling is negative
-                for s in range(0,3):
-                    if [scale_x, scale_y, scale_z][s] < 0:
-                        bounding_box[s][0], bounding_box[s][1] = bounding_box[s][1], bounding_box[s][0]
+            bounding_box = [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
+                            [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
+                            [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+            # switch order of min/max if scaling is negative
+            for s in range(0,3):
+                if [scale_x, scale_y, scale_z][s] < 0:
+                    bounding_box[s][0], bounding_box[s][1] = bounding_box[s][1], bounding_box[s][0]
 
-                return bounding_box
-            except FileNotFoundError:
-                print(Fore.YELLOW + "Mesh file {} not found for link '{}'! Using a {}m cube around a priori COM.".format(filename, link_name, length) + Fore.RESET)
-                return cube
+            return bounding_box, pos_0, rot_0
         else:
-            #in case there is no stl file in urdf
-            if self.opt['verbose']:
-                print(Fore.YELLOW + "No mesh file given/found for link '{}'! Using a {}m cube around a priori COM.".format(link_name, length) + Fore.RESET)
-            return cube
+            # use <visual><box> or <collision><box> if specified
+            box, pos, rot = self.getLinkGeometry(input_urdf, link_name)
+            if np.any(np.array(box) != 0):
+                return [[-0.5*box[0]*scale, 0.5*box[0]*scale],
+                        [-0.5*box[1]*scale, 0.5*box[1]*scale],
+                        [-0.5*box[2]*scale, 0.5*box[2]*scale]], pos, rot
+            else:
+                if self.opt['verbose']:
+                    print(Fore.YELLOW + "Mesh file {} or box geometry not found for link '{}'! Using a {}m cube around a priori COM.".format(filename, link_name, length) + Fore.RESET)
+                return cube, pos_0, rot_0
 
     @staticmethod
     def getJointLimits(input_urdf, use_deg=False):

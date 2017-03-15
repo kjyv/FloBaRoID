@@ -10,7 +10,7 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
 numStaticPostures: 8             #must be >1
-ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link', 'TorsoProtections']
+ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link']
 ignoreLinkPairsForCollision: 
     - ['LForearm', 'LSoftHandLink']
     - ['RForearm', 'RSoftHandLink']
@@ -22,6 +22,7 @@ ignoreLinkPairsForCollision:
     - ['DWYTorso', 'RShr']
     - ['DWYTorso', 'LShy']
     - ['DWYTorso', 'RShy']
+transparentLinks: ['TorsoProtections']  # visualize with some see-through
 scaleCollisionHull: 0.8
 
 showOptimizationGraph: 0         #display updating graph during trajectory optimization

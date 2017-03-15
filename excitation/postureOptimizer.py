@@ -35,16 +35,15 @@ class PostureOptimizer(Optimizer):
         #self.model.num_links**2 * self.num_postures
         self.posture_time = 0.01  # time in s per posture (*freq = equal samples)
 
-        self.link_cuboid_hulls = {}  # type: Dict[str, np.ndarray]
+        self.link_cuboid_hulls = {}  # type: Dict[str, List]
         for i in range(self.model.num_links):
             link_name = self.model.linkNames[i]
-            self.link_cuboid_hulls[link_name] = np.array(
-                idf.urdfHelpers.getBoundingBox(
+            box, pos, rot = urdfHelpers.getBoundingBox(
                     input_urdf = idf.model.urdf_file,
                     old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
                     link_name = link_name
-                )
             )
+        self.link_cuboid_hulls[link_name] = [box, pos, rot]
 
         vel = [0.0]*self.num_dofs
         self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
@@ -135,14 +134,16 @@ class PostureOptimizer(Optimizer):
         l0_name = self.model.linkNames[l0]
         l1_name = self.model.linkNames[l1]
 
+        # TODO: use pos and rot of boxes for vals from geometry,
+        # self.link_cuboid_hulls[l0_name][1], [2]
 
-        b = self.link_cuboid_hulls[l0_name] * self.config['scaleCollisionHull']
+        b = self.link_cuboid_hulls[l0_name][0] * self.config['scaleCollisionHull']
         b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
                                   np.abs(b[1][1])-np.abs(b[1][0]),
                                   np.abs(b[2][1])-np.abs(b[2][0])])
         b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
-        b = self.link_cuboid_hulls[l1_name] * self.config['scaleCollisionHull']
+        b = self.link_cuboid_hulls[l1_name][0] * self.config['scaleCollisionHull']
         b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
                                   np.abs(b[1][1])-np.abs(b[1][0]),
                                   np.abs(b[2][1])-np.abs(b[2][0])])

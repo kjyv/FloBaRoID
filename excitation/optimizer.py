@@ -19,7 +19,7 @@ try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
     nprocs = comm.Get_size()
-    parallel = True
+    parallel = nprocs > 1
 except:
     parallel = False
 
@@ -256,7 +256,7 @@ class Optimizer(object):
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
             if parallel:
-                opt = pyOpt.ALPSO(pll_type='POA')  #augmented lagrange particle swarm optimization
+                opt = pyOpt.ALPSO(pll_type='SPM')  #augmented lagrange particle swarm optimization
             else:
                 opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
             opt.setOption('stopCriteria', 0)
@@ -314,8 +314,8 @@ class Optimizer(object):
             # to get proper no. of expected func calls? (one call per dimension for each iteration?)
             self.iter_max = self.local_iter_max
 
+            #use best constrained solution from last run (might be better than what solver thinks)
             if self.last_best_sol.size > 0:
-                #use best constrained solution (might be better than what solver thinks)
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 

@@ -10,16 +10,17 @@ import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from fcl import fcl, collision_data, transform
 
-from identification.helpers import URDFHelpers
+from identification.helpers import URDFHelpers, eulerAnglesToRotationMatrix
 from excitation.trajectoryGenerator import FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
 from visualizer import Visualizer
 
+from colorama import Fore
 
 class PostureOptimizer(Optimizer):
     ''' find angles of n static positions for identification of gravity parameters '''
 
-    def __init__(self, config, idf, model, simulation_func):
+    def __init__(self, config, idf, model, simulation_func, world=None):
         super(PostureOptimizer, self).__init__(config, model, simulation_func)
 
         self.idf = idf
@@ -38,12 +39,28 @@ class PostureOptimizer(Optimizer):
         self.link_cuboid_hulls = {}  # type: Dict[str, List]
         for i in range(self.model.num_links):
             link_name = self.model.linkNames[i]
-            box, pos, rot = urdfHelpers.getBoundingBox(
+            box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf = idf.model.urdf_file,
                     old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
                     link_name = link_name
             )
-        self.link_cuboid_hulls[link_name] = [box, pos, rot]
+            self.link_cuboid_hulls[link_name] = [box, pos, rot]
+
+        self.world = world
+        if world:
+            self.world_links = idf.urdfHelpers.getLinkNames(world)
+            print('World links: {}'.format(self.world_links))
+            for link_name in self.world_links:
+                box, pos, rot = idf.urdfHelpers.getBoundingBox(
+                        input_urdf = world,
+                        old_com = [0,0,0],
+                        link_name = link_name
+                )
+            # make sure no name collision happens
+            if link_name not in self.link_cuboid_hulls:
+                self.link_cuboid_hulls[link_name] = [box, pos, rot]
+            else:
+                print(Fore.RED+'Warning: link {} declared in model and world file!'.format(link_name) + Fore.RESET)
 
         vel = [0.0]*self.num_dofs
         self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
@@ -86,7 +103,7 @@ class PostureOptimizer(Optimizer):
 
         # amount of collision checks to be done
         eff_links = self.model.num_links - len(self.config['ignoreLinksForCollision'])
-        self.num_constraints = self.num_postures * (eff_links * (eff_links-1) // 2)
+        self.num_constraints = self.num_postures * ((eff_links * (eff_links-1) // 2) + len(self.world_links)*eff_links)
 
         #subtract neighbors
         nb_pairs = []  # type: List[Tuple]
@@ -114,36 +131,45 @@ class PostureOptimizer(Optimizer):
     def testConstraints(self, g):
         return np.all(g > 0.0)
 
-    def getLinkDistance(self, l0, l1, joint_q):
+    def getLinkDistance(self, l0_name, l1_name, joint_q):
         '''get distance from link with id l0 to link with id l1 for posture joint_q'''
 
         #get link rotation and position in world frame
         q = iDynTree.VectorDynSize.fromList(joint_q)
         self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
 
-        f0 = self.model.dynComp.getFrameIndex(self.model.linkNames[l0])
-        t0 = self.model.dynComp.getWorldTransform(f0)
-        rot0 = t0.getRotation().toNumPy()
-        pos0 = t0.getPosition().toNumPy()
+        if l0_name in self.model.linkNames:    # if robot link
+            f0 = self.model.dynComp.getFrameIndex(l0_name)
+            t0 = self.model.dynComp.getWorldTransform(f0)
+            rot0 = t0.getRotation().toNumPy()
+            pos0 = t0.getPosition().toNumPy()
+            s0 = self.config['scaleCollisionHull']
+        else:   # if world link
+            pos0 = self.link_cuboid_hulls[l0_name][1]
+            rot0 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l0_name][2])
+            s0 = 1
 
-        f1 = self.model.dynComp.getFrameIndex(self.model.linkNames[l1])
-        t1 = self.model.dynComp.getWorldTransform(f1)
-        rot1 = t1.getRotation().toNumPy()
-        pos1 = t1.getPosition().toNumPy()
+        if l1_name in self.model.linkNames:    # if robot link
+            f1 = self.model.dynComp.getFrameIndex(l1_name)
+            t1 = self.model.dynComp.getWorldTransform(f1)
+            rot1 = t1.getRotation().toNumPy()
+            pos1 = t1.getPosition().toNumPy()
+            s1 = self.config['scaleCollisionHull']
+        else:   # if world link
+            pos1 = self.link_cuboid_hulls[l1_name][1]
+            rot1 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l1_name][2])
+            s1 = 1
 
-        l0_name = self.model.linkNames[l0]
-        l1_name = self.model.linkNames[l1]
-
-        # TODO: use pos and rot of boxes for vals from geometry,
+        # TODO: use pos and rot of boxes for vals from geometry tags
         # self.link_cuboid_hulls[l0_name][1], [2]
 
-        b = self.link_cuboid_hulls[l0_name][0] * self.config['scaleCollisionHull']
+        b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
         b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
                                   np.abs(b[1][1])-np.abs(b[1][0]),
                                   np.abs(b[2][1])-np.abs(b[2][0])])
         b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
 
-        b = self.link_cuboid_hulls[l1_name][0] * self.config['scaleCollisionHull']
+        b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
         b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
                                   np.abs(b[1][1])-np.abs(b[1][0]),
                                   np.abs(b[2][1])-np.abs(b[2][0])])
@@ -157,7 +183,7 @@ class PostureOptimizer(Optimizer):
 
         if distance < 0:
             if self.config['verbose'] > 1:
-                print("Collision of {} and {}".format(self.model.linkNames[l0], self.model.linkNames[l1]))
+                print("Collision of {} and {}".format(l0_name, l1_name))
 
             # get proper collision and depth since optimization should also know how much constraint is violated
             cr = collision_data.CollisionRequest()
@@ -197,6 +223,9 @@ class PostureOptimizer(Optimizer):
                 self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
                 self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
                                                  self.model.linkNames, self.config['ignoreLinksForCollision'])
+                if self.world:
+                    world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
+                    self.visualizer.addWorld(world_boxes)
                 self.visualizer.run()
             self.visualizer.display_max = self.num_postures
             self.visualizer.event_callback = draw_model
@@ -210,12 +239,13 @@ class PostureOptimizer(Optimizer):
                 print("Posture {}".format(p))
             q = x[p*self.num_dofs:(p+1)*self.num_dofs]
 
-            for l0 in range(self.model.num_links):
-                for l1 in range(self.model.num_links):
+            for l0 in range(self.model.num_links + len(self.world_links)):
+                for l1 in range(self.model.num_links + len(self.world_links)):
+                    l0_name = (self.model.linkNames + self.world_links)[l0]
+                    l1_name = (self.model.linkNames + self.world_links)[l1]
+
                     if (l0 >= l1):  # don't need, distance is the same in both directions; same link never collides
                         continue
-                    l0_name = self.model.linkNames[l0]
-                    l1_name = self.model.linkNames[l1]
                     if l0_name in self.config['ignoreLinksForCollision'] \
                             or l1_name in self.config['ignoreLinksForCollision']:
                         continue
@@ -224,11 +254,12 @@ class PostureOptimizer(Optimizer):
                         continue
 
                     # neighbors can't collide with a proper joint range, so ignore
-                    if l0_name in self.neighbors[l1_name]['links'] or l1_name in self.neighbors[l0_name]['links']:
-                        continue
+                    if l0 < self.model.num_links and l1 < self.model.num_links:
+                        if l0_name in self.neighbors[l1_name]['links'] or l1_name in self.neighbors[l0_name]['links']:
+                            continue
 
                     if l0 < l1:
-                        g[g_cnt] = self.getLinkDistance(l0, l1, q)
+                        g[g_cnt] = self.getLinkDistance(l0_name, l1_name, q)
                         g_cnt += 1
 
         # check those links that are very close or collide again with mesh (simplified versions or full)
@@ -250,12 +281,21 @@ class PostureOptimizer(Optimizer):
             plotter(self.config, data=trajectory_data)
 
         # get objective function value: identified parameter distance (from 'real')
-        id_grav = self.model.identified_params
-        param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd
+        #id_grav = self.model.identified_params
+        id_grav = []
+        id_grav_id = []
+        for i in range(self.model.num_links):
+            id_grav.append(i*10+1)
+            id_grav.append(i*10+2)
+            id_grav.append(i*10+3)
+            id_grav_id.append(i*4+1)
+            id_grav_id.append(i*4+6)
+            id_grav_id.append(i*4+7)
+        param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd[id_grav_id]
         f = np.linalg.norm(param_error)**2
 
         c = self.testConstraints(g)
-        if not self.opt_prob.is_gradient and self.config['showOptimizationGraph']:
+        if self.config['showOptimizationGraph'] and not self.opt_prob.is_gradient and self.mpi_rank == 0:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -267,8 +307,9 @@ class PostureOptimizer(Optimizer):
             if self.opt_prob.is_gradient:
                 print("(Gradient evaluation)")
             print("Parameter error: {}".format(param_error))
-            print("Angles: {}".format(angles))
-            #print("Constraints (link distances): {}".format(g))
+            if self.config['verbose'] > 1:
+                print("Angles: {}".format(angles))
+                print("Constraints (link distances): {}".format(g))
 
         #keep last best solution (some solvers don't keep it)
         if c and f < self.last_best_f:
@@ -301,6 +342,10 @@ class PostureOptimizer(Optimizer):
                 else:
                     low = self.limits[d_n]['lower']
                     high = self.limits[d_n]['upper']
+                if self.config['useDeg']:
+                    low = np.deg2rad(low)
+                    high = np.deg2rad(high)
+
                 #initial = (high - low) / 2
                 #initial = 0.0
                 if len(self.config['initialPostures']) > p:

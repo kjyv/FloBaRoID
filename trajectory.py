@@ -21,6 +21,7 @@ parser.add_argument('--filename', type=str, help='the filename to save the traje
 parser.add_argument('--config', required=True, type=str, help="use options from given config file")
 parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
 parser.add_argument('--model_real', required=False, type=str, help='the file to load the "real" robot model from')
+parser.add_argument('--world', required=False, type=str, help='the file to load world links from')
 args = parser.parse_args()
 
 import yaml
@@ -57,7 +58,7 @@ def main():
             old_gravity = config['identifyGravityParamsOnly']
             idf = Identification(config, config['urdf'], config['urdf_real'], measurements_files=None,
                                  regressor_file=None, validation_file=None)
-            trajectoryOptimizer = PostureOptimizer(config, idf, model, simulation_func=simulateTrajectory)
+            trajectoryOptimizer = PostureOptimizer(config, idf, model, world=args.world, simulation_func=simulateTrajectory)
             config['identifyGravityParamsOnly'] = old_gravity
         else:
             trajectoryOptimizer = TrajectoryOptimizer(config, model, simulation_func=simulateTrajectory)

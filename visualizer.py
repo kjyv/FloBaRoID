@@ -6,19 +6,18 @@ from __future__ import print_function
 from builtins import range
 from builtins import object
 from typing import Tuple, List, Dict, Callable, Any
-
-import numpy as np
 import math
 import collections
-
 import os, sys
 
+import numpy as np
 from OpenGL import GLU
 from OpenGL.GL.shaders import compileShader, compileProgram
-
 import pyglet
 from pyglet import gl
 from pyglet.window import key
+
+from identification.helpers import eulerAnglesToRotationMatrix, rotationMatrixToEulerAngles
 
 # convert python list to gldouble array
 def glvec(v):
@@ -465,38 +464,6 @@ class Visualizer(object):
 
         return pyglet.event.EVENT_HANDLED
 
-
-    def rotationMatrixToEulerAngles(self, R):
-        sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
-        singular = sy < 1e-6
-
-        if  not singular :
-            x = math.atan2(R[2,1] , R[2,2])
-            y = math.atan2(-R[2,0], sy)
-            z = math.atan2(R[1,0], R[0,0])
-        else :
-            x = math.atan2(-R[1,2], R[1,1])
-            y = math.atan2(-R[2,0], sy)
-            z = 0
-
-        return np.array([x, y, z])
-
-    def eulerAnglesToRotationMatrix(self, theta):
-        R_x = np.array([[1,         0,                  0                   ],
-                        [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
-                        [0,         math.sin(theta[0]), math.cos(theta[0])  ]
-                        ])
-        R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
-                        [0,                     1,      0                   ],
-                        [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
-                        ])
-        R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
-                        [math.sin(theta[2]),    math.cos(theta[2]),     0],
-                        [0,                     0,                      1]
-                        ])
-        R = np.dot(R_z, np.dot( R_y, R_x ))
-        return R
-
     def addBody(self):
         print("Adding box to world")
         body = {}  # type: Dict[str, Any]
@@ -554,7 +521,7 @@ class Visualizer(object):
         pos = body['position']
         rpy = body['rotation']
         r,p,y = rpy[0], rpy[1], rpy[2]
-        #R = self.eulerAnglesToRotationMatrix([r,p,y])
+        #R = eulerAnglesToRotationMatrix([r,p,y])
 
         '''
         # homogenous transform
@@ -631,16 +598,17 @@ class Visualizer(object):
             try:
                 b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
                 body['boxsize'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
+                body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                               np.abs(b[1][1])-np.abs(b[1][0]),
+                                               np.abs(b[2][1])-np.abs(b[2][0])])
             except KeyError:
                 print('using cube for {}'.format(n_name))
                 body['boxsize'] = np.array([0.1, 0.1, 0.1])
-            body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                           np.abs(b[1][1])-np.abs(b[1][0]),
-                                           np.abs(b[2][1])-np.abs(b[2][0])])
+                body['center'] = [0.0, 0.0, 0.0]
             t = model.getWorldTransform(l)
             body['position'] = t.getPosition().toNumPy()
-            body['rotation'] = self.rotationMatrixToEulerAngles(t.getRotation().toNumPy())
-            if n_name in self.config['transparentLinks']:
+            body['rotation'] = rotationMatrixToEulerAngles(t.getRotation().toNumPy())
+            if 'transparentLinks' in self.config and n_name in self.config['transparentLinks']:
                 body['transparent'] = True
             self.bodies.append(body)
 
@@ -688,6 +656,7 @@ if __name__ == '__main__':
     world_gravity = iDynTree.SpatialAcc.fromList([0,0,-9.81,0,0,0])
     n_dof = dynComp.getNrOfDegreesOfFreedom()
 
+    '''
     # TODO: get this from generator / model class (other order than dynComp)
     linkNames = ['Waist', 'LHipMot', 'LThighUpLeg', 'LThighLowLeg', 'LLowLeg', 'LFootmot', 'LFoot',
                 'RHipMot', 'RThighUpLeg', 'RThighLowLeg', 'RLowLeg', 'RFootmot', 'RFoot', 'DWL', 'DWS',
@@ -699,7 +668,6 @@ if __name__ == '__main__':
     # kuka
     linkNames = ['lwr_base_link', 'lwr_1_link', 'lwr_2_link', 'lwr_3_link', 'lwr_4_link',
                  'lwr_5_link', 'lwr_6_link', 'lwr_7_link']
-    '''
 
     # get bounding boxes for model
     from identification.helpers import URDFHelpers, ParamHelpers

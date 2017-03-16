@@ -166,6 +166,7 @@ class Optimizer(object):
         if parallel:
             self.mpi_size = nprocs   # number of processes
             self.mpi_rank = comm.Get_rank()  # current process
+            self.comm = comm
         else:
             self.mpi_size = 1
             self.mpi_rank = 0
@@ -256,22 +257,28 @@ class Optimizer(object):
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
             if parallel:
+                #opt = pyOpt.NSGA2(pll_type='POA') # genetic algorithm
                 opt = pyOpt.ALPSO(pll_type='SPM')  #augmented lagrange particle swarm optimization
             else:
+                #opt = pyOpt.NSGA2()
                 opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
-            opt.setOption('stopCriteria', 0)
-            opt.setOption('maxInnerIter', 3)
+            opt.setOption('stopCriteria', 0)   # stop at max iters
+            opt.setOption('dynInnerIter', 1)   # dynamic inner iter number
+            opt.setOption('maxInnerIter', 5)
             opt.setOption('maxOuterIter', self.config['globalOptIterations'])
             opt.setOption('printInnerIters', 1)
             opt.setOption('printOuterIters', 1)
-            opt.setOption('SwarmSize', 30)
+            opt.setOption('SwarmSize', 200)
             opt.setOption('xinit', 1)
+            opt.setOption('seed', 0.5**self.mpi_rank)
+            opt.setOption('vcrazy', 1e-2)
             #TODO: how to properly limit max number of function calls?
             # no. func calls = (SwarmSize * inner) * outer + SwarmSize
             self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
                 opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
-
             self.iter_max = self.iter_max // self.mpi_size
+
+            #self.iter_max = '(unknown)'
 
             # run fist (global) optimization
             #try:
@@ -298,7 +305,7 @@ class Optimizer(object):
             #    opt2.setOption('IPRINT', 0)
 
             opt2 = pyOpt.IPOPT()
-            opt2.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            opt2.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             opt2.setOption('max_iter', self.config['localOptIterations'])
             if self.config['verbose']:
                 opt2.setOption('print_level', 4)  #0 none ... 5 max

@@ -216,23 +216,6 @@ class PostureOptimizer(Optimizer):
         # test constraints
         # check for each link that it does not collide with any other link (parent/child shouldn't be possible)
 
-        if self.config['showModelVisualization'] and self.mpi_rank == 0:
-            def draw_model():
-                p_id = self.visualizer.display_index
-                q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
-                q = iDynTree.VectorDynSize.fromList(q0)
-                self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
-                self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
-                                                 self.model.linkNames, self.config['ignoreLinksForCollision'])
-                if self.world:
-                    world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
-                    self.visualizer.addWorld(world_boxes)
-                self.visualizer.updateLabels()
-            self.visualizer.display_max = self.num_postures
-            self.visualizer.event_callback = draw_model
-            self.visualizer.event_callback()
-            self.visualizer.run()
-
         g_cnt = 0
         if self.config['verbose'] > 1:
             print('checking collisions')
@@ -306,6 +289,23 @@ class PostureOptimizer(Optimizer):
             self.x_constr.append(c)
             self.updateGraph()
 
+        if self.config['showModelVisualization'] and self.mpi_rank == 0 and c:
+            def draw_model():
+                p_id = self.visualizer.display_index
+                q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
+                q = iDynTree.VectorDynSize.fromList(q0)
+                self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+                self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
+                                                 self.model.linkNames, self.config['ignoreLinksForCollision'])
+                if self.world:
+                    world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
+                    self.visualizer.addWorld(world_boxes)
+                self.visualizer.updateLabels()
+            self.visualizer.display_max = self.num_postures
+            self.visualizer.event_callback = draw_model
+            self.visualizer.event_callback()
+            self.visualizer.run()
+
         print("Objective function value: {} (last best: {})".format(f, self.last_best_f))
 
         if self.config['verbose']:
@@ -316,12 +316,33 @@ class PostureOptimizer(Optimizer):
                 print("Angles: {}".format(angles))
                 print("Constraints (link distances): {}".format(g))
 
-        #keep last best solution (some solvers don't keep it)
-        if c and f < self.last_best_f:
-            self.last_best_f = f
-            self.last_best_sol = x
+        #keep last best solution (some solvers don't properly keep it or don't consider gradient values)
+        if c:
+            if f < self.last_best_f:
+                self.last_best_f = f
+                self.last_best_sol = x
+            if self.parallel:
+                if self.mpi_rank > 0:
+                    req = self.comm.isend(self.last_best_f, dest=0, tag=5)
+                    req.wait()
+
+                    req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
+                    req.wait()
         elif not c:
             print('Constraints not met.')
+
+
+        #receive solutions from other instances
+        if self.parallel and self.mpi_rank == 0:
+            req = self.comm.irecv(tag=5)
+            other_best_f = req.wait()
+            req = self.comm.irecv(tag=6)
+            other_best_sol = req.wait()
+
+            if other_best_f < self.last_best_f:
+                print('received better solution')
+                self.last_best_f = other_best_f
+                self.last_best_sol = other_best_sol
 
         return f, g, fail
 

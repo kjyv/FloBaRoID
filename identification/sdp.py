@@ -431,12 +431,14 @@ class SDP(object):
 
             idf.opt['onlyUseDSDP'] = 0
             if not idf.opt['onlyUseDSDP']:
-                print("Solving with cvxopt...", end=' ')
+                if idf.opt['verbose']:
+                    print("Solving with cvxopt...", end=' ')
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
             if idf.opt['onlyUseDSDP'] or state is not 'optimal':
-                print("Solving with dsdp5...", end=' ')
+                if idf.opt['verbose']:
+                    print("Solving with dsdp5...", end=' ')
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
@@ -747,12 +749,14 @@ class SDP(object):
             # don't use cvxopt atm because it won't use primal and fail anyway
             onlyUseDSDP = 1
             if not onlyUseDSDP:
-                print("Solving with cvxopt...", end=' ')
+                if idf.opt['verbose']:
+                    print("Solving with cvxopt...", end=' ')
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
             # try again with wider bounds and dsdp5 cmd line
             if onlyUseDSDP or state is not 'optimal':
-                print("Solving with dsdp5...", end=' ')
+                if idf.opt['verbose']:
+                    print("Solving with dsdp5...", end=' ')
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 # start at CAD data to find solution faster
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd, wide_bounds=True)

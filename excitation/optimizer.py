@@ -320,9 +320,9 @@ class Optimizer(object):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 
             if parallel:
-                opt2(opt_prob, sens_mode='pgc', store_hst=False)
+                opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
             else:
-                opt2(opt_prob, store_hst=False)
+                opt2(opt_prob, sens_step=0.1, store_hst=False)
 
 
         if self.mpi_rank == 0:
@@ -331,14 +331,13 @@ class Optimizer(object):
             sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
             if self.last_best_sol.size > 0:
-                sol_vec = self.last_best_sol
                 print("using last best constrained solution instead of given solver solution.")
 
                 print("testing final solution")
                 self.iter_cnt = 0
-                self.objectiveFunc(sol_vec)
+                self.objectiveFunc(self.last_best_sol)
                 print("\n")
-                return sol_vec
+                return self.last_best_sol
             else:
                 print("No feasible solution found!")
                 sys.exit(-1)

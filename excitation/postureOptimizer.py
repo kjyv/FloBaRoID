@@ -13,7 +13,6 @@ from fcl import fcl, collision_data, transform
 from identification.helpers import URDFHelpers, eulerAnglesToRotationMatrix
 from excitation.trajectoryGenerator import FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
-from visualizer import Visualizer
 
 from colorama import Fore
 
@@ -49,7 +48,8 @@ class PostureOptimizer(Optimizer):
         self.world = world
         if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
-            print('World links: {}'.format(self.world_links))
+            if self.config['verbose']:
+                print('World links: {}'.format(self.world_links))
             for link_name in self.world_links:
                 box, pos, rot = idf.urdfHelpers.getBoundingBox(
                         input_urdf = world,
@@ -125,6 +125,7 @@ class PostureOptimizer(Optimizer):
             self.config['verbose'] = 0
 
         if self.config['showModelVisualization'] and self.mpi_rank == 0:
+            from visualizer import Visualizer
             self.visualizer = Visualizer(self.config)
 
 

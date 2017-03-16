@@ -33,7 +33,7 @@ class PostureOptimizer(Optimizer):
         self.num_postures = self.config['numStaticPostures']
 
         #self.model.num_links**2 * self.num_postures
-        self.posture_time = 0.01  # time in s per posture (*freq = equal samples)
+        self.posture_time = 0.05  # time in s per posture (*freq = equal samples)
 
         self.link_cuboid_hulls = {}  # type: Dict[str, List]
         for i in range(self.model.num_links):
@@ -227,10 +227,11 @@ class PostureOptimizer(Optimizer):
                 if self.world:
                     world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
                     self.visualizer.addWorld(world_boxes)
-                self.visualizer.run()
+                self.visualizer.updateLabels()
             self.visualizer.display_max = self.num_postures
             self.visualizer.event_callback = draw_model
             self.visualizer.event_callback()
+            self.visualizer.run()
 
         g_cnt = 0
         if self.config['verbose'] > 1:
@@ -282,16 +283,19 @@ class PostureOptimizer(Optimizer):
             plotter(self.config, data=trajectory_data)
 
         # get objective function value: identified parameter distance (from 'real')
-        #id_grav = self.model.identified_params
-        id_grav = []
-        id_grav_id = []
-        for i in range(self.model.num_links):
-            id_grav.append(i*10+1)
-            id_grav.append(i*10+2)
-            id_grav.append(i*10+3)
-            id_grav_id.append(i*4+1)
-            id_grav_id.append(i*4+6)
-            id_grav_id.append(i*4+7)
+        id_grav = self.model.identified_params
+        id_grav_id = list(range(0, len(self.idf.model.xStd)))
+        if self.config['identifyGravityParamsOnly']:
+            id_grav = []
+            id_grav_id = []
+            # only compare COM params
+            for i in range(self.model.num_links):
+                id_grav.append(i*10+1)
+                id_grav.append(i*10+2)
+                id_grav.append(i*10+3)
+                id_grav_id.append(i*4+1)
+                id_grav_id.append(i*4+6)
+                id_grav_id.append(i*4+7)
         param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd[id_grav_id]
         f = np.linalg.norm(param_error)**2
 

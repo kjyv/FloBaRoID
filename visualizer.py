@@ -245,11 +245,20 @@ class Visualizer(object):
         b - add cube <br>
         q - close <br>
         </font>'''
-        self.label = pyglet.text.HTMLLabel(legend,
+        self.help_label = pyglet.text.HTMLLabel(legend,
                           x = 10, y = -10,
                           width = 200,
                           multiline = True,
                           anchor_x='left', anchor_y='bottom')
+        self.info_label = pyglet.text.HTMLLabel('',
+                          x = 10, y = self.height - 10,
+                          width = 50,
+                          multiline = False,
+                          anchor_x='left', anchor_y='top')
+        self.updateLabels()
+
+    def updateLabels(self):
+        self.info_label.text = '<font face="Helvetica,Arial" size=15>Index: {}</font>'.format(self.display_index)
 
     def update(self, dt=None):
         self.camera.update(dt)
@@ -451,7 +460,8 @@ class Visualizer(object):
             self.drawBody(b)
 
         self.init_ortho()
-        self.label.draw()
+        self.help_label.draw()
+        self.info_label.draw()
 
     def on_resize(self, width, height):
         """(Re-)Init drawing.
@@ -728,6 +738,8 @@ if __name__ == '__main__':
 
         if args.world:
             v.addWorld(world_boxes)
+
+        v.updateLabels()
 
     if data_is_static:
         v.display_max = len(data['angles'])  # number of postures

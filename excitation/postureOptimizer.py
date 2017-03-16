@@ -317,29 +317,33 @@ class PostureOptimizer(Optimizer):
                 print("Constraints (link distances): {}".format(g))
 
         #keep last best solution (some solvers don't properly keep it or don't consider gradient values)
-        if c:
-            if f < self.last_best_f:
-                self.last_best_f = f
-                self.last_best_sol = x
-            if self.parallel:
-                if self.mpi_rank > 0:
-                    req = self.comm.isend(self.last_best_f, dest=0, tag=5)
-                    req.wait()
-
-                    req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
-                    req.wait()
+        if c and f < self.last_best_f:
+            self.last_best_f = f
+            self.last_best_sol = x
         elif not c:
             print('Constraints not met.')
 
+        if self.parallel:
+            if self.mpi_rank > 0:
+                req = self.comm.isend(c, dest=0, tag=4)
+                req.wait()
+
+                req = self.comm.isend(self.last_best_f, dest=0, tag=5)
+                req.wait()
+
+                req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
+                req.wait()
 
         #receive solutions from other instances
         if self.parallel and self.mpi_rank == 0:
+            req = self.comm.irecv(tag=4)
+            other_c = req.wait()
             req = self.comm.irecv(tag=5)
             other_best_f = req.wait()
             req = self.comm.irecv(tag=6)
             other_best_sol = req.wait()
 
-            if other_best_f < self.last_best_f:
+            if other_c and other_best_f < self.last_best_f:
                 print('received better solution')
                 self.last_best_f = other_best_f
                 self.last_best_sol = other_best_sol

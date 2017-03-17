@@ -264,8 +264,12 @@ class Identification(object):
         print("Relative validation error: {}%".format(self.val_error))
         self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation-self.tauMeasuredValidation, axis=1))
         print("Absolute validation error: {} Nm".format(self.val_residual))
-        self.val_nrms = np.mean(helpers.getNRMSE(self.tauMeasuredValidation, self.tauEstimatedValidation))
-        print("NRMS validation error: {}".format(self.val_nrms))
+
+        torque_limits = []
+        for joint in self.model.jointNames:
+            torque_limits.append(self.model.limits[joint]['torque'])
+        self.val_nrms = helpers.getNRMSE(self.tauMeasuredValidation, self.tauEstimatedValidation, limits=torque_limits)
+        print("NRMS validation error: {}%".format(self.val_nrms))
 
 
     def getBaseParamsFromParamError(self):

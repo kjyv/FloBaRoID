@@ -39,12 +39,18 @@ def getNRMSE(data_ref, data_est, normalize=True, limits=None):
             ymax = np.array(limits)
             ymin = -np.array(limits)
         else:
-            # get min/max from data
-            ymax = np.max(data_ref)
-            ymin = np.min(data_ref)
-        return rmsd / (ymax - ymin)
+            # get min/max from data (not always informative)
+            ymax = np.max(data_ref, axis=0)
+            ymin = np.min(data_ref, axis=0)
+        range = (ymax - ymin)
+        if range.shape[0] < rmsd.shape[0]:
+            # floating base
+            return np.mean(rmsd[6:] / range) * 100
+        else:
+            # fixed base
+            return np.mean(rmsd / range) * 100
     else:
-        return rmsd
+        return np.mean(rmsd) * 100
 
 def rotationMatrixToEulerAngles(R):
     sy = np.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])

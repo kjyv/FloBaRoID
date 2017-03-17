@@ -4,6 +4,7 @@ from builtins import range
 from builtins import object
 from typing import List, Tuple, Dict
 import sys
+import random
 
 import numpy as np
 import numpy.linalg as la
@@ -256,11 +257,23 @@ class Optimizer(object):
 
         if self.config['useGlobalOptimization']:
             ### optimize using pyOpt (global)
+            sr = random.SystemRandom()
             if self.config['globalSolver'] == 'NSGA2':
                 if parallel:
                     opt = pyOpt.NSGA2(pll_type='POA') # genetic algorithm
                 else:
                     opt = pyOpt.NSGA2()
+                opt.setOption('PopSize', 100)   # Population Size (a Multiple of 4)
+                opt.setOption('maxGen', self.config['globalOptIterations'])   # Maximum Number of Generations
+                opt.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
+                opt.setOption('xinit', 0)       # Use Initial Solution Flag (0 - random population, 1 - use given solution)
+                opt.setOption('seed', sr.random())   # Random Number Seed 0..1 (0 - Auto based on time clock)
+                #pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
+                #pMut_real      0.2     Probablity of Mutation of Real Variables (1/nreal)
+                #eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
+                #eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
+                #pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
+                #pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
                 self.iter_max = '(unknown)'
             elif self.config['globalSolver'] == 'ALPSO':
                 if parallel:
@@ -274,8 +287,8 @@ class Optimizer(object):
                 opt.setOption('printInnerIters', 1)
                 opt.setOption('printOuterIters', 1)
                 opt.setOption('SwarmSize', 200)
-                opt.setOption('xinit', 1)
-                opt.setOption('seed', 0.5**self.mpi_rank)
+                opt.setOption('xinit', 0)
+                opt.setOption('seed', sr.random()*self.mpi_size) #(self.mpi_rank+1)/self.mpi_size)
                 #opt.setOption('vcrazy', 1e-2)
                 #TODO: how to properly limit max number of function calls?
                 # no. func calls = (SwarmSize * inner) * outer + SwarmSize
@@ -283,11 +296,14 @@ class Optimizer(object):
                     opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
                 self.iter_max = self.iter_max // self.mpi_size
 
-            # run fist (global) optimization
+            # run global optimization
             #try:
                 #reuse history
             #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
             #except NameError:
+
+            if self.config['verbose']:
+                print('Running global optimization with {}'.format(self.config['globalSolver']))
             opt(opt_prob, store_hst=False) #, xstart=initial)
 
             if self.mpi_rank == 0:
@@ -300,14 +316,14 @@ class Optimizer(object):
             #TODO: run local optimization for e.g. the three last best results (global solutions could be more or less optimal
             # within their local minima)
 
-            # after using global optimization, get more exact solution with
-            # gradient based method init optimizer (only local)
+            # after using global optimization, refine solution with gradient based method init
+            # optimizer (more or less local)
             if self.config['localSolver'] == 'SLSQP':
                 opt2 = pyOpt.SLSQP()   #sequential least squares
                 opt2.setOption('MAXIT', self.config['localOptIterations'])
                 if self.config['verbose']:
                     opt2.setOption('IPRINT', 0)
-            elif self.config['localSolver'] == 'IPOPT'
+            elif self.config['localSolver'] == 'IPOPT':
                 opt2 = pyOpt.IPOPT()
                 opt2.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
                 opt2.setOption('max_iter', self.config['localOptIterations'])
@@ -318,7 +334,7 @@ class Optimizer(object):
             elif self.config['localSolver'] == 'PSQP':
                 opt2 = pyOpt.PSQP()
                 opt2.setOption('MIT', self.config['localOptIterations'])  # max iterations
-                #opt2.setOption('MFV', ??)  # max iterations
+                #opt2.setOption('MFV', ??)  # max function evaluations
 
             # TODO: amount of function calls depends on amount of variables and iterations to
             # approximate gradient ('iterations' are probably the actual steps along the gradient). How
@@ -326,10 +342,12 @@ class Optimizer(object):
             self.iter_max = self.local_iter_max
 
             #use best constrained solution from last run (might be better than what solver thinks)
-            if self.last_best_sol.size > 0:
+            if len(self.last_best_sol) > 0:
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 
+            if self.config['verbose']:
+                print('Running local optimization with {}'.format(self.config['localSolver']))
             if parallel:
                 opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
             else:

@@ -323,30 +323,36 @@ class PostureOptimizer(Optimizer):
         elif not c:
             print('Constraints not met.')
 
+        #send solutions to node 0
         if self.parallel:
             if self.mpi_rank > 0:
-                req = self.comm.isend(c, dest=0, tag=4)
-                req.wait()
-
-                req = self.comm.isend(self.last_best_f, dest=0, tag=5)
-                req.wait()
-
-                req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
-                req.wait()
+                #req = self.comm.isend(c, dest=0, tag=4)
+                #req.wait()
+                #req = self.comm.isend(self.last_best_f, dest=0, tag=5)
+                #req.wait()
+                #req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
+                #req.wait()
+                self.comm.send(c, dest=0, tag=4)
+                self.comm.send(self.last_best_f, dest=0, tag=5)
+                self.comm.send(self.last_best_sol, dest=0, tag=6)
 
         #receive solutions from other instances
         if self.parallel and self.mpi_rank == 0:
-            req = self.comm.irecv(tag=4)
-            other_c = req.wait()
-            req = self.comm.irecv(tag=5)
-            other_best_f = req.wait()
-            req = self.comm.irecv(tag=6)
-            other_best_sol = req.wait()
+            for proc in range(1, self.mpi_size):
+                #req = self.comm.irecv(source=proc, tag=4)
+                #other_c = req.wait()
+                #req = self.comm.irecv(source=proc, tag=5)
+                #other_best_f = req.wait()
+                #req = self.comm.irecv(source=proc, tag=6)
+                #other_best_sol = req.wait()
+                other_c = self.comm.recv(source=proc, tag=4)
+                other_best_f = self.comm.recv(source=proc, tag=5)
+                other_best_sol = self.comm.recv(source=proc, tag=5)
 
-            if other_c and other_best_f < self.last_best_f:
-                print('received better solution')
-                self.last_best_f = other_best_f
-                self.last_best_sol = other_best_sol
+                if other_c and other_best_f < self.last_best_f:
+                    print('received better solution')
+                    self.last_best_f = other_best_f
+                    self.last_best_sol = other_best_sol
 
         return f, g, fail
 
@@ -418,15 +424,16 @@ class PostureOptimizer(Optimizer):
         self.addVarsAndConstraints(self.opt_prob)
         #print(self.opt_prob)
 
-        #slsqp/psqp
-        #self.local_iter_max = self.num_postures * self.num_dofs * self.config['localOptIterations']  # num of gradient evals
-        #self.local_iter_max += self.config['localOptIterations']*2  # some steps for each iter?
+        if self.config['localSolver'] in ['SLSQP', 'PSQP']:
+            #slsqp/psqp
 
-        #ipopt, not really correct
-        num_vars = self.num_postures * self.num_dofs
-        self.local_iter_max = ((num_vars  + self.num_constraints) * self.config['localOptIterations'] + 2*num_vars)
-        if self.parallel:
-            self.local_iter_max = self.local_iter_max // self.mpi_size
+            num_vars = self.num_postures * self.num_dofs
+            # num of gradient evals divided by parallel processes times iterations
+            self.local_iter_max = ((num_vars + self.num_constraints)  // self.mpi_size) * self.config['localOptIterations']
+        else:
+            #ipopt, not really correct
+            num_vars = self.num_postures * self.num_dofs
+            self.local_iter_max = (num_vars  + self.num_constraints) * self.config['localOptIterations']
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

@@ -5,7 +5,7 @@
 FloBaRoID is a python toolkit for parameter identification of floating-base rigid body tree-structures such as
 humanoid robots. It aims to provide a complete solution for obtaining physical consistent identified dynamics parameters.
 
-![Overview](documentation/identification_overview.svg)
+![Overview](https://cdn.rawgit.com/kjyv/FloBaRoID/master/documentation/identification_overview.svg)
 
 Tools:
 

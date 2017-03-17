@@ -3,28 +3,31 @@
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
-useStaticTrajectories: 1         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 5             #how many postures to generate
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['ground_link', 'lwr_base_link']
 scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
-
-showOptimizationGraph: 1         #display updating graph during trajectory optimization
-showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
-showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
-useGlobalOptimization: 1         #use global solver first
-globalOptIterations: 5
-useLocalOptimization: 1          #do local optimization after using global solver
-localOptIterations: 15            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
-minTolConstr: 0.01               #threshold for being within constraints (only used for display)
-
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 initialPostures:                 #for static optimization, feasible postures to start from (useful only when not using global optimization)
     - [0,0,0,0,0,0,0]
     - [0,0.1,0,0.8,0,-0.4,0]
     - [0,0,0,-0.8,0,0,0]
     - [0,0.75,0,0,0,0,0]
     - [0,-0.75,0,0,0.4,0,0]
+
+# proper trajectory optimization
+useGlobalOptimization: 0         #use global solver first (recommended)
+globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+globalOptIterations: 1
+useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (interior point)
+localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
+minTolConstr: 0.01               #threshold for being within constraints (only used for display)
+showOptimizationGraph: 1         #display updating graph during trajectory optimization
+showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
+showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 
 # initial values to start trajectory optimization from (useful only when not using global optimization)
 trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)
@@ -36,8 +39,7 @@ trajectoryCoeffMax:  0.5
 trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax:  25.0
 
-# instead of one range, define individual ranges for each link. If the values from option ..Angle Min/Max is to be used for
-# all of them, set entry with null
+# instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
 trajectoryAngleRanges: []
 #    - [-0.61086524,  0.61086524]
 #    - [-0.43633231,  0.43633231]
@@ -47,8 +49,8 @@ trajectoryAngleRanges: []
 #    - [-0.43633231,  0.43633231]
 #    - [-0.43633231,  0.43633231]
 
-# manual angle limits: pairs of upper and lower (in degrees). put in null if values from URDF
-# should be used (or leave completely empty)
+# manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
+# should be used (or leave completely empty to use all from URDF)
 ovrPosLimit:
     - null
     - [-60.0, 60.0]
@@ -58,16 +60,17 @@ ovrPosLimit:
     - null
     - null
 
-# maximize minimal velocity for each joint (better excitation of parameters)
+# maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
-excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. with Gazebo)
+# excitation
+excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
 exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
 ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
-excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
-useDeg: 0                        #encode angles in degrees for excitation (internal and data is always in rad)
+excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
+useDeg: 0                        #give angles in degrees (internal and data is always in rad)
 
 #### data preprocessing and selection
 

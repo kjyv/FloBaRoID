@@ -1,0 +1,9 @@
+<regressor>
+    <baseLinkDynamics/>
+    <jointTorqueDynamics>
+        <joints>
+            <joint>joint_1_2</joint>
+            <joint>joint_2_3</joint>
+        </joints>
+    </jointTorqueDynamics>
+</regressor>

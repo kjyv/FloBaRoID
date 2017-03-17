@@ -26,14 +26,11 @@ class PostureOptimizer(Optimizer):
 
         # get joint ranges
         self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
-
         self.trajectory = FixedPositionTrajectory(self.config)
 
         self.num_dofs = self.config['num_dofs']
         self.num_postures = self.config['numStaticPostures']
-
-        #self.model.num_links**2 * self.num_postures
-        self.posture_time = 0.05  # time in s per posture (*freq = equal samples)
+        self.posture_time = self.config['staticPostureTime']
 
         self.link_cuboid_hulls = {}  # type: Dict[str, List]
         for i in range(self.model.num_links):
@@ -433,7 +430,7 @@ class PostureOptimizer(Optimizer):
         else:
             #ipopt, not really correct
             num_vars = self.num_postures * self.num_dofs
-            self.local_iter_max = (num_vars  + self.num_constraints) * self.config['localOptIterations']
+            self.local_iter_max = ((num_vars + self.num_constraints)  // self.mpi_size) * self.config['localOptIterations']
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

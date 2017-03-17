@@ -15,3 +15,7 @@ jinja2
 IPython
 tqdm
 typing
+PyOpenGL
+pyglet
+matplotlib2tikz
+mpi4py

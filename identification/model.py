@@ -160,8 +160,11 @@ class Model(object):
         else:
             self.num_identified_params = self.num_model_params
 
+        self.friction_params_start = self.num_model_params
+
         if self.opt['identifyGravityParamsOnly']:
             self.num_identified_params = self.num_identified_params - len(self.inertia_params)
+            self.friction_params_start = self.num_model_params - len(self.inertia_params)
 
         if self.opt['verbose']:
             print('# params: {} ({} will be identified)'.format(self.num_model_params, self.num_identified_params))
@@ -331,13 +334,13 @@ class Model(object):
             # add friction torques
             # constant
             sign = 1 #np.sign(vel)
-            p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+            p_constant = range(self.friction_params_start, self.friction_params_start+self.num_dofs)
             torques += sign*xStdModel[p_constant]
 
             # vel dependents
             if not self.opt['identifyGravityParamsOnly']:
                 # (take only first half of params as they are not direction dependent in urdf anyway)
-                p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+                p_vel = range(self.friction_params_start+self.num_dofs, self.friction_params_start+self.num_dofs*2)
                 torques += xStdModel[p_vel]*vel
 
         if self.opt['floatingBase']:

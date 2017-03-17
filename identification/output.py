@@ -504,8 +504,8 @@ class OutputConsole(object):
         torque_limits = []
         for joint in idf.model.jointNames:
             torque_limits.append(idf.model.limits[joint]['torque'])
-        idf.abs_apriori_error = np.mean(helpers.getNRMSE(idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits))*100
-        idf.abs_res_error = np.mean(helpers.getNRMSE(idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits))*100
+        idf.abs_apriori_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits)
+        idf.abs_res_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits)
         print("NRMS of residual error: {}% vs. A priori: {}%".format(idf.abs_res_error, idf.abs_apriori_error))
 
 class OutputMatplotlib(object):
@@ -598,7 +598,11 @@ class OutputMatplotlib(object):
                                 ls = '-'
                             dashes = ()      # type: Tuple
                             if idf.opt['plotErrors']:
-                                if i == 2:
+                                if idf.opt['plotPrioriTorques']:
+                                    n = 3
+                                else:
+                                    n = 2
+                                if i == n:
                                     ls = 'dashed'
                                     dashes = (3, 0.5)
                             ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls, dashes=dashes)

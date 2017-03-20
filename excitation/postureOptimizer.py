@@ -196,7 +196,7 @@ class PostureOptimizer(Optimizer):
         return distance
 
 
-    def objectiveFunc(self, x):
+    def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
         if self.mpi_size > 1:
             print("process {}, iter #{}/{}".format(self.mpi_rank, self.iter_cnt, self.iter_max))
@@ -277,7 +277,7 @@ class PostureOptimizer(Optimizer):
                 id_grav_id.append(i*4+6)
                 id_grav_id.append(i*4+7)
         param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd[id_grav_id]
-        f = np.linalg.norm(param_error)**2
+        f = np.linalg.norm(param_error)**2 + np.std(param_error)
 
         c = self.testConstraints(g)
         if self.config['showOptimizationGraph'] and not self.opt_prob.is_gradient and self.mpi_rank == 0:
@@ -320,36 +320,23 @@ class PostureOptimizer(Optimizer):
         elif not c:
             print('Constraints not met.')
 
-        #send solutions to node 0
-        if self.parallel:
-            if self.mpi_rank > 0:
-                #req = self.comm.isend(c, dest=0, tag=4)
-                #req.wait()
-                #req = self.comm.isend(self.last_best_f, dest=0, tag=5)
-                #req.wait()
-                #req = self.comm.isend(self.last_best_sol, dest=0, tag=6)
-                #req.wait()
-                self.comm.send(c, dest=0, tag=4)
-                self.comm.send(self.last_best_f, dest=0, tag=5)
-                self.comm.send(self.last_best_sol, dest=0, tag=6)
+        # send solutions to node 0
+        # (will probably give deadlocks with gradient messages at some point)
+        if self.parallel and not test and not self.opt_prob.is_gradient:
+            print('before obj func gather')
+            send_obj = [c, self.last_best_f, self.last_best_sol, self.mpi_rank]
+            received_objs = self.comm.gather(send_obj, root=0)
 
-        #receive solutions from other instances
-        if self.parallel and self.mpi_rank == 0:
-            for proc in range(1, self.mpi_size):
-                #req = self.comm.irecv(source=proc, tag=4)
-                #other_c = req.wait()
-                #req = self.comm.irecv(source=proc, tag=5)
-                #other_best_f = req.wait()
-                #req = self.comm.irecv(source=proc, tag=6)
-                #other_best_sol = req.wait()
-                other_c = self.comm.recv(source=proc, tag=4)
-                other_best_f = self.comm.recv(source=proc, tag=5)
-                other_best_sol = self.comm.recv(source=proc, tag=5)
+            #receive solutions from other instances
+            if self.mpi_rank == 0:
+                for proc in range(0, self.mpi_size):
+                    print('before obj func recv 1 {}'.format(proc))
+                    other_c, other_best_f, other_best_sol, rank = received_objs[proc]
 
-                if other_c and other_best_f < self.last_best_f:
-                    print('received better solution')
-                    self.last_best_f = other_best_f
-                    self.last_best_sol = other_best_sol
+                    if other_c and other_best_f < self.last_best_f:
+                        print('received better solution from {}'.format(rank))
+                        self.last_best_f = other_best_f
+                        self.last_best_sol = other_best_sol
 
         return f, g, fail
 

@@ -486,6 +486,11 @@ class OutputConsole(object):
                 sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
             print("Squared distance of identifiable std parameter vectors to a priori: {}".\
                     format(sq_error_apriori))
+            if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
+                sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
+                print("Squared distance of base parameter vectors (identified vs. a priori): {}".\
+                        format(sq_error_apriori))
+
 
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)

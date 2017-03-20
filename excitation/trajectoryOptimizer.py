@@ -112,7 +112,7 @@ class TrajectoryOptimizer(Optimizer):
         return jac.transpose()
 
 
-    def objectiveFunc(self, x):
+    def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
         print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
 

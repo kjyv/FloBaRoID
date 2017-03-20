@@ -1,20 +1,26 @@
 
 #### excitation
 
-excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
-exciteMethod: null #'yarp'       #currently 'yarp', 'ros' or null
-excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
-useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
-
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
-useStaticTrajectories: 0         #generate simple static trajectories for identification of gravity terms (no optimization is done)
+
+useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 10
-showOptimizationGraph: 1         #display updating graph during trajectory optimization
-showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
+ignoreLinksForCollision: []      #don't include these links for collision testing at all
+ignoreLinkPairsForCollision: []  #don't check collision between these pairs
+scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
+initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
+
+useGlobalOptimization: 1          #do local optimization after using global solver
+globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10
 useLocalOptimization: 1          #do local optimization after using global solver
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (interior point)
 localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
+showOptimizationGraph: 1         #display updating graph during trajectory optimization
+showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
+showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
@@ -49,9 +55,17 @@ ovrPosLimit:
     - null
     - null
 
-# constrain to minimal velocity (percentage of maximum) for each joint (better excitation of parameters)
+# maximize smallest velocity for each joint (better excitation of parameters)
+# (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
+
+# excitation
+excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
+exciteMethod: null #'yarp'       #currently 'yarp', 'ros' or null
+ros_move_group: ''               #if using ros, what move group to use for excitation
+excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
+useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
 
 #### data preprocessing and selection
 

@@ -8,6 +8,7 @@ numStaticPostures: 5             #how many postures to generate
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['ground_link', 'lwr_base_link']
+transparentLinks: []             # visualize with some see-through
 scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 initialPostures:                 #for static optimization, feasible postures to start from (useful only when not using global optimization)

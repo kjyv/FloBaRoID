@@ -869,7 +869,7 @@ class Identification(object):
             for i in range(0, self.model.num_dofs):
                 datasets.append({
                     'unified_scaling': False,
-                    #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i),
+                    #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i+1),
                     'y_label': 'Torque (Nm)',
                     'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                     'dataset': [{

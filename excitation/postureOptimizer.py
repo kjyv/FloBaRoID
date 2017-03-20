@@ -53,11 +53,11 @@ class PostureOptimizer(Optimizer):
                         old_com = [0,0,0],
                         link_name = link_name
                 )
-            # make sure no name collision happens
-            if link_name not in self.link_cuboid_hulls:
-                self.link_cuboid_hulls[link_name] = [box, pos, rot]
-            else:
-                print(Fore.RED+'Warning: link {} declared in model and world file!'.format(link_name) + Fore.RESET)
+                # make sure no name collision happens
+                if link_name not in self.link_cuboid_hulls:
+                    self.link_cuboid_hulls[link_name] = [box, pos, rot]
+                else:
+                    print(Fore.RED+'Warning: link {} declared in model and world file!'.format(link_name) + Fore.RESET)
 
         vel = [0.0]*self.num_dofs
         self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
@@ -322,6 +322,7 @@ class PostureOptimizer(Optimizer):
 
         # send solutions to node 0
         # (will probably give deadlocks with gradient messages at some point)
+        '''
         if self.parallel and not test and not self.opt_prob.is_gradient:
             print('before obj func gather')
             send_obj = [c, self.last_best_f, self.last_best_sol, self.mpi_rank]
@@ -337,6 +338,7 @@ class PostureOptimizer(Optimizer):
                         print('received better solution from {}'.format(rank))
                         self.last_best_f = other_best_f
                         self.last_best_sol = other_best_sol
+        '''
 
         return f, g, fail
 

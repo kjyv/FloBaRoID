@@ -185,7 +185,7 @@ class Optimizer(object):
         # type: (np.ndarray) -> bool
         raise NotImplementedError
 
-    def objectiveFunc(self, x):
+    def objectiveFunc(self, x, test=False):
         # type: (np.ndarray[float]) -> Tuple[float, np.ndarray, bool]
         ''' calculate objective function and return objective function value f, constraint values g
         and a fail flag'''
@@ -364,7 +364,7 @@ class Optimizer(object):
 
                 print("testing final solution")
                 self.iter_cnt = 0
-                self.objectiveFunc(self.last_best_sol)
+                self.objectiveFunc(self.last_best_sol, test=True)
                 print("\n")
                 return self.last_best_sol
             else:

@@ -12,7 +12,7 @@ from identification.data import Data
 
 
 def simulateTrajectory(config, trajectory, model=None, measurements=None):
-    # type: (Dict, Trajectory, Model, np.ndarray) -> Tuple[Dict, Data]
+    # type: (Dict, Trajectory, Model, np._ArrayLike) -> Tuple[Dict, Data]
     # generate data arrays for simulation and regressor building
     old_sim = config['simulateTorques']
     config['simulateTorques'] = True
@@ -30,7 +30,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         model = Model(config, urdf)
 
     data = Data(config)
-    trajectory_data = {}   # type: Dict[str, Union[List, np.ndarray]]
+    trajectory_data = {}   # type: Dict[str, Union[List, np._ArrayLike]]
     trajectory_data['target_positions'] = []
     trajectory_data['target_velocities'] = []
     trajectory_data['target_accelerations'] = []

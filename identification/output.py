@@ -354,9 +354,9 @@ class OutputConsole(object):
                     sigma = idf.p_sigma_x[idx_p]
 
                 if idf.urdf_file_real:
-                    lines.append((idx_p, real, old, new, diff, error, sigma, param_columns))
+                    lines.append([idx_p, real, old, new, diff, error, sigma, param_columns])
                 else:
-                    lines.append((idx_p, old, new, diff, sigma, param_columns))
+                    lines.append([idx_p, old, new, diff, sigma, param_columns])
 
                 if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
                     idx_ep+=1

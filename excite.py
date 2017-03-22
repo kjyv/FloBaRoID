@@ -47,7 +47,7 @@ from excitation.optimizer import plotter
 from excitation.trajectoryGenerator import PulsedTrajectory, FixedPositionTrajectory
 from excitation.trajectoryOptimizer import simulateTrajectory
 
-traj_data = {}   # type: Dict[str, np.ndarray]   # hold some global data vars in here
+traj_data = {}   # type: Dict[str, np._ArrayLike]   # hold some global data vars in here
 
 def main():
     if args.trajectory:

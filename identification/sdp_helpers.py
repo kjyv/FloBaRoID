@@ -176,7 +176,7 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
     return s
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike) -> Tuple[np.matrix, str]
     ''' using cvxopt conelp to solve SDP program
 
         a more exact but possibly less robust solver than dsdp5
@@ -214,7 +214,7 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
 
 
 def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray, bool) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.matrix, str]
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
@@ -234,7 +234,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
 
 
 def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np.ndarray, bool) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.matrix, str]
     ''' use dsdp5 directly (faster than cvxopt, can use starting points, more robust) '''
     import subprocess
     import os

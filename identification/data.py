@@ -21,10 +21,10 @@ class Data(object):
     def __init__(self, opt):
         # type: (Dict[str, Any]) -> None
         self.opt = opt
-        self.measurements = {}  # type: Dict[str, np.ndarray]   #loaded data
+        self.measurements = {}  # type: Dict[str, np._ArrayLike]   #loaded data
         self.num_loaded_samples = 0    # no of samples from file
         self.num_used_samples = 0      # no of samples after skipping
-        self.samples = {}     # type: Dict[str, np.ndarray]   #selected data (when using block selection)
+        self.samples = {}     # type: Dict[str, np._ArrayLike]   #selected data (when using block selection)
 
         self.usedBlocks = list()     # type: List[int]
         self.unusedBlocks = list()   # type: List[int]
@@ -34,7 +34,7 @@ class Data(object):
         self.inited = False
 
     def init_from_data(self, data):
-        # type: (Dict[str, np.ndarray]) -> None
+        # type: (Dict[str, np._ArrayLike]) -> None
         '''load data from numpy array'''
 
         self.samples = self.measurements = data.copy()

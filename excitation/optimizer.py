@@ -25,6 +25,7 @@ except:
     parallel = False
 
 def plotter(config, data=None, filename=None):
+    #type: (Dict, np._ArrayLike, str) -> None
     fig = plt.figure(1)
     fig.clear()
     if False:
@@ -125,21 +126,21 @@ def plotter(config, data=None, filename=None):
     d = 0
     cols = 2.0
     rows = round(len(datasets)/cols)
-    for (data, title) in datasets:
+    for (dat, title) in datasets:
         plt.subplot(rows, cols, d+1)
         plt.title(title)
         lines = list()
         labels = list()
-        for d_i in range(0, len(data)):
-            if len(data[d_i].shape) > 1:
+        for d_i in range(0, len(dat)):
+            if len(dat[d_i].shape) > 1:
                 for i in range(0, config['num_dofs']):
                     l = config['jointNames'][i] if d_i == 0 else ''  #only put joint names in the legend once
                     labels.append(l)
-                    line = plt.plot(T, data[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
+                    line = plt.plot(T, dat[d_i][:, i], color=colors[i], alpha=1-(d_i/2.0))
                     lines.append(line[0])
             else:
-                #data vector
-                plt.plot(T, data[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
+                #dat vector
+                plt.plot(T, dat[d_i], label=title, color=colors[0], alpha=1-(d_i/2.0))
         d+=1
     leg = plt.figlegend(lines, labels, 'upper right', fancybox=True, fontsize=10)
     leg.draggable()
@@ -152,7 +153,7 @@ def plotter(config, data=None, filename=None):
 
 class Optimizer(object):
     def __init__(self, config, model, simulation_func):
-        # type: (Dict, Model, Callable[[Dict, Trajectory, Model, np.ndarray], Tuple[Dict, Data]]) -> None
+        # type: (Dict, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]]) -> None
         self.config = config
         self.sim_func = simulation_func
         self.model = model
@@ -176,17 +177,18 @@ class Optimizer(object):
             self.initGraph()
 
         self.local_iter_max = "(unknown)"
+        self.is_global = False
 
     def testBounds(self, x):
-        # type: (np.ndarray) -> bool
+        # type: (np._ArrayLike) -> bool
         raise NotImplementedError
 
     def testConstraints(self, g):
-        # type: (np.ndarray) -> bool
+        # type: (np._ArrayLike) -> bool
         raise NotImplementedError
 
     def objectiveFunc(self, x, test=False):
-        # type: (np.ndarray[float]) -> Tuple[float, np.ndarray, bool]
+        # type: (np._ArrayLike[float], bool) -> Tuple[float, np._ArrayLike, bool]
         ''' calculate objective function and return objective function value f, constraint values g
         and a fail flag'''
         raise NotImplementedError
@@ -250,7 +252,7 @@ class Optimizer(object):
 
 
     def runOptimizer(self, opt_prob):
-        # type: (pyOpt.Optimization) -> np.ndarray[float]
+        # type: (pyOpt.Optimization) -> np._ArrayLike[float]
         ''' call global followed by local optimizer, return solution '''
 
         initial = [v.value for v in list(opt_prob.getVarSet().values())]
@@ -304,6 +306,7 @@ class Optimizer(object):
 
             if self.config['verbose']:
                 print('Running global optimization with {}'.format(self.config['globalSolver']))
+            self.is_global = True
             opt(opt_prob, store_hst=False) #, xstart=initial)
 
             if self.mpi_rank == 0:
@@ -348,6 +351,7 @@ class Optimizer(object):
 
             if self.config['verbose']:
                 print('Running local optimization with {}'.format(self.config['localSolver']))
+            self.is_global = False
             if parallel:
                 opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
             else:
@@ -373,5 +377,4 @@ class Optimizer(object):
         else:
             # parallel sub-processes, close
             sys.exit(0)
-
 

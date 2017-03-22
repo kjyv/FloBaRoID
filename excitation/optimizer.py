@@ -268,10 +268,10 @@ class Optimizer(object):
                 opt.setOption('PopSize', 100)   # Population Size (a Multiple of 4)
                 opt.setOption('maxGen', self.config['globalOptIterations'])   # Maximum Number of Generations
                 opt.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
-                opt.setOption('xinit', 0)       # Use Initial Solution Flag (0 - random population, 1 - use given solution)
+                opt.setOption('xinit', 1)       # Use Initial Solution Flag (0 - random population, 1 - use given solution)
                 opt.setOption('seed', sr.random())   # Random Number Seed 0..1 (0 - Auto based on time clock)
                 #pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
-                #pMut_real      0.2     Probablity of Mutation of Real Variables (1/nreal)
+                opt.setOption('pMut_real', 0.5)   # Probablity of Mutation of Real Variables (1/nreal)
                 #eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
                 #eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
                 #pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
@@ -289,7 +289,7 @@ class Optimizer(object):
                 opt.setOption('printInnerIters', 1)
                 opt.setOption('printOuterIters', 1)
                 opt.setOption('SwarmSize', 200)
-                opt.setOption('xinit', 0)
+                opt.setOption('xinit', 1)
                 opt.setOption('seed', sr.random()*self.mpi_size) #(self.mpi_rank+1)/self.mpi_size)
                 #opt.setOption('vcrazy', 1e-2)
                 #TODO: how to properly limit max number of function calls?

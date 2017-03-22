@@ -84,8 +84,8 @@ class Identification(object):
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
         self.sdp = sdp.SDP(self)
 
-        self.tauEstimated = None  # type: np.ndarray
-        self.res_error = 100        #last residual error in percent
+        self.tauEstimated = None    # type: np._ArrayLike
+        self.res_error = 100        # last residual error in percent
 
         self.urdf_file_real = urdf_file_real
         if self.urdf_file_real:
@@ -230,7 +230,7 @@ class Identification(object):
         old_skip = self.opt['skipSamples']
         self.opt['skipSamples'] = 8
 
-        self.tauEstimatedValidation = None   # type: np.ndarray
+        self.tauEstimatedValidation = None   # type: np._ArrayLike
         for m_idx in self.progress(range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1)):
             if self.opt['useRBDL']:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx, params)
@@ -298,7 +298,7 @@ class Identification(object):
 
 
     def getStdDevForParams(self):
-        # type: () -> (np.ndarray[float])
+        # type: () -> (np._ArrayLike[float])
         # this might not be working correctly
         if self.opt['useAPriori']:
             tauDiff = self.model.tauMeasured - self.tauEstimated
@@ -557,7 +557,7 @@ class Identification(object):
 
 
     def identifyBaseParameters(self, YBase=None, tau=None, id_only=False):
-        # type: (np.ndarray, np.ndarray, bool) -> None
+        # type: (np._ArrayLike, np._ArrayLike, bool) -> None
         """use previously computed regressors and identify base parameter vector using ordinary or
            weighted least squares."""
 

@@ -44,7 +44,7 @@ class SDP(object):
 
 
     def checkFeasibility(self, prime):
-        # type: (np.ndarray) -> bool
+        # type: (np._ArrayLike) -> bool
         ''' check for a given parameter vector, e.g. a starting point, if it is within the LMI
         constraints '''
 
@@ -650,7 +650,7 @@ class SDP(object):
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin*eye(lm.shape[0])) for lm in DB_blocks])
 
-            Q, R = la.qr(idf.model.YBase)  # type: (np.ndarray[float], np.ndarray[float])
+            Q, R = la.qr(idf.model.YBase)
             #Q1 = Q[:, 0:idf.model.num_base_params]
             #Q2 = Q[:, idf.model.num_base_params:]
             R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])  # type: np.matrix[float]
@@ -705,7 +705,7 @@ class SDP(object):
 
 
     def findFeasibleStdFromFeasibleBase(self, idf, xBase):
-        # type: (Identification, np.ndarray) -> None
+        # type: (Identification, np._ArrayLike) -> None
         ''' find a std feasible solution for feasible base solution (exists by definition) while
             minimizing param distance to a-priori parameters
         '''
@@ -775,7 +775,7 @@ class SDP(object):
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
 
     def findFeasibleStdFromStd(self, idf, xStd):
-        # type: (Identification, np.ndarray) -> (np.ndarray)
+        # type: (Identification, np._ArrayLike) -> (np._ArrayLike)
         ''' find closest feasible std solution for some std parameters (increases error) '''
 
         idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))

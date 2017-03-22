@@ -219,7 +219,7 @@ class FirstPersonCamera(object):
 
 class Visualizer(object):
     def __init__(self, config):
-        # type: (Dict[str]) -> None
+        # type: (Dict[str, Any]) -> None
         # some vars
         #self.pressed_keys = []   # type: List[Any]
         self.default_shader = None   # type: List[Any]
@@ -526,6 +526,7 @@ class Visualizer(object):
         self.cube_list.draw(gl.GL_TRIANGLES)
 
     def drawBody(self, body):
+        # type: (Dict[str, Any]) -> None
         """Draw a body"""
 
         pos = body['position']
@@ -584,7 +585,7 @@ class Visualizer(object):
 
     def addIDynTreeModel(self,
                   model,          # type: iDynTree.DynamicsComputations
-                  boxes,          # type: Dict[str, List]     # link hulls
+                  boxes,          # type: Dict[str, Tuple[List, List, List]]     # link hulls
                   real_links,     # type: List[str]           # all the links that are not fake
                   ignore_links    # type: List[str]           # links that will not be drawn
                   ):
@@ -632,7 +633,7 @@ class Visualizer(object):
         if self.mode == 'b':
             pyglet.app.run()
         else:
-            #run one loop iterration only (draw one frame)
+            #run one loop iteration only (draw one frame)
             pyglet.clock.tick()
             for window in pyglet.app.windows:
                 window.switch_to()

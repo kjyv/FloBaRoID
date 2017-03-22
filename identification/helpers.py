@@ -25,7 +25,7 @@ if (sys.version_info < (3, 0)):
         pass
 
 def getNRMSE(data_ref, data_est, normalize=True, limits=None):
-    # type: (np.ndarray, np.ndarray, bool, np.ndarray) -> np.ndarray[float]
+    # type: (np._ArrayLike, np._ArrayLike, bool, np._ArrayLike) -> np._ArrayLike[float]
     '''get (normalized) root mean square error between estimated values and "standard".
     if limits is supplied, normalization is done from maximum range of torques rather than observed
     range in the data '''
@@ -113,7 +113,7 @@ class ParamHelpers(object):
         self.opt = opt
 
     def checkPhysicalConsistency(self, params, full=False):
-        # type: (np.ndarray, bool) -> (Dict[int, bool])
+        # type: (np._ArrayLike, bool) -> (Dict[int, bool])
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite, triangle inequaltiy for eigenvalues of inertia tensor expressed at COM)
@@ -140,7 +140,7 @@ class ParamHelpers(object):
         return cons
 
     def checkPhysicalConsistencyNoTriangle(self, params, full=False):
-        # type: (np.ndarray, bool) -> (Dict[int, bool])
+        # type: (np._ArrayLike, bool) -> (Dict[int, bool])
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite)
@@ -183,12 +183,12 @@ class ParamHelpers(object):
         return cons
 
     def isPhysicalConsistent(self, params):
-        # type: (np.ndarray[float]) -> bool
+        # type: (np._ArrayLike[float]) -> bool
         """give boolean consistency statement for a set of parameters"""
         return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
 
     def invvech(self, params):
-        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
         """give full inertia tensor from vectorized form
            expect vector of 6 values (xx, xy, xz, yy, yz, zz).T"""
         tensor = np.zeros((3,3))
@@ -216,7 +216,7 @@ class ParamHelpers(object):
         return tensor
 
     def vech(self, params):
-        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
         """return vectorization of symmetric 3x3 matrix (only up to diagonal)"""
         vec = np.zeros(6)
         vec[0] = params[0,0]
@@ -228,7 +228,7 @@ class ParamHelpers(object):
         return vec
 
     def inertiaTensorFromParams(self, params):
-        # type: (np.ndarray[float]) -> (List[np.ndarray[float]])
+        # type: (np._ArrayLike[float]) -> (List[np._ArrayLike[float]])
         """take a parameter vector and return list of full inertia tensors (one for each link)"""
         tensors = list()
         for i in range(len(params)):
@@ -238,7 +238,7 @@ class ParamHelpers(object):
         return tensors
 
     def inertiaParams2RotationalInertiaRaw(self, params):
-        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
         """take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix
         expects six parameter vector"""
 
@@ -267,7 +267,7 @@ class ParamHelpers(object):
         return inertia
 
     def paramsLink2Bary(self, params):
-        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
         """convert params from iDynTree values (relative to link frame) to barycentric parameters
            (usable in URDF) (changed in place)"""
 
@@ -303,7 +303,7 @@ class ParamHelpers(object):
         return params
 
     def paramsBary2Link(self, params):
-        # type: (np.ndarray[float]) -> (np.ndarray[float])
+        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
         params = params.copy()
         for i in range(0, len(params)):
             if (i % 10 == 0) and i < self.model.num_model_params:   #for each link
@@ -333,7 +333,7 @@ class ParamHelpers(object):
 
     @staticmethod
     def addFrictionFromURDF(model, urdf_file, params):
-        # type: (model.Model, str, np.ndarray[float]) -> None
+        # type: (model.Model, str, np._ArrayLike[float]) -> None
         ''' get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector'''
 
         friction = URDFHelpers.getJointFriction(urdf_file)
@@ -371,7 +371,7 @@ class URDFHelpers(object):
         return tree
 
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
-        # type: (str, str, np.ndarray[float]) -> None
+        # type: (str, str, np._ArrayLike[float]) -> None
         """ set new inertia parameters from params and urdf_file, write to new temp file """
 
         if self.opt['identifyGravityParamsOnly']:

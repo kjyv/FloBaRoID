@@ -43,6 +43,7 @@ class PostureOptimizer(Optimizer):
             self.link_cuboid_hulls[link_name] = [box, pos, rot]
 
         self.world = world
+        self.world_links = []
         if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config['verbose']:
@@ -99,10 +100,10 @@ class PostureOptimizer(Optimizer):
                             self.neighbors[link_name]['links'].append(nb_fixed_name)
 
         # amount of collision checks to be done
-        eff_links = self.model.num_links - len(self.config['ignoreLinksForCollision'])
-        self.num_constraints = self.num_postures * ((eff_links * (eff_links-1) // 2) + len(self.world_links)*eff_links)
+        eff_links = self.model.num_links - len(self.config['ignoreLinksForCollision']) + len(self.world_links)
+        self.num_constraints = self.num_postures * (eff_links * (eff_links-1) // 2)
 
-        #subtract neighbors
+        #get neighbors
         nb_pairs = []  # type: List[Tuple]
         for link in self.neighbors:
             if link in self.config['ignoreLinksForCollision']:
@@ -115,7 +116,7 @@ class PostureOptimizer(Optimizer):
                 if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
                     nb_pairs.append((link, l))
         self.num_constraints -= self.num_postures * (len(nb_pairs) +        # neighbors
-                                       len(self.config['ignoreLinkPairsForCollision']))  # custom combinations
+                                  len(self.config['ignoreLinkPairsForCollision']))  # custom combinations
 
         # only generate output from main process
         if self.mpi_rank > 0:
@@ -130,6 +131,7 @@ class PostureOptimizer(Optimizer):
         return np.all(g > 0.0)
 
     def getLinkDistance(self, l0_name, l1_name, joint_q):
+        # type: (str, str, np._ArrayLike[float]) -> float
         '''get distance from link with id l0 to link with id l1 for posture joint_q'''
 
         #get link rotation and position in world frame
@@ -311,7 +313,7 @@ class PostureOptimizer(Optimizer):
             print("Parameter error: {}".format(param_error))
             if self.config['verbose'] > 1:
                 print("Angles: {}".format(angles))
-                print("Constraints (link distances): {}".format(g))
+                print("Constraints ({} link distances): {}".format(len(g), list(g)))
 
         #keep last best solution (some solvers don't properly keep it or don't consider gradient values)
         if c and f < self.last_best_f:
@@ -361,12 +363,12 @@ class PostureOptimizer(Optimizer):
                         self.config['trajectoryAngleRanges'][d] is not None:
                     low = self.config['trajectoryAngleRanges'][d][0]
                     high = self.config['trajectoryAngleRanges'][d][1]
+                    if self.config['useDeg']:
+                        low = np.deg2rad(low)
+                        high = np.deg2rad(high)
                 else:
                     low = self.limits[d_n]['lower']
                     high = self.limits[d_n]['upper']
-                if self.config['useDeg']:
-                    low = np.deg2rad(low)
-                    high = np.deg2rad(high)
 
                 #initial = (high - low) / 2
                 #initial = 0.0
@@ -385,7 +387,7 @@ class PostureOptimizer(Optimizer):
         opt_prob.addConGroup('g', self.num_constraints, type='i', lower=0.0, upper=np.inf)
 
     def vecToParam(self, x):
-        # type: (np.ndarray) -> List[Dict[str, Any]]
+        # type: (np._ArrayLike[float]) -> List[Dict[str, Any]]
         # put solution vector into form for trajectory class
         angles = []    # type: List[Dict[str, Any]]     # matrix angles for each posture
         for n in range(self.num_postures):
@@ -431,3 +433,4 @@ class PostureOptimizer(Optimizer):
         plt.show(block=True)
 
         return self.trajectory
+

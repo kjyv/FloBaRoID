@@ -4,7 +4,7 @@
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
 useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 5             #how many postures to generate
+numStaticPostures: 5             #how many postures to generate (must be >1)
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['ground_link', 'lwr_base_link']
@@ -23,7 +23,7 @@ useGlobalOptimization: 0         #use global solver first (recommended)
 globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (interior point)
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
@@ -93,8 +93,8 @@ selectBlocksFromMeasurements: 0
 blockSize: 250  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
 
-removeNearZero: 0  #remove samples that have almost zero velocity
-minVel: 0.01       #minimum mean velocity for a sample to be taken (rad/s)
+removeNearZero: 0   #remove samples that have almost zero velocity
+minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 
 # IMU processing (floating base)
 waitForZeroAcc: 1   #when integrating IMU linear acceleration, wait for first time with (almost) no acceleration to start at zero velocity
@@ -107,7 +107,9 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 useStructuralRegressor: 1
 randomSamples: 5000
 
-# almost zero threshold for QR, SVD and other things
+# almost zero threshold for determining base column dependencies from QR
+# (important: set to a value so that base parameters are estimated reasonably close to CAD, set
+# option showBaseParams below)
 minTol: 0.0001
 
 # fixed or floating-base dynamics
@@ -141,7 +143,7 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
 
-# use a non-linear gradient based solver instead of SDP (for closest to CAD)
+# use a non-linear gradient based solver instead of SDP (only for closest to CAD atm)
 constrainUsingNL: 0
 nlOptMaxIterations: 500
 useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
@@ -176,8 +178,7 @@ limitMassRange: 0.3
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-#limitMassAprioriBoundary: 0.7     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
-limitMassAprioriBoundary: 0.5     #percentage of CAD value in both +- directions (e.g. 0.1 allows +-10%)
+limitMassAprioriBoundary: 0.5     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -247,7 +248,7 @@ showBaseParams: 0            #display a list of identified base params (if appli
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
-verbose: 1                   #show more messages
+verbose: 1                   #show more messages, [0,1,2]
 
 # which parameters to use when estimating torques for validation. Set to one of
 # ['base', 'std', 'urdf']

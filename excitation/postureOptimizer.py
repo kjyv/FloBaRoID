@@ -324,8 +324,7 @@ class PostureOptimizer(Optimizer):
 
         # send solutions to node 0
         # (will probably give deadlocks with gradient messages at some point)
-        '''
-        if self.parallel and not test and not self.opt_prob.is_gradient:
+        if self.parallel and not test and self.is_global:
             print('before obj func gather')
             send_obj = [c, self.last_best_f, self.last_best_sol, self.mpi_rank]
             received_objs = self.comm.gather(send_obj, root=0)
@@ -340,7 +339,6 @@ class PostureOptimizer(Optimizer):
                         print('received better solution from {}'.format(rank))
                         self.last_best_f = other_best_f
                         self.last_best_sol = other_best_sol
-        '''
 
         return f, g, fail
 

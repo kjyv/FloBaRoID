@@ -4,7 +4,7 @@
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
 useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 8             #must be >1
+numStaticPostures: 7             #how many postures to generate (must be >1)
 ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link']
 ignoreLinkPairsForCollision: 
     - ['LForearm', 'LSoftHandLink']
@@ -17,15 +17,19 @@ ignoreLinkPairsForCollision:
     - ['DWYTorso', 'RShr']
     - ['DWYTorso', 'LShy']
     - ['DWYTorso', 'RShy']
+    - ['Waist', 'seat_link']
+    - ['Waist', 'ground_link']      # Waist doesn't move relative to ground
+    - ['ground_link', 'seat_link']
+
 transparentLinks: ['TorsoProtections']  # visualize with some see-through
-scaleCollisionHull: 0.8
+scaleCollisionHull: 0.6
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 
 useGlobalOptimization: 0         #use global solver first
-globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (interior point)
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 10            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 0         #display updating graph during trajectory optimization
@@ -37,7 +41,7 @@ showModelVisualization: 1        #display 3D model of robot during optimization 
 #  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
 #  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
 #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
-initialPostures: [
+initialPostures: [               #for static optimization, feasible postures to start from (useful only when not using global optimization)
     # posture #0
     [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
      0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
@@ -152,7 +156,7 @@ selectBlocksFromMeasurements: 0
 blockSize: 100  # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
 
-removeNearZero: 0   #remove samples that have almost zero velocity (could be better for friction estimation)
+removeNearZero: 0   #remove samples that have almost zero velocity
 minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 
 # IMU processing (floating base)
@@ -166,8 +170,10 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 useStructuralRegressor: 0
 randomSamples: 5000
 
-# almost zero threshold for QR, SVD and other things
-minTol: 0.001 #0.0000001
+# almost zero threshold for determining base column dependencies from QR
+# (important: set to a value so that base parameters are estimated reasonably close to CAD, set
+# option showBaseParams below)
+minTol: 0.001
 
 # fixed or floating-base dynamics
 floatingBase: 0
@@ -200,13 +206,13 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 0
 
-# use a non-linear gradient based solver instead of SDP (for closest to CAD)
+# use a non-linear gradient based solver instead of SDP (only for closest to CAD atm)
 constrainUsingNL: 0
 nlOptMaxIterations: 500
 useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
-# (to prevent very big changes for parameters that are not expressed in the data)
+# (to prevent very big changes for parameters that are not expressed well in the data)
 noChange: 0
 noChangeThresh: 200
 # allow to make thresh = cond(YBase) / N_LINKS (-1)
@@ -313,6 +319,7 @@ symmetryConstraints:
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to
 # known ones (taken from URDF file)
 # for some methods, this gives parameters that are more likely to be consistent
+# (not used with constrained SDP solver)
 useAPriori: 0
 
 # identify std parameters directly, but only for essential parameters (Gautier, 2013)
@@ -359,7 +366,7 @@ showBaseParams: 0            #display a list of identified base params (if appli
 showBaseEqns: 0              #show which std params are combined for each base param
 outputLatex: 0               #format parameter output as latex
 showTriangleConsistency: 0   #show per-link consistency including triangle inequality
-verbose: 2                   #show more messages, [0,1,2]
+verbose: 1                   #show more messages, [0,1,2]
 
 # which parameters to use when estimating torques for validation. Set to one of
 # ['base', 'std', 'urdf']

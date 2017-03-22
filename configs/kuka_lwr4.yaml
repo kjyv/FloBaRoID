@@ -3,7 +3,7 @@
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
-useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
+useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 5             #how many postures to generate (must be >1)
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
@@ -19,12 +19,12 @@ initialPostures:                 #for static optimization, feasible postures to 
     - [0,-0.75,0,0,0.4,0,0]
 
 # proper trajectory optimization
-useGlobalOptimization: 0         #use global solver first (recommended)
-globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+useGlobalOptimization: 1         #use global solver first (recommended)
+globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
-localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
+localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
+localOptIterations: 3            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
@@ -42,13 +42,6 @@ trajectoryAngleMax:  25.0
 
 # instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
 trajectoryAngleRanges: []
-#    - [-0.61086524,  0.61086524]
-#    - [-0.43633231,  0.43633231]
-#    - [-0.43633231,  0.43633231]
-#    - [-0.43633231,  0.43633231]
-#    - [-0.43633231,  0.43633231]
-#    - [-0.43633231,  0.43633231]
-#    - [-0.43633231,  0.43633231]
 
 # manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
 # should be used (or leave completely empty to use all from URDF)

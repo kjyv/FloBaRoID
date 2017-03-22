@@ -336,6 +336,7 @@ class FixedPositionTrajectory(Trajectory):
         self.config = config
         self.time = 0.0
         self.use_deg = self.config['useDeg']
+        self.angles = None  # type: List[Dict[str, any]]
 
     def initWithAngles(self, angles):
         # type: (List[Dict[str, Any]]) -> None
@@ -351,7 +352,7 @@ class FixedPositionTrajectory(Trajectory):
         # type: (int) -> float
         """ get angle at current time for joint dof """
 
-        if self.angles:
+        if np.any(self.angles):
             for angle_set in self.angles:
                 if angle_set['start_time'] >= self.time - self.posLength:
                     return angle_set['angles'][dof]

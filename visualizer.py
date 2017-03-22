@@ -18,6 +18,7 @@ from pyglet import gl
 from pyglet.window import key
 
 from identification.helpers import eulerAnglesToRotationMatrix, rotationMatrixToEulerAngles
+from excitation.trajectoryGenerator import PulsedTrajectory, Trajectory
 
 # convert python list to gldouble array
 def glvec(v):
@@ -76,8 +77,8 @@ class FirstPersonCamera(object):
         'backward': key.S,
         'left': key.A,
         'right': key.D,
-        'up': key.SPACE,
-        'down': key.LSHIFT
+        'up': key.UP,
+        'down': key.DOWN
     }
 
     class InputHandler(object):
@@ -232,8 +233,12 @@ class Visualizer(object):
         # keep a list of bodies
         self.bodies = []     # type: List[Dict[str, Any]]
 
-        # additional callback to be used with key handling
+        self.trajectory = None  # type: Trajectory
+        self.playing_traj = False
+
+        # additional callbacks to be used with key handling
         self.event_callback = None  # type: Callable
+        self.timer_callback = None  # type: Callable
 
         self._initWindow()
         self._initCamera()
@@ -427,6 +432,14 @@ class Visualizer(object):
                 if self.event_callback:
                     self.event_callback()
 
+        if symbol == key.SPACE:
+            if not self.playing_traj and np.any(self.trajectory):
+                self.playing_traj = True
+                pyglet.clock.schedule_interval(self.timer_callback, 1/self.fps)
+            else:
+                self.playing_traj = False
+                pyglet.clock.unschedule(self.timer_callback)
+
         '''
         if symbol in self.pressed_keys:
             return
@@ -582,6 +595,8 @@ class Visualizer(object):
             body['rotation'] = boxes[linkName][2]
             self.bodies.append(body)
 
+    def setModelTrajectory(self, trajectory):
+        self.trajectory = trajectory
 
     def addIDynTreeModel(self,
                   model,          # type: iDynTree.DynamicsComputations
@@ -666,8 +681,12 @@ if __name__ == '__main__':
     dynComp.loadRobotModelFromFile(args.model)
     world_gravity = iDynTree.SpatialAcc.fromList([0,0,-9.81,0,0,0])
     n_dof = dynComp.getNrOfDegreesOfFreedom()
+    config['num_dofs'] = n_dof
+    config['urdf'] = args.model
+    #config['jointNames'] = iDynTree.StringVector([])
+    #if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
+    #    sys.exit()
 
-    '''
     # TODO: get this from generator / model class (other order than dynComp)
     linkNames = ['Waist', 'LHipMot', 'LThighUpLeg', 'LThighLowLeg', 'LLowLeg', 'LFootmot', 'LFoot',
                 'RHipMot', 'RThighUpLeg', 'RThighLowLeg', 'RLowLeg', 'RFootmot', 'RFoot', 'DWL', 'DWS',
@@ -679,6 +698,7 @@ if __name__ == '__main__':
     # kuka
     linkNames = ['lwr_base_link', 'lwr_1_link', 'lwr_2_link', 'lwr_3_link', 'lwr_4_link',
                  'lwr_5_link', 'lwr_6_link', 'lwr_7_link']
+    '''
 
     # get bounding boxes for model
     from identification.helpers import URDFHelpers, ParamHelpers
@@ -726,14 +746,14 @@ if __name__ == '__main__':
         else:
             # take angles from data
             if data_is_static:
-                print('posture {}'.format(v.display_index))
                 q0 = data['angles'][v.display_index]['angles']
             else:
-                #TODO: get data for trajectory
-                pass
+                # get data of trajectory
+                v.trajectory.setTime(v.display_index/v.fps)
+                q0 = [v.trajectory.getAngle(d) for d in range(config['num_dofs'])]
 
-        dq = iDynTree.VectorDynSize.fromList([0.0]*n_dof)
         q = iDynTree.VectorDynSize.fromList(q0)
+        dq = iDynTree.VectorDynSize.fromList([0.0]*n_dof)
         dynComp.setRobotState(q, dq, dq, world_gravity)
         v.addIDynTreeModel(dynComp, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
 
@@ -742,8 +762,21 @@ if __name__ == '__main__':
 
         v.updateLabels()
 
+    def next_frame(dt):
+        v.display_index += 1
+        v.event_callback()
+
     if data_is_static:
         v.display_max = len(data['angles'])  # number of postures
+    else:
+        trajectory = PulsedTrajectory(n_dof, use_deg=data['use_deg'])
+        trajectory.initWithParams(data['a'], data['b'], data['q'], data['nf'], data['wf'])
+        v.setModelTrajectory(trajectory)
+
+        freq = config['excitationFrequency']
+        v.display_max = trajectory.getPeriodLength()*v.fps # length of trajectory
+
     v.event_callback = draw_model
     v.event_callback()
+    v.timer_callback = next_frame
     v.run()

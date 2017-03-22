@@ -57,7 +57,7 @@ def main():
     #load from file
     try:
         # replay optimized trajectory if found
-        tf = np.load(traj_file)
+        tf = np.load(traj_file, encoding='latin1')
         if 'static' in tf and tf['static']:
             # static posture file
             trajectory = FixedPositionTrajectory(config)

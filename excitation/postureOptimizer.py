@@ -264,6 +264,7 @@ class PostureOptimizer(Optimizer):
         if self.config['showOptimizationTrajs']:
             plotter(self.config, data=trajectory_data)
 
+        '''
         # get objective function value: identified parameter distance (from 'real')
         id_grav = self.model.identified_params
         id_grav_id = list(range(0, len(self.idf.model.xStd)))
@@ -279,7 +280,9 @@ class PostureOptimizer(Optimizer):
                 id_grav_id.append(i*4+6)
                 id_grav_id.append(i*4+7)
         param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd[id_grav_id]
-        f = np.linalg.norm(param_error)**2 + np.std(param_error)
+        '''
+        param_error = self.idf.xBaseReal - self.idf.model.xBase
+        f = np.linalg.norm(param_error)**2 #+ np.std(param_error)
 
         c = self.testConstraints(g)
         if self.config['showOptimizationGraph'] and not self.opt_prob.is_gradient and self.mpi_rank == 0:

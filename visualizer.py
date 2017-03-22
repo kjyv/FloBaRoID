@@ -64,9 +64,48 @@ class Cube(object):
                                0.28867513, -0.28867513, 0.28867513,
                                0.28867513,  0.28867513,  0.28867513])
 
+class Coord(object):
+    ''' vertices for 3-axis coordinate system arrows '''
+    def __init__(self):
+        l = 0.2
+        self.vertices = np.array([0.0, 0.0, 0.0,
+                                  l, 0.0, 0.0,
+                                  0.0, l, 0.0,
+                                  0.0, 0.0, l], np.float32)
+        self.indices = np.array([0,1, 0,2, 0,3], np.ushort)
+
+
+class Grid(object):
+    '''vertices for the coordinate grid'''
+    def __init__(self):
+        # dx, dy are the width of grid
+        xmin = -50.0
+        xmax = 50.0
+        dx = 5.0
+
+        self.vertices = []     # type: np.ndarray
+        self.indices = []      # type: np.ndarray
+        idx = 0
+
+        for x in np.arange(xmin, xmax+dx, dx):
+            for y in np.arange(xmin, xmax+dx, dx):
+                self.vertices.append((x, xmin, 0.0))
+                self.vertices.append((x, xmax, 0.0))
+                self.indices.append((idx+0,idx+1))
+                idx += 2
+                self.vertices.append((xmin, y, 0.0))
+                self.vertices.append((xmax, y, 0.0))
+                self.indices.append((idx+0,idx+1))
+                idx += 2
+
+        self.vertices = np.array(self.vertices, np.float32).flatten()
+        self.indices = np.array(self.indices, np.ushort).flatten()
+
 
 class Mesh(object):
-    def __init__(self):
+    def __init__(self, mesh):
+        # load stl etc.
+        # create vertice list etc. from it
         pass
 
 
@@ -365,6 +404,13 @@ class Visualizer(object):
         cube = Cube()
         self.cube_list = pyglet.graphics.vertex_list_indexed(len(cube.vertices)//3, cube.indices,
                                                              ('v3f', cube.vertices), ('n3f', cube.normals))
+        coord = Coord()
+        self.coord_list = pyglet.graphics.vertex_list_indexed(len(coord.vertices)//3, coord.indices,
+                                                             ('v3f', coord.vertices))
+        grid = Grid()
+        self.grid_list = pyglet.graphics.vertex_list_indexed(len(grid.vertices)//3, grid.indices,
+                                                             ('v3f', grid.vertices))
+
 
     def init_ortho(self):
         # disable shaders
@@ -489,39 +535,10 @@ class Visualizer(object):
         return pyglet.event.EVENT_HANDLED
 
     def drawCoords(self):
-        l = 0.2
-        gl.glBegin(gl.GL_LINES)
-        gl.glColor3f(1.0, 0.0, 0.0);
-        gl.glVertex3f(0.0, 0.0, 0.0)
-        gl.glVertex3f(l, 0.0, 0.0)
-
-        gl.glColor3f(0.0, 1.0, 0.0);
-        gl.glVertex3f(0.0, 0.0, 0.0)
-        gl.glVertex3f(0.0, l, 0.0)
-
-        gl.glColor3f(0.0, 0.0, 1.0);
-        gl.glVertex3f(0.0, 0.0, 0.0)
-        gl.glVertex3f(0.0, 0.0, l)
-        gl.glEnd()
+        self.coord_list.draw(gl.GL_LINES)
 
     def drawGrid(self):
-        # dx, dy are the width of grid
-        xmin = -50.0
-        xmax = 50.0
-        dx = 5.0
-        ymin = -50.0
-        ymax = 50.0
-        dy = 5.0
-
-        #TODO: put in vertices list
-        gl.glBegin(gl.GL_LINES)
-        for x in np.arange(xmin, xmax, dx):
-            for y in np.arange(ymin, ymax, dy):
-                gl.glVertex3f(x, ymin, 0.0)
-                gl.glVertex3f(x, ymax, 0.0)
-                gl.glVertex3f(xmin, y, 0.0)
-                gl.glVertex3f(xmax, y, 0.0)
-        gl.glEnd()
+        self.grid_list.draw(gl.GL_LINES)
 
     def drawCube(self):
         #gl.glEnableVertexAttribArray(0)
@@ -536,22 +553,12 @@ class Visualizer(object):
         pos = body['position']
         rpy = body['rotation']
         r,p,y = rpy[0], rpy[1], rpy[2]
-        #R = eulerAnglesToRotationMatrix([r,p,y])
 
-        '''
-        # homogenous transform
-        trans = [R[0,0], R[0,1], R[0,2], 0.,
-                 R[1,0], R[1,1], R[1,2], 0.,
-                 R[2,0], R[2,1], R[2,2], 0.,
-                 pos[0], pos[1], pos[2], 1.0]
-        '''
         gl.glPushMatrix()
         gl.glTranslatef(pos[0], pos[1], pos[2])
         gl.glRotatef(np.rad2deg(y), 0.0, 0.0, 1.0)
         gl.glRotatef(np.rad2deg(p), 0.0, 1.0, 0.0)
         gl.glRotatef(np.rad2deg(r), 1.0, 0.0, 0.0)
-
-        #gl.glMultMatrixd(glvec(trans))
 
         self.drawCoords()
 

@@ -28,6 +28,8 @@ def glvec(v):
 def glvecf(v):
     return (gl.GLfloat * len(v))(*v)
 
+# define some geometries
+
 class Cube(object):
     ''' vertices for a cube of size 1 '''
     def __init__(self):
@@ -64,6 +66,10 @@ class Cube(object):
                                0.28867513, -0.28867513, 0.28867513,
                                0.28867513,  0.28867513,  0.28867513])
 
+    def getVerticeList(self):
+        return pyglet.graphics.vertex_list_indexed(len(self.vertices)//3, self.indices,
+                                                   ('v3f', self.vertices), ('n3f', self.normals))
+
 class Coord(object):
     ''' vertices for 3-axis coordinate system arrows '''
     def __init__(self):
@@ -74,6 +80,9 @@ class Coord(object):
                                   0.0, 0.0, l], np.float32)
         self.indices = np.array([0,1, 0,2, 0,3], np.ushort)
 
+    def getVerticeList(self):
+        return pyglet.graphics.vertex_list_indexed(len(self.vertices)//3, self.indices,
+                                                   ('v3f', self.vertices))
 
 class Grid(object):
     '''vertices for the coordinate grid'''
@@ -101,16 +110,35 @@ class Grid(object):
         self.vertices = np.array(self.vertices, np.float32).flatten()
         self.indices = np.array(self.indices, np.ushort).flatten()
 
+    def getVerticeList(self):
+        return pyglet.graphics.vertex_list_indexed(len(self.vertices)//3, self.indices, ('v3f', self.vertices))
+
 
 class Mesh(object):
-    def __init__(self, mesh):
-        # load stl etc.
-        # create vertice list etc. from it
-        pass
+    def __init__(self, mesh_file, scaling):
+        # type: (str, np._ArrayLike) -> None
+        # load stl
+        from stl import mesh
+        self.mesh = mesh.Mesh.from_file(mesh_file)
+        self.num_vertices = np.size(self.mesh.points)
+
+        # just repeat the face normals. proper vertex normals would be mean of all surrounding face
+        # normals. Maybe easier to just calculate proper vertex normals again, but we have no adjacency
+        # information
+        self.normals = np.repeat(self.mesh.normals, 3, axis=0).flatten()
+
+        self.vertices = self.mesh.points
+        self.vertices[:, [0, 3, 6]] *= scaling[0]
+        self.vertices[:, [1, 4, 7]] *= scaling[1]
+        self.vertices[:, [2, 5, 8]] *= scaling[2]
+        self.vertices = self.vertices.flatten()
+
+    def getVerticeList(self):
+        return pyglet.graphics.vertex_list(self.num_vertices//3, ('v3f', self.vertices), ('n3f', self.normals))
 
 
 class FirstPersonCamera(object):
-    DEFAULT_MOVEMENT_SPEED = 5.0
+    DEFAULT_MOVEMENT_SPEED = 2.0
     DEFAULT_MOUSE_SENSITIVITY = 0.2
     DEFAULT_KEY_MAP = {
         'forward': key.W,
@@ -273,6 +301,8 @@ class Visualizer(object):
         # keep a list of bodies
         self.bodies = []     # type: List[Dict[str, Any]]
 
+        self.show_meshes = False
+
         self.trajectory = None  # type: Trajectory
         self.playing_traj = False
 
@@ -291,6 +321,7 @@ class Visualizer(object):
         c - continous/blocking <br/>
         &#x2324; - play/stop trajectory <br/>
         &#x2190; &#x2192; - prev/next frame <br/>
+        m - show mesh/bounding boxes <br/>
         q - close <br/>
         </font>'''
         self.help_label = pyglet.text.HTMLLabel(legend,
@@ -335,9 +366,9 @@ class Visualizer(object):
             pitch = self.camera.pitch
             yaw = self.camera.yaw
         else:
-            pos = [3.577, 1.683, -0.860]
-            pitch = -72.5
-            yaw = 60
+            pos = [-3.272, -0.710, -1.094]
+            pitch = -70.5
+            yaw = -103.4
         self.camera = FirstPersonCamera(self.window, position=pos, pitch=pitch, yaw=yaw)
         self.fps = 50
         pyglet.clock.unschedule(self.update)
@@ -401,16 +432,12 @@ class Visualizer(object):
         mat_diffuse = [0.7, 0.5, 0.5, 1.0]
         gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
 
-        cube = Cube()
-        self.cube_list = pyglet.graphics.vertex_list_indexed(len(cube.vertices)//3, cube.indices,
-                                                             ('v3f', cube.vertices), ('n3f', cube.normals))
-        coord = Coord()
-        self.coord_list = pyglet.graphics.vertex_list_indexed(len(coord.vertices)//3, coord.indices,
-                                                             ('v3f', coord.vertices))
-        grid = Grid()
-        self.grid_list = pyglet.graphics.vertex_list_indexed(len(grid.vertices)//3, grid.indices,
-                                                             ('v3f', grid.vertices))
+        self.cube_list = Cube().getVerticeList()
+        self.coord_list = Coord().getVerticeList()
+        self.grid_list = Grid().getVerticeList()
 
+        # fill later
+        self.mesh_lists = {}   # type: Dict[str, Any]
 
     def init_ortho(self):
         # disable shaders
@@ -466,6 +493,11 @@ class Visualizer(object):
         if symbol == key.R:
             print("Reset camera")
             self._initCamera()
+
+        if symbol == key.M:
+            self.show_meshes = not self.show_meshes
+            if self.event_callback:
+                self.event_callback()
 
         if symbol == key.RIGHT:
             if self.display_index < self.display_max - 1:
@@ -546,6 +578,9 @@ class Visualizer(object):
         #gl.glDrawElements(gl.GL_TRIANGLES, cube.indices)
         self.cube_list.draw(gl.GL_TRIANGLES)
 
+    def drawMesh(self, linkName):
+        self.mesh_lists[linkName].draw(gl.GL_TRIANGLES)
+
     def drawBody(self, body):
         # type: (Dict[str, Any]) -> None
         """Draw a body"""
@@ -566,9 +601,9 @@ class Visualizer(object):
         gl.glTranslatef(rel_pos[0], rel_pos[1], rel_pos[2])
 
         transparent = 'transparent' in body and body['transparent']
+        dim = body['size3']
+        gl.glScalef(dim[0], dim[1], dim[2])
         if body['geometry'] is 'box':
-            dim = body['boxsize']
-            gl.glScalef(dim[0], dim[1], dim[2])
             if transparent:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)   # Wireframe
                 #gl.glEnable(gl.GL_BLEND)
@@ -577,6 +612,9 @@ class Visualizer(object):
             if transparent:
                 #gl.glDisable(gl.GL_BLEND)
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+        elif body['geometry'] is 'mesh':
+            self.drawMesh(body['name'])
+
         gl.glPopMatrix()
 
     def addWorld(self, boxes):
@@ -585,7 +623,7 @@ class Visualizer(object):
             body = {}  # type: Dict[str, Any]
             body['geometry'] = 'box'
             b = np.array(boxes[linkName][0])
-            body['boxsize'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
+            body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
             body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
                                            np.abs(b[1][1])-np.abs(b[1][0]),
                                            np.abs(b[2][1])-np.abs(b[2][0])])
@@ -618,22 +656,32 @@ class Visualizer(object):
             if n_name not in real_links:
                 continue
             body = {}  # type: Dict[str, Any]
-            body['geometry'] = 'box'
-            try:
-                b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
-                body['boxsize'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
-                body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                               np.abs(b[1][1])-np.abs(b[1][0]),
-                                               np.abs(b[2][1])-np.abs(b[2][0])])
-            except KeyError:
-                print('using cube for {}'.format(n_name))
-                body['boxsize'] = np.array([0.1, 0.1, 0.1])
+            body['name'] = n_name
+            if self.show_meshes and n_name in self.mesh_lists:
+                body['geometry'] = 'mesh'
+                body['size3'] = [1.0, 1.0, 1.0]
                 body['center'] = [0.0, 0.0, 0.0]
+            else:
+                body['geometry'] = 'box'
+                try:
+                    b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
+                    body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
+                    body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                                   np.abs(b[1][1])-np.abs(b[1][0]),
+                                                   np.abs(b[2][1])-np.abs(b[2][0])])
+                except KeyError:
+                    print('using cube for {}'.format(n_name))
+                    body['size3'] = np.array([0.1, 0.1, 0.1])
+                    body['center'] = [0.0, 0.0, 0.0]
+
             t = model.getWorldTransform(l)
             body['position'] = t.getPosition().toNumPy()
-            body['rotation'] = rotationMatrixToEulerAngles(t.getRotation().toNumPy())
+            rpy = t.getRotation().asRPY()
+            body['rotation'] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
+
             if 'transparentLinks' in self.config and n_name in self.config['transparentLinks']:
                 body['transparent'] = True
+
             self.bodies.append(body)
 
     def stop(self, dt):
@@ -713,6 +761,18 @@ if __name__ == '__main__':
 
     v = Visualizer(config)
 
+    # load meshes
+    if not len(v.mesh_lists):
+        for i in range(0, len(linkNames)):
+            filename = urdfHelpers.getMeshPath(args.model, linkNames[i])
+            if filename:
+                # use last mesh scale (from getMeshPath)
+                scale = urdfHelpers.mesh_scaling.split(' ')
+                scale = [float(scale[0]), float(scale[1]), float(scale[2])]
+                v.mesh_lists[linkNames[i]] = Mesh(filename, scale).getVerticeList()
+        if len(v.mesh_lists):
+            v.show_meshes = True
+
     if args.trajectory:
         # display trajectory
         data = np.load(args.trajectory, encoding='latin1')
@@ -753,15 +813,16 @@ if __name__ == '__main__':
         v.display_index += 1
         v.event_callback()
 
-    if data_is_static:
-        v.display_max = len(data['angles'])  # number of postures
-    else:
-        trajectory = PulsedTrajectory(n_dof, use_deg=data['use_deg'])
-        trajectory.initWithParams(data['a'], data['b'], data['q'], data['nf'], data['wf'])
-        v.setModelTrajectory(trajectory)
+    if args.trajectory:
+        if data_is_static:
+            v.display_max = len(data['angles'])  # number of postures
+        else:
+            trajectory = PulsedTrajectory(n_dof, use_deg=data['use_deg'])
+            trajectory.initWithParams(data['a'], data['b'], data['q'], data['nf'], data['wf'])
+            v.setModelTrajectory(trajectory)
 
-        freq = config['excitationFrequency']
-        v.display_max = trajectory.getPeriodLength()*v.fps # length of trajectory
+            freq = config['excitationFrequency']
+            v.display_max = trajectory.getPeriodLength()*v.fps # length of trajectory
 
     v.event_callback = draw_model
     v.event_callback()

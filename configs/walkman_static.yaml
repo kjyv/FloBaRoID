@@ -22,7 +22,7 @@ ignoreLinkPairsForCollision:
     - ['ground_link', 'seat_link']
 
 transparentLinks: ['TorsoProtections']  # visualize with some see-through
-scaleCollisionHull: 0.6
+scaleCollisionHull: 0.7
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 
 useGlobalOptimization: 0         #use global solver first
@@ -43,53 +43,53 @@ showModelVisualization: 1        #display 3D model of robot during optimization 
 #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
 initialPostures: [               #for static optimization, feasible postures to start from (useful only when not using global optimization)
     # posture #0
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     0.0, 0.0,                           #Waist
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #right leg
+     0.0, 0.0,                              #Waist
      0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
     ],
     # posture #1
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-       20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
+     0.0, 0.0,                               #Waist
+     20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+     20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
     ],
     # posture #2
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
+     0.0, 0.0,                               #Waist
+     85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+     85.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
     ],
     # posture #3
     [0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -79.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,    #left arm
-       0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0   #right arm
+     0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #right leg
+     0.0, 0.0,                                #Waist
+     0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,  #left arm
+     0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0  #right arm
     ],
     # posture #4
     [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-        0.0, 0.0,                           #Waist
-        0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
-        0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0   #right arm
+     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
+     0.0, 0.0,                                 #Waist
+     0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
+     0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0   #right arm
     ],
     # posture #5
     [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-        35.0, 0.0,                           #Waist
-        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-        20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
+     35.0, 0.0,                                #Waist
+     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,      #left arm
+     20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0      #right arm
     ],
     # posture #6
     [35.0, 0.0, 0.0, 130.0, -20.0, 0.0,       #left leg
-        -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
-        0.0, -10.0,                           #Waist
-        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-        85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+     -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
+     0.0, -10.0,                           #Waist
+     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
+     85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
     ]
     ]
 # initial values to start optimization from (if using global opt not really important)
@@ -225,7 +225,7 @@ hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
 # fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 0.3
+cubeSize: 0.4
 
 # force COM values to stay close to a priori values (disable hull constraints when enabled)
 limitCOMToApriori: 0

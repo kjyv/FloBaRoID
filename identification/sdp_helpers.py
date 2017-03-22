@@ -226,8 +226,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
     state = sdpout['status']
     if sdpout['status'] == 'optimal':
-        pass
-        #print("{}".format(sdpout['status']))
+        print("{}".format(sdpout['status']))
         #print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
@@ -291,8 +290,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         state = 'infeasible'
         print(Fore.RED + error[0] + Fore.RESET)
     else:
-        #print(state)
-        pass
+        print(state)
     outfile = open(os.path.join(dir, 'dsdp5.out'), 'r').readlines()
     sol = [float(v) for v in outfile[0].split()]
 

@@ -93,8 +93,6 @@ known issues:
 
 * trajectory optimization is limited to fixed-base robots ATM
 * trajectory optimization does not yet check for self or other collisions (e.g. objects from a world URDF)
-* visualizer does not use stl mesh files (so far only bounding boxes)
-* visualizer does not yet display trajectories, only static postures
 * YARP excitation module is not generic (ROS should be)
 * using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
 * COM constraints need an stl mesh files for the model to compute the enclosing hull, doesn't e.g. read geometric shape definitions for link

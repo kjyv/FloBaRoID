@@ -358,17 +358,23 @@ class URDFHelpers(object):
         self.paramHelpers = paramHelpers
         self.model = model
         self.opt = opt
+        self.parsed_xml = {}   # type: Dict[ET]
 
     def parseURDF(self, input_urdf):
-        # type: (str) -> xml.etree.ElementTree
-        # preserve comments
-        class PCBuilder(ET.TreeBuilder):
-            def comment(self, data):
-                self.start(ET.Comment, {})
-                self.data(data)
-                self.end(ET.Comment)
-        tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
-        return tree
+        # type: (str) -> ET
+
+        try:
+            return self.parsed_xml[input_urdf]
+        except KeyError:
+            # preserve comments
+            class PCBuilder(ET.TreeBuilder):
+                def comment(self, data):
+                    self.start(ET.Comment, {})
+                    self.data(data)
+                    self.end(ET.Comment)
+            tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
+            self.parsed_xml[input_urdf] = tree
+            return tree
 
     def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
         # type: (str, str, np._ArrayLike[float]) -> None
@@ -486,8 +492,15 @@ class URDFHelpers(object):
             box_size = m.attrib['size']
             m = l.find('visual/origin')
             if m is not None:
-                box_rpy = m.attrib['rpy']
-                box_pos = m.attrib['xyz']
+                try:
+                    box_pos = m.attrib['xyz']
+                except:
+                    box_pos = '0 0 0'
+
+                try:
+                    box_rpy = m.attrib['rpy']
+                except:
+                    box_rpy = '0 0 0'
             else:
                 box_pos = box_rpy = '0 0 0'
             return box_size, box_pos, box_rpy

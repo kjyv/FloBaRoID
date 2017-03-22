@@ -5,7 +5,7 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 7             #how many postures to generate (must be >1)
-ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link']
+ignoreLinksForCollision: ['imu_link', 'imu_link2', 'multisense/head_imu_link']
 ignoreLinkPairsForCollision: 
     - ['LForearm', 'LSoftHandLink']
     - ['RForearm', 'RSoftHandLink']

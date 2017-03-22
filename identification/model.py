@@ -23,7 +23,7 @@ from IPython import embed
 np.core.arrayprint._line_width = 160
 
 class Model(object):
-    def __init__(self, opt, urdf_file, regressor_file=None):
+    def __init__(self, opt, urdf_file, regressor_file=None, regressor_init=True):
         # (Dict[str, Any, str, str]) -> None
         self.urdf_file = urdf_file
         self.opt = opt
@@ -197,10 +197,10 @@ class Model(object):
         if opt['estimateWith'] == 'urdf':
             self.xStd = self.xStdModel
 
-        # get model dependent projection matrix and linear column dependencies (i.e. base
-        # groupings)
-        # (put here so it's only done once for the loaded model)
-        self.computeRegressorLinDepsQR()
+        if regressor_init:
+            # get model dependent projection matrix and linear column dependencies (i.e. base
+            # groupings)
+            self.computeRegressorLinDepsQR()
 
 
     def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None, xStdModel=None):

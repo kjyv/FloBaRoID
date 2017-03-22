@@ -316,6 +316,7 @@ class Optimizer(object):
                 self.iter_max = self.iter_max // self.mpi_size
 
             # run global optimization
+
             #try:
                 #reuse history
             #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
@@ -329,7 +330,7 @@ class Optimizer(object):
             if self.mpi_rank == 0:
                 print(opt_prob.solution(0))
 
-        self.gather_solutions()
+            self.gather_solutions()
 
         ### pyOpt local
         if self.config['useLocalOptimization']:
@@ -376,7 +377,7 @@ class Optimizer(object):
             else:
                 opt2(opt_prob, sens_step=0.1, store_hst=False)
 
-        self.gather_solutions()
+            self.gather_solutions()
 
         if self.mpi_rank == 0:
             sol = opt_prob.solution(0)

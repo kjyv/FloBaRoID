@@ -17,6 +17,7 @@ import pyglet
 from pyglet import gl
 from pyglet.window import key
 
+from identification.model import Model
 from identification.helpers import eulerAnglesToRotationMatrix, rotationMatrixToEulerAngles
 from excitation.trajectoryGenerator import PulsedTrajectory, Trajectory
 
@@ -77,8 +78,8 @@ class FirstPersonCamera(object):
         'backward': key.S,
         'left': key.A,
         'right': key.D,
-        'up': key.UP,
-        'down': key.DOWN
+        'up': key.SPACE,
+        'down': key.LSHIFT
     }
 
     class InputHandler(object):
@@ -244,15 +245,18 @@ class Visualizer(object):
         self._initCamera()
         self._initGL()
 
-        legend = '''<font face="Helvetica,Arial" size=15>wasd &#8679; &#x2423; - move around <br>
-        mouse drag - look <br>
-        c - continous/blocking <br>
-        b - add cube <br>
-        q - close <br>
+        #&#x2191;&#x2193;
+
+        legend = '''<font face="Helvetica,Arial" size=15>wasd,  &#8679; &#x2423; - move around <br/>
+        mouse drag - look <br/>
+        c - continous/blocking <br/>
+        &#x2324; - play/stop trajectory <br/>
+        &#x2190; &#x2192; - prev/next frame <br/>
+        q - close <br/>
         </font>'''
         self.help_label = pyglet.text.HTMLLabel(legend,
                           x = 10, y = -10,
-                          width = 200,
+                          width = 300,
                           multiline = True,
                           anchor_x='left', anchor_y='bottom')
         self.info_label = pyglet.text.HTMLLabel('',
@@ -399,9 +403,6 @@ class Visualizer(object):
             pyglet.app.exit()
             return pyglet.event.EVENT_HANDLED
 
-        if symbol == key.B:
-            self.addBody()
-
         if symbol == key.C:
             if self.mode == 'b':
                 print('switching to continuous render')
@@ -432,7 +433,7 @@ class Visualizer(object):
                 if self.event_callback:
                     self.event_callback()
 
-        if symbol == key.SPACE:
+        if symbol == key.ENTER:
             if not self.playing_traj and np.any(self.trajectory):
                 self.playing_traj = True
                 pyglet.clock.schedule_interval(self.timer_callback, 1/self.fps)
@@ -486,16 +487,6 @@ class Visualizer(object):
         self.init_perspective()
 
         return pyglet.event.EVENT_HANDLED
-
-    def addBody(self):
-        print("Adding box to world")
-        body = {}  # type: Dict[str, Any]
-        body['geometry'] = 'box'
-        body['boxsize'] = np.array([1.0, 1.0, 1.0])
-        body['position'] = np.array([1.0, 1.0, 1.0])*np.random.rand(3)
-        body['rotation'] = np.array([1.0, 1.0, 1.0])*np.random.rand(3)
-        self.bodies.append(body)
-        print("Bodies: {}".format(self.bodies))
 
     def drawCoords(self):
         l = 0.2
@@ -555,10 +546,10 @@ class Visualizer(object):
                  pos[0], pos[1], pos[2], 1.0]
         '''
         gl.glPushMatrix()
-        gl.glTranslatef(-pos[0], -pos[1], pos[2])
+        gl.glTranslatef(pos[0], pos[1], pos[2])
         gl.glRotatef(np.rad2deg(y), 0.0, 0.0, 1.0)
-        gl.glRotatef(np.rad2deg(-r), 1.0, 0.0, 0.0)
-        gl.glRotatef(np.rad2deg(-p), 0.0, 1.0, 0.0)
+        gl.glRotatef(np.rad2deg(p), 0.0, 1.0, 0.0)
+        gl.glRotatef(np.rad2deg(r), 1.0, 0.0, 0.0)
 
         #gl.glMultMatrixd(glvec(trans))
 
@@ -683,22 +674,9 @@ if __name__ == '__main__':
     n_dof = dynComp.getNrOfDegreesOfFreedom()
     config['num_dofs'] = n_dof
     config['urdf'] = args.model
-    #config['jointNames'] = iDynTree.StringVector([])
-    #if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
-    #    sys.exit()
 
-    # TODO: get this from generator / model class (other order than dynComp)
-    linkNames = ['Waist', 'LHipMot', 'LThighUpLeg', 'LThighLowLeg', 'LLowLeg', 'LFootmot', 'LFoot',
-                'RHipMot', 'RThighUpLeg', 'RThighLowLeg', 'RLowLeg', 'RFootmot', 'RFoot', 'DWL', 'DWS',
-                'DWYTorso', 'LShp', 'LShr', 'LShy', 'LElb', 'LForearm', 'LWrMot2', 'LWrMot3',
-                'LSoftHandLink', 'NeckYaw', 'NeckPitch', 'multisense/head', 'multisense/head_imu_link',
-                'multisense/hokuyo_link', 'RShp', 'RShr', 'RShy', 'RElb', 'RForearm', 'RWrMot2',
-                'RWrMot3', 'RSoftHandLink', 'backpack', 'TorsoProtections', 'imu_link', 'imu_link2']
-    '''
-    # kuka
-    linkNames = ['lwr_base_link', 'lwr_1_link', 'lwr_2_link', 'lwr_3_link', 'lwr_4_link',
-                 'lwr_5_link', 'lwr_6_link', 'lwr_7_link']
-    '''
+    g_model = Model(config, args.model, regressor_file=None, regressor_init=False)
+    linkNames = g_model.linkNames
 
     # get bounding boxes for model
     from identification.helpers import URDFHelpers, ParamHelpers
@@ -763,6 +741,8 @@ if __name__ == '__main__':
         v.updateLabels()
 
     def next_frame(dt):
+        if v.display_index >= v.display_max:
+            v.display_index = 0
         v.display_index += 1
         v.event_callback()
 

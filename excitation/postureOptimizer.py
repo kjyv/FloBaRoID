@@ -322,24 +322,6 @@ class PostureOptimizer(Optimizer):
         elif not c:
             print('Constraints not met.')
 
-        # send solutions to node 0
-        # (will probably give deadlocks with gradient messages at some point)
-        if self.parallel and not test and self.is_global:
-            print('before obj func gather')
-            send_obj = [c, self.last_best_f, self.last_best_sol, self.mpi_rank]
-            received_objs = self.comm.gather(send_obj, root=0)
-
-            #receive solutions from other instances
-            if self.mpi_rank == 0:
-                for proc in range(0, self.mpi_size):
-                    print('before obj func recv 1 {}'.format(proc))
-                    other_c, other_best_f, other_best_sol, rank = received_objs[proc]
-
-                    if other_c and other_best_f < self.last_best_f:
-                        print('received better solution from {}'.format(rank))
-                        self.last_best_f = other_best_f
-                        self.last_best_sol = other_best_sol
-
         return f, g, fail
 
 
@@ -415,7 +397,7 @@ class PostureOptimizer(Optimizer):
 
             num_vars = self.num_postures * self.num_dofs
             # num of gradient evals divided by parallel processes times iterations
-            self.local_iter_max = ((num_vars + self.num_constraints)  // self.mpi_size) * self.config['localOptIterations']
+            self.local_iter_max = (num_vars*2  // self.mpi_size) * self.config['localOptIterations']
         else:
             #ipopt, not really correct
             num_vars = self.num_postures * self.num_dofs

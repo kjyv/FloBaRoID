@@ -38,7 +38,7 @@ class TrajectoryOptimizer(Optimizer):
         self.wf_init = self.config['trajectoryPulseInit']
 
         #angle offsets
-        if self.config['trajectoryAngleRanges'][0] is not None:
+        if self.config['trajectoryAngleRanges'] and self.config['trajectoryAngleRanges'][0] is not None:
             self.qmin = []  # type: List[float]
             self.qmax = []  # type: List[float]
             self.qinit = []  # type: List[float]

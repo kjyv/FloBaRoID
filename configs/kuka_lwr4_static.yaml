@@ -1,124 +1,53 @@
 
-#### excitation
+#### trajectory gneration and excitation
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
 useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 7             #how many postures to generate (must be >1)
-ignoreLinksForCollision: ['imu_link', 'imu_link2', 'LHipMot', 'RHipMot', 'multisense/head_imu_link']
-ignoreLinkPairsForCollision: 
-    - ['LForearm', 'LSoftHandLink']
-    - ['RForearm', 'RSoftHandLink']
-    - ['LForearm', 'LWrMot3']
-    - ['RForearm', 'RWrMot3']
-    - ['LLowLeg', 'LFoot']
-    - ['RLowLeg', 'RFoot']
-    - ['DWYTorso', 'LShr']
-    - ['DWYTorso', 'RShr']
-    - ['DWYTorso', 'LShy']
-    - ['DWYTorso', 'RShy']
-    - ['Waist', 'seat_link']
-    - ['Waist', 'ground_link']      # Waist doesn't move relative to ground
-    - ['ground_link', 'seat_link']
-
-transparentLinks: ['TorsoProtections']  # visualize with some see-through
-scaleCollisionHull: 0.6
+numStaticPostures: 5             #how many postures to generate (must be >1)
+ignoreLinksForCollision: []      #don't include these links for collision testing at all
+ignoreLinkPairsForCollision:     #don't check collision between these pairs
+    - ['ground_link', 'lwr_base_link']
+transparentLinks: []             # visualize with some see-through
+scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
+initialPostures:                 #for static optimization, feasible postures to start from (useful only when not using global optimization)
+    - [0,0,0,0,0,0,0]
+    - [0,0.1,0,0.8,0,-0.4,0]
+    - [0,0,0,-0.8,0,0,0]
+    - [0,0.75,0,0,0,0,0]
+    - [0,-0.75,0,0,0.4,0,0]
 
-useGlobalOptimization: 0         #use global solver first
+# proper trajectory optimization
+useGlobalOptimization: 0         #use global solver first (recommended)
 globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
-useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
-localOptIterations: 10            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
+localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
+localOptIterations: 10            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
-showOptimizationGraph: 0         #display updating graph during trajectory optimization
+showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
-showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
+showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 
-# ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
-#  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',
-#  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
-#  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
-#  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
-initialPostures: [               #for static optimization, feasible postures to start from (useful only when not using global optimization)
-    # posture #0
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     0.0, 0.0,                           #Waist
-     0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
-    ],
-    # posture #1
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-       20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
-    ],
-    # posture #2
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-       85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
-    ],
-    # posture #3
-    [0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #left leg
-       0.0, 0.0, -70.0, 90.0, -79.0, 0.0,         #right leg
-       0.0, 0.0,                           #Waist
-       0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,    #left arm
-       0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0   #right arm
-    ],
-    # posture #4
-    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-        0.0, 0.0,                           #Waist
-        0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
-        0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0   #right arm
-    ],
-    # posture #5
-    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-        -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,         #right leg
-        35.0, 0.0,                           #Waist
-        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-        20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
-    ],
-    # posture #6
-    [35.0, 0.0, 0.0, 130.0, -20.0, 0.0,       #left leg
-        -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
-        0.0, -10.0,                           #Waist
-        20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-        85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
-    ]
-    ]
-# initial values to start optimization from (if using global opt not really important)
-trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
-trajectoryPulseMin:  0.5
+# initial values to start trajectory optimization from (useful only when not using global optimization)
+trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)
+trajectoryPulseMin:  0.3
 trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
-trajectoryCoeffMin: -0.4         #determines in which range the chosen params have to be (smaller=lower vel)
-trajectoryCoeffMax:  0.4
-trajectoryAngleMin: -10.0        #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax: 10.0
+trajectoryCoeffInit: 0.4         #set this as high as possible without violating constraints (see output after start)
+trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMax:  0.5
+trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMax:  25.0
 
-# instead of one range, define individual ranges for each link. initial is the center of these
-# ranges. If ..AngleMin/Max is to be used for all of them, set to null
-trajectoryAngleRanges:
-    - null
- #   [[-10.9745248069, 8.9797344371],
- #    [-18.9543738355, 8.9746393985],
- #    [-27.938974128, 13.9696016556],
- #    [10.0,          30.929013234],
- #    [-12.9596980573, 5.9797344371],
- #    [-8.9771869178, 8.9771869178]
- #   ]
+# instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
+trajectoryAngleRanges: []
 
-# manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
-# (or leave completely empty)
+# manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
+# should be used (or leave completely empty to use all from URDF)
 ovrPosLimit:
     - null
-    - null 
+    - [-60.0, 60.0]
     - null
     - null
     - null
@@ -131,10 +60,11 @@ minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
-exciteMethod: null #'yarp'       #currently 'yarp', 'ros' or null
-excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
-useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
+excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
+exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
+ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
+excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
+useDeg: 0                        #give angles in degrees (internal and data is always in rad)
 
 #### data preprocessing and selection
 
@@ -149,12 +79,12 @@ filterLowPass3: [3.0, 4]        # low-pass for external contact force data and I
 
 # use subset of samples
 startOffset: 0    #how many samples from the beginning of each measurement file are skipped
-skipSamples: 0      #how many values to skip before using the next sample
+skipSamples: 0    #how many values to skip before using the next sample
 
 # whether only "good" data is being selected or simply all is used (selected by condition number)
 selectBlocksFromMeasurements: 0
-blockSize: 100  # needs to be at least as much as parameters so regressor is square or higher
-selectBestPerenctage: 70   #select percentage of blocks sorted by condition number
+blockSize: 250  # needs to be at least as much as parameters so regressor is square or higher
+selectBestPerenctage: 50   #select percentage of blocks sorted by condition number
 
 removeNearZero: 0   #remove samples that have almost zero velocity
 minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
@@ -167,13 +97,13 @@ zeroAccThresh: 0.4  #threshold below which acceleration is considered to be zero
 
 # use a number of random regressors to determine structural parameter dependencies when getting base regressor
 # (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
-useStructuralRegressor: 0
+useStructuralRegressor: 1
 randomSamples: 5000
 
 # almost zero threshold for determining base column dependencies from QR
 # (important: set to a value so that base parameters are estimated reasonably close to CAD, set
 # option showBaseParams below)
-minTol: 0.001
+minTol: 0.0001
 
 # fixed or floating-base dynamics
 floatingBase: 0
@@ -188,10 +118,10 @@ identifySymmetricVelFriction: 1
 identifyGravityParamsOnly: 1
 
 # simulate torques from target values, don't use both
-simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
+simulateTorques: 0 # simulate torque for measured angles etc using idyntree (instead of reading from data)
 
-useRBDL: 0
 # use RBDL for simulation (forward kinematics) instead of iDynTree
+useRBDL: 0
 
 ## constrained SDP to solve OLS
 
@@ -209,13 +139,12 @@ identifyClosestToCAD: 0
 # use a non-linear gradient based solver instead of SDP (only for closest to CAD atm)
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
+useIPOPTforNL: 1   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
 noChange: 0
-noChangeThresh: 200
-# allow to make thresh = cond(YBase) / N_LINKS (-1)
+noChangeThresh: 400
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
 restrictCOMtoHull: 1
@@ -224,8 +153,8 @@ restrictCOMtoHull: 1
 hullScaling: 1.0
 # name of the directory after the package base name (as in package://basename/)
 meshBaseDir: 'meshes'
-# fallback cube size in meters (in case mesh file is not found, a cube with the old value in the center is used)
-cubeSize: 0.3
+# fallback cube size (in case mesh file is not found, a cube with the old value in the center is used)
+cubeSize: 1.0
 
 # force COM values to stay close to a priori values (disable hull constraints when enabled)
 limitCOMToApriori: 0
@@ -233,8 +162,8 @@ limitCOMAprioriBoundary: 0.005     #allowed change of CAD value in both +- direc
 
 # constrain overall mass
 limitOverallMass: 1
-# if overall mass is set, constrain mass close to this value. If null, limit to overall a priori mass +- 30%
-limitMassVal: 139.142
+# if overall mass is set, constrain mass close to this value. If null, use a priori mass sum
+limitMassVal: 16.0
 #allowed percentual change in both directions (1-range and 1+range)
 limitMassRange: 0.1
 
@@ -242,7 +171,7 @@ limitMassRange: 0.1
 # two mass limiting options to prevent constraint conflicts which result in problem
 # infeasibility!)
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.01     #allowed change of CAD value in both +- directions (1.0 = 100%)
+limitMassAprioriBoundary: 0.005     #allowed change of CAD value in both +- directions (1.0 = 100%)
 
 # specify single params that will be constrained to the CAD values
 dontChangeParams: []
@@ -253,66 +182,10 @@ dontConstrain: []
 # define constraints for link symmetries (e.g. left and right arm)
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
-symmetryTolerance: 0.1
+symmetryTolerance: 0.05
 # tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
 # [p1, p2, sign]
-symmetryConstraints:
-#    - [10, 70, 1]   #L/RHipMot
-    - [11, 71, 1]
-    - [12, 72, -1]
-    - [13, 73, 1]
-#    - [20, 80, 1]   #L/RThighUpLeg
-    - [21, 81, 1]
-    - [22, 82, -1]
-    - [23, 83, 1]
-#    - [30, 90, 1]   #L/RThighLowLeg
-    - [31, 91, 1]
-    - [32, 92, -1]
-    - [33, 93, 1]
-#    - [40, 100, 1]   #L/RLowLeg
-    - [41, 101, 1]
-    - [42, 102, -1]
-    - [43, 103, 1]
-#    - [50, 110, 1]   #L/RFootMot
-    - [51, 111, 1]
-    - [52, 112, -1]
-    - [53, 113, 1]
-#    - [60, 120, 1]  #L/RFoot
-    - [61, 121, 1]
-    - [62, 122, -1]
-    - [63, 123, 1]
-#    - [160,280, 1]  #'L/RShp'
-    - [161,281, 1]
-    - [162,282, -1]
-    - [163,283, 1]
-#    - [170,290, 1]  #'L/RShr'
-    - [171,291, 1]
-    - [172,292, -1]
-    - [173,293, 1]
-#    - [180,300, 1]  #'L/RShy'
-    - [181,301, 1]
-    - [182,302, -1]
-    - [183,303, 1]
-#    - [190,310, 1]  #'L/RElb'
-    - [191,311, 1]
-    - [192,312, -1]
-    - [193,313, 1]
-#    - [200,320, 1]  #'L/RForearm'
-    - [201,321, 1]
-    - [202,322, -1]
-    - [203,323, 1]
-#    - [210,330, 1]  #'L/RWrMot2'
-    - [211,331, 1]
-    - [212,332, -1]
-    - [213,333, 1]
-#    - [220,340, 1]  #'L/RWrMot3'
-    - [221,341, 1]
-    - [222,342, -1]
-    - [223,343, 1]
-#    - [230,350, 1] #'L/RSoftHandLink'
-    - [231,351, 1]
-    - [232,352, 1]
-    - [233,353, 1]
+symmetryConstraints: []
 
 ## other forms of OLS
 
@@ -343,10 +216,12 @@ filterRegCutoff: 5   #frequency in Hz
 ## output and debugging
 
 # plotting
-createPlots: 1               #create or show plots of measurements and estimated values
+createPlots: 0               #create or show plots of measurements and estimated values
 outputModule: 'matplotlib'   #how to output plots (atm only ['matplotlib'])
 outputAs: 'html'              #one of ['html', 'pdf', 'tikz', 'interactive']
-outputFilename: 'output_walkman_static.html'    #specify custom filename for output file
+outputFilename: 'output_kuka.html'    #specify custom filename for output file
+#outputFilename: 'kuka.pdf'   #specify custom filename for output file
+#outputFilename: 'kuka'       #specify custom filename for output file
 plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters

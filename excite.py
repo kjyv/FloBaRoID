@@ -44,8 +44,7 @@ config['num_dofs'] = len(config['jointNames'])
 #sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 from excitation.optimizer import plotter
-from excitation.trajectoryGenerator import PulsedTrajectory, FixedPositionTrajectory
-from excitation.trajectoryOptimizer import simulateTrajectory
+from excitation.trajectoryGenerator import PulsedTrajectory, FixedPositionTrajectory, simulateTrajectory
 
 traj_data = {}   # type: Dict[str, np._ArrayLike]   # hold some global data vars in here
 
@@ -59,9 +58,16 @@ def main():
     try:
         # replay optimized trajectory if found
         tf = np.load(traj_file)
-        trajectory = PulsedTrajectory(config['num_dofs'], use_deg=tf['use_deg'])
-        trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
-        print("using trajectory from file {}".format(traj_file))
+        if 'static' in tf and tf['static']:
+            # static posture file
+            trajectory = FixedPositionTrajectory(config)
+            trajectory.initWithAngles(tf['angles'])
+            print("using static postures from file {}".format(traj_file))
+        else:
+            # proper trajectory
+            trajectory = PulsedTrajectory(config['num_dofs'], use_deg=tf['use_deg'])
+            trajectory.initWithParams(tf['a'], tf['b'], tf['q'], tf['nf'], tf['wf'])
+            print("using trajectory from file {}".format(traj_file))
     except IOError:
         print("No trajectory file found, can't excite ({})!".format(traj_file))
         sys.exit(1)

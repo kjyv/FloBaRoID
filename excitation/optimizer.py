@@ -250,6 +250,23 @@ class Optimizer(object):
             dx[i] = 0.0
         return jac.transpose()
 
+    def gather_solutions(self):
+        # send best solutions to node 0
+        if self.parallel:
+            if self.config['verbose']:
+                print('Collecting best solutions from processes')
+            send_obj = [self.last_best_f, self.last_best_sol, self.mpi_rank]
+            received_objs = self.comm.gather(send_obj, root=0)
+
+            #receive solutions from other instances
+            if self.mpi_rank == 0:
+                for proc in range(0, self.mpi_size):
+                    other_best_f, other_best_sol, rank = received_objs[proc]
+
+                    if other_best_f < self.last_best_f:
+                        print('received better solution from {}'.format(rank))
+                        self.last_best_f = other_best_f
+                        self.last_best_sol = other_best_sol
 
     def runOptimizer(self, opt_prob):
         # type: (pyOpt.Optimization) -> np._ArrayLike[float]
@@ -312,9 +329,11 @@ class Optimizer(object):
             if self.mpi_rank == 0:
                 print(opt_prob.solution(0))
 
+        self.gather_solutions()
+
         ### pyOpt local
         if self.config['useLocalOptimization']:
-            print("Runnning local gradient based solver (using previous solution as primal point)")
+            print("Runnning local gradient based solver")
 
             #TODO: run local optimization for e.g. the three last best results (global solutions could be more or less optimal
             # within their local minima)
@@ -350,24 +369,25 @@ class Optimizer(object):
                     opt_prob.getVar(i).value = self.last_best_sol[i]
 
             if self.config['verbose']:
-                print('Running local optimization with {}'.format(self.config['localSolver']))
+                print('Runing local optimization with {}'.format(self.config['localSolver']))
             self.is_global = False
             if parallel:
                 opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
             else:
                 opt2(opt_prob, sens_step=0.1, store_hst=False)
 
+        self.gather_solutions()
 
         if self.mpi_rank == 0:
             sol = opt_prob.solution(0)
-            #print(sol)
-            sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
+            print(sol)
+            #sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
             if self.last_best_sol.size > 0:
                 print("using last best constrained solution instead of given solver solution.")
 
                 print("testing final solution")
-                self.iter_cnt = 0
+                #self.iter_cnt = 0
                 self.objectiveFunc(self.last_best_sol, test=True)
                 print("\n")
                 return self.last_best_sol

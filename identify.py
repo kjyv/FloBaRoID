@@ -434,7 +434,8 @@ class Identification(object):
                     old_showBase = self.opt['showBaseParams']
                     self.opt['showStandardParams'] = 0
                     self.opt['showBaseParams'] = 1
-                    OutputConsole.render(self)
+                    oc = OutputConsole(idf)
+                    oc.render(self)
                     self.opt['showStandardParams'] = old_showStd
                     self.opt['showBaseParams'] = old_showBase
 
@@ -1049,7 +1050,8 @@ def main():
             idf.estimateParameters()
             idf.data.getBlockStats(idf.model)
             idf.estimateRegressorTorques()
-            OutputConsole.render(idf, summary_only=True)
+            oc = OutputConsole(idf)
+            oc.render(summary_only=True)
 
             if idf.data.hasMoreSamples():
                 idf.data.getNextSampleBlock()
@@ -1068,7 +1070,8 @@ def main():
     idf.estimateParameters()
     idf.estimateRegressorTorques(print_stats=False)
 
-    OutputConsole.render(idf)
+    oc = OutputConsole(idf)
+    oc.render()
     if args.validation: idf.estimateValidationTorques()
 
     if args.model_output:

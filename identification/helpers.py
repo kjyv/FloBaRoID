@@ -525,7 +525,7 @@ class URDFHelpers(object):
         return (box_size, box_pos, box_rpy)
 
 
-    def getBoundingBox(self, input_urdf, old_com, link_name):
+    def getBoundingBox(self, input_urdf, old_com, link_name, scaling=True):
         # type: (str, List[float], str) -> Tuple[List[List[float]], List[float], np._ArrayLike]
         ''' Return bounding box for one link derived from mesh file if possible.
             If no mesh file is found, a cube around the old COM is returned.
@@ -539,7 +539,10 @@ class URDFHelpers(object):
         length = self.opt['cubeSize']
         cube = [[-0.5*length+old_com[0], 0.5*length+old_com[0]], [-0.5*length+old_com[1], 0.5*length+old_com[1]],
                 [-0.5*length+old_com[2], 0.5*length+old_com[2]]]
-        scale = self.opt['hullScaling']
+        if scaling:
+            hullScale = self.opt['hullScaling']
+        else:
+            hullScale = 1.0
         pos_0 = [0.0, 0.0, 0.0]
         rot_0 = np.identity(3)
 
@@ -552,9 +555,9 @@ class URDFHelpers(object):
             scale_y = float(self.mesh_scaling.split()[1])
             scale_z = float(self.mesh_scaling.split()[2])
 
-            bounding_box = [[stl_mesh.x.min()*scale_x*scale, stl_mesh.x.max()*scale_x*scale],
-                            [stl_mesh.y.min()*scale_y*scale, stl_mesh.y.max()*scale_y*scale],
-                            [stl_mesh.z.min()*scale_z*scale, stl_mesh.z.max()*scale_z*scale]]
+            bounding_box = [[stl_mesh.x.min()*scale_x*hullScale, stl_mesh.x.max()*scale_x*hullScale],
+                            [stl_mesh.y.min()*scale_y*hullScale, stl_mesh.y.max()*scale_y*hullScale],
+                            [stl_mesh.z.min()*scale_z*hullScale, stl_mesh.z.max()*scale_z*hullScale]]
             # switch order of min/max if scaling is negative
             for s in range(0,3):
                 if [scale_x, scale_y, scale_z][s] < 0:
@@ -565,9 +568,9 @@ class URDFHelpers(object):
             # use <visual><box> or <collision><box> if specified
             box, pos, rot = self.getLinkGeometry(input_urdf, link_name)
             if np.any(np.array(box) != 0):
-                return [[-0.5*box[0]*scale, 0.5*box[0]*scale],
-                        [-0.5*box[1]*scale, 0.5*box[1]*scale],
-                        [-0.5*box[2]*scale, 0.5*box[2]*scale]], pos, rot
+                return [[-0.5*box[0]*hullScale, 0.5*box[0]*hullScale],
+                        [-0.5*box[1]*hullScale, 0.5*box[1]*hullScale],
+                        [-0.5*box[2]*hullScale, 0.5*box[2]*hullScale]], pos, rot
             else:
                 if self.opt['verbose']:
                     print(Fore.YELLOW + "Mesh file {} or box geometry not found for link '{}'! Using a {}m cube around a priori COM.".format(filename, link_name, length) + Fore.RESET)

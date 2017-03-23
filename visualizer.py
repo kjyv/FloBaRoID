@@ -55,9 +55,9 @@ class Cube(object):
                                  7, 6, 5], np.ushort)
 
         # normals are unit vector from center to vertice
-        #c = np.array([0,0,0.5])
-        #self.normals = ((self.vertices.reshape((8,3)) - c) / np.sqrt(3)).flatten()
-        self.normals = np.array([-0.28867513,  0.28867513, -0.28867513,
+        c = np.array([0.0,0.0,0.0])
+        self.normals = ((self.vertices.reshape((8,3)) - c) / np.sqrt(3)).flatten()
+        '''self.normals = np.array([-0.28867513,  0.28867513, -0.28867513,
                                 -0.28867513, -0.28867513, -0.28867513,
                                 0.28867513, -0.28867513, -0.28867513,
                                 0.28867513, 0.28867513, -0.28867513,
@@ -65,6 +65,7 @@ class Cube(object):
                                -0.28867513, -0.28867513,  0.28867513,
                                0.28867513, -0.28867513, 0.28867513,
                                0.28867513,  0.28867513,  0.28867513])
+        '''
 
     def getVerticeList(self):
         return pyglet.graphics.vertex_list_indexed(len(self.vertices)//3, self.indices,
@@ -347,7 +348,7 @@ class Visualizer(object):
         y = 100
         self.width = 800
         self.height = 600
-        config = gl.Config(double_buffer=True, depth_size=24)
+        config = gl.Config(double_buffer=True, depth_size=24, sample_buffers=1, samples=4)
         self.window = pyglet.window.Window(self.width, self.height, resizable=True, visible=False, config=config)
         self.window_closed = False
         self.window.set_minimum_size(320, 200)
@@ -374,15 +375,90 @@ class Visualizer(object):
         pyglet.clock.unschedule(self.update)
         pyglet.clock.schedule_interval(self.update, 1/self.fps)
 
+    def setLights(self):
+        pos = [1.0, 0.0, 2.0, 1.0]
+        gl.glLightfv(gl.GL_LIGHT0, gl.GL_POSITION, glvecf(pos))
+        gl.glEnable(gl.GL_LIGHT0)
+        #self.addBox(0.1, pos, [0,0,0])
+
+    def setMaterial(self, name):
+        if name == 'neutral':
+            # 'lines'
+            mat_ambient = [0.6, 0.6, 0.6, 1.0]    #[0.3, 0.3, 0.4, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT, glvecf(mat_ambient));
+            mat_diffuse = [0.1, 0.1, 0.1]  #[0.7, 0.5, 0.5, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_DIFFUSE, glvecf(mat_diffuse))
+            mat_specular = [0.0, 0.0, 0.0]
+            gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SPECULAR, glvecf(mat_specular));
+            shine = 0.2
+            gl.glMaterialf(gl.GL_FRONT_AND_BACK, gl.GL_SHININESS, shine * 128.0);
+        elif name == 'metal':
+            # 'chrome'
+            mat_ambient = [0.25, 0.25, 0.25, 1.0]    #[0.3, 0.3, 0.4, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
+            mat_diffuse = [0.4, 0.4, 0.4]  #[0.7, 0.5, 0.5, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
+            mat_specular = [0.774597, 0.774597, 0.774597]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
+            shine = 0.6
+            gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
+            mat_emission = [0.1, 0.1, 0.1, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
+            '''
+            elif idx == 2:
+            # 'silver'
+            mat_ambient = [0.19225, 0.19225, 0.19225, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
+            mat_diffuse = [0.50754, 0.50754, 0.50754]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
+            mat_specular = [0.508273, 0.508273, 0.508273]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
+            shine = 0.4
+            gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
+            #mat_emission = [0.05, 0.05, 0.05, 1.0]
+            #gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
+            '''
+        elif name == 'green rubber':
+            mat_ambient = [0.01, 0.1, 0.01, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
+            mat_diffuse = [0.5, 0.6, 0.5]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
+            mat_specular = [0.05, 0.1, 0.05]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
+            shine = 0.078125
+            gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
+            #mat_emission = [0.1, 0.1, 0.15, 1.0]
+            #gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
+        elif name == 'white rubber':
+            mat_ambient = [0.6, 0.6, 0.6, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
+            mat_diffuse = [0.5, 0.5, 0.5]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
+            mat_specular = [0.1, 0.1, 0.1]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
+            shine = 0.07
+            gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
+            mat_emission = [0.2, 0.2, 0.2, 1.0]
+            gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
+        else:
+            print('Undefined material {}'.format(name))
+
     def _initGL(self):
         gl.glClearColor(0.8,0.8,0.9,0)
         gl.glClearDepth(1.0)                       # Enables Clearing Of The Depth Buffer
         gl.glDepthFunc(gl.GL_LESS)                 # The Type Of Depth Test To Do
         gl.glHint(gl.GL_PERSPECTIVE_CORRECTION_HINT, gl.GL_NICEST)   # make stuff look nice
+        gl.glEnable(gl.GL_LINE_SMOOTH)
+        gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
+        gl.glLineWidth(0.1)
+
+        #gl.glEnable(gl.GL_BLEND)
+        #gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+
         gl.glEnable(gl.GL_DEPTH_TEST)              # Enables Depth Testing
-        #gl.glEnable(gl.GL_LIGHTING)
-        #gl.glEnable(gl.GL_LIGHT0)
-        #gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)   # Wireframe
+        gl.glEnable(gl.GL_LIGHTING)
+        #gl.glEnable(gl.GL_NORMALIZE)
+        #gl.glLightModeli(gl.GL_LIGHT_MODEL_TWO_SIDE, gl.GL_FALSE)
 
         if not gl.glUseProgram:
             print("Can't run shaders!")
@@ -390,47 +466,50 @@ class Visualizer(object):
 
         self.default_shader = compileProgram(
             compileShader('''
-                varying vec3 N;
+                varying vec3 vN;
                 varying vec3 v;
                 void main(void)
                 {
                    v = vec3(gl_ModelViewMatrix * gl_Vertex);
-                   N = normalize(gl_NormalMatrix * gl_Normal);
+                   vN = normalize(gl_NormalMatrix * gl_Normal);
                    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
                 }
 
             ''', gl.GL_VERTEX_SHADER),
             compileShader('''
-                varying vec3 N;
+                varying vec3 vN;
                 varying vec3 v;
+                #define MAX_LIGHTS 1
+
                 void main (void)
                 {
-                   vec3 L = normalize(gl_LightSource[0].position.xyz - v);
-                   vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)
-                   vec3 R = normalize(-reflect(L,N));
+                   vec3 N = normalize(vN);
+                   vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
 
-                   //calculate Ambient Term:
-                   vec4 Iamb = gl_FrontLightProduct[0].ambient;
+                   for (int i=0;i<MAX_LIGHTS;i++)
+                   {
+                      vec3 L = normalize(gl_LightSource[i].position.xyz - v);
+                      vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)
+                      vec3 R = normalize(-reflect(L,N));
 
-                   //calculate Diffuse Term:
-                   vec4 Idiff = gl_FrontLightProduct[0].diffuse * max(dot(N,L), 0.0);
-                   Idiff = clamp(Idiff, 0.0, 1.0);
+                      //calculate Ambient Term:
+                      vec4 Iamb = gl_FrontLightProduct[i].ambient;
+                      //calculate Diffuse Term:
+                      vec4 Idiff = gl_FrontLightProduct[i].diffuse * max(dot(N,L), 0.0);
+                      Idiff = clamp(Idiff, 0.0, 1.0);
 
-                   // calculate Specular Term:
-                   vec4 Ispec = gl_FrontLightProduct[0].specular
-                                * pow(max(dot(R,E),0.0),0.3*gl_FrontMaterial.shininess);
-                   Ispec = clamp(Ispec, 0.0, 1.0);
+                      // calculate Specular Term:
+                      vec4 Ispec = gl_FrontLightProduct[i].specular
+                             * pow(max(dot(R,E),0.0),0.3*gl_FrontMaterial.shininess);
+                      Ispec = clamp(Ispec, 0.0, 1.0);
+
+                      finalColor += Iamb + Idiff + Ispec;
+                   }
 
                    // write Total Color:
-                   //vec4 amb = vec4(Iamb[0]*1.0, Iamb[1]*0.5, Iamb[2]*0.5, Iamb[3]*1.0);
-                   gl_FragColor = gl_FrontLightModelProduct.sceneColor + Iamb + Idiff + Ispec;
+                   gl_FragColor = gl_FrontLightModelProduct.sceneColor + finalColor;
                 }
             ''', gl.GL_FRAGMENT_SHADER),)
-
-        mat_emission = [0.3, 0.3, 0.4, 1.0]
-        gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_EMISSION, glvecf(mat_emission))
-        mat_diffuse = [0.7, 0.5, 0.5, 1.0]
-        gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
 
         self.cube_list = Cube().getVerticeList()
         self.coord_list = Coord().getVerticeList()
@@ -442,6 +521,7 @@ class Visualizer(object):
     def init_ortho(self):
         # disable shaders
         gl.glUseProgram(0)
+        gl.glDisable(gl.GL_LIGHTING)
 
         # store the projection matrix to restore later
         gl.glMatrixMode(gl.GL_PROJECTION)
@@ -456,12 +536,14 @@ class Visualizer(object):
 
     def init_perspective(self):
         gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glEnable(gl.GL_LIGHTING)
         # Init Projection
         gl.glMatrixMode(gl.GL_PROJECTION)
         gl.glLoadIdentity()
         GLU.gluPerspective(45.0, float(self.width)/float(self.height), 0.1, 100.0)
         # Initialize ModelView matrix
         gl.glMatrixMode(gl.GL_MODELVIEW)
+        gl.glLoadIdentity()
 
     def on_close(self):
         self.window_closed = True
@@ -539,15 +621,16 @@ class Visualizer(object):
         # Redraw the scene
         gl.glClearColor(0.8,0.8,0.9,0)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
-        gl.glLoadIdentity()
 
         self.camera.draw()
+        self.setLights()
+
+        self.drawGrid()
 
         # run shaders
         if self.default_shader:
             gl.glUseProgram(self.default_shader)
 
-        self.drawGrid()
         for b in self.bodies:
             self.drawBody(b)
 
@@ -567,9 +650,11 @@ class Visualizer(object):
         return pyglet.event.EVENT_HANDLED
 
     def drawCoords(self):
+        self.setMaterial('neutral')
         self.coord_list.draw(gl.GL_LINES)
 
     def drawGrid(self):
+        self.setMaterial('neutral')
         self.grid_list.draw(gl.GL_LINES)
 
     def drawCube(self):
@@ -603,25 +688,34 @@ class Visualizer(object):
         transparent = 'transparent' in body and body['transparent']
         dim = body['size3']
         gl.glScalef(dim[0], dim[1], dim[2])
+        self.setMaterial(body['material'])
         if body['geometry'] is 'box':
             if transparent:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)   # Wireframe
-                #gl.glEnable(gl.GL_BLEND)
-                #gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
             self.drawCube()
             if transparent:
-                #gl.glDisable(gl.GL_BLEND)
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
         elif body['geometry'] is 'mesh':
             self.drawMesh(body['name'])
 
         gl.glPopMatrix()
 
+    def addBox(self, size, pos, rpy):
+        body = {}  # type: Dict[str, Any]
+        body['geometry'] = 'box'
+        body['material'] = 'white rubber'
+        body['size3'] = np.array([size, size, size])
+        body['center'] = body['size3'] * 0.5
+        body['position'] = pos
+        body['rotation'] = rpy
+        self.bodies.append(body)
+
     def addWorld(self, boxes):
         # type: (Dict) -> None
         for linkName in boxes:
             body = {}  # type: Dict[str, Any]
             body['geometry'] = 'box'
+            body['material'] = 'white rubber'
             b = np.array(boxes[linkName][0])
             body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
             body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
@@ -661,8 +755,10 @@ class Visualizer(object):
                 body['geometry'] = 'mesh'
                 body['size3'] = [1.0, 1.0, 1.0]
                 body['center'] = [0.0, 0.0, 0.0]
+                body['material'] = 'metal'
             else:
                 body['geometry'] = 'box'
+                body['material'] = 'white rubber'
                 try:
                     b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
                     body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
@@ -743,7 +839,7 @@ if __name__ == '__main__':
         link_name = linkNames[i]
         box, pos, rot = urdfHelpers.getBoundingBox(
                 input_urdf = args.model,
-                old_com = [0,0,0],  # TODO: get from params (not important if proper hulls exist, only used for fallback)
+                old_com = [0,0,0],
                 link_name = link_name
         )
         link_cuboid_hulls[link_name] = (box, pos, rot)
@@ -755,7 +851,8 @@ if __name__ == '__main__':
             box, pos, rot = urdfHelpers.getBoundingBox(
                 input_urdf = args.world,
                 old_com = [0,0,0],
-                link_name = link_name
+                link_name = link_name,
+                scaling = False
             )
             world_boxes[link_name] = (box, pos, rot)
 

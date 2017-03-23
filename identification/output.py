@@ -26,20 +26,6 @@ np.core.arrayprint._line_width = 160
 if sys.version_info >= (3, 0):
     unicode = str
 
-#plot colors
-colors = []
-"""
-#some random colors
-colors += [[ 0.97254902,  0.62745098,  0.40784314],
-          [ 0.0627451 ,  0.53333333,  0.84705882],
-          [ 0.15686275,  0.75294118,  0.37647059],
-          [ 0.90980392,  0.37647059,  0.84705882],
-          [ 0.84705882,  0.        ,  0.1254902 ],
-          [ 0.18823529,  0.31372549,  0.09411765],
-          [ 0.50196078,  0.40784314,  0.15686275]
-         ]
-"""
-
 # color triplets
 color_triplets_6 = [
            [ 0.29019608,  0.43529412,  0.89019608],
@@ -50,30 +36,16 @@ color_triplets_6 = [
            [ 0.82745098,  0.24705882,  0.41568627],
           ]
 
-"""
-grayscale_6 = [
-               [ 0.        ,  0.        ,  0.        ],
-               [ 0.13333333,  0.13333333,  0.13333333],
-               [ 0.26666667,  0.26666667,  0.26666667],
-               [ 0.4       ,  0.4       ,  0.4       ],
-               [ 0.53333333,  0.53333333,  0.53333333],
-               [ 0.67058824,  0.67058824,  0.67058824]
-              ]
-"""
-
 #set some more colors for higher DOF
 from palettable.tableau import Tableau_10, Tableau_20
-colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
+colors = Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
 
 #swap some values for aesthetics
 colors[2], colors[0] = colors[0], colors[2]
 
 class OutputConsole(object):
-    @staticmethod
-    def render(idf, summary_only=False):
-        """Do some pretty printing."""
-
-        colorama.init(autoreset=False)
+    def __init__(self, idf):
+        self.idf = idf
 
         if not idf.opt['useEssentialParams']:
             idf.stdEssentialIdx = list(range(0, idf.model.num_identified_params))
@@ -81,22 +53,34 @@ class OutputConsole(object):
 
         #if requested, load params from other urdf for comparison
         if idf.urdf_file_real:
-            xStdReal = idf.xStdReal
-            xBaseReal = idf.xBaseReal
+            self.xStdReal = idf.xStdReal
+            self.xBaseReal = idf.xBaseReal
 
+        p_idf = idf.model.identified_params
         if idf.opt['showStandardParams']:
             # convert params to COM-relative instead of frame origin-relative (linearized parameters)
             if idf.opt['outputBarycentric']:
-                xStd = idf.paramHelpers.paramsLink2Bary(idf.model.xStd)
-                xStdModel = idf.paramHelpers.paramsLink2Bary(idf.model.xStdModel)
+                if idf.opt['identifyGravityParamsOnly']:
+                    xStd_full = idf.model.xStdModel.copy()
+                    xStd_full[p_idf] = idf.model.xStd
+                    xStd = idf.paramHelpers.paramsLink2Bary(xStd_full)
+                    self.xStd = xStd[p_idf]
+                else:
+                    self.xStd = idf.paramHelpers.paramsLink2Bary(idf.model.xStd)
+                self.xStdModel = idf.paramHelpers.paramsLink2Bary(idf.model.xStdModel)
                 if idf.urdf_file_real:
-                    xStdReal = idf.paramHelpers.paramsLink2Bary(xStdReal)
-                if not summary_only:
-                    print("Barycentric (relative to COM) Standard Parameters")
+                    self.xStdReal = idf.paramHelpers.paramsLink2Bary(self.xStdReal)
             else:
-                xStd = idf.model.xStd
-                xStdModel = idf.model.xStdModel
-                if not summary_only:
+                self.xStd = idf.model.xStd
+                self.xStdModel = idf.model.xStdModel
+
+    def printStdParams(self, summary_only=False):
+            idf = self.idf
+
+            if not summary_only:
+                if idf.opt['outputBarycentric']:
+                    print("Barycentric (relative to COM) Standard Parameters")
+                else:
                     print("Linear (relative to Frame) Standard Parameters")
 
             # collect values for parameters
@@ -135,12 +119,12 @@ class OutputConsole(object):
                     d = Fore.GREEN + d
 
                 # get some error values for each parameter
-                approx = xStd[idx_p]
-                apriori = xStdModel[idx_p_full]
+                approx = self.xStd[idx_p]
+                apriori = self.xStdModel[idx_p_full]
                 diff = approx - apriori
 
                 if idf.urdf_file_real:
-                    real = xStdReal[idx_p_full]
+                    real = self.xStdReal[idx_p_full]
                     # set real params that are 0 to some small value
                     #if real == 0: real = 0.01
 
@@ -257,55 +241,9 @@ class OutputConsole(object):
                     print(Style.RESET_ALL)
                 print("\n")
 
-                # print standard params also as latex table
-                if idf.opt['outputLatex']:
-                    print('As Latex:')
-                    import inspect
-                    print(inspect.cleandoc(r"""
-                        \begin{table}[h]
-                            \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are determined only to satisfy consistency constraints.}
-                            \begin{center}
-                    """))
-                    header = inspect.cleandoc(r"""
-                            \begin{minipage}[t]{0.32\linewidth}
-                                \resizebox{0.97\textwidth}{!}{%
-                                \begin{tabular}[t]{c c c}
-                                    \hline
-                                    \rule{0pt}{12pt} Parameter & Prior & Identified \\[2pt]
-                                    \hline\rule{0pt}{12pt}
-                    """)
-                    footer = inspect.cleandoc(r"""
-                                    \hline
-                                \end{tabular}}
-                            \end{minipage}
-                    """)
-                    print(header)
+    def printBaseParams(self, summary_only=False):
+        idf = self.idf
 
-                    #print table rows
-                    for idx_p in range(10, idf.model.num_identified_params):
-                        #if idx_p == len(idf.model.identifiable) // 2:
-                        if idx_p-10 in [(idf.model.num_identified_params-10) // 3, ((idf.model.num_identified_params-10) // 3)*2]:
-                            #start new table after half of params
-                            print(footer)
-                            print(header)
-                        #if idx_p in idf.model.identifiable:
-                        #add another underscore for proper subscripts
-                        import re
-                        param = str(idf.model.param_syms[idx_p])
-                        p = re.compile(r"([0-9]+)(.*)")
-                        param = p.sub(r'{\1\2}', param)
-                        nonid = '*' if idx_p in idf.model.non_id else ''
-                        real = xStdReal if idf.urdf_file_real else xStdModel
-                        print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], xStd[idx_p], nonid))
-
-                    print(footer)
-                    print(inspect.cleandoc(r"""
-                            \end{center}
-                        \end{table}
-                    """))
-                    print("")
-
-        ### print base params
         if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
             print("Base Parameters and Corresponding standard columns")
             if not idf.opt['useEssentialParams']:
@@ -329,7 +267,7 @@ class OutputConsole(object):
                 old = idf.model.xBaseModel[idx_p]
                 diff = new - old
                 if idf.urdf_file_real:
-                    real = xBaseReal[idx_p]
+                    real = self.xBaseReal[idx_p]
                     error = new - real
                     sum_error_all_base += np.abs(error)
 
@@ -399,6 +337,58 @@ class OutputConsole(object):
                     idx_p+=1
                     print(Style.RESET_ALL)
 
+    def printLatex(self):
+        ''' print standard params also as latex table '''
+        idf = self.idf
+        if idf.opt['outputLatex']:
+            print('As Latex:')
+            import inspect
+            print(inspect.cleandoc(r"""
+                \begin{table}[h]
+                    \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are determined only to satisfy consistency constraints.}
+                    \begin{center}
+            """))
+            header = inspect.cleandoc(r"""
+                    \begin{minipage}[t]{0.32\linewidth}
+                        \resizebox{0.97\textwidth}{!}{%
+                        \begin{tabular}[t]{c c c}
+                            \hline
+                            \rule{0pt}{12pt} Parameter & Prior & Identified \\[2pt]
+                            \hline\rule{0pt}{12pt}
+            """)
+            footer = inspect.cleandoc(r"""
+                            \hline
+                        \end{tabular}}
+                    \end{minipage}
+            """)
+            print(header)
+
+            #print table rows
+            for idx_p in range(10, idf.model.num_identified_params):
+                #if idx_p == len(idf.model.identifiable) // 2:
+                if idx_p-10 in [(idf.model.num_identified_params-10) // 3, ((idf.model.num_identified_params-10) // 3)*2]:
+                    #start new table after half of params
+                    print(footer)
+                    print(header)
+                #if idx_p in idf.model.identifiable:
+                #add another underscore for proper subscripts
+                import re
+                param = str(idf.model.param_syms[idx_p])
+                p = re.compile(r"([0-9]+)(.*)")
+                param = p.sub(r'{\1\2}', param)
+                nonid = '*' if idx_p in idf.model.non_id else ''
+                real = self.xStdReal if idf.urdf_file_real else self.xStdModel
+                print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], self.xStd[idx_p], nonid))
+
+            print(footer)
+            print(inspect.cleandoc(r"""
+                    \end{center}
+                \end{table}
+            """))
+            print("")
+
+    def printStats(self, summary_only=False):
+        idf = self.idf
         if idf.opt['selectBlocksFromMeasurements']:
             if len(idf.data.usedBlocks):
                 print("used {} of {} blocks: {}".format(len(idf.data.usedBlocks),
@@ -419,7 +409,7 @@ class OutputConsole(object):
         sum_apriori = np.sum(idf.model.xStdModel[0:idf.model.num_model_params:10])
         print("Estimated overall mass: {} kg vs. a priori {} kg".format(sum_id, sum_apriori), end="")
         if idf.urdf_file_real:
-            print(" vs. real {} kg".format(np.sum(xStdReal[0:idf.model.num_model_params:10])))
+            print(" vs. real {} kg".format(np.sum(self.xStdReal[0:idf.model.num_model_params:10])))
         else:
             print()
 
@@ -444,7 +434,10 @@ class OutputConsole(object):
             else:
                 print("Identified parameters are physical consistent")
 
-        p_idf = idf.model.identifiable
+        if idf.opt['identifyGravityParamsOnly']:
+            p_idf = idf.model.identified_params
+        else:
+            p_idf = idf.model.identifiable
         if idf.urdf_file_real:
             if idf.opt['showStandardParams']:
                 #if idf.opt['useEssentialParams']:
@@ -457,13 +450,13 @@ class OutputConsole(object):
                 #            format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 #print("Mean error delta (a priori error vs approx error) of all std params: {}%".\
                 #        format(sum_pc_delta_all/len(idf.model.xStd)))
-                sq_error_apriori = np.square(la.norm(xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
+                sq_error_apriori = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
                 if idf.opt['identifyGravityParamsOnly']:
                     xStd_full = idf.model.xStdModel.copy()
                     xStd_full[p_idf] = idf.model.xStd
-                    sq_error_idf = np.square(la.norm(xStdReal[p_idf] - xStd_full[p_idf]))
+                    sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - xStd_full[p_idf]))
                 else:
-                    sq_error_idf = np.square(la.norm(xStdReal[p_idf] - idf.model.xStd[p_idf]))
+                    sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStd[p_idf]))
                 print("Squared distance of identifiable std parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
                 #sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
@@ -473,8 +466,8 @@ class OutputConsole(object):
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 #print("Mean error (a priori - approx) of all base params: {:.5f}".\
                 #        format(sum_error_all_base/len(idf.model.xBase)))
-                sq_error_apriori = np.square(la.norm(xBaseReal - idf.model.xBaseModel))
-                sq_error_idf = np.square(la.norm(xBaseReal - idf.model.xBase))
+                sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
+                sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
                 print("Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
         else:
@@ -483,14 +476,13 @@ class OutputConsole(object):
                 xStd_full[p_idf] = idf.model.xStd
                 sq_error_apriori = np.square(la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf]))
             else:
-                sq_error_apriori = np.square(la.norm(xStd[p_idf] - idf.model.xStdModel[p_idf]))
+                sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
             print("Squared distance of identifiable std parameter vectors to a priori: {}".\
                     format(sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
                 print("Squared distance of base parameter vectors (identified vs. a priori): {}".\
                         format(sq_error_apriori))
-
 
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
@@ -512,6 +504,17 @@ class OutputConsole(object):
         idf.abs_apriori_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits)
         idf.abs_res_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits)
         print("NRMS of residual error: {}% vs. A priori: {}%".format(idf.abs_res_error, idf.abs_apriori_error))
+
+
+    def render(self, summary_only=False):
+        """Output results on the console, tables of identified parameters and some statistics"""
+
+        colorama.init(autoreset=False)
+        self.printStdParams(summary_only)
+        self.printBaseParams(summary_only)
+        self.printLatex()
+        self.printStats(summary_only)
+
 
 class OutputMatplotlib(object):
     def __init__(self, datasets, text=None):

@@ -12,7 +12,7 @@ Tools:
 * **trajectory.py**: generate optimized trajectories
 * **excite.py**: send trajectory to control the robot movement and record the resulting measurements
 * **identify.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
-* **visualize.py**: show trajectory with 3D robot model 
+* **visualize.py**: show 3D robot model of URDF, trajectory motion
 
 
 Features:

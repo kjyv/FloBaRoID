@@ -30,7 +30,6 @@ from identification.data import Data
 from identification.output import OutputConsole
 from identification import sdp
 import identification.helpers as helpers
-from identification.nlopt import NLOPT
 
 from colorama import Fore
 from IPython import embed
@@ -69,6 +68,10 @@ class Identification(object):
         self.opt['useRegressorRegularization'] = 1
         self.opt['regularizationFactor'] = 1000.0   #proportion of distance term
 
+        # if using fixed base dynamics, remove first link that is the fixed base which should completely
+        # not be identifiable and not be part of equations (as it does not move)
+        self.opt['deleteFixedBase'] = 1
+
         # end additional config flags
 
 
@@ -83,6 +86,9 @@ class Identification(object):
         self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
         self.sdp = sdp.SDP(self)
+        if self.opt['constrainUsingNL']:
+            from identification.nlopt import NLOPT
+            self.nlopt = NLOPT(self)
 
         self.tauEstimated = None    # type: np._ArrayLike
         self.res_error = 100        # last residual error in percent
@@ -757,7 +763,6 @@ class Identification(object):
                 if self.opt['identifyClosestToCAD']:
                     # first estimate feasible base params, then find corresponding feasible std
                     # params while minimizing distance to CAD
-                    self.opt['deleteFixedBase'] = 1
                     self.sdp.initSDP_LMIs(self)
                     self.sdp.identifyFeasibleStandardParameters(self)
 
@@ -770,14 +775,10 @@ class Identification(object):
                     print("Trying to find equal solution closer to a priori values")
 
                     if self.opt['constrainUsingNL']:
-                        nlopt = NLOPT(self)
-                        nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
+                        self.nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
                     else:
                         self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
-                    # if using fixed base dynamics, remove first link that is the fixed base which should completely
-                    # not be identifiable and not be part of equations (as it does not move)
-                    self.opt['deleteFixedBase'] = 1
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt['estimateWith'] == 'std_direct':
@@ -785,9 +786,8 @@ class Identification(object):
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
                         if self.opt['constrainUsingNL']:
-                            nlopt = NLOPT(self)
                             self.model.xStd = self.model.xStdModel.copy()
-                            nlopt.identifyFeasibleStandardParameters()
+                            self.nlopt.identifyFeasibleStandardParameters()
                         else:
                             self.sdp.identifyFeasibleStandardParameters(self)
                         #self.sdp.identifyFeasibleBaseParameters(self)

@@ -65,8 +65,7 @@ class Identification(object):
         self.opt['orthogonalizeBasis'] = 1
 
         # add regularization term to SDP identification that minimized CAD distance for non-identifiable params
-        self.opt['useRegressorRegularization'] = 0
-
+        self.opt['useRegressorRegularization'] = 1
         self.opt['regularizationFactor'] = 1000.0   #proportion of distance term
 
         # end additional config flags
@@ -786,6 +785,9 @@ class Identification(object):
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
                         self.sdp.identifyFeasibleStandardParameters(self)
+                        #self.sdp.identifyFeasibleBaseParameters(self)
+                        #self.model.xStd = self.model.xBase.dot(self.model.K)
+
                     if self.opt['useBasisProjection']:
                         self.model.xBase = self.model.Binv.dot(self.model.xStd)
                     else:
@@ -849,6 +851,7 @@ class Identification(object):
 
         if self.opt['plotPerJoint']:
             datasets = []
+            # plot base dynamics
             if self.opt['floatingBase']:
                 if self.opt['plotBaseDynamics']:
                     for i in range(6):
@@ -867,7 +870,7 @@ class Identification(object):
                 fb = 0
 
             # add plots for each joint
-            for i in range(0, self.model.num_dofs):
+            for i in range(fb, self.model.num_dofs):
                 datasets.append({
                     'unified_scaling': False,
                     #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i+1),
@@ -875,7 +878,7 @@ class Identification(object):
                     'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
                     'dataset': [{
                         'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
-                        'time': rel_time, 'title': torque_labels[6-fb+i]}
+                        'time': rel_time, 'title': torque_labels[i]}
                     ]}
                 )
                 if self.opt['plotPrioriTorques']:

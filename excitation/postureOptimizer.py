@@ -38,7 +38,8 @@ class PostureOptimizer(Optimizer):
             box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf = idf.model.urdf_file,
                     old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
-                    link_name = link_name
+                    link_name = link_name,
+                    scaling = False
             )
             self.link_cuboid_hulls[link_name] = [box, pos, rot]
 
@@ -52,7 +53,8 @@ class PostureOptimizer(Optimizer):
                 box, pos, rot = idf.urdfHelpers.getBoundingBox(
                         input_urdf = world,
                         old_com = [0,0,0],
-                        link_name = link_name
+                        link_name = link_name,
+                        scaling = False
                 )
                 # make sure no name collision happens
                 if link_name not in self.link_cuboid_hulls:
@@ -125,7 +127,7 @@ class PostureOptimizer(Optimizer):
         if self.config['showModelVisualization'] and self.mpi_rank == 0:
             from visualizer import Visualizer
             self.visualizer = Visualizer(self.config)
-
+            self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, idf.urdfHelpers)
 
     def testConstraints(self, g):
         return np.all(g > 0.0)

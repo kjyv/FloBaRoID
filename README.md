@@ -99,8 +99,6 @@ known issues:
 * YARP excitation module is not generic (ROS should be)
 * using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
 * COM constraints need an stl mesh files for the model to compute the enclosing hull, doesn't e.g. read geometric shape definitions for link
-* non-linear solving not yet activated for identification, buggy?
-
 
 SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
 

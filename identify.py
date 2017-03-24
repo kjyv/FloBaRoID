@@ -30,6 +30,7 @@ from identification.data import Data
 from identification.output import OutputConsole
 from identification import sdp
 import identification.helpers as helpers
+from identification.nlopt import NLOPT
 
 from colorama import Fore
 from IPython import embed
@@ -769,7 +770,6 @@ class Identification(object):
                     print("Trying to find equal solution closer to a priori values")
 
                     if self.opt['constrainUsingNL']:
-                        from identification.nlopt import NLOPT
                         nlopt = NLOPT(self)
                         nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
                     else:
@@ -784,7 +784,12 @@ class Identification(object):
                         self.identifyStandardParametersDirect()   #get std nonsingular regressor
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
-                        self.sdp.identifyFeasibleStandardParameters(self)
+                        if self.opt['constrainUsingNL']:
+                            nlopt = NLOPT(self)
+                            self.model.xStd = self.model.xStdModel.copy()
+                            nlopt.identifyFeasibleStandardParameters()
+                        else:
+                            self.sdp.identifyFeasibleStandardParameters(self)
                         #self.sdp.identifyFeasibleBaseParameters(self)
                         #self.model.xStd = self.model.xBase.dot(self.model.K)
 
@@ -832,15 +837,22 @@ class Identification(object):
         if self.validation_file:
             rel_vtime = self.Tv-self.Tv[0]
 
-        if self.opt['floatingBase'] and not self.opt['plotBaseDynamics']:
-            tauMeasured = self.model.tauMeasured[:, 6:]
-            tauEstimated = self.tauEstimated[:, 6:]
-            tauAPriori = self.tauAPriori[:, 6:]
+        if self.opt['floatingBase']:
+            fb = 6
+        else:
+            fb = 0
+
+        if not self.opt['plotBaseDynamics'] or not self.opt['floatingBase']:
+            # get only data for joints (skipping base data if present)
+            tauMeasured = self.model.tauMeasured[:, fb:]
+            tauEstimated = self.tauEstimated[:, fb:]
+            tauAPriori = self.tauAPriori[:, fb:]
             if self.validation_file:
-                tauEstimatedValidation = self.tauEstimatedValidation[:, 6:]
-                tauMeasuredValidation = self.tauMeasuredValidation[:, 6:]
+                tauEstimatedValidation = self.tauEstimatedValidation[:, fb:]
+                tauMeasuredValidation = self.tauMeasuredValidation[:, fb:]
             torque_labels = self.model.jointNames
         else:
+            # get all data for floating base
             tauMeasured = self.model.tauMeasured
             tauEstimated = self.tauEstimated
             tauAPriori = self.tauAPriori
@@ -865,9 +877,6 @@ class Identification(object):
                                 'time': rel_time, 'title': torque_labels[i]}
                             ]}
                         )
-                fb = 6
-            else:
-                fb = 0
 
             # add plots for each joint
             for i in range(fb, self.model.num_dofs):

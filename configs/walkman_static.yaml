@@ -38,58 +38,65 @@ showModelVisualization: 1        #display 3D model of robot during optimization 
 
 # ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
 #  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',
-#  'WaistSag', 'WaistYaw', #WaistLat is fixed atm
+#  'WaistLat', 'WaistSag', 'WaistYaw',
 #  'LShSag', 'LShLat', 'LShYaw', 'LElbj', 'LForearmPlate', 'LWrj1', 'LWrj2',
 #  'RShSag', 'RShLat', 'RShYaw', 'RElbj', 'RForearmPlate', 'RWrj1', 'RWrj2']
 initialPostures: [               #for static optimization, feasible postures to start from (useful only when not using global optimization)
     # posture #0
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #left leg
-     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #right leg
-     0.0, 0.0,                              #Waist
-     0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #right leg
+     0.0,                                     #WaistLat
+     0.0, 0.0,                                #Waist
+     0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,      #left arm
+     0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0      #right arm
     ],
     # posture #1
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
-     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     0.0, 0.0,                               #Waist
-     20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #right leg
+     0.0,                                     #WaistLat
+     0.0, 0.0,                                #Waist
+     20.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0,     #left arm
+     20.0, -90.0, 0.0, 0.0, 0.0, 0.0, 0.0     #right arm
     ],
     # posture #2
-    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
-     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     0.0, 0.0,                               #Waist
-     85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     85.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0    #right arm
+    [0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
+     0.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #right leg
+     0.0,                                     #WaistLat
+     0.0, 0.0,                                #Waist
+     85.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,     #left arm
+     85.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0     #right arm
     ],
     # posture #3
     [0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #left leg
      0.0, 0.0, -70.0, 90.0, -79.0, 0.0,       #right leg
+     0.0,                                     #WaistLat
      0.0, 0.0,                                #Waist
      0.0, 90.0, 0.0, -90.0, 0.0, -45.0, 0.0,  #left arm
      0.0, -90.0, 0.0, -90.0, 0.0, -45.0, 0.0  #right arm
     ],
     # posture #4
-    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     0.0, 0.0,                                 #Waist
-     0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,    #left arm
-     0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0   #right arm
+    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
+     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #right leg
+     0.0,                                     #WaistLat
+     0.0, 0.0,                                #Waist
+     0.0, 45.0, 0.0, -90.0, 0.0, 0.0, 79.0,   #left arm
+     0.0, -45.0, 0.0, -90.0, 0.0, 0.0, -79.0  #right arm
     ],
     # posture #5
-    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,       #left leg
-     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #right leg
-     35.0, 0.0,                                #Waist
-     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,      #left arm
-     20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0      #right arm
+    [44.0, 0.0, -70.0, 90.0, -20.0, 0.0,      #left leg
+     -44.0, 0.0, -70.0, 90.0, -20.0, 0.0,     #right leg
+     0.0,                                     #WaistLat
+     35.0, 0.0,                               #Waist
+     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,     #left arm
+     20.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0     #right arm
     ],
     # posture #6
     [35.0, 0.0, 0.0, 130.0, -20.0, 0.0,       #left leg
-     -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,         #right leg
-     0.0, -10.0,                           #Waist
-     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,    #left arm
-     85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0   #right arm
+     -35.0, 0.0, 0.0, 130.0, -20.0, 0.0,      #right leg
+     0.0,                                     #WaistLat
+     0.0, -10.0,                              #Waist
+     20.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0,     #left arm
+     85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0     #right arm
     ]
     ]
 # initial values to start optimization from (if using global opt not really important)
@@ -206,10 +213,10 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 0
 
-# use a non-linear gradient based solver instead of SDP (only for closest to CAD atm)
+# use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
+nlOptSolver: 'IPOPT'   # one of IPOPT, SLSQP, ALPSO
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

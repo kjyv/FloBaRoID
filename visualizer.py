@@ -348,7 +348,7 @@ class Visualizer(object):
         y = 100
         self.width = 800
         self.height = 600
-        config = gl.Config(double_buffer=True, depth_size=24, sample_buffers=1, samples=4)
+        config = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)
         self.window = pyglet.window.Window(self.width, self.height, resizable=True, visible=False, config=config)
         self.window_closed = False
         self.window.set_minimum_size(320, 200)
@@ -728,6 +728,19 @@ class Visualizer(object):
     def setModelTrajectory(self, trajectory):
         self.trajectory = trajectory
 
+    def loadMeshes(self, urdfpath, linkNames, urdfHelpers):
+        # load meshes
+        if not len(self.mesh_lists):
+            for i in range(0, len(linkNames)):
+                filename = urdfHelpers.getMeshPath(urdfpath, linkNames[i])
+                if filename:
+                    # use last mesh scale (from getMeshPath)
+                    scale = urdfHelpers.mesh_scaling.split(' ')
+                    scale = [float(scale[0]), float(scale[1]), float(scale[2])]
+                    self.mesh_lists[linkNames[i]] = Mesh(filename, scale).getVerticeList()
+            if len(self.mesh_lists):
+                self.show_meshes = True
+
     def addIDynTreeModel(self,
                   model,          # type: iDynTree.DynamicsComputations
                   boxes,          # type: Dict[str, Tuple[List, List, List]]     # link hulls
@@ -840,7 +853,8 @@ if __name__ == '__main__':
         box, pos, rot = urdfHelpers.getBoundingBox(
                 input_urdf = args.model,
                 old_com = [0,0,0],
-                link_name = link_name
+                link_name = link_name,
+                scaling = False
         )
         link_cuboid_hulls[link_name] = (box, pos, rot)
 
@@ -858,17 +872,7 @@ if __name__ == '__main__':
 
     v = Visualizer(config)
 
-    # load meshes
-    if not len(v.mesh_lists):
-        for i in range(0, len(linkNames)):
-            filename = urdfHelpers.getMeshPath(args.model, linkNames[i])
-            if filename:
-                # use last mesh scale (from getMeshPath)
-                scale = urdfHelpers.mesh_scaling.split(' ')
-                scale = [float(scale[0]), float(scale[1]), float(scale[2])]
-                v.mesh_lists[linkNames[i]] = Mesh(filename, scale).getVerticeList()
-        if len(v.mesh_lists):
-            v.show_meshes = True
+    v.loadMeshes(args.model, linkNames, urdfHelpers)
 
     if args.trajectory:
         # display trajectory

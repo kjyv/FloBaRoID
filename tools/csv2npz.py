@@ -96,7 +96,7 @@ def readWalkmanCSV(path, config, plot):
     #ignoreJoints = []
 
     # walkman with some fixed joints (not included in regressor)
-    ignoreJoints = [jointNames.index('WaistLat'), jointNames.index('NeckYawj'), jointNames.index('NeckPitchj')]
+    ignoreJoints = [jointNames.index('NeckYawj'), jointNames.index('NeckPitchj')]
 
     # idyntree urdf joint order (generator and dynComp class)
     # LHipLat, LHipYaw, LHipSag, LKneeSag, LAnkSag, LAnkLat,
@@ -112,24 +112,16 @@ def readWalkmanCSV(path, config, plot):
 
     ## apply some data correction, should be temporary
 
-    """
-    joint_signs = np.array([1, -1, 1, 1, -1, 1,       #LHipLat -
-                            -1, -1, -1, -1, 1, 1,      #RHipLat -
-                            1, 1,                     #WaistSag -
-                            1, -1, -1, 1, 1, -1, -1,  #LShSag -
-                            1, -1, -1, -1, 1, 1, 1    #RShSag -
-                           ])
-    """
     joint_signs = np.array([-1, 1, -1, -1, 1, -1,     #LHipLat -
                             1, 1, 1, 1, -1, -1,       #RHipLat -
-                            #1,                        #WaistLat
-                            -1, -1,                   #WaistSag -
-                            -1, 1, 1, -1, -1, 1, 1,   #LShSag -
-                            -1, 1, 1, 1, -1, -1, -1   #RShSag -
+                            1,                        #WaistLat
+                            1, -1,                    #WaistSag -
+                            -1, -1, 1, -1, -1, 1, 1,  #LShSag -
+                            1, 1, 1, 1, -1, -1, -1    #RShSag -
                            ])
     joint_offsets = np.array([0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0,
-                              #0,                      #WaistLat
+                              -327,                      #WaistLat
                               0, 0,
                               0, 0, 0, 0, 0, 0, 0,
                               0, 0, 0, 0, 0, 0, 0

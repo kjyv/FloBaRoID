@@ -18,7 +18,7 @@
             <joint>RAnkLat</joint>
 
             <!-- waist -->
-            <!-- <joint>WaistLat</joint> locked so not revolute! -->
+            <joint>WaistLat</joint>
             <joint>WaistSag</joint>
             <joint>WaistYaw</joint>
 

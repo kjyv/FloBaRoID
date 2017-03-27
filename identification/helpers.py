@@ -526,7 +526,7 @@ class URDFHelpers(object):
 
 
     def getBoundingBox(self, input_urdf, old_com, link_name, scaling=True):
-        # type: (str, List[float], str) -> Tuple[List[List[float]], List[float], np._ArrayLike]
+        # type: (str, List[float], str, bool) -> Tuple[List[List[float]], List[float], np._ArrayLike]
         ''' Return bounding box for one link derived from mesh file if possible.
             If no mesh file is found, a cube around the old COM is returned.
             Expects old_com in barycentric form! '''

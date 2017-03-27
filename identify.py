@@ -239,7 +239,7 @@ class Identification(object):
         self.tauEstimatedValidation = None   # type: np._ArrayLike
         for m_idx in self.progress(range(0, v_data['positions'].shape[0], self.opt['skipSamples'] + 1)):
             if self.opt['useRBDL']:
-                torques = self.model.simulateDynamicsRBDL(v_data, m_idx, params)
+                torques = self.model.simulateDynamicsRBDL(v_data, m_idx, None, params)
             else:
                 torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp, params)
 
@@ -260,7 +260,7 @@ class Identification(object):
             self.tauMeasuredValidation = \
                 np.concatenate((self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1)
 
-            #TODO: add contact forces to estimation, so far validation is only proper for fixed-base!
+            #TODO: add contact forces to estimation, so far validation is only correct for fixed-base!
             print(Fore.RED+'No proper validation for floating base yet!'+Fore.RESET)
 
         self.opt['skipSamples'] = old_skip
@@ -440,7 +440,7 @@ class Identification(object):
                     old_showBase = self.opt['showBaseParams']
                     self.opt['showStandardParams'] = 0
                     self.opt['showBaseParams'] = 1
-                    oc = OutputConsole(idf)
+                    oc = OutputConsole(self)
                     oc.render(self)
                     self.opt['showStandardParams'] = old_showStd
                     self.opt['showBaseParams'] = old_showBase

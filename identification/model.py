@@ -204,6 +204,7 @@ class Model(object):
 
 
     def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None, xStdModel=None):
+        # type: (Dict[str, np._ArrayLike], int, iDynTree.DynamicsComputations, np._ArrayLike[float]) -> np._ArrayLike[float]
         import rbdl
 
         # read sample data
@@ -255,19 +256,20 @@ class Model(object):
             # add friction torques
             # constant
             sign = 1 #np.sign(vel)
-            p_constant = range(self.num_model_params, self.num_model_params+self.num_dofs)
+            p_constant = range(self.friction_params_start, self.friction_params_start+self.num_dofs)
             tau[fb:] += sign*xStdModel[p_constant]
 
             # vel dependents
             if not self.opt['identifyGravityParamsOnly']:
                 # (take only first half of params as they are not direction dependent in urdf anyway)
-                p_vel = range(self.num_model_params+self.num_dofs, self.num_model_params+self.num_dofs*2)
+                p_vel = range(self.friction_params_start+self.num_dofs, self.friction_params_start+self.num_dofs*2)
                 tau[fb:] += xStdModel[p_vel]*qdot[fb:]
 
         return tau
 
 
     def simulateDynamicsIDynTree(self, samples, sample_idx, dynComp=None, xStdModel=None):
+        # type: (Dict[str, np._ArrayLike], int, iDynTree.DynamicsComputations, np._ArrayLike[float]) -> np._ArrayLike[float]
         """ compute torques for one time step of measurements """
 
         if not dynComp:
@@ -281,11 +283,6 @@ class Model(object):
         vel = samples['velocities'][sample_idx]
         acc = samples['accelerations'][sample_idx]
 
-        if self.opt['floatingBase']:
-            base_vel = samples['base_velocity'][sample_idx]
-            base_acc = samples['base_acceleration'][sample_idx]
-            rpy = samples['base_rpy'][sample_idx]
-
         # system state for iDynTree
         q = iDynTree.VectorDynSize.fromList(pos)
         dq = iDynTree.VectorDynSize.fromList(vel)
@@ -293,6 +290,10 @@ class Model(object):
 
         # calc torques and forces with iDynTree dynamicsComputation class
         if self.opt['floatingBase']:
+            base_vel = samples['base_velocity'][sample_idx]
+            base_acc = samples['base_acceleration'][sample_idx]
+            rpy = samples['base_rpy'][sample_idx]
+
             # get the homogeneous transformation that transforms vectors expressed
             # in the base reference frame to frames expressed in the world
             # reference frame, i.e. pos_world = world_T_base*pos_base
@@ -368,7 +369,7 @@ class Model(object):
         self.sim_torq_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
         self.torquesAP_stack = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 
-        num_contacts = len(data.samples['contacts'].item().keys()) if 'contacts' in data.samples else 0
+        num_contacts = len(data.samples['contacts'].item(0).keys()) if 'contacts' in data.samples else 0
         self.contacts_stack = np.zeros(shape=(num_contacts, (self.num_dofs+fb)*data.num_used_samples))
         self.contactForcesSum = np.zeros(shape=((self.num_dofs+fb)*data.num_used_samples))
 

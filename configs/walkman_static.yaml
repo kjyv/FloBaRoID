@@ -17,9 +17,12 @@ ignoreLinkPairsForCollision:
     - ['DWYTorso', 'RShr']
     - ['DWYTorso', 'LShy']
     - ['DWYTorso', 'RShy']
+    - ['Waist', 'DWS']
     - ['Waist', 'seat_link']
     - ['Waist', 'ground_link']      # Waist doesn't move relative to ground
     - ['ground_link', 'seat_link']
+    - ['LHipMot', 'seat_link']
+    - ['RHipMot', 'seat_link']
 
 transparentLinks: ['TorsoProtections']  # visualize with some see-through
 scaleCollisionHull: 0.7

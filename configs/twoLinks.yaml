@@ -84,7 +84,7 @@ zeroAccThresh: 0.1  #threshold below which acceleration is considered to be zero
 
 # use a number of random regressors to determine structural parameter dependencies when getting base regressor
 # (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
-useStructuralRegressor: 0
+useStructuralRegressor: 1
 randomSamples: 2000
 
 # almost zero threshold for determining base column dependencies from QR
@@ -134,7 +134,7 @@ noChange: 0
 noChangeThresh: 400
 
 # restrict COM to smallest enclosing box of STL Mesh (taken from <visual> in URDF)
-restrictCOMtoHull: 1
+restrictCOMtoHull: 0
 # set extra scaling for mesh (e.g. if it is clear that COM will not be at outer border of
 # geometry or that initial CAD data is too large)
 hullScaling: 1.0

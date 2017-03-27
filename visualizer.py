@@ -304,12 +304,13 @@ class Visualizer(object):
 
         self.show_meshes = False
 
+        self.angles = None  # type: List[float]
         self.trajectory = None  # type: Trajectory
         self.playing_traj = False
 
         # additional callbacks to be used with key handling
         self.event_callback = None  # type: Callable
-        self.timer_callback = None  # type: Callable
+        self.timer_callback = self.next_frame
 
         self._initWindow()
         self._initCamera()
@@ -728,6 +729,12 @@ class Visualizer(object):
     def setModelTrajectory(self, trajectory):
         self.trajectory = trajectory
 
+    def next_frame(self, dt):
+        if self.display_index >= self.display_max:
+            self.display_index = 0
+        self.display_index += 1
+        self.event_callback()
+
     def loadMeshes(self, urdfpath, linkNames, urdfHelpers):
         # load meshes
         if not len(self.mesh_lists):
@@ -908,12 +915,6 @@ if __name__ == '__main__':
 
         v.updateLabels()
 
-    def next_frame(dt):
-        if v.display_index >= v.display_max:
-            v.display_index = 0
-        v.display_index += 1
-        v.event_callback()
-
     if args.trajectory:
         if data_is_static:
             v.display_max = len(data['angles'])  # number of postures
@@ -927,5 +928,4 @@ if __name__ == '__main__':
 
     v.event_callback = draw_model
     v.event_callback()
-    v.timer_callback = next_frame
     v.run()

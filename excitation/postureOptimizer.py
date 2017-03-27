@@ -8,19 +8,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from fcl import fcl, collision_data, transform
 
 from identification.helpers import URDFHelpers, eulerAnglesToRotationMatrix
 from excitation.trajectoryGenerator import FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
 
-from colorama import Fore
 
 class PostureOptimizer(Optimizer):
     ''' find angles of n static positions for identification of gravity parameters '''
 
     def __init__(self, config, idf, model, simulation_func, world=None):
-        super(PostureOptimizer, self).__init__(config, model, simulation_func)
+        # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
+        super(PostureOptimizer, self).__init__(config, idf, model, simulation_func, world=world)
 
         self.idf = idf
 
@@ -28,43 +27,8 @@ class PostureOptimizer(Optimizer):
         self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
         self.trajectory = FixedPositionTrajectory(self.config)
 
-        self.num_dofs = self.config['num_dofs']
         self.num_postures = self.config['numStaticPostures']
         self.posture_time = self.config['staticPostureTime']
-
-        self.link_cuboid_hulls = {}  # type: Dict[str, List]
-        for i in range(self.model.num_links):
-            link_name = self.model.linkNames[i]
-            box, pos, rot = idf.urdfHelpers.getBoundingBox(
-                    input_urdf = idf.model.urdf_file,
-                    old_com = idf.model.xStdModel[i*10+1:i*10+4] / idf.model.xStdModel[i*10],
-                    link_name = link_name,
-                    scaling = False
-            )
-            self.link_cuboid_hulls[link_name] = [box, pos, rot]
-
-        self.world = world
-        self.world_links = []
-        if world:
-            self.world_links = idf.urdfHelpers.getLinkNames(world)
-            if self.config['verbose']:
-                print('World links: {}'.format(self.world_links))
-            for link_name in self.world_links:
-                box, pos, rot = idf.urdfHelpers.getBoundingBox(
-                        input_urdf = world,
-                        old_com = [0,0,0],
-                        link_name = link_name,
-                        scaling = False
-                )
-                # make sure no name collision happens
-                if link_name not in self.link_cuboid_hulls:
-                    self.link_cuboid_hulls[link_name] = [box, pos, rot]
-                else:
-                    print(Fore.RED+'Warning: link {} declared in model and world file!'.format(link_name) + Fore.RESET)
-
-        vel = [0.0]*self.num_dofs
-        self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
-        self.world_gravity = iDynTree.SpatialAcc.fromList(self.model.gravity)
 
         self.idyn_model = iDynTree.Model()
         iDynTree.modelFromURDF(self.config['urdf'], self.idyn_model)
@@ -124,81 +88,10 @@ class PostureOptimizer(Optimizer):
         if self.mpi_rank > 0:
             self.config['verbose'] = 0
 
-        if self.config['showModelVisualization'] and self.mpi_rank == 0:
-            from visualizer import Visualizer
-            self.visualizer = Visualizer(self.config)
-            self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, idf.urdfHelpers)
+        self.initVisualizer()
 
     def testConstraints(self, g):
         return np.all(g > 0.0)
-
-    def getLinkDistance(self, l0_name, l1_name, joint_q):
-        # type: (str, str, np._ArrayLike[float]) -> float
-        '''get distance from link with id l0 to link with id l1 for posture joint_q'''
-
-        #get link rotation and position in world frame
-        q = iDynTree.VectorDynSize.fromList(joint_q)
-        self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
-
-        if l0_name in self.model.linkNames:    # if robot link
-            f0 = self.model.dynComp.getFrameIndex(l0_name)
-            t0 = self.model.dynComp.getWorldTransform(f0)
-            rot0 = t0.getRotation().toNumPy()
-            pos0 = t0.getPosition().toNumPy()
-            s0 = self.config['scaleCollisionHull']
-        else:   # if world link
-            pos0 = self.link_cuboid_hulls[l0_name][1]
-            rot0 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l0_name][2])
-            s0 = 1
-
-        if l1_name in self.model.linkNames:    # if robot link
-            f1 = self.model.dynComp.getFrameIndex(l1_name)
-            t1 = self.model.dynComp.getWorldTransform(f1)
-            rot1 = t1.getRotation().toNumPy()
-            pos1 = t1.getPosition().toNumPy()
-            s1 = self.config['scaleCollisionHull']
-        else:   # if world link
-            pos1 = self.link_cuboid_hulls[l1_name][1]
-            rot1 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l1_name][2])
-            s1 = 1
-
-        # TODO: use pos and rot of boxes for vals from geometry tags
-        # self.link_cuboid_hulls[l0_name][1], [2]
-
-        b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
-        b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[1][0]),
-                                  np.abs(b[2][1])-np.abs(b[2][0])])
-        b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
-
-        b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
-        b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[1][0]),
-                                  np.abs(b[2][1])-np.abs(b[2][0])])
-        b1 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
-
-        # move box to pos + box center pos (model has pos in link origin, box has zero at center)
-        o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0+b0_center))
-        o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1+b1_center))
-
-        distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
-
-        if distance < 0:
-            if self.config['verbose'] > 1:
-                print("Collision of {} and {}".format(l0_name, l1_name))
-
-            # get proper collision and depth since optimization should also know how much constraint is violated
-            cr = collision_data.CollisionRequest()
-            cr.enable_contact = True
-            cr.enable_cost = True
-            collision, c_result = fcl.collide(o0, o1, cr)
-
-            # sometimes no collision is found?
-            if len(c_result.contacts):
-                distance = c_result.contacts[0].penetration_depth
-
-        return distance
-
 
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
@@ -293,22 +186,7 @@ class PostureOptimizer(Optimizer):
             self.x_constr.append(c)
             self.updateGraph()
 
-        if self.config['showModelVisualization'] and self.mpi_rank == 0 and c:
-            def draw_model():
-                p_id = self.visualizer.display_index
-                q0 = x[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
-                q = iDynTree.VectorDynSize.fromList(q0)
-                self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
-                self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
-                                                 self.model.linkNames, self.config['ignoreLinksForCollision'])
-                if self.world:
-                    world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
-                    self.visualizer.addWorld(world_boxes)
-                self.visualizer.updateLabels()
-            self.visualizer.display_max = self.num_postures
-            self.visualizer.event_callback = draw_model
-            self.visualizer.event_callback()
-            self.visualizer.run()
+        self.showVisualizerAngles(x)
 
         print("Objective function value: {} (last best: {})".format(f, self.last_best_f))
 

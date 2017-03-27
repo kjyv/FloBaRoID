@@ -159,10 +159,6 @@ class Identification(object):
         if self.opt['addContacts']:
             tauEst += self.model.contactForcesSum
 
-        if estimateWith == 'urdf':
-            sim_error = sla.norm(self.model.sim_torq_stack - tauEst)
-            print("Error between inverse dynamics and regressor simulation: {}".format(sim_error))
-
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 

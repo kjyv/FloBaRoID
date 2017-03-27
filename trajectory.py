@@ -58,10 +58,12 @@ def main():
             old_gravity = config['identifyGravityParamsOnly']
             idf = Identification(config, config['urdf'], config['urdf_real'], measurements_files=None,
                                  regressor_file=None, validation_file=None)
-            trajectoryOptimizer = PostureOptimizer(config, idf, model, world=args.world, simulation_func=simulateTrajectory)
+            trajectoryOptimizer = PostureOptimizer(config, idf, model, simulation_func=simulateTrajectory, world=args.world)
             config['identifyGravityParamsOnly'] = old_gravity
         else:
-            trajectoryOptimizer = TrajectoryOptimizer(config, model, simulation_func=simulateTrajectory)
+            idf = Identification(config, config['urdf'], urdf_file_real=None, measurements_files=None,
+                                 regressor_file=None, validation_file=None)
+            trajectoryOptimizer = TrajectoryOptimizer(config, idf, model, simulation_func=simulateTrajectory, world=args.world)
 
         trajectory = trajectoryOptimizer.optimizeTrajectory()
         config['simulateTorques'] = old_sim

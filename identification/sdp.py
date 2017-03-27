@@ -597,7 +597,8 @@ class SDP(object):
             #beta = K * delta
             beta = Matrix(idf.model.base_deps).applyfunc(lambda x: x.nsimplify())
 
-            # std vars that occur in base params (as many as base params, so only the single ones or chosen as independent ones)
+            # std vars that occur in base params (as many as base params, so only the single ones or
+            # chosen as independent ones)
 
             if idf.opt['useBasisProjection']:
                 # determined through base matrix, which included other variables too
@@ -615,6 +616,7 @@ class SDP(object):
 
             # std variables that are dependent, i.e. their value is a combination of independent columns
             # (they don't appear in base params but in feasibility constraints)
+
             if idf.opt['useBasisProjection']:
                 #determined from base eqns
                 delta_not_d = idf.model.base_deps[0].free_symbols

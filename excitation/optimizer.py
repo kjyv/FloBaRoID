@@ -24,6 +24,10 @@ try:
 except:
     parallel = False
 
+from colorama import Fore
+import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from fcl import fcl, collision_data, transform
+
 def plotter(config, data=None, filename=None):
     #type: (Dict, np._ArrayLike, str) -> None
     fig = plt.figure(1)
@@ -152,18 +156,28 @@ def plotter(config, data=None, filename=None):
 
 
 class Optimizer(object):
-    def __init__(self, config, model, simulation_func):
-        # type: (Dict, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]]) -> None
+    '''base class for different optimizers'''
+    def __init__(self, config, idf, model, simulation_func, world=None):
+        # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
+
         self.config = config
         self.sim_func = simulation_func
         self.model = model
+        self.idf = idf
+        self.world = world
 
+        self.num_dofs = self.config['num_dofs']
+
+        # optimization status vars
         self.last_best_f = np.inf
         self.last_best_sol = np.array([])
 
         self.iter_cnt = 0   # iteration counter
         self.last_g = None  # type: List[float]    # last constraint values
+        self.is_global = False
+        self.local_iter_max = "(unknown)"
 
+        # init parallel runs
         self.parallel = parallel
         if parallel:
             self.mpi_size = nprocs   # number of processes
@@ -173,11 +187,48 @@ class Optimizer(object):
             self.mpi_size = 1
             self.mpi_rank = 0
 
+        # init plotting progress
         if self.config['showOptimizationGraph']:
             self.initGraph()
 
-        self.local_iter_max = "(unknown)"
-        self.is_global = False
+        # init link data
+        self.link_cuboid_hulls = {}  # type: Dict[str, List]
+        for i in range(self.model.num_links):
+            link_name = self.model.linkNames[i]
+            box, pos, rot = idf.urdfHelpers.getBoundingBox(
+                    input_urdf = self.model.urdf_file,
+                    old_com = self.model.xStdModel[i*10+1:i*10+4] / self.model.xStdModel[i*10],
+                    link_name = link_name,
+                    scaling = False
+            )
+            self.link_cuboid_hulls[link_name] = [box, pos, rot]
+
+        self.world = world
+        self.world_links = []  # type: List[str]
+        if world:
+            self.world_links = idf.urdfHelpers.getLinkNames(world)
+            if self.config['verbose']:
+                print('World links: {}'.format(self.world_links))
+            for link_name in self.world_links:
+                box, pos, rot = idf.urdfHelpers.getBoundingBox(
+                        input_urdf = world,
+                        old_com = [0,0,0],
+                        link_name = link_name,
+                        scaling = False
+                )
+                # make sure no name collision happens
+                if link_name not in self.link_cuboid_hulls:
+                    self.link_cuboid_hulls[link_name] = [box, pos, rot]
+                else:
+                    print(Fore.RED+'Warning: link {} declared in model and world file!'.format(link_name) + Fore.RESET)
+
+        self.world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
+
+        # init some vars for link distance
+        vel = [0.0]*self.num_dofs
+        self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
+        self.world_gravity = iDynTree.SpatialAcc.fromList(self.model.gravity)
+
 
     def testBounds(self, x):
         # type: (np._ArrayLike) -> bool
@@ -186,6 +237,117 @@ class Optimizer(object):
     def testConstraints(self, g):
         # type: (np._ArrayLike) -> bool
         raise NotImplementedError
+
+    def getLinkDistance(self, l0_name, l1_name, joint_q):
+        # type: (str, str, np._ArrayLike[float]) -> float
+        '''get shortest distance from link with id l0 to link with id l1 for posture joint_q'''
+
+        #get link rotation and position in world frame
+        q = iDynTree.VectorDynSize.fromList(joint_q)
+        self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+
+        if l0_name in self.model.linkNames:    # if robot link
+            f0 = self.model.dynComp.getFrameIndex(l0_name)
+            t0 = self.model.dynComp.getWorldTransform(f0)
+            rot0 = t0.getRotation().toNumPy()
+            pos0 = t0.getPosition().toNumPy()
+            s0 = self.config['scaleCollisionHull']
+        else:   # if world link
+            pos0 = self.link_cuboid_hulls[l0_name][1]
+            rot0 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l0_name][2])
+            s0 = 1
+
+        if l1_name in self.model.linkNames:    # if robot link
+            f1 = self.model.dynComp.getFrameIndex(l1_name)
+            t1 = self.model.dynComp.getWorldTransform(f1)
+            rot1 = t1.getRotation().toNumPy()
+            pos1 = t1.getPosition().toNumPy()
+            s1 = self.config['scaleCollisionHull']
+        else:   # if world link
+            pos1 = self.link_cuboid_hulls[l1_name][1]
+            rot1 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l1_name][2])
+            s1 = 1
+
+        # TODO: use pos and rot of boxes for vals from geometry tags
+        # self.link_cuboid_hulls[l0_name][1], [2]
+
+        b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
+        b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[1][0]),
+                                  np.abs(b[2][1])-np.abs(b[2][0])])
+        b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
+
+        b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
+        b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[1][0]),
+                                  np.abs(b[2][1])-np.abs(b[2][0])])
+        b1 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
+
+        # move box to pos + box center pos (model has pos in link origin, box has zero at center)
+        o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0+b0_center))
+        o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1+b1_center))
+
+        distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
+
+        if distance < 0:
+            if self.config['verbose'] > 1:
+                print("Collision of {} and {}".format(l0_name, l1_name))
+
+            # get proper collision and depth since optimization should also know how much constraint is violated
+            cr = collision_data.CollisionRequest()
+            cr.enable_contact = True
+            cr.enable_cost = True
+            collision, c_result = fcl.collide(o0, o1, cr)
+
+            # sometimes no collision is found?
+            if len(c_result.contacts):
+                distance = c_result.contacts[0].penetration_depth
+
+        return distance
+
+    def initVisualizer(self):
+        if self.config['showModelVisualization'] and self.mpi_rank == 0:
+            from visualizer import Visualizer
+            self.visualizer = Visualizer(self.config)
+            self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, self.idf.urdfHelpers)
+
+            # set draw method for visualizer. This taps into local variables here, a bit unclean...
+            def draw_model():
+                if self.trajectory:
+                    # get data of trajectory
+                    self.visualizer.trajectory.setTime(self.visualizer.display_index/self.visualizer.fps)
+                    q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.config['num_dofs'])]
+                else:
+                    p_id = self.visualizer.display_index
+                    q0 = self.visualizer.angles[p_id*self.num_dofs:(p_id+1)*self.config['num_dofs']]
+
+                q = iDynTree.VectorDynSize.fromList(q0)
+                dq = iDynTree.VectorDynSize.fromList([0.0]*self.config['num_dofs'])
+                self.model.dynComp.setRobotState(q, dq, dq, self.world_gravity)
+                self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
+                        self.model.linkNames, self.config['ignoreLinksForCollision'])
+                if self.world:
+                    self.visualizer.addWorld(self.world_boxes)
+                self.visualizer.updateLabels()
+            self.visualizer.event_callback = draw_model
+
+    def showVisualizerAngles(self, x):
+        '''show visualizer for current joint angles x'''
+        if self.config['showModelVisualization'] and self.mpi_rank == 0: #and c:
+            self.visualizer.display_max = self.num_postures
+            self.visualizer.angles = x
+            self.visualizer.event_callback()
+            self.visualizer.run()
+
+    def showVisualizerTrajectory(self, t):
+        '''show visualizer for joint trajectory t'''
+        if self.config['showModelVisualization'] and self.mpi_rank == 0: #and c:
+            self.visualizer.setModelTrajectory(t)
+            freq = self.config['excitationFrequency']
+            self.visualizer.display_max = t.getPeriodLength()*self.visualizer.fps # length of trajectory
+            self.visualizer.trajectory = t
+            self.visualizer.event_callback()
+            self.visualizer.run()
 
     def objectiveFunc(self, x, test=False):
         # type: (np._ArrayLike[float], bool) -> Tuple[float, np._ArrayLike, bool]

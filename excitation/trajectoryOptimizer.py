@@ -9,6 +9,7 @@ import numpy.linalg as la
 import matplotlib.pyplot as plt
 import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from colorama import Fore
 
 from identification.model import Model
 from identification.data import Data
@@ -18,8 +19,8 @@ from excitation.optimizer import plotter, Optimizer
 
 
 class TrajectoryOptimizer(Optimizer):
-    def __init__(self, config, model, simulation_func):
-        super(TrajectoryOptimizer, self).__init__(config, model, simulation_func)
+    def __init__(self, config, idf, model, simulation_func, world=None):
+        super(TrajectoryOptimizer, self).__init__(config, idf, model, simulation_func, world=world)
 
         # init some classes
         self.limits = URDFHelpers.getJointLimits(config['urdf'], use_deg=False)  #will always be compared to rad
@@ -73,6 +74,7 @@ class TrajectoryOptimizer(Optimizer):
 
         self.last_best_f_f1 = 0
 
+        self.initVisualizer()
 
     def vecToParams(self, x):
         # convert vector of all solution variables to separate parameter variables
@@ -160,10 +162,6 @@ class TrajectoryOptimizer(Optimizer):
         #xBaseModel = np.dot(model.Binv | K, model.xStdModel)
         #f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
 
-        print("objective function value: {} (last best: {} + {})".format(f,
-                                                            self.last_best_f-self.last_best_f_f1,
-                                                            self.last_best_f_f1))
-
         f1 = 0
         # add constraints  (later tested for all: g(n) <= 0)
         if self.config['minVelocityConstraint']:
@@ -207,11 +205,23 @@ class TrajectoryOptimizer(Optimizer):
             print("added cost: {}".format(f1))
 
         c = self.testConstraints(g)
+        if c:
+            print(Fore.GREEN, end=' ')
+        else:
+            print(Fore.YELLOW, end=' ')
+
+        print("objective function value: {} (last best: {} + {})".format(f,
+                                                            self.last_best_f-self.last_best_f_f1,
+                                                            self.last_best_f_f1), end=' ')
+        print(Fore.RESET)
+
         if self.mpi_rank == 0 and self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
             self.updateGraph()
+
+        self.showVisualizerTrajectory(self.trajectory)
 
         # TODO: add cartesian/collision constraints using fcl
         # for whole trajectory, get closest distance of all link pairs
@@ -252,19 +262,19 @@ class TrajectoryOptimizer(Optimizer):
         if not res:
             print("constraints violated:")
             if True in np.in1d(list(range(1,2*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
-                print("angle limits")
+                print("- angle limits")
                 print(np.array(g)[list(range(1,2*self.dofs))])
             if True in np.in1d(list(range(2*self.dofs,3*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
-                print("max velocity limits")
+                print("- max velocity limits")
                 #print np.array(g)[range(2*self.dofs,3*self.dofs)]
             if True in np.in1d(list(range(3*self.dofs,4*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
-                print("max torque limits")
+                print("- max torque limits")
 
             if self.config['minVelocityConstraint']:
                 if True in np.in1d(list(range(4*self.dofs,5*self.dofs)), np.where(np.array(g) >= self.config['minTolConstr'])):
-                    print("min velocity limits")
+                    print("- min velocity limits")
             #if True in np.in1d(range(5*self.dofs,6*self.dofs), np.where(np.array(g) >= self.config['minTolConstr'])):
-            #    print "min torque limits"
+            #    print "- min torque limits"
             #    print np.array(g)[range(5*self.dofs,6*self.dofs)]
         return res
 

@@ -211,7 +211,6 @@ class Model(object):
         q = samples['positions'][sample_idx]
         qdot = samples['velocities'][sample_idx]
         qddot = samples['accelerations'][sample_idx]
-        tau = samples['torques'][sample_idx].copy()
         fb = 0
 
         if xStdModel is None:
@@ -237,7 +236,8 @@ class Model(object):
             q = np.concatenate((np.array([0,0,0]), rotq[0:3], q, np.array([rotq[3]])))
 
             #q = np.concatenate((np.array([0,0,0, 0,0,0]), q, np.array([0])))
-            #self.rbdlModel.SetQuaternion(0, rotq, q)
+            #how to get body id of base link (joint)?
+            #self.rbdlModel.SetQuaternion(4, rotq, q)
 
             # the first three elements (0,1,2) of qdot is the linear velocity of the floating body
             # elements 3,4,5 of qdot is the angular velocity of the floating body
@@ -250,6 +250,7 @@ class Model(object):
             qddot = np.concatenate([base_acc, qddot])
 
         # compute inverse dynamics with rbdl
+        tau = np.zeros_like(qdot)
         rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
 
         if self.opt['identifyFriction']:
@@ -428,9 +429,6 @@ class Model(object):
                                 else:
                                     torq[0:6] = np.nan_to_num(sim_torques[0:6])
 
-                        #TODO: remove me again
-                        torques_simulated = np.nan_to_num(sim_torques)
-
             simulate_time += t.interval
 
             #...still looping over measurement samples
@@ -530,10 +528,6 @@ class Model(object):
 
             # stack results onto matrices of previous time steps
             np.copyto(self.torques_stack[row_index:row_index+self.num_dofs+fb], torq)
-
-            # TODO: remove me
-            if not only_simulate and (self.opt['simulateTorques'] or self.opt['useAPriori'] or self.opt['floatingBase']):
-                np.copyto(self.sim_torq_stack[row_index:row_index+self.num_dofs+fb], torques_simulated)
 
             if self.opt['useAPriori']:
                 np.copyto(self.torquesAP_stack[row_index:row_index+self.num_dofs+fb], torqAP)

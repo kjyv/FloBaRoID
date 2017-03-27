@@ -958,12 +958,8 @@ class Identification(object):
                 datasets[2]['dataset'][1]['data'].append(self.data.samples['velocities_raw'][0:self.model.sample_end:self.opt['skipSamples']+1])
 
         if self.validation_file:
-            if self.opt['floatingBase']:
-                fb = 6
-            else:
-                fb = 0
             datasets.append(
-                    {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels[6-fb:],
+                    {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
                    'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                    'dataset':
                    [#{'data': [self.tauMeasuredValidation],

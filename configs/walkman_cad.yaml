@@ -5,8 +5,6 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 10             #how many postures to generate (must be >1)
-ignoreLinksForCollision: []      #don't include these links for collision testing at all
-ignoreLinkPairsForCollision: []  #don't check collision between these pairs
 scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
@@ -14,6 +12,7 @@ initialPostures: []              #for static optimization, feasible postures to 
 useGlobalOptimization: 1          #do local optimization after using global solver
 globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10
+globalOptSize: 100               #Swarm size or Population size
 useLocalOptimization: 1          #do local optimization after using global solver
 localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 2            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
@@ -21,6 +20,9 @@ minTolConstr: 0.01               #threshold for being within constraints (only u
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
 showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
+
+ignoreLinksForCollision: []      #don't include these links for collision testing at all
+ignoreLinkPairsForCollision: []  #don't check collision between these pairs
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)

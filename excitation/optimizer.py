@@ -28,6 +28,8 @@ from colorama import Fore
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 from fcl import fcl, collision_data, transform
 
+from identification.helpers import eulerAnglesToRotationMatrix
+
 def plotter(config, data=None, filename=None):
     #type: (Dict, np._ArrayLike, str) -> None
     fig = plt.figure(1)
@@ -299,7 +301,7 @@ class Optimizer(object):
             cr.enable_cost = True
             collision, c_result = fcl.collide(o0, o1, cr)
 
-            # sometimes no collision is found?
+            # sometimes no contact is found even though distance is less than 0?
             if len(c_result.contacts):
                 distance = c_result.contacts[0].penetration_depth
 
@@ -316,13 +318,13 @@ class Optimizer(object):
                 if self.trajectory:
                     # get data of trajectory
                     self.visualizer.trajectory.setTime(self.visualizer.display_index/self.visualizer.fps)
-                    q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.config['num_dofs'])]
+                    q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.num_dofs)]
                 else:
                     p_id = self.visualizer.display_index
-                    q0 = self.visualizer.angles[p_id*self.num_dofs:(p_id+1)*self.config['num_dofs']]
+                    q0 = self.visualizer.angles[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
 
                 q = iDynTree.VectorDynSize.fromList(q0)
-                dq = iDynTree.VectorDynSize.fromList([0.0]*self.config['num_dofs'])
+                dq = iDynTree.VectorDynSize.fromList([0.0]*self.num_dofs)
                 self.model.dynComp.setRobotState(q, dq, dq, self.world_gravity)
                 self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
                         self.model.linkNames, self.config['ignoreLinksForCollision'])
@@ -444,7 +446,7 @@ class Optimizer(object):
                     opt = pyOpt.NSGA2(pll_type='POA') # genetic algorithm
                 else:
                     opt = pyOpt.NSGA2()
-                opt.setOption('PopSize', 100)   # Population Size (a Multiple of 4)
+                opt.setOption('PopSize', self.config['globalOptSize'])   # Population Size (a Multiple of 4)
                 opt.setOption('maxGen', self.config['globalOptIterations'])   # Maximum Number of Generations
                 opt.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
                 opt.setOption('xinit', 1)       # Use Initial Solution Flag (0 - random population, 1 - use given solution)
@@ -467,7 +469,7 @@ class Optimizer(object):
                 opt.setOption('maxOuterIter', self.config['globalOptIterations'])
                 opt.setOption('printInnerIters', 1)
                 opt.setOption('printOuterIters', 1)
-                opt.setOption('SwarmSize', 200)
+                opt.setOption('SwarmSize', self.config['globalOptSize'])
                 opt.setOption('xinit', 1)
                 opt.setOption('seed', sr.random()*self.mpi_size) #(self.mpi_rank+1)/self.mpi_size)
                 #opt.setOption('vcrazy', 1e-2)

@@ -524,6 +524,44 @@ class URDFHelpers(object):
                 break
         return (box_size, box_pos, box_rpy)
 
+    @staticmethod
+    def getNeighbors(idyn_model, connected=True):
+        # type: (iDynTree.Model, bool) -> Dict[str, Dict[str, List[int]]]
+
+        # get neighbors for each link
+        neighbors = {}   # type: Dict[str, Dict[str, List[int]]]
+        for l in range(idyn_model.getNrOfLinks()):
+            link_name = idyn_model.getLinkName(l)
+            #if link_name not in self.model.linkNames:  # ignore links that are ignored in the generator
+            #    continue
+            neighbors[link_name] = {'links':[], 'joints':[]}
+            num_neighbors = idyn_model.getNrOfNeighbors(l)
+            for n in range(num_neighbors):
+                nb = idyn_model.getNeighbor(l, n)
+                neighbors[link_name]['links'].append(idyn_model.getLinkName(nb.neighborLink))
+                neighbors[link_name]['joints'].append(idyn_model.getJointName(nb.neighborJoint))
+
+        if connected:
+            # for each neighbor link, add links connected via a fixed joint also as neighbors
+            neighbors_tmp = neighbors.copy()  # don't modify in place so no recursive loops happen
+            for l in range(idyn_model.getNrOfLinks()):
+                link_name = idyn_model.getLinkName(l)
+                for nb in neighbors_tmp[link_name]['links']:  # look at all neighbors of l
+                    for j_name in neighbors_tmp[nb]['joints']:  # check each joint of a neighbor of l
+                        j = idyn_model.getJoint(idyn_model.getJointIndex(j_name))
+                        # check all connected joints if they are fixed, if so add connected link as neighbor
+                        if j.isFixedJoint():
+                            j_l0 = j.getFirstAttachedLink()
+                            j_l1 = j.getSecondAttachedLink()
+                            if j_l0 == idyn_model.getLinkIndex(nb):
+                                nb_fixed = j_l1
+                            else:
+                                nb_fixed = j_l0
+                            nb_fixed_name = idyn_model.getLinkName(nb_fixed)
+                            if nb_fixed != l and nb_fixed_name not in neighbors[link_name]['links']:
+                                neighbors[link_name]['links'].append(nb_fixed_name)
+
+        return neighbors
 
     def getBoundingBox(self, input_urdf, old_com, link_name, scaling=True):
         # type: (str, List[float], str, bool) -> Tuple[List[List[float]], List[float], np._ArrayLike]

@@ -5,6 +5,22 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 7             #how many postures to generate (must be >1)
+scaleCollisionHull: 0.7
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
+
+useGlobalOptimization: 0         #use global solver first
+globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+globalOptIterations: 1
+globalOptSize: 100               #Swarm size or Population size
+useLocalOptimization: 1          #do local optimization after using global solver
+localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
+localOptIterations: 5            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+minTolConstr: 0.01               #threshold for being within constraints (only used for display)
+showOptimizationGraph: 1         #display updating graph during trajectory optimization
+showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
+showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
+transparentLinks: ['TorsoProtections']  # visualize with some see-through
+
 ignoreLinksForCollision: ['imu_link', 'imu_link2', 'multisense/head_imu_link']
 ignoreLinkPairsForCollision: 
     - ['LForearm', 'LSoftHandLink']
@@ -23,21 +39,6 @@ ignoreLinkPairsForCollision:
     - ['ground_link', 'seat_link']
     - ['LHipMot', 'seat_link']
     - ['RHipMot', 'seat_link']
-
-transparentLinks: ['TorsoProtections']  # visualize with some see-through
-scaleCollisionHull: 0.7
-staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
-
-useGlobalOptimization: 0         #use global solver first
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
-globalOptIterations: 1
-useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
-localOptIterations: 10            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
-minTolConstr: 0.01               #threshold for being within constraints (only used for display)
-showOptimizationGraph: 0         #display updating graph during trajectory optimization
-showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
-showModelVisualization: 1        #display 3D model of robot during optimization (static only atm)
 
 # ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
 #  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',

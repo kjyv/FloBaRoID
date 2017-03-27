@@ -5,9 +5,6 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 5             #how many postures to generate (must be >1)
-ignoreLinksForCollision: []      #don't include these links for collision testing at all
-ignoreLinkPairsForCollision: []  #don't check collision between these pairs
-transparentLinks: []             # visualize with some see-through
 scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
 staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
@@ -16,6 +13,7 @@ initialPostures: []              #for static optimization, feasible postures to 
 useGlobalOptimization: 0         #use global solver first (recommended)
 globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
+globalOptSize: 10                #Swarm size or Population size
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
 localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
@@ -23,6 +21,10 @@ minTolConstr: 0.01               #threshold for being within constraints (only u
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
 showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
+transparentLinks: []             # visualize with some see-through
+
+ignoreLinksForCollision: []      #don't include these links for collision testing at all
+ignoreLinkPairsForCollision: []  #don't check collision between these pairs
 
 # initial values to start trajectory optimization from (useful only when not using global optimization)
 trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)

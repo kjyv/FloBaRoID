@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pyOpt
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 
-from identification.helpers import URDFHelpers, eulerAnglesToRotationMatrix
+from identification.helpers import URDFHelpers
 from excitation.trajectoryGenerator import FixedPositionTrajectory
 from excitation.optimizer import plotter, Optimizer
 
@@ -33,37 +33,7 @@ class PostureOptimizer(Optimizer):
         self.idyn_model = iDynTree.Model()
         iDynTree.modelFromURDF(self.config['urdf'], self.idyn_model)
 
-        # get neighbors for each link
-        self.neighbors = {}   # type: Dict[str, Dict[str, List[int]]]
-        for l in range(self.idyn_model.getNrOfLinks()):
-            link_name = self.idyn_model.getLinkName(l)
-            #if link_name not in self.model.linkNames:  # ignore links that are ignored in the generator
-            #    continue
-            self.neighbors[link_name] = {'links':[], 'joints':[]}
-            num_neighbors = self.idyn_model.getNrOfNeighbors(l)
-            for n in range(num_neighbors):
-                nb = self.idyn_model.getNeighbor(l, n)
-                self.neighbors[link_name]['links'].append(self.idyn_model.getLinkName(nb.neighborLink))
-                self.neighbors[link_name]['joints'].append(self.idyn_model.getJointName(nb.neighborJoint))
-
-        # for each neighbor link, add links connected via a fixed joint also as neighbors
-        self.neighbors_tmp = self.neighbors.copy()  # don't modify in place so no recursive loops happen
-        for l in range(self.idyn_model.getNrOfLinks()):
-            link_name = self.idyn_model.getLinkName(l)
-            for nb in self.neighbors_tmp[link_name]['links']:  # look at all neighbors of l
-                for j_name in self.neighbors_tmp[nb]['joints']:  # check each joint of a neighbor of l
-                    j = self.idyn_model.getJoint(self.idyn_model.getJointIndex(j_name))
-                    # check all connected joints if they are fixed, if so add connected link as neighbor
-                    if j.isFixedJoint():
-                        j_l0 = j.getFirstAttachedLink()
-                        j_l1 = j.getSecondAttachedLink()
-                        if j_l0 == self.idyn_model.getLinkIndex(nb):
-                            nb_fixed = j_l1
-                        else:
-                            nb_fixed = j_l0
-                        nb_fixed_name = self.idyn_model.getLinkName(nb_fixed)
-                        if nb_fixed != l and nb_fixed_name not in self.neighbors[link_name]['links']:
-                            self.neighbors[link_name]['links'].append(nb_fixed_name)
+        self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
         # amount of collision checks to be done
         eff_links = self.model.num_links - len(self.config['ignoreLinksForCollision']) + len(self.world_links)

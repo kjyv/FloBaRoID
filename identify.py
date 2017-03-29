@@ -200,10 +200,10 @@ class Identification(object):
 
     def estimateValidationTorques(self):
         """ calculate torques of trajectory from validation measurements and identified params """
-        #TODO: don't duplicate simulation code
-
+        # TODO: don't duplicate simulation code
         # TODO: get identified params directly into idyntree (new KinDynComputations class does not
         # have inverse dynamics yet, so we have to go over a new urdf file for now)
+
         import os
 
         v_data = np.load(self.validation_file)
@@ -778,7 +778,7 @@ class Identification(object):
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt['estimateWith'] == 'std_direct':
-                        self.identifyStandardParametersDirect()   #get std nonsingular regressor
+                        #self.identifyStandardParametersDirect()   #get std nonsingular regressor
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  #use with sdp
                     else:
                         if self.opt['constrainUsingNL']:

@@ -1,15 +1,10 @@
 
-#### excitation
+#### trajectory generation and excitation
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
-useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 10             #how many postures to generate (must be >1)
-scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
-staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
-initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
-
-useGlobalOptimization: 1          #do local optimization after using global solver
+# trajectory optimization
+useGlobalOptimization: 1         #do local optimization after using global solver
 globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10
 globalOptSize: 100               #Swarm size or Population size
@@ -61,6 +56,13 @@ ovrPosLimit:
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
+
+# static posture optimization (for gravity term identification)
+useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
+numStaticPostures: 10             #how many postures to generate (must be >1)
+scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
+initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)

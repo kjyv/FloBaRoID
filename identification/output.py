@@ -7,7 +7,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import range
 from builtins import object
-from typing import Tuple, Dict
+from typing import Tuple
 
 import sys
 import os
@@ -15,11 +15,10 @@ import numpy as np
 import numpy.linalg as la
 import scipy.linalg as sla
 import colorama
-from colorama import Fore, Back, Style
+from colorama import Fore, Style
 
 from identification import helpers
 
-from IPython import embed
 np.core.arrayprint._line_width = 160
 
 # redefine unicode for testing in python2/3
@@ -75,171 +74,171 @@ class OutputConsole(object):
                 self.xStdModel = idf.model.xStdModel
 
     def printStdParams(self, summary_only=False):
-            idf = self.idf
+        idf = self.idf
 
-            if not summary_only:
-                if idf.opt['outputBarycentric']:
-                    print("Barycentric (relative to COM) Standard Parameters")
+        if not summary_only:
+            if idf.opt['outputBarycentric']:
+                print("Barycentric (relative to COM) Standard Parameters")
+            else:
+                print("Linear (relative to Frame) Standard Parameters")
+
+        # collect values for parameters
+        description = idf.model.generator.getDescriptionOfParameters()
+        if idf.opt['identifyFriction']:
+            for i in range(0, idf.model.num_dofs):
+                description += "Parameter {}: Constant friction / offset of joint {}\n".format(
+                        i+idf.model.num_model_params,
+                        idf.model.jointNames[i]
+                )
+
+            for i in range(0, idf.model.num_dofs*2):
+                description += "Parameter {}: Velocity dep. friction joint {}\n".format(
+                        i+idf.model.num_dofs+idf.model.num_model_params,
+                        idf.model.jointNames[i%idf.model.num_dofs]
+                )
+
+        idx_ep = 0  #count essential params
+        lines = list()
+        sum_diff_r_pc_ess = 0
+        sum_diff_r_pc_all = 0
+        sum_pc_delta_all = 0
+        sum_pc_delta_ess = 0
+        descriptions = description.replace(r'Parameter ', '#').split('\n')
+        for idx_p in range(idf.model.num_identified_params):
+            idx_p_full = idf.model.identified_params[idx_p]
+            d = descriptions[idx_p_full]
+
+            if idf.opt['outputBarycentric']:
+                d = d.replace(r'first moment', 'center')
+            # add symbol for each parameter
+            d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p_full]))
+
+            # print beginning of each link block in green
+            if idx_p_full % 10 == 0 and idx_p_full < idf.model.num_model_params:
+                d = Fore.GREEN + d
+
+            # get some error values for each parameter
+            approx = self.xStd[idx_p]
+            apriori = self.xStdModel[idx_p_full]
+            diff = approx - apriori
+
+            if idf.urdf_file_real:
+                real = self.xStdReal[idx_p_full]
+                # set real params that are 0 to some small value
+                #if real == 0: real = 0.01
+
+                # get error percentage (new to real)
+                # so if 100% are the real value, how big is the error
+                diff_real = approx - real
+                if real != 0:
+                    diff_r_pc = (100 * diff_real) / real
                 else:
-                    print("Linear (relative to Frame) Standard Parameters")
+                    diff_r_pc = (100 * diff_real) / 0.01
 
-            # collect values for parameters
-            description = idf.model.generator.getDescriptionOfParameters()
-            if idf.opt['identifyFriction']:
-                for i in range(0, idf.model.num_dofs):
-                    description += "Parameter {}: Constant friction / offset of joint {}\n".format(
-                            i+idf.model.num_model_params,
-                            idf.model.jointNames[i]
-                    )
+                # add to final error percent sum
+                sum_diff_r_pc_all += np.abs(diff_r_pc)
+                if idx_p in idf.stdEssentialIdx:
+                    sum_diff_r_pc_ess += np.abs(diff_r_pc)
 
-                for i in range(0, idf.model.num_dofs*2):
-                    description += "Parameter {}: Velocity dep. friction joint {}\n".format(
-                            i+idf.model.num_dofs+idf.model.num_model_params,
-                            idf.model.jointNames[i%idf.model.num_dofs]
-                    )
-
-            idx_ep = 0  #count essential params
-            lines = list()
-            sum_diff_r_pc_ess = 0
-            sum_diff_r_pc_all = 0
-            sum_pc_delta_all = 0
-            sum_pc_delta_ess = 0
-            descriptions = description.replace(r'Parameter ', '#').split('\n')
-            for idx_p in range(idf.model.num_identified_params):
-                idx_p_full = idf.model.identified_params[idx_p]
-                d = descriptions[idx_p_full]
-
-                if idf.opt['outputBarycentric']:
-                    d = d.replace(r'first moment', 'center')
-                # add symbol for each parameter
-                d = d.replace(r':', ': {} -'.format(idf.model.param_syms[idx_p_full]))
-
-                # print beginning of each link block in green
-                if idx_p_full % 10 == 0 and idx_p_full < idf.model.num_model_params:
-                    d = Fore.GREEN + d
-
-                # get some error values for each parameter
-                approx = self.xStd[idx_p]
-                apriori = self.xStdModel[idx_p_full]
-                diff = approx - apriori
-
-                if idf.urdf_file_real:
-                    real = self.xStdReal[idx_p_full]
-                    # set real params that are 0 to some small value
-                    #if real == 0: real = 0.01
-
-                    # get error percentage (new to real)
-                    # so if 100% are the real value, how big is the error
-                    diff_real = approx - real
-                    if real != 0:
-                        diff_r_pc = (100 * diff_real) / real
-                    else:
-                        diff_r_pc = (100 * diff_real) / 0.01
-
-                    # add to final error percent sum
-                    sum_diff_r_pc_all += np.abs(diff_r_pc)
-                    if idx_p in idf.stdEssentialIdx:
-                        sum_diff_r_pc_ess += np.abs(diff_r_pc)
-
-                    # get error percentage (new to apriori)
-                    diff_apriori = apriori - real
-                    #if apriori == 0: apriori = 0.01
-                    if diff_apriori != 0:
-                        pc_delta = np.abs((100/diff_apriori)*diff_real)
-                    elif np.abs(diff_real) > 0:
-                        # if there was no error between apriori and real
-                        #pc_delta = np.abs((100/0.01)*diff_real)
-                        pc_delta = 100 + np.abs(diff_r_pc)
-                    else:
-                        # both real and a priori are zero, error is still at 100% (of zero error)
-                        pc_delta = 100
-                    sum_pc_delta_all += pc_delta
-                    if idx_p in idf.stdEssentialIdx:
-                        sum_pc_delta_ess += pc_delta
+                # get error percentage (new to apriori)
+                diff_apriori = apriori - real
+                #if apriori == 0: apriori = 0.01
+                if diff_apriori != 0:
+                    pc_delta = np.abs((100/diff_apriori)*diff_real)
+                elif np.abs(diff_real) > 0:
+                    # if there was no error between apriori and real
+                    #pc_delta = np.abs((100/0.01)*diff_real)
+                    pc_delta = 100 + np.abs(diff_r_pc)
                 else:
-                    # get percentage difference between apriori and identified values
-                    # (shown when real values are not known)
-                    if apriori != 0:
-                        diff_pc = (100 * diff) / apriori
-                    else:
-                        diff_pc = (100 * diff) / 0.01
-
-                #values for each line
-                if idf.opt['useEssentialParams'] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
-                    sigma = idf.p_sigma_x[idx_ep]
+                    # both real and a priori are zero, error is still at 100% (of zero error)
+                    pc_delta = 100
+                sum_pc_delta_all += pc_delta
+                if idx_p in idf.stdEssentialIdx:
+                    sum_pc_delta_ess += pc_delta
+            else:
+                # get percentage difference between apriori and identified values
+                # (shown when real values are not known)
+                if apriori != 0:
+                    diff_pc = (100 * diff) / apriori
                 else:
-                    sigma = 0.0
+                    diff_pc = (100 * diff) / 0.01
 
-                if idf.urdf_file_real and idf.opt['constrainToConsistent']:
-                    if idx_p_full in idf.model.non_id:
-                        idf.sdp.constr_per_param[idx_p_full].append('nID')
-                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
-                elif idf.urdf_file_real:
-                    vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
-                elif idf.opt['constrainToConsistent']:
-                    if idx_p_full in idf.model.non_id:
-                        idf.sdp.constr_per_param[idx_p_full].append('nID')
-                    vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
-                elif idf.opt['useEssentialParams']:
-                    vals = [apriori, approx, diff, diff_pc, sigma, d]
-                else:
-                    vals = [apriori, approx, diff, diff_pc, d]
-                lines.append(vals)
-
-                if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
-                    idx_ep += 1
+            #values for each line
+            if idf.opt['useEssentialParams'] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
+                sigma = idf.p_sigma_x[idx_ep]
+            else:
+                sigma = 0.0
 
             if idf.urdf_file_real and idf.opt['constrainToConsistent']:
-                column_widths = [13, 13, 13, 7, 7, 7, 6, 8, 45]
-                precisions = [8, 8, 8, 4, 1, 1, 3, 0, 0]
+                if idx_p_full in idf.model.non_id:
+                    idf.sdp.constr_per_param[idx_p_full].append('nID')
+                vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
             elif idf.urdf_file_real:
-                column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
-                precisions = [8, 8, 8, 4, 1, 1, 3, 0]
+                vals = [real, apriori, approx, diff, np.abs(diff_r_pc), pc_delta, sigma, d]
             elif idf.opt['constrainToConsistent']:
-                column_widths = [13, 13, 7, 7, 8, 45]
-                precisions = [8, 8, 4, 1, 0, 0]
+                if idx_p_full in idf.model.non_id:
+                    idf.sdp.constr_per_param[idx_p_full].append('nID')
+                vals = [apriori, approx, diff, diff_pc, ' '.join(idf.sdp.constr_per_param[idx_p_full]), d]
             elif idf.opt['useEssentialParams']:
-                column_widths = [13, 13, 7, 7, 6, 45]
-                precisions = [8, 8, 4, 1, 3, 0]
+                vals = [apriori, approx, diff, diff_pc, sigma, d]
             else:
-                column_widths = [13, 13, 7, 7, 45]
-                precisions = [8, 8, 4, 1, 0]
+                vals = [apriori, approx, diff, diff_pc, d]
+            lines.append(vals)
 
-            if not summary_only:
-                # print column header
-                template = ''
-                for w in range(0, len(column_widths)):
+            if idf.opt['useEssentialParams'] and idx_p in idf.stdEssentialIdx:
+                idx_ep += 1
+
+        if idf.urdf_file_real and idf.opt['constrainToConsistent']:
+            column_widths = [13, 13, 13, 7, 7, 7, 6, 8, 45]
+            precisions = [8, 8, 8, 4, 1, 1, 3, 0, 0]
+        elif idf.urdf_file_real:
+            column_widths = [13, 13, 13, 7, 7, 7, 6, 45]
+            precisions = [8, 8, 8, 4, 1, 1, 3, 0]
+        elif idf.opt['constrainToConsistent']:
+            column_widths = [13, 13, 7, 7, 8, 45]
+            precisions = [8, 8, 4, 1, 0, 0]
+        elif idf.opt['useEssentialParams']:
+            column_widths = [13, 13, 7, 7, 6, 45]
+            precisions = [8, 8, 4, 1, 3, 0]
+        else:
+            column_widths = [13, 13, 7, 7, 45]
+            precisions = [8, 8, 4, 1, 0]
+
+        if not summary_only:
+            # print column header
+            template = ''
+            for w in range(0, len(column_widths)):
+                template += '|{{{}:{}}}'.format(w, column_widths[w])
+            if idf.urdf_file_real and idf.opt['constrainToConsistent']:
+                print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Constr", "Description"))
+            elif idf.urdf_file_real:
+                print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Description"))
+            elif idf.opt['constrainToConsistent']:
+                print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))
+            elif idf.opt['useEssentialParams']:
+                print(template.format("A priori", "Ident", "Change", "%e", "%σ", "Description"))
+            else:
+                print(template.format("A priori", "Ident", "Change", "%e", "Description"))
+
+            # print values/description
+            template = ''
+            for w in range(0, len(column_widths)):
+                if(type(lines[0][w]) in [str, unicode, list]):
+                    # strings don't have precision
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if idf.urdf_file_real and idf.opt['constrainToConsistent']:
-                    print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Constr", "Description"))
-                elif idf.urdf_file_real:
-                    print(template.format("'Real'", "A priori", "Ident", "Change", "%e", "Δ%e", "%σ", "Description"))
-                elif idf.opt['constrainToConsistent']:
-                    print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))
-                elif idf.opt['useEssentialParams']:
-                    print(template.format("A priori", "Ident", "Change", "%e", "%σ", "Description"))
                 else:
-                    print(template.format("A priori", "Ident", "Change", "%e", "Description"))
-
-                # print values/description
-                template = ''
-                for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) in [str, unicode, list]):
-                        # strings don't have precision
-                        template += '|{{{}:{}}}'.format(w, column_widths[w])
-                    else:
-                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-                idx_p = 0
-                for l in lines:
-                    t = template.format(*l)
-                    if idx_p in idf.stdNonEssentialIdx:
-                        t = Style.DIM + t
-                    if idx_p in idf.stdEssentialIdx:
-                        t = Style.BRIGHT + t
-                    print(t, end=' ')
-                    idx_p += 1
-                    print(Style.RESET_ALL)
-                print("\n")
+                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+            idx_p = 0
+            for l in lines:
+                t = template.format(*l)
+                if idx_p in idf.stdNonEssentialIdx:
+                    t = Style.DIM + t
+                if idx_p in idf.stdEssentialIdx:
+                    t = Style.BRIGHT + t
+                print(t, end=' ')
+                idx_p += 1
+                print(Style.RESET_ALL)
+            print("\n")
 
     def printBaseParams(self, summary_only=False):
         idf = self.idf
@@ -345,7 +344,9 @@ class OutputConsole(object):
             import inspect
             print(inspect.cleandoc(r"""
                 \begin{table}[h]
-                    \caption{Identified standard parameters. Non-identifiable parameters are marked with *. These have no effect on dynamics and are determined only to satisfy consistency constraints.}
+                    \caption{Identified standard parameters. Non-identifiable parameters are marked
+                             with *. These have no effect on dynamics and are determined only to satisfy
+                             consistency constraints.}
                     \begin{center}
             """))
             header = inspect.cleandoc(r"""
@@ -613,10 +614,13 @@ class OutputMatplotlib(object):
                                 if i == n:
                                     ls = 'dashed'
                                     dashes = (3, 0.5)
-                            ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l, color=colors[i], alpha=1-(data_i/2.0), linestyle=ls, dashes=dashes)
+                            ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l,
+                                    color=colors[i], alpha=1-(data_i/2.0), linestyle=ls,
+                                    dashes=dashes)
                     else:
                         #data vector
-                        ax.plot(d['time'][::skip], d['data'][data_i][::skip], label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
+                        ax.plot(d['time'][::skip], d['data'][data_i][::skip],
+                                label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
 
                 ax.grid(which='both', linestyle="dotted", alpha=0.8)
                 if 'y_label' in group:

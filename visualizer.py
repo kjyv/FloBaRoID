@@ -306,12 +306,11 @@ class Visualizer(object):
         # additional callbacks to be used with key handling
         self.event_callback = None  # type: Callable
         self.timer_callback = self.next_frame
+        self.info_label = None
 
         self._initWindow()
         self._initCamera()
         self._initGL()
-
-        #&#x2191;&#x2193;
 
         legend = '''<font face="Helvetica,Arial" size=15>wasd,  &#8679; &#x2423; - move around <br/>
         mouse drag - look <br/>
@@ -642,6 +641,8 @@ class Visualizer(object):
         self.width = width
         self.height = height
         self.init_perspective()
+        if self.info_label:
+            self.info_label.y = self.height - 10
 
         return pyglet.event.EVENT_HANDLED
 

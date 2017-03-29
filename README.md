@@ -42,7 +42,7 @@ requirements for identification module:
 
 * python 2.7 or >=3.3
 * python modules
-	* numpy (> 1.8), scipy, sympy (>= 1.0), pyyaml, numpy-stl, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
+	* numpy (> 1.8), scipy, sympy (>= 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
 	* iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
 	* when using Python 2.7: future
 	* when using Python <3.5: typing

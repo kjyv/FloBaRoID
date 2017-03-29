@@ -460,10 +460,6 @@ class URDFHelpers(object):
         if not link_found or m is None:
             #print(Fore.RED + "No mesh information specified for link '{}' in URDF! Using a very large box.".format(link_name) + Fore.RESET)
             filepath = None
-        else:
-            if not filepath.lower().endswith('stl'):
-                raise ValueError("Can't open other than STL files.")
-                # TODO: could use pycollada for *.dae
 
         #if path is ros package path, get absolute system path
         if filepath and (filepath.startswith('package') or filepath.startswith('model')):
@@ -569,14 +565,14 @@ class URDFHelpers(object):
             If no mesh file is found, a cube around the old COM is returned.
             Expects old_com in barycentric form! '''
 
-        from stl import mesh   #using numpy-stl
+        import trimesh
         #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
 
         # box around current COM in case no mesh is availabe
         length = self.opt['cubeSize']
-        cube = [[-0.5*length+old_com[0], 0.5*length+old_com[0]], [-0.5*length+old_com[1], 0.5*length+old_com[1]],
-                [-0.5*length+old_com[2], 0.5*length+old_com[2]]]
+        cube = [[-0.5*length+old_com[0], -0.5*length+old_com[1], -0.5*length+old_com[2]],
+                [ 0.5*length+old_com[0],  0.5*length+old_com[1],  0.5*length+old_com[2]]]
         if scaling:
             hullScale = self.opt['hullScaling']
         else:
@@ -585,7 +581,7 @@ class URDFHelpers(object):
         rot_0 = np.identity(3)
 
         if filename and os.path.exists(filename):
-            stl_mesh = mesh.Mesh.from_file(filename)
+            mesh = trimesh.load_mesh(filename)
             #TODO: get mesh origin attributes, rotate and shift mesh data
 
             #gazebo and urdf use 1m for 1 stl unit
@@ -593,22 +589,20 @@ class URDFHelpers(object):
             scale_y = float(self.mesh_scaling.split()[1])
             scale_z = float(self.mesh_scaling.split()[2])
 
-            bounding_box = [[stl_mesh.x.min()*scale_x*hullScale, stl_mesh.x.max()*scale_x*hullScale],
-                            [stl_mesh.y.min()*scale_y*hullScale, stl_mesh.y.max()*scale_y*hullScale],
-                            [stl_mesh.z.min()*scale_z*hullScale, stl_mesh.z.max()*scale_z*hullScale]]
+            bounding_box = mesh.bounding_box.bounds * scale_x * hullScale
+
             # switch order of min/max if scaling is negative
             for s in range(0,3):
                 if [scale_x, scale_y, scale_z][s] < 0:
-                    bounding_box[s][0], bounding_box[s][1] = bounding_box[s][1], bounding_box[s][0]
+                    bounding_box[0][s], bounding_box[1][s] = bounding_box[1][s], bounding_box[0][s]
 
             return bounding_box, pos_0, rot_0
         else:
             # use <visual><box> or <collision><box> if specified
             box, pos, rot = self.getLinkGeometry(input_urdf, link_name)
             if np.any(np.array(box) != 0):
-                return [[-0.5*box[0]*hullScale, 0.5*box[0]*hullScale],
-                        [-0.5*box[1]*hullScale, 0.5*box[1]*hullScale],
-                        [-0.5*box[2]*hullScale, 0.5*box[2]*hullScale]], pos, rot
+                return [[-0.5*box[0]*hullScale, -0.5*box[1]*hullScale, -0.5*box[2]*hullScale],
+                        [0.5*box[0]*hullScale,   0.5*box[1]*hullScale,  0.5*box[2]*hullScale]], pos, rot
             else:
                 if self.opt['verbose']:
                     print(Fore.YELLOW + "Mesh file {} or box geometry not found for link '{}'! Using a {}m cube around a priori COM.".format(filename, link_name, length) + Fore.RESET)

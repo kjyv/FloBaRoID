@@ -118,24 +118,20 @@ class Grid(object):
 class Mesh(object):
     def __init__(self, mesh_file, scaling):
         # type: (str, np._ArrayLike) -> None
-        # load stl
-        from stl import mesh
-        self.mesh = mesh.Mesh.from_file(mesh_file)
-        self.num_vertices = np.size(self.mesh.points)
+        import trimesh
+        self.mesh = trimesh.load_mesh(mesh_file)
+        self.num_vertices = np.size(self.mesh.vertices)
 
-        # just repeat the face normals. proper vertex normals would be mean of all surrounding face
-        # normals. Maybe easier to just calculate proper vertex normals again, but we have no adjacency
-        # information
-        self.normals = np.repeat(self.mesh.normals, 3, axis=0).flatten()
-
-        self.vertices = self.mesh.points
-        self.vertices[:, [0, 3, 6]] *= scaling[0]
-        self.vertices[:, [1, 4, 7]] *= scaling[1]
-        self.vertices[:, [2, 5, 8]] *= scaling[2]
-        self.vertices = self.vertices.flatten()
+        self.normals = self.mesh.vertex_normals.reshape(-1).tolist() #.flatten()
+        self.faces = self.mesh.faces.reshape(-1).tolist()
+        self.vertices = self.mesh.vertices
+        self.vertices[:, 0] *= scaling[0]
+        self.vertices[:, 1] *= scaling[1]
+        self.vertices[:, 2] *= scaling[2]
+        self.vertices = self.vertices.reshape(-1).tolist()
 
     def getVerticeList(self):
-        return pyglet.graphics.vertex_list(self.num_vertices//3, ('v3f', self.vertices), ('n3f', self.normals))
+        return pyglet.graphics.vertex_list_indexed(self.num_vertices//3, self.faces, ('v3f/static', self.vertices), ('n3f/static', self.normals))
 
 
 class FirstPersonCamera(object):
@@ -718,10 +714,10 @@ class Visualizer(object):
             body['geometry'] = 'box'
             body['material'] = 'white rubber'
             b = np.array(boxes[linkName][0])
-            body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
-            body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                           np.abs(b[1][1])-np.abs(b[1][0]),
-                                           np.abs(b[2][1])-np.abs(b[2][0])])
+            body['size3'] = np.array([b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2]])
+            body['center'] = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
+                                           np.abs(b[1][1])-np.abs(b[0][1]),
+                                           np.abs(b[1][2])-np.abs(b[0][2])])
             body['position'] = boxes[linkName][1]
             body['rotation'] = boxes[linkName][2]
             self.bodies.append(body)
@@ -781,10 +777,10 @@ class Visualizer(object):
                 body['material'] = 'white rubber'
                 try:
                     b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
-                    body['size3'] = np.array([b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0]])
-                    body['center'] = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                                   np.abs(b[1][1])-np.abs(b[1][0]),
-                                                   np.abs(b[2][1])-np.abs(b[2][0])])
+                    body['size3'] = np.array([b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2]])
+                    body['center'] = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
+                                                   np.abs(b[1][1])-np.abs(b[0][1]),
+                                                   np.abs(b[1][2])-np.abs(b[0][2])])
                 except KeyError:
                     print('using cube for {}'.format(n_name))
                     body['size3'] = np.array([0.1, 0.1, 0.1])

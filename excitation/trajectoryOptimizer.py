@@ -50,7 +50,7 @@ class TrajectoryOptimizer(Optimizer):
         else:
             self.qmin = [self.config['trajectoryAngleMin']]*self.num_dofs
             self.qmax = [self.config['trajectoryAngleMax']]*self.num_dofs
-            self.qinit = [self.config['trajectoryAngleMax']-self.config['trajectoryAngleMin']]*self.num_dofs
+            self.qinit = [0.5*self.config['trajectoryAngleMin'] + 0.5*self.config['trajectoryAngleMax']]*self.num_dofs
 
         if not self.config['useDeg']:
             self.qmin = np.deg2rad(self.qmin)
@@ -162,12 +162,11 @@ class TrajectoryOptimizer(Optimizer):
             # not be very high as it is added again anyway)
             f = 1000.0
             if self.config['minVelocityConstraint']:
-                g = [10.0]*self.num_dofs*5
+                g = [10.0]*self.num_constraints
             else:
-                g = [10.0]*self.num_dofs*4
+                g = [10.0]*self.num_constraints
 
             fail = 1.0
-            self.iter_cnt-=1
             return f, g, fail
 
         self.trajectory.initWithParams(a,b,q, self.nf, wf)
@@ -277,7 +276,11 @@ class TrajectoryOptimizer(Optimizer):
                                                             self.last_best_f_f1), end=' ')
         print(Fore.RESET)
 
-        if self.mpi_rank == 0 and self.config['showOptimizationGraph']:
+        if self.config['verbose']:
+            if self.opt_prob.is_gradient:
+                print("(Gradient evaluation)")
+
+        if self.mpi_rank == 0 and not self.opt_prob.is_gradient and self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -381,6 +384,7 @@ class TrajectoryOptimizer(Optimizer):
         # Instanciate Optimization Problem
         opt_prob = pyOpt.Optimization('Trajectory optimization', self.objectiveFunc)
         opt_prob.addObj('f')
+        self.opt_prob = opt_prob
 
         self.addVarsAndConstraints(opt_prob)
         sol_vec = self.runOptimizer(opt_prob)

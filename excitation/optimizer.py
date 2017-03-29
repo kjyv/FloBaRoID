@@ -274,16 +274,16 @@ class Optimizer(object):
         # self.link_cuboid_hulls[l0_name][1], [2]
 
         b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
-        b0_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[1][0]),
-                                  np.abs(b[2][1])-np.abs(b[2][0])])
-        b0 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
+        b0_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[0][1]),
+                                  np.abs(b[1][2])-np.abs(b[0][2])])
+        b0 = fcl.Box(b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2])
 
         b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
-        b1_center = 0.5*np.array([np.abs(b[0][1])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[1][0]),
-                                  np.abs(b[2][1])-np.abs(b[2][0])])
-        b1 = fcl.Box(b[0][1]-b[0][0], b[1][1]-b[1][0], b[2][1]-b[2][0])
+        b1_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
+                                  np.abs(b[1][1])-np.abs(b[0][1]),
+                                  np.abs(b[1][2])-np.abs(b[0][2])])
+        b1 = fcl.Box(b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2])
 
         # move box to pos + box center pos (model has pos in link origin, box has zero at center)
         o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0+b0_center))
@@ -522,6 +522,14 @@ class Optimizer(object):
                 opt2 = pyOpt.PSQP()
                 opt2.setOption('MIT', self.config['localOptIterations'])  # max iterations
                 #opt2.setOption('MFV', ??)  # max function evaluations
+            elif self.config['localSolver'] == 'COBYLA':
+                if parallel:
+                    opt2 = pyOpt.COBYLA(pll_type='POA')
+                else:
+                    opt2 = pyOpt.COBYLA()
+                opt2.setOption('MAXFUN', self.config['localOptIterations'])  # max iterations
+                if self.config['verbose']:
+                    opt2.setOption('IPRINT', 2)
 
             # TODO: amount of function calls depends on amount of variables and iterations to
             # approximate gradient ('iterations' are probably the actual steps along the gradient). How
@@ -536,10 +544,13 @@ class Optimizer(object):
             if self.config['verbose']:
                 print('Runing local optimization with {}'.format(self.config['localSolver']))
             self.is_global = False
-            if parallel:
-                opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
+            if self.config['localSolver'] in ['cobyla', 'conmin']:
+                opt2(opt_prob, store_hst=False)
             else:
-                opt2(opt_prob, sens_step=0.1, store_hst=False)
+                if parallel:
+                    opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
+                else:
+                    opt2(opt_prob, sens_step=0.1, store_hst=False)
 
             self.gather_solutions()
 

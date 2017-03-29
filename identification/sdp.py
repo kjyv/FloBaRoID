@@ -255,11 +255,12 @@ class SDP(object):
                         for j in range(3):
                             p = i*10+1+j
                             if p not in self.delete_cols and p not in idf.opt['dontConstrain']:
-                                lb = Matrix([[ l[j] - m*link_cuboid_hull[j][0]]])
-                                ub = Matrix([[-l[j] + m*link_cuboid_hull[j][1]]])
+                                lb = Matrix([[ l[j] - m*link_cuboid_hull[0][j]]])
+                                ub = Matrix([[-l[j] + m*link_cuboid_hull[1][j]]])
                                 D_other_blocks.append(lb)
                                 D_other_blocks.append(ub)
                                 self.constr_per_param[p].append('hull')
+
             elif not idf.opt['limitCOMToApriori'] and idf.opt['identifyGravityParamsOnly']:
                     print(Fore.RED+"COM parameters are not constrained,", end=' ')
                     print("might result in rank deficiency when solving SDP problem!"+Fore.RESET)

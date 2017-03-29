@@ -302,6 +302,7 @@ class Visualizer(object):
         self.angles = None  # type: List[float]
         self.trajectory = None  # type: Trajectory
         self.playing_traj = False
+        self.playable = False
 
         # additional callbacks to be used with key handling
         self.event_callback = None  # type: Callable
@@ -589,7 +590,7 @@ class Visualizer(object):
                     self.event_callback()
 
         if symbol == key.ENTER:
-            if not self.playing_traj and np.any(self.trajectory):
+            if not self.playing_traj and self.playable:
                 self.playing_traj = True
                 pyglet.clock.schedule_interval(self.timer_callback, 1/self.fps)
             else:
@@ -881,12 +882,16 @@ if __name__ == '__main__':
         # display trajectory
         data = np.load(args.trajectory, encoding='latin1')
         if 'angles' in data:
-            data_is_static = True
+            data_type = 'static'
+        elif 'positions':
+            data_type = 'measurements'
+            v.playable = True
         else:
-            data_is_static = False
+            data_type = 'trajectory'
+            v.playable = True
     else:
         # just diplay model
-        data_is_static = False
+        data_type = 'none'
 
     def draw_model():
         if not args.trajectory:
@@ -894,12 +899,18 @@ if __name__ == '__main__':
             q0 = [0.0]*n_dof
         else:
             # take angles from data
-            if data_is_static:
+            if data_type == 'static':
                 q0 = data['angles'][v.display_index]['angles']
-            else:
+            elif data_type == 'trajectory':
                 # get data of trajectory
                 v.trajectory.setTime(v.display_index/v.fps)
                 q0 = [v.trajectory.getAngle(d) for d in range(config['num_dofs'])]
+            elif data_type == 'measurements':
+                idx = int(v.display_index*v.freq/v.fps)
+                if idx > data['positions'].shape[0]-1:
+                    v.display_index = 0
+                    idx = 0
+                q0 = data['positions'][idx, :]
 
         q = iDynTree.VectorDynSize.fromList(q0)
         dq = iDynTree.VectorDynSize.fromList([0.0]*n_dof)
@@ -912,15 +923,18 @@ if __name__ == '__main__':
         v.updateLabels()
 
     if args.trajectory:
-        if data_is_static:
+        if data_type == 'static':
             v.display_max = len(data['angles'])  # number of postures
-        else:
+        elif data_type == 'trajectory':
             trajectory = PulsedTrajectory(n_dof, use_deg=data['use_deg'])
             trajectory.initWithParams(data['a'], data['b'], data['q'], data['nf'], data['wf'])
             v.setModelTrajectory(trajectory)
 
-            freq = config['excitationFrequency']
+            v.freq = config['excitationFrequency']
             v.display_max = trajectory.getPeriodLength()*v.fps # length of trajectory
+        elif data_type == 'measurements':
+            v.freq = config['excitationFrequency']
+            v.display_max = data['positions'].shape[0]
 
     v.event_callback = draw_model
     v.event_callback()

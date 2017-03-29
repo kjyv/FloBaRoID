@@ -25,7 +25,6 @@ except:
 
 from colorama import Fore
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from fcl import fcl, collision_data, transform
 
 from identification.helpers import eulerAnglesToRotationMatrix
 
@@ -162,6 +161,7 @@ class Optimizer(object):
         # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
 
         import pyOpt
+        from fcl import fcl, collision_data, transform
 
         self.config = config
         self.sim_func = simulation_func
@@ -505,8 +505,8 @@ class Optimizer(object):
         if self.config['useLocalOptimization']:
             print("Runnning local gradient based solver")
 
-            #TODO: run local optimization for e.g. the three last best results (global solutions could be more or less optimal
-            # within their local minima)
+            # TODO: run local optimization for e.g. the three last best results (global solutions
+            # could be more or less optimal within their local minima)
 
             # after using global optimization, refine solution with gradient based method init
             # optimizer (more or less local)
@@ -537,12 +537,9 @@ class Optimizer(object):
                 if self.config['verbose']:
                     opt2.setOption('IPRINT', 2)
 
-            # TODO: amount of function calls depends on amount of variables and iterations to
-            # approximate gradient ('iterations' are probably the actual steps along the gradient). How
-            # to get proper no. of expected func calls? (one call per dimension for each iteration?)
             self.iter_max = self.local_iter_max
 
-            #use best constrained solution from last run (might be better than what solver thinks)
+            # use best constrained solution from last run (might be better than what solver thinks)
             if len(self.last_best_sol) > 0:
                 for i in range(len(opt_prob.getVarSet())):
                     opt_prob.getVar(i).value = self.last_best_sol[i]

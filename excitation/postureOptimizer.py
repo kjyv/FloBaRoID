@@ -68,7 +68,7 @@ class PostureOptimizer(Optimizer):
         if self.mpi_size > 1:
             print("process {}, iter #{}/{}".format(self.mpi_rank, self.iter_cnt, self.iter_max))
         else:
-            print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
+            print("call #{}/{}".format(self.iter_cnt, self.iter_max))
 
         # init vars
         fail = False

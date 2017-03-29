@@ -20,7 +20,7 @@ Tools:
 
 Features:
 
-* find optimized excitation trajectories with non-linear global optimization (as parameters of fourier-series for periodic soft trajectories) 
+* find optimized excitation trajectories with non-linear global optimization (as parameters of fourier-series for periodic soft trajectories)
 * data preprocessing
     * derive velocity and acceleration values from position readings
     * data is zero-phase low-pass filtered from supplied measurements
@@ -40,34 +40,34 @@ Features:
 
 requirements for identification module:
 
-* python 2.7 or >=3.3
+* python 2.7 or >= 3.3
 * python modules
-	* numpy (> 1.8), scipy, sympy (>= 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
-	* iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
-	* when using Python 2.7: future
-	* when using Python <3.5: typing
+    * numpy (> 1.8), scipy, sympy (>= 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
+    * iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
+    * when using Python 2.7: future
+    * when using Python < 3.5: typing
 
 (You can do `pip install -r requirements.txt` for most of them)
 
 optional:
 
+* pyglet, pyOpenGL (for visualizer)
+* dsdp5 (command line executable)
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (for html plots)
 * matplotlib2tikz (for tikz plots)
 * rbdl (alternative for inverse dynamics)
-* pyglet, pyOpenGL (for visualizer)
-* dsdp5 (command line executable)
 
 requirements for excitation module:
 
 * for ros, python modules: ros, moveit\_msg, moveit\_commander
-* for yarp (e.g. walkman): c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
+* for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
 * for other robots, new modules might have to be written
 
 requirements for optimization module:
 
 * optimization: python modules: iDynTree, pyOpt (fork at https://github.com/kjyv/pyOpt is recommended)
-* pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl)
+* pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
 
 
@@ -75,7 +75,7 @@ Quick start tutorial:
 
 The goal of identification is to find dynamic model parameters from measurements of motions. The options for all steps of this task are held within a configuration file in the config/ dir.
 
-1. copy one of the existing .yaml configuration files and customize 
+1. copy one of the existing .yaml configuration files and customize
 it for your setup.
 `cp config/kuka_lwr.yaml config/example.yaml`
 
@@ -97,7 +97,7 @@ known issues:
 * trajectory optimization is limited to fixed-base robots (contacts simulation,
   balance criterion etc. not implemented)
 * YARP excitation module is not generic (ROS should be)
-* using position control over YARP is not realtime safe and can expose timing issues (seems to happen especially with used python to c bridge)
+* using position control over YARP is not realtime safe and can expose timing issues (seems to happen especially with used python to C bridge)
 
 SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
 

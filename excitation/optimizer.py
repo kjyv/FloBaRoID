@@ -160,9 +160,6 @@ class Optimizer(object):
     def __init__(self, config, idf, model, simulation_func, world=None):
         # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
 
-        import pyOpt
-        from fcl import fcl, collision_data, transform
-
         self.config = config
         self.sim_func = simulation_func
         self.model = model
@@ -244,6 +241,8 @@ class Optimizer(object):
     def getLinkDistance(self, l0_name, l1_name, joint_q):
         # type: (str, str, np._ArrayLike[float]) -> float
         '''get shortest distance from link with id l0 to link with id l1 for posture joint_q'''
+
+        from fcl import fcl, collision_data, transform
 
         #get link rotation and position in world frame
         q = iDynTree.VectorDynSize.fromList(joint_q)
@@ -438,6 +437,8 @@ class Optimizer(object):
     def runOptimizer(self, opt_prob):
         # type: (pyOpt.Optimization) -> np._ArrayLike[float]
         ''' call global followed by local optimizer, return solution '''
+
+        import pyOpt
 
         initial = [v.value for v in list(opt_prob.getVarSet().values())]
 

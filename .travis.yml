@@ -44,6 +44,7 @@ install:
        CVXOPT_SUITESPARSE_SRC_DIR=$(pwd)/SuiteSparse pip install cvxopt;
       fi
     - pip install -r requirements.txt
+    - pip uninstall mpi4py
       #- pip install git+https://github.com/kjyv/pyOpt.git
 
 before_script:

@@ -867,7 +867,7 @@ class Identification(object):
                             'unified_scaling': False,
                             #'y_label': '$F {{ {} }}$ (Nm)'.format(i),
                             'y_label': 'Force (N)',
-                            'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
+                            'labels': ['Measured', 'Identified'], 'contains_base': False,
                             'dataset': [{
                                 'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
                                 'time': rel_time, 'title': torque_labels[i]}
@@ -880,7 +880,7 @@ class Identification(object):
                     'unified_scaling': False,
                     #'y_label': '$\\tau_{{ {} }}$ (Nm)'.format(i+1),
                     'y_label': 'Torque (Nm)',
-                    'labels': ['Measured (filtered)', 'Estimated'], 'contains_base': False,
+                    'labels': ['Measured', 'Identified'], 'contains_base': False,
                     'dataset': [{
                         'data': [np.vstack((tauMeasured[:,i], tauEstimated[:,i])).T],
                         'time': rel_time, 'title': torque_labels[i]}
@@ -926,15 +926,15 @@ class Identification(object):
                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                  'dataset':
                  [{'data': [tauMeasured], 'time': rel_time, 'title': 'Measured Torques'},
-                  {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimated Torques'},
-                  {'data': [tauAPriori], 'time': rel_time, 'title': 'CAD Torques'},
+                  {'data': [tauEstimated], 'time': rel_time, 'title': 'Estimation with identified Params'},
+                  {'data': [tauAPriori], 'time': rel_time, 'title': 'Estimation with A priori Params'},
                  ]
                 },
                 {'unified_scaling': True, 'y_label': 'Torque (Nm)', 'labels': torque_labels,
                  'contains_base': self.opt['floatingBase'] and self.opt['plotBaseDynamics'],
                  'dataset':
-                 [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Ident. Estimation Error'},
-                  {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'CAD Estimation Error'},
+                 [{'data': [tauMeasured-tauEstimated], 'time': rel_time, 'title': 'Identified Estimation Error'},
+                  {'data': [tauMeasured-tauAPriori], 'time': rel_time, 'title': 'A priori Estimation Error'},
                  ]
                 },
                 {'unified_scaling': False, 'y_label': 'rad (/s, /s2)', 'labels': self.model.jointNames, 'dataset':

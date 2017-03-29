@@ -8,7 +8,7 @@ from builtins import object
 from typing import Tuple, List, Dict, Callable, Any
 import math
 import collections
-import os, sys
+import sys
 
 import numpy as np
 from OpenGL import GLU
@@ -18,7 +18,6 @@ from pyglet import gl
 from pyglet.window import key
 
 from identification.model import Model
-from identification.helpers import eulerAnglesToRotationMatrix, rotationMatrixToEulerAngles
 from excitation.trajectoryGenerator import PulsedTrajectory, Trajectory
 
 # convert python list to gldouble array

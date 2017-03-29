@@ -566,7 +566,6 @@ class URDFHelpers(object):
             Expects old_com in barycentric form! '''
 
         import trimesh
-        #TODO: don't parse xml file each time (not a big amount of time though)
         filename = self.getMeshPath(input_urdf, link_name)
 
         # box around current COM in case no mesh is availabe

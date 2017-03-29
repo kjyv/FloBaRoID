@@ -859,7 +859,6 @@ class Model(object):
                 indep_idx = self.independent_cols[j]
                 for i in range(0, self.linear_deps.shape[1]):
                     for k in range(r, self.P.size):
-                        #factor = round(self.linear_deps[j, k-r], 5)
                         factor = self.linear_deps[j, k-r]
                         if np.abs(factor)>self.opt['minTol']: self.B[self.P[k],j] = factor
                 self.B[indep_idx,j] = 1

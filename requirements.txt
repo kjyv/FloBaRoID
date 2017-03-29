@@ -2,7 +2,7 @@ numpy
 scipy
 sympy
 pyyaml
-numpy-stl
+trimesh
 cvxopt
 pylmi-sdp
 matplotlib

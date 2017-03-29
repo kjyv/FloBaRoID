@@ -20,10 +20,8 @@ from IPython import embed
 
 class NLOPT(Optimizer):
     def __init__(self, idf):
-        super(NLOPT, self).__init__(idf.opt, idf.model, None)
-
-        self.idf = idf
-        self.model = idf.model
+        idf.opt['num_dofs'] = idf.model.num_dofs
+        super(NLOPT, self).__init__(idf.opt, idf, idf.model, None)
 
         if not self.idf.opt['floatingBase'] and self.idf.opt['deleteFixedBase']:
             # ignore first fixed link
@@ -228,11 +226,11 @@ class NLOPT(Optimizer):
                 ln = self.idf.model.linkNames[l]
                 com = x[l*self.per_link+1:l*self.per_link+4]/x[l*self.per_link]
                 cons_com[l*6+0] = com[0] - self.link_hulls[ln][0][0][0]  #lower bound
-                cons_com[l*6+1] = com[1] - self.link_hulls[ln][0][1][0]
-                cons_com[l*6+2] = com[2] - self.link_hulls[ln][0][2][0]
-                cons_com[l*6+3] = self.link_hulls[ln][0][0][1] - com[0]  #upper bound
+                cons_com[l*6+1] = com[1] - self.link_hulls[ln][0][0][1]
+                cons_com[l*6+2] = com[2] - self.link_hulls[ln][0][0][2]
+                cons_com[l*6+3] = self.link_hulls[ln][0][1][0] - com[0]  #upper bound
                 cons_com[l*6+4] = self.link_hulls[ln][0][1][1] - com[1]  #upper bound
-                cons_com[l*6+5] = self.link_hulls[ln][0][2][1] - com[2]  #upper bound
+                cons_com[l*6+5] = self.link_hulls[ln][0][1][2] - com[2]  #upper bound
             cons += cons_com
 
         c = self.testConstraints(cons)
@@ -317,11 +315,11 @@ class NLOPT(Optimizer):
                 ln = self.idf.model.linkNames[l]
                 com = x[l*self.per_link+1+1:l*self.per_link+1+4]
                 cons_com[l*6+0] = com[0] - self.link_hulls[ln][0][0][0]  #lower bound
-                cons_com[l*6+1] = com[1] - self.link_hulls[ln][0][1][0]
-                cons_com[l*6+2] = com[2] - self.link_hulls[ln][0][2][0]
-                cons_com[l*6+3] = self.link_hulls[ln][0][0][1] - com[0]  #upper bound
+                cons_com[l*6+1] = com[1] - self.link_hulls[ln][0][0][1]
+                cons_com[l*6+2] = com[2] - self.link_hulls[ln][0][0][2]
+                cons_com[l*6+3] = self.link_hulls[ln][0][1][0] - com[0]  #upper bound
                 cons_com[l*6+4] = self.link_hulls[ln][0][1][1] - com[1]  #upper bound
-                cons_com[l*6+5] = self.link_hulls[ln][0][2][1] - com[2]  #upper bound
+                cons_com[l*6+5] = self.link_hulls[ln][0][1][2] - com[2]  #upper bound
             cons += cons_com
 
         c = self.testConstraints(cons)

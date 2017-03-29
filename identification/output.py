@@ -76,6 +76,9 @@ class OutputConsole(object):
     def printStdParams(self, summary_only=False):
         idf = self.idf
 
+        if not idf.opt['showStandardParams']:
+            return
+
         if not summary_only:
             if idf.opt['outputBarycentric']:
                 print("Barycentric (relative to COM) Standard Parameters")
@@ -243,150 +246,154 @@ class OutputConsole(object):
     def printBaseParams(self, summary_only=False):
         idf = self.idf
 
-        if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
-            print("Base Parameters and Corresponding standard columns")
-            if not idf.opt['useEssentialParams']:
-                baseEssentialIdx = list(range(0, idf.model.num_base_params))
-                baseNonEssentialIdx = []
-                xBase_essential = idf.model.xBase
+        if not idf.opt['showBaseParams'] or summary_only or idf.opt['estimateWith'] in ['urdf', 'std_direct']:
+            return
+
+        print("Base Parameters and Corresponding standard columns")
+        if not idf.opt['useEssentialParams']:
+            baseEssentialIdx = list(range(0, idf.model.num_base_params))
+            baseNonEssentialIdx = []
+            xBase_essential = idf.model.xBase
+        else:
+            baseEssentialIdx = idf.baseEssentialIdx
+            baseNonEssentialIdx = idf.baseNonEssentialIdx
+            xBase_essential = idf.xBase_essential
+
+        # collect values for parameters
+        idx_ep = 0
+        lines = list()
+        sum_error_all_base = 0
+        for idx_p in range(0, idf.model.num_base_params):
+            if idf.opt['useEssentialParams']: # and xBase_essential[idx_p] != 0:
+                new = xBase_essential[idx_p]
             else:
-                baseEssentialIdx = idf.baseEssentialIdx
-                baseNonEssentialIdx = idf.baseNonEssentialIdx
-                xBase_essential = idf.xBase_essential
+                new = idf.model.xBase[idx_p]
+            old = idf.model.xBaseModel[idx_p]
+            diff = new - old
+            if idf.urdf_file_real:
+                real = self.xBaseReal[idx_p]
+                error = new - real
+                sum_error_all_base += np.abs(error)
 
-            # collect values for parameters
-            idx_ep = 0
-            lines = list()
-            sum_error_all_base = 0
-            for idx_p in range(0, idf.model.num_base_params):
-                if idf.opt['useEssentialParams']: # and xBase_essential[idx_p] != 0:
-                    new = xBase_essential[idx_p]
+            # collect linear dependencies for this param
+            #deps = np.where(np.abs(idf.linear_deps[idx_p, :])>0.1)[0]
+            #dep_factors = idf.linear_deps[idx_p, deps]
+
+            if idf.opt['showBaseEqns']:
+                param_columns = " = "
+                param_columns += "{}".format(idf.model.base_deps[idx_p])
+                #for p in range(0, len(deps)):
+                #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
+            else:
+                param_columns = ""
+
+            if idf.opt['useEssentialParams']:
+                if idx_p in idf.baseEssentialIdx:
+                    sigma = idf.p_sigma_x[idx_ep]
                 else:
-                    new = idf.model.xBase[idx_p]
-                old = idf.model.xBaseModel[idx_p]
-                diff = new - old
-                if idf.urdf_file_real:
-                    real = self.xBaseReal[idx_p]
-                    error = new - real
-                    sum_error_all_base += np.abs(error)
-
-                # collect linear dependencies for this param
-                #deps = np.where(np.abs(idf.linear_deps[idx_p, :])>0.1)[0]
-                #dep_factors = idf.linear_deps[idx_p, deps]
-
-                if idf.opt['showBaseEqns']:
-                    param_columns = " = "
-                    param_columns += "{}".format(idf.model.base_deps[idx_p])
-                    #for p in range(0, len(deps)):
-                    #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
-                else:
-                    param_columns = ""
-
-                if idf.opt['useEssentialParams']:
-                    if idx_p in idf.baseEssentialIdx:
-                        sigma = idf.p_sigma_x[idx_ep]
-                    else:
-                        sigma = 0
-                else:
-                    sigma = idf.p_sigma_x[idx_p]
-
-                if idf.urdf_file_real:
-                    lines.append([idx_p, real, old, new, diff, error, sigma, param_columns])
-                else:
-                    lines.append([idx_p, old, new, diff, sigma, param_columns])
-
-                if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
-                    idx_ep+=1
+                    sigma = 0
+            else:
+                sigma = idf.p_sigma_x[idx_p]
 
             if idf.urdf_file_real:
-                column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
-                precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
+                lines.append([idx_p, real, old, new, diff, error, sigma, param_columns])
             else:
-                column_widths = [3, 13, 13, 7, 6, 30]   # widths of the columns
-                precisions = [0, 8, 8, 4, 3, 0]         # numerical precision
+                lines.append([idx_p, old, new, diff, sigma, param_columns])
 
-            if not summary_only:
-                # print column header
-                template = ''
-                for w in range(0, len(column_widths)):
+            if idf.opt['useEssentialParams'] and idx_p in idf.baseEssentialIdx:
+                idx_ep+=1
+
+        if idf.urdf_file_real:
+            column_widths = [3, 13, 13, 13, 7, 7, 6, 30]   # widths of the columns
+            precisions = [0, 8, 8, 8, 4, 4, 3, 0]         # numerical precision
+        else:
+            column_widths = [3, 13, 13, 7, 6, 30]   # widths of the columns
+            precisions = [0, 8, 8, 4, 3, 0]         # numerical precision
+
+        if not summary_only:
+            # print column header
+            template = ''
+            for w in range(0, len(column_widths)):
+                template += '|{{{}:{}}}'.format(w, column_widths[w])
+            if idf.urdf_file_real:
+                print(template.format("#", "Real", "A priori", "Ident", "Change", "Error", "%σ", "Description"))
+            else:
+                print(template.format("#", "A priori", "Ident", "Change", "%σ", "Description"))
+
+            # print values/description
+            template = ''
+            for w in range(0, len(column_widths)):
+                if(type(lines[0][w]) in [str, unicode]):
+                    # strings don't have precision
                     template += '|{{{}:{}}}'.format(w, column_widths[w])
-                if idf.urdf_file_real:
-                    print(template.format("\#", "Real", "A priori", "Ident", "Change", "Error", "%σ", "Description"))
                 else:
-                    print(template.format("\#", "A priori", "Ident", "Change", "%σ", "Description"))
-
-                # print values/description
-                template = ''
-                for w in range(0, len(column_widths)):
-                    if(type(lines[0][w]) in [str, unicode]):
-                        # strings don't have precision
-                        template += '|{{{}:{}}}'.format(w, column_widths[w])
-                    else:
-                        template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
-                idx_p = 0
-                for l in lines:
-                    t = template.format(*l)
-                    if idx_p in baseNonEssentialIdx:
-                        t = Style.DIM + t
-                    elif idx_p in baseEssentialIdx:
-                        t = Style.BRIGHT + t
-                    if idf.opt['showEssentialSteps'] and l[-2] == np.max(idf.p_sigma_x):
-                        t = Fore.CYAN + t
-                    print(t, end=' ')
-                    idx_p+=1
-                    print(Style.RESET_ALL)
+                    template += '|{{{}:{}.{}f}}'.format(w, column_widths[w], precisions[w])
+            idx_p = 0
+            for l in lines:
+                t = template.format(*l)
+                if idx_p in baseNonEssentialIdx:
+                    t = Style.DIM + t
+                elif idx_p in baseEssentialIdx:
+                    t = Style.BRIGHT + t
+                if idf.opt['showEssentialSteps'] and l[-2] == np.max(idf.p_sigma_x):
+                    t = Fore.CYAN + t
+                print(t, end=' ')
+                idx_p+=1
+                print(Style.RESET_ALL)
 
     def printLatex(self):
         ''' print standard params also as latex table '''
         idf = self.idf
-        if idf.opt['outputLatex']:
-            print('As Latex:')
-            import inspect
-            print(inspect.cleandoc(r"""
-                \begin{table}[h]
-                    \caption{Identified standard parameters. Non-identifiable parameters are marked
-                             with *. These have no effect on dynamics and are determined only to satisfy
-                             consistency constraints.}
-                    \begin{center}
-            """))
-            header = inspect.cleandoc(r"""
-                    \begin{minipage}[t]{0.32\linewidth}
-                        \resizebox{0.97\textwidth}{!}{%
-                        \begin{tabular}[t]{c c c}
-                            \hline
-                            \rule{0pt}{12pt} Parameter & Prior & Identified \\[2pt]
-                            \hline\rule{0pt}{12pt}
-            """)
-            footer = inspect.cleandoc(r"""
-                            \hline
-                        \end{tabular}}
-                    \end{minipage}
-            """)
-            print(header)
+        if not idf.opt['outputLatex']:
+            return
 
-            #print table rows
-            for idx_p in range(10, idf.model.num_identified_params):
-                #if idx_p == len(idf.model.identifiable) // 2:
-                if idx_p-10 in [(idf.model.num_identified_params-10) // 3, ((idf.model.num_identified_params-10) // 3)*2]:
-                    #start new table after half of params
-                    print(footer)
-                    print(header)
-                #if idx_p in idf.model.identifiable:
-                #add another underscore for proper subscripts
-                import re
-                param = str(idf.model.param_syms[idx_p])
-                p = re.compile(r"([0-9]+)(.*)")
-                param = p.sub(r'{\1\2}', param)
-                nonid = '*' if idx_p in idf.model.non_id else ''
-                real = self.xStdReal if idf.urdf_file_real else self.xStdModel
-                print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], self.xStd[idx_p], nonid))
+        print('As Latex:')
+        import inspect
+        print(inspect.cleandoc(r"""
+            \begin{table}[h]
+                \caption{Identified standard parameters. Non-identifiable parameters are marked
+                         with *. These have no effect on dynamics and are determined only to satisfy
+                         consistency constraints.}
+                \begin{center}
+        """))
+        header = inspect.cleandoc(r"""
+                \begin{minipage}[t]{0.32\linewidth}
+                    \resizebox{0.97\textwidth}{!}{%
+                    \begin{tabular}[t]{c c c}
+                        \hline
+                        \rule{0pt}{12pt} Parameter & Prior & Identified \\[2pt]
+                        \hline\rule{0pt}{12pt}
+        """)
+        footer = inspect.cleandoc(r"""
+                        \hline
+                    \end{tabular}}
+                \end{minipage}
+        """)
+        print(header)
 
-            print(footer)
-            print(inspect.cleandoc(r"""
-                    \end{center}
-                \end{table}
-            """))
-            print("")
+        #print table rows
+        for idx_p in range(10, idf.model.num_identified_params):
+            #if idx_p == len(idf.model.identifiable) // 2:
+            if idx_p-10 in [(idf.model.num_identified_params-10) // 3, ((idf.model.num_identified_params-10) // 3)*2]:
+                #start new table after half of params
+                print(footer)
+                print(header)
+            #if idx_p in idf.model.identifiable:
+            #add another underscore for proper subscripts
+            import re
+            param = str(idf.model.param_syms[idx_p])
+            p = re.compile(r"([0-9]+)(.*)")
+            param = p.sub(r'{\1\2}', param)
+            nonid = '*' if idx_p in idf.model.non_id else ''
+            real = self.xStdReal if idf.urdf_file_real else self.xStdModel
+            print("        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(param, real[idx_p], self.xStd[idx_p], nonid))
+
+        print(footer)
+        print(inspect.cleandoc(r"""
+                \end{center}
+            \end{table}
+        """))
+        print("")
 
     def printStats(self, summary_only=False):
         idf = self.idf
@@ -472,14 +479,15 @@ class OutputConsole(object):
                 print("Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".\
                         format(sq_error_idf, sq_error_apriori))
         else:
-            if idf.opt['identifyGravityParamsOnly']:
-                xStd_full = idf.model.xStdModel.copy()
-                xStd_full[p_idf] = idf.model.xStd
-                sq_error_apriori = np.square(la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf]))
-            else:
-                sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
-            print("Squared distance of identifiable std parameter vectors to a priori: {}".\
-                    format(sq_error_apriori))
+            if idf.opt['showStandardParams'] and not summary_only:
+                if idf.opt['identifyGravityParamsOnly']:
+                    xStd_full = idf.model.xStdModel.copy()
+                    xStd_full[p_idf] = idf.model.xStd
+                    sq_error_apriori = np.square(la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf]))
+                else:
+                    sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
+                print("Squared distance of identifiable std parameter vectors to a priori: {}".\
+                        format(sq_error_apriori))
             if idf.opt['showBaseParams'] and not summary_only and idf.opt['estimateWith'] not in ['urdf', 'std_direct']:
                 sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
                 print("Squared distance of base parameter vectors (identified vs. a priori): {}".\

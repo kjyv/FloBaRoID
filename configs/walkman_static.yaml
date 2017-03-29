@@ -4,13 +4,13 @@
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
 # trajectory optimization
-useGlobalOptimization: 0         #use global solver first
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
-globalOptIterations: 1
-globalOptSize: 100               #Swarm size or Population size
+useGlobalOptimization: 0         #use global solver first (recommended)
+globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+globalOptIterations: 10          #Swarm iterations or Generations
+globalOptSize: 100               #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
-localOptIterations: 5            #how many optimizer iterations to use. this is not necessarily equal to function calls (~50 times of this)
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
+localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step

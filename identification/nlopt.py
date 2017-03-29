@@ -242,9 +242,9 @@ class NLOPT(Optimizer):
                 self.x_constr.append(c)
                 self.updateGraph()
 
-        # print some iter stats
+        # print some call stats
         if self.idf.opt['verbose'] and self.inner_iter % 100 == 0:
-            print("inner iter {}, u={}, base dist:{}, inertia pd:{}, tri ineq:{}, mass sum:{}".format(self.inner_iter, u,
+            print("call #{}, u={}, base dist:{}, inertia pd:{}, tri ineq:{}, mass sum:{}".format(self.inner_iter, u,
                 np.sum(np.array(cons_base)), np.all(np.array(cons_inertia) >= 0), np.all(np.array(cons_tri) >= 0), cons_mass_sum))
         self.inner_iter += 1
 

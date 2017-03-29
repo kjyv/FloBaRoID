@@ -49,7 +49,7 @@ requirements for identification module:
 
 (You can do `pip install -r requirements.txt` for most of them)
 
-optional:  
+optional:
 
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (for html plots)
@@ -94,11 +94,10 @@ identified parameters is written. Another measurements file can be supplied for 
 
 known issues:
 
-* trajectory optimization does not yet check for self or other collisions (e.g. objects from a world URDF)
-* trajectory optimization is limited to fixed-base robots ATM (collision and contacts missing,
-  also balance criterion etc.)
+* trajectory optimization is limited to fixed-base robots (contacts simulation,
+  balance criterion etc. not implemented)
 * YARP excitation module is not generic (ROS should be)
-* using position control over yarp is suboptimal and can expose timing issues (seems to happen especially with used python to c bridge)
+* using position control over YARP is not realtime safe and can expose timing issues (seems to happen especially with used python to c bridge)
 
 SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
 

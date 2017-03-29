@@ -110,8 +110,8 @@ class TrajectoryOptimizer(Optimizer):
         wf = x[0]
         q = x[1:self.num_dofs+1]
         ab_len = self.num_dofs*self.nf[0]
-        a = np.array(np.split(x[self.num_dofs+1:self.num_dofs+1+ab_len], self.num_dofs))
-        b = np.array(np.split(x[self.num_dofs+1+ab_len:self.num_dofs+1+ab_len*2], self.num_dofs))
+        a = np.array(np.split(np.array(x[self.num_dofs+1:self.num_dofs+1+ab_len]), self.num_dofs))
+        b = np.array(np.split(np.array(x[self.num_dofs+1+ab_len:self.num_dofs+1+ab_len*2]), self.num_dofs))
         return wf, q, a, b
 
 
@@ -145,7 +145,7 @@ class TrajectoryOptimizer(Optimizer):
 
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
-        print("iter #{}/{}".format(self.iter_cnt, self.iter_max))
+        print("call #{}/{}".format(self.iter_cnt, self.iter_max))
 
         wf, q, a, b = self.vecToParams(x)
 

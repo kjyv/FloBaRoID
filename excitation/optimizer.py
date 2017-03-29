@@ -15,7 +15,6 @@ from distutils.version import LooseVersion
 if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
     plt.style.use('seaborn-pastel')
 
-import pyOpt
 try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
@@ -161,6 +160,8 @@ class Optimizer(object):
     '''base class for different optimizers'''
     def __init__(self, config, idf, model, simulation_func, world=None):
         # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
+
+        import pyOpt
 
         self.config = config
         self.sim_func = simulation_func
@@ -368,6 +369,8 @@ class Optimizer(object):
         self.yar = []           # type: List[float]  # y value, i.e. obj func value
         self.x_constr = []      # type: List[bool]   # within constraints or not (feasible)
         self.ax1.plot(self.xar, self.yar)
+        self.ax1.set_xlabel('Function evaluation #')
+        self.ax1.set_ylabel('Objective function value')
 
         self.updateGraphEveryVals = 5
 
@@ -446,6 +449,8 @@ class Optimizer(object):
                     opt = pyOpt.NSGA2(pll_type='POA') # genetic algorithm
                 else:
                     opt = pyOpt.NSGA2()
+                if self.config['globalOptSize'] % 4:
+                    raise IOError("globalOptSize needs to be a multiple of 4 for NSGA2")
                 opt.setOption('PopSize', self.config['globalOptSize'])   # Population Size (a Multiple of 4)
                 opt.setOption('maxGen', self.config['globalOptIterations'])   # Maximum Number of Generations
                 opt.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
@@ -457,7 +462,7 @@ class Optimizer(object):
                 #eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
                 #pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
                 #pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
-                self.iter_max = '(unknown)'
+                self.iter_max = self.config['globalOptSize']*self.config['globalOptIterations']
             elif self.config['globalSolver'] == 'ALPSO':
                 if parallel:
                     opt = pyOpt.ALPSO(pll_type='SPM')  #augmented lagrange particle swarm optimization
@@ -528,6 +533,7 @@ class Optimizer(object):
                 else:
                     opt2 = pyOpt.COBYLA()
                 opt2.setOption('MAXFUN', self.config['localOptIterations'])  # max iterations
+                opt2.setOption('RHOBEG', 0.1)  # initial step size
                 if self.config['verbose']:
                     opt2.setOption('IPRINT', 2)
 
@@ -544,7 +550,7 @@ class Optimizer(object):
             if self.config['verbose']:
                 print('Runing local optimization with {}'.format(self.config['localSolver']))
             self.is_global = False
-            if self.config['localSolver'] in ['cobyla', 'conmin']:
+            if self.config['localSolver'] in ['COBYLA', 'CONMIN']:
                 opt2(opt_prob, store_hst=False)
             else:
                 if parallel:

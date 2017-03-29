@@ -1,13 +1,9 @@
 
-#### excitation
+#### trajectory generation and excitation
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
-useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 7             #how many postures to generate (must be >1)
-scaleCollisionHull: 0.7
-staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
-
+# trajectory optimization
 useGlobalOptimization: 0         #use global solver first
 globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
@@ -40,6 +36,49 @@ ignoreLinkPairsForCollision:
     - ['LHipMot', 'seat_link']
     - ['RHipMot', 'seat_link']
 
+# initial values to start optimization from (if using global opt not really important)
+trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
+trajectoryPulseMin:  0.5
+trajectoryPulseMax:  1.0
+trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
+trajectoryCoeffMin: -0.4         #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMax:  0.4
+trajectoryAngleMin: -10.0        #determines the range in which the pulsation center for each joint will be (in degrees)
+trajectoryAngleMax: 10.0
+
+# instead of one range, define individual ranges for each link. initial is the center of these
+# ranges. If ..AngleMin/Max is to be used for all of them, set to null
+trajectoryAngleRanges:
+    - null
+ #   [[-10.9745248069, 8.9797344371],
+ #    [-18.9543738355, 8.9746393985],
+ #    [-27.938974128, 13.9696016556],
+ #    [10.0,          30.929013234],
+ #    [-12.9596980573, 5.9797344371],
+ #    [-8.9771869178, 8.9771869178]
+ #   ]
+
+# manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
+# (or leave completely empty)
+ovrPosLimit:
+    - null
+    - null 
+    - null
+    - null
+    - null
+    - null
+    - null
+
+# maximize smallest velocity for each joint (better excitation of parameters)
+# (implemented as penalty, so will not necessarily reach the set value)
+minVelocityConstraint: 0
+minVelocityPercentage: 0.1
+
+# static posture optimization (for gravity term identification)
+useStaticTrajectories: 1         #generate simple 'trajectories' of static postures for identification of gravity terms
+numStaticPostures: 7             #how many postures to generate (must be >1)
+scaleCollisionHull: 0.7
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
 # ['LHipLat', 'LHipYaw', 'LHipSag', 'LKneeSag', 'LAnkSag', 'LAnkLat',
 #  'RHipLat', 'RHipYaw', 'RHipSag', 'RKneeSag', 'RAnkSag', 'RAnkLat',
 #  'WaistLat', 'WaistSag', 'WaistYaw',
@@ -103,43 +142,6 @@ initialPostures: [               #for static optimization, feasible postures to 
      85.0, -45.0, 0.0, 0.0, 0.0, 0.0, 0.0     #right arm
     ]
     ]
-# initial values to start optimization from (if using global opt not really important)
-trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)
-trajectoryPulseMin:  0.5
-trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.1         #set this as high as possible without violating velocity constraints (see output after start)
-trajectoryCoeffMin: -0.4         #determines in which range the chosen params have to be (smaller=lower vel)
-trajectoryCoeffMax:  0.4
-trajectoryAngleMin: -10.0        #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax: 10.0
-
-# instead of one range, define individual ranges for each link. initial is the center of these
-# ranges. If ..AngleMin/Max is to be used for all of them, set to null
-trajectoryAngleRanges:
-    - null
- #   [[-10.9745248069, 8.9797344371],
- #    [-18.9543738355, 8.9746393985],
- #    [-27.938974128, 13.9696016556],
- #    [10.0,          30.929013234],
- #    [-12.9596980573, 5.9797344371],
- #    [-8.9771869178, 8.9771869178]
- #   ]
-
-# manual angle limits: pairs of upper and lower (in degrees). put in null to use values from URDF
-# (or leave completely empty)
-ovrPosLimit:
-    - null
-    - null 
-    - null
-    - null
-    - null
-    - null
-    - null
-
-# maximize smallest velocity for each joint (better excitation of parameters)
-# (implemented as penalty, so will not necessarily reach the set value)
-minVelocityConstraint: 0
-minVelocityPercentage: 0.1
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)

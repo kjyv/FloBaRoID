@@ -461,7 +461,7 @@ class SDP(object):
     def identifyFeasibleStandardParametersDirect(self, idf):
         # type: (Identification) -> None
         ''' use SDP optimzation to solve constrained OLS to find globally optimal physically
-            feasible std parameters. Based on code from Sousa, 2014, using direct regressor from Gautier, 2013
+            feasible std parameters. Based on code from Sousa, 2014
         '''
         with helpers.Timer() as t:
             #if idf.opt['useAPriori']:
@@ -475,11 +475,11 @@ class SDP(object):
             I = Identity
             delta = Matrix(idf.model.param_syms)
 
-            YStd = idf.YStd_nonsing
+            YStd = idf.model.YStd #idf.YStd_nonsing
             tau = idf.model.torques_stack
 
-            if idf.opt['useRegressorRegularization']:
-                p_nid = idf.model.non_id
+            p_nid = idf.model.non_id
+            if idf.opt['useRegressorRegularization'] and len(p_nid):
                 #p_nid = list(set(p_nid).difference(set(self.delete_cols)))
                 #l = [0.001]*len(p_nid)
                 l = [(float(idf.base_error) / len(p_nid)) * 1.5]*len(p_nid)   #proportion of distance term

@@ -1,27 +1,16 @@
 
-#### trajectory gneration and excitation
+#### trajectory generation and excitation
 
 optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
 
-useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
-numStaticPostures: 5             #how many postures to generate (must be >1)
-scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
-staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
-initialPostures:                 #for static optimization, feasible postures to start from (useful only when not using global optimization)
-    - [0,0,0,0,0,0,0]
-    - [0,0.1,0,0.8,0,-0.4,0]
-    - [0,0,0,-0.8,0,0,0]
-    - [0,0.75,0,0,0,0,0]
-    - [0,-0.75,0,0,0.4,0,0]
-
-# proper trajectory optimization
-useGlobalOptimization: 1         #use global solver first (recommended)
+# trajectory optimization
+useGlobalOptimization: 0         #use global solver first (recommended)
 globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 globalOptSize: 10                #Swarm size or Population size
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
-localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
-localOptIterations: 1            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
+localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
+localOptIterations: 10           #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
@@ -37,7 +26,7 @@ ignoreLinkPairsForCollision:     #don't check collision between these pairs
 trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.3
 trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.4         #set this as high as possible without violating constraints (see output after start)
+trajectoryCoeffInit: 0.3         #set this as high as possible without violating constraints at start (see output after start)
 trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
 trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
@@ -61,6 +50,18 @@ ovrPosLimit:
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
+
+# static posture optimization (for gravity term identification)
+useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
+numStaticPostures: 5             #how many postures to generate (must be >1)
+scaleCollisionHull: 0.8          #scale urdf hull sizes for collision testing
+staticPostureTime: 0.02          # time in s per posture (nr. of samples => this * number of postures)
+initialPostures:                 #for static optimization, feasible postures to start from (useful only when not using global optimization)
+    - [0,0,0,0,0,0,0]
+    - [0,0.1,0,0.8,0,-0.4,0]
+    - [0,0,0,-0.8,0,0,0]
+    - [0,0.75,0,0,0,0,0]
+    - [0,-0.75,0,0,0.4,0,0]
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)

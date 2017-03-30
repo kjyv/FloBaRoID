@@ -197,12 +197,12 @@ class TrajectoryOptimizer(Optimizer):
         for n in range(self.num_dofs):
             # check for joint limits
             # joint pos lower
-            if len(self.config['ovrPosLimit'])>=n and self.config['ovrPosLimit'][n]:
+            if len(self.config['ovrPosLimit'])>n and self.config['ovrPosLimit'][n]:
                 g[n] = np.deg2rad(self.config['ovrPosLimit'][n][0]) - np.min(trajectory_data['positions'][:, n])
             else:
                 g[n] = self.limits[jn[n]]['lower'] - np.min(trajectory_data['positions'][:, n])
             # joint pos upper
-            if len(self.config['ovrPosLimit'])>=n and self.config['ovrPosLimit'][n]:
+            if len(self.config['ovrPosLimit'])>n and self.config['ovrPosLimit'][n]:
                 g[self.num_dofs+n] = np.max(trajectory_data['positions'][:, n]) - np.deg2rad(self.config['ovrPosLimit'][n][1])
             else:
                 g[self.num_dofs+n] = np.max(trajectory_data['positions'][:, n]) - self.limits[jn[n]]['upper']

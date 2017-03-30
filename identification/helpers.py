@@ -581,7 +581,7 @@ class URDFHelpers(object):
 
         if filename and os.path.exists(filename):
             mesh = trimesh.load_mesh(filename)
-            #TODO: get mesh origin attributes, rotate and shift mesh data
+            #TODO: get geometry origin attributes, rotate and shift mesh data
 
             #gazebo and urdf use 1m for 1 stl unit
             scale_x = float(self.mesh_scaling.split()[0])

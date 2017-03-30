@@ -348,6 +348,7 @@ class Optimizer(object):
             freq = self.config['excitationFrequency']
             self.visualizer.display_max = t.getPeriodLength()*self.visualizer.fps # length of trajectory
             self.visualizer.trajectory = t
+            self.visualizer.playable = True
             self.visualizer.event_callback()
             self.visualizer.run()
 

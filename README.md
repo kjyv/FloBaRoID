@@ -46,11 +46,11 @@ requirements for identification module:
     * iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
     * when using Python 2.7: future
     * when using Python < 3.5: typing
+* dsdp5 (command line executable)
 
 optional:
 
 * pyglet, pyOpenGL (for visualizer)
-* dsdp5 (command line executable)
 * symengine.py (to speedup SDP)
 * mpld3, jinja2 (for html plots)
 * matplotlib2tikz (for tikz plots)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
 from __future__ import division
@@ -301,8 +301,9 @@ class Visualizer(object):
 
         self.angles = None  # type: List[float]
         self.trajectory = None  # type: Trajectory
-        self.playing_traj = False
-        self.playable = False
+        self.playing_traj = False  # currently playing or not
+        self.playable = False   # can the trajectory be "played"
+        self.freq = 1   # frequency in Hz of position / angle data
 
         # additional callbacks to be used with key handling
         self.event_callback = None  # type: Callable
@@ -400,20 +401,6 @@ class Visualizer(object):
             gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
             mat_emission = [0.1, 0.1, 0.1, 1.0]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
-            '''
-            elif idx == 2:
-            # 'silver'
-            mat_ambient = [0.19225, 0.19225, 0.19225, 1.0]
-            gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
-            mat_diffuse = [0.50754, 0.50754, 0.50754]
-            gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
-            mat_specular = [0.508273, 0.508273, 0.508273]
-            gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
-            shine = 0.4
-            gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
-            #mat_emission = [0.05, 0.05, 0.05, 1.0]
-            #gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
-            '''
         elif name == 'green rubber':
             mat_ambient = [0.01, 0.1, 0.01, 1.0]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
@@ -421,18 +408,18 @@ class Visualizer(object):
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
             mat_specular = [0.05, 0.1, 0.05]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
-            shine = 0.078125
+            shine = 0.03
             gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
             #mat_emission = [0.1, 0.1, 0.15, 1.0]
             #gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
         elif name == 'white rubber':
-            mat_ambient = [0.6, 0.6, 0.6, 1.0]
+            mat_ambient = [0.7, 0.7, 0.7, 1.0]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_AMBIENT, glvecf(mat_ambient));
             mat_diffuse = [0.5, 0.5, 0.5]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_DIFFUSE, glvecf(mat_diffuse))
-            mat_specular = [0.1, 0.1, 0.1]
+            mat_specular = [0.01, 0.01, 0.01]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_SPECULAR, glvecf(mat_specular));
-            shine = 0.07
+            shine = 0.03
             gl.glMaterialf(gl.GL_FRONT, gl.GL_SHININESS, shine * 128.0);
             mat_emission = [0.2, 0.2, 0.2, 1.0]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))

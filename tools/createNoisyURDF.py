@@ -1,6 +1,6 @@
-from builtins import range
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
+from builtins import range
 import numpy as np
 import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
 import identificationHelpers

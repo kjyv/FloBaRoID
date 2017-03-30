@@ -345,7 +345,16 @@ class Visualizer(object):
         y = 100
         self.width = 800
         self.height = 600
-        config = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)
+        platform = pyglet.window.get_platform()
+        display = platform.get_default_display()
+        screen = display.get_default_screen()
+        try:
+            config_temp = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)
+            config = screen.get_best_config(config_temp)
+        except pyglet.window.NoSuchConfigException:
+            config_temp = gl.Config(double_buffer=True, depth_size=24, sample_buffers=1)
+            config = screen.get_best_config(config_temp)
+
         self.window = pyglet.window.Window(self.width, self.height, resizable=True, visible=False, config=config)
         self.window_closed = False
         self.window.set_minimum_size(320, 200)

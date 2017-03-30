@@ -871,7 +871,7 @@ if __name__ == '__main__':
         data = np.load(args.trajectory, encoding='latin1')
         if 'angles' in data:
             data_type = 'static'
-        elif 'positions':
+        elif 'positions' in data:
             data_type = 'measurements'
             v.playable = True
         else:

@@ -47,8 +47,6 @@ requirements for identification module:
     * when using Python 2.7: future
     * when using Python < 3.5: typing
 
-(You can do `pip install -r requirements.txt` for most of them)
-
 optional:
 
 * pyglet, pyOpenGL (for visualizer)
@@ -70,6 +68,8 @@ requirements for optimization module:
 * pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
 
+(You can do `pip install -r requirements.txt` for most of them. You might have to install
+some dependencies if you get compile errors.)
 
 Quick start tutorial:
 

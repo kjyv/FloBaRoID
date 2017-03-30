@@ -274,15 +274,17 @@ class Optimizer(object):
         # self.link_cuboid_hulls[l0_name][1], [2]
 
         b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
-        b0_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[0][1]),
-                                  np.abs(b[1][2])-np.abs(b[0][2])])
+        p = np.array(self.link_cuboid_hulls[l0_name][1])
+        b0_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]) + p[0],
+                                  np.abs(b[1][1])-np.abs(b[0][1]) + p[1],
+                                  np.abs(b[1][2])-np.abs(b[0][2]) + p[2]])
         b0 = fcl.Box(b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2])
 
         b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
-        b1_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]),
-                                  np.abs(b[1][1])-np.abs(b[0][1]),
-                                  np.abs(b[1][2])-np.abs(b[0][2])])
+        p = np.array(self.link_cuboid_hulls[l1_name][1])
+        b1_center = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]) + p[0],
+                                  np.abs(b[1][1])-np.abs(b[0][1]) + p[1],
+                                  np.abs(b[1][2])-np.abs(b[0][2]) + p[2]])
         b1 = fcl.Box(b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2])
 
         # move box to pos + box center pos (model has pos in link origin, box has zero at center)
@@ -564,7 +566,7 @@ class Optimizer(object):
             print(sol)
             #sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
-            if self.last_best_sol.size > 0:
+            if len(self.last_best_sol) > 0:
                 print("using last best constrained solution instead of given solver solution.")
 
                 print("testing final solution")

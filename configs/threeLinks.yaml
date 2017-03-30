@@ -88,7 +88,7 @@ zeroAccThresh: 0.1  #threshold below which acceleration is considered to be zero
 
 # use a number of random regressors to determine structural parameter dependencies when getting base regressor
 # (generally recommended but may result in remaining linear dependencies in regressor if only limited data is used)
-useStructuralRegressor: 1
+useStructuralRegressor: 0
 randomSamples: 2000
 
 # almost zero threshold for determining base column dependencies from QR

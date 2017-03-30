@@ -67,9 +67,12 @@ requirements for optimization module:
 * optimization: python modules: iDynTree, pyOpt (fork at https://github.com/kjyv/pyOpt is recommended)
 * pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
+* [fcl 0.5.0](https://github.com/flexible-collision-library/fcl/releases) and python-fcl (from https://github.com/jf---/python-fcl) (possibly disable octomap if there are errors)
+ 
 
-(You can do `pip install -r requirements.txt` for most of them. You might have to install
-some dependencies if you get compile errors.)
+You can do `pip install -r requirements.txt` for most of them. You might have to install
+some dependencies if you get compile errors. If you're using on Ubuntu and also have ros installed,
+it is recommended to install with pip within a [virtualenv](https://virtualenv.pypa.io/en/stable/).
 
 Quick start tutorial:
 

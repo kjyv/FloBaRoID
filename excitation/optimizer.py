@@ -487,6 +487,9 @@ class Optimizer(object):
                 self.iter_max = opt.getOption('SwarmSize') * opt.getOption('maxInnerIter') * \
                     opt.getOption('maxOuterIter') + opt.getOption('SwarmSize')
                 self.iter_max = self.iter_max // self.mpi_size
+            else:
+                print("Solver {} not defined".format(self.config['globalSolver']))
+                sys.exit(1)
 
             # run global optimization
 

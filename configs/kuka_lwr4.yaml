@@ -5,7 +5,7 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 # trajectory optimization
 useGlobalOptimization: 1         #use global solver first (recommended)
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
+globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10          #Swarm iterations or Generations
 globalOptSize: 12                #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver

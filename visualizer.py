@@ -314,14 +314,16 @@ class Visualizer(object):
         self._initCamera()
         self._initGL()
 
-        legend = '''<font face="Helvetica,Arial" size=15>wasd,  &#8679; &#x2423; - move around <br/>
+        move_keys = "lshift, space"   # &#8679; &#x2423;
+        enter_key = "enter"   # &#x2324;
+        legend = '''<font face="Helvetica,Arial" size=15>wasd, {} - move around <br/>
         mouse drag - look <br/>
-        c - continous/blocking <br/>
-        &#x2324; - play/stop trajectory <br/>
+        {} - play/stop trajectory <br/>
         &#x2190; &#x2192; - prev/next frame <br/>
         m - show mesh/bounding boxes <br/>
+        c - continous/blocking (for optimizer) <br/>
         q - close <br/>
-        </font>'''
+        </font>'''.format(move_keys, enter_key)
         self.help_label = pyglet.text.HTMLLabel(legend,
                           x = 10, y = -10,
                           width = 300,

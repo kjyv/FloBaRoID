@@ -9,6 +9,7 @@ from typing import Tuple, List, Dict, Callable, Any
 import math
 import collections
 import sys
+import os
 
 import numpy as np
 from OpenGL import GLU
@@ -353,9 +354,11 @@ class Visualizer(object):
         try:
             config_temp = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)
             config = screen.get_best_config(config_temp)
+            self.anti_alias = True
         except pyglet.window.NoSuchConfigException:
-            config_temp = gl.Config(double_buffer=True, depth_size=24, sample_buffers=1)
+            config_temp = gl.Config(double_buffer=True, depth_size=24)
             config = screen.get_best_config(config_temp)
+            self.anti_alias = False
 
         self.window = pyglet.window.Window(self.width, self.height, resizable=True, visible=False, config=config)
         self.window_closed = False
@@ -396,9 +399,9 @@ class Visualizer(object):
             gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT, glvecf(mat_ambient));
             mat_diffuse = [0.1, 0.1, 0.1]  #[0.7, 0.5, 0.5, 1.0]
             gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_DIFFUSE, glvecf(mat_diffuse))
-            mat_specular = [0.0, 0.0, 0.0]
+            mat_specular = [0.2, 0.2, 0.2]
             gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SPECULAR, glvecf(mat_specular));
-            shine = 0.2
+            shine = 0.0
             gl.glMaterialf(gl.GL_FRONT_AND_BACK, gl.GL_SHININESS, shine * 128.0);
         elif name == 'metal':
             # 'chrome'
@@ -444,7 +447,10 @@ class Visualizer(object):
         gl.glHint(gl.GL_PERSPECTIVE_CORRECTION_HINT, gl.GL_NICEST)   # make stuff look nice
         gl.glEnable(gl.GL_LINE_SMOOTH)
         gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
-        gl.glLineWidth(0.1)
+        if self.anti_alias:
+            gl.glLineWidth(0.1)
+        else:
+            gl.glLineWidth(1.0)
 
         #gl.glEnable(gl.GL_BLEND)
         #gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
@@ -735,7 +741,7 @@ class Visualizer(object):
         if not len(self.mesh_lists):
             for i in range(0, len(linkNames)):
                 filename = urdfHelpers.getMeshPath(urdfpath, linkNames[i])
-                if filename:
+                if filename and os.path.exists(filename):
                     # use last mesh scale (from getMeshPath)
                     scale = urdfHelpers.mesh_scaling.split(' ')
                     scale = [float(scale[0]), float(scale[1]), float(scale[2])]

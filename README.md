@@ -76,24 +76,7 @@ it is recommended to install with pip within a [virtualenv](https://virtualenv.p
 
 Quick start tutorial:
 
-The goal of identification is to find dynamic model parameters from measurements of motions. The options for all steps of this task are held within a configuration file in the config/ dir.
-
-1. copy one of the existing .yaml configuration files and customize
-it for your setup.
-`cp config/kuka_lwr.yaml config/example.yaml`
-
-2. Use the trajectory.py script to generate an optimal exciting trajectory (only fixed base at the moment). Enable the corresponding options in the configuration and optionally supply a world urdf file that includes objects that the robot might collide with, e.g. a table. This might take a while depending on the degrees of freedom, prefix with `mpirun` to parallelize this. The output file will contain the found parameters of the trajectory.
-`./trajectory.py --config configs/example.yaml --model model/example.urdf --world model/world.urdf`
-
-3. get joint torque measurements for the trajectory from your robotic system, if suitable by using the excite.py script. It will load the previously created trajectory file and move the robot through a module or alternatively simulate the torques using the supplied model. If necessary, look at the existing modules and write a custom one. After retrieving measurements, filtering as well as deriving velocity and acceleration is done. If you are using other means of motion control and data recording, filter the data and write the data into numpy container files that have the expected data fields (see README.md in ./excitation/). There is also the **csv2npz.py** script that loads data from csv text files containing raw measurements, preprocesses them and writes to the container format (customize it for your columns etc.).
-`./excite.py --model model/example.urdf --config configs/example.yaml --plot \`
-`--trajectory model/example.urdf.trajectory.npz --filename measurements.npz`
-
-4. Finally, run identify.py on the measurements and the corresponding
-  kinematic model in a .urdf file with some CAD parameters as starting point (parameters don't have to be consistent but recommended). Optionally you can supply an output .urdf file path to which the input urdf with exchanged
-identified parameters is written. Another measurements file can be supplied for validation.
-`./identify.py --config configs/example.yaml  --model model/example.urdf --measurements \`
-`measurements.npz --verify measurements_2.npz --output model/example_identified.urdf`
+See the [Tutorial](documentation/TUTORIAL.md).
 
 known issues:
 

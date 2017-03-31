@@ -13,7 +13,9 @@ configuration files.
 ## Show trajectory data
 
 In order to show curves of an optimized or previously recorded trajectory again, 
-`excite.py --plot --dryrun --filename <measurement file>` can be used.
+`excite.py --plot --dryrun --filename <measurement file>` can be used. Using
+`visualizer.py --config <config> --model <model urdf> --trajectory <measurement file>`
+a 3D representation of the model and trajectory can be shown.
 
 ## Excitation modules
 
@@ -71,29 +73,28 @@ time in field 'times'. The same structure is expected by identification.py.
 |field name|content|
 |---|---|
 |positions | joint positions in rad, SxN_DOF|
-|[positions_raw] | unfiltered joint positions, SxN_DOF|
+|[positions_raw] | unfiltered joint positions, SxN_DOF (optional)|
 |velocities | joint angular velocity in rad/sec, SxN_DOF|
-|[velocities_raw] | unfiltered joint angular velocities in rad/sec, SxN_DOF|
+|[velocities_raw] | unfiltered joint angular velocities in rad/sec, SxN_DOF (optional)|
 |accelerations | joint angular accelerations in rad/s<sup>2</sup>, SxN_DOF|
 |torques | measured torques of each joint in Nm, SxN_DOF|
-|[torques_raw] | unfiltered torques of each joint, SxN_DOF|
+|[torques_raw] | unfiltered torques of each joint, SxN_DOF (optional)|
 |base_velocity* | linear (0-2) and angular (3-5) velocity of the base link expressed in the world reference frame  in m/s and rad/s, Sx6|
 |base_acceleration* |  proper linear (0-2) and angular (3-5) acceleration of the base link (without gravity) expressed in the world reference frame in m/s<sup>2</sup> and rad/s<sup>2</sup>, Sx6|
 |base_rpy* |  Orientation of the base link in roll-pitch-yaw order expressed relative to the world reference frame in rad Sx3|
-|contacts* | measured external contact wrench for each sample, array of dictionaries {'urdf frame name': Sx6}|
+|contacts | measured external contact wrench for each sample, array of dictionaries {'urdf frame name': Sx6}|
 |times | time of each sample in sec, Sx1|
 |frequency | frequency of measured values in Hz, 1 value|
 
 Values in [] are optional.
 Values with * only need to be specified when using floating base dynamics.
 
-All data is expected by identification.py to already be cleaned and low-pass filtered and to not
+All data is expected by identify.py to already be cleaned and low-pass filtered and to not
 include any big measurement errors. The noise should ideally be gaussian and have zero mean.
 
-The sampling frequency should be sufficiently high (at least 100 Hz) to get reasonably good position and velocity derivatives.
+The sampling frequency should be sufficiently high (e.g. at least 100 Hz) to get reasonably good position and velocity derivatives.
 
-The amount of samples should also be high enough for identification to take place. It depends on how
-many samples are later removed (zero velocity) and how many parameters are to be identified. 10
+The amount of samples should also be high enough for it to contain sufficient information about the parameters. It depends on how many parameters are to be identified and on the motion range of the robot. At least 10
 times the amount of parameters is possibly a good rule of thumb, more is always better. The higher
 the sampling frequency, the less information there is in successive samples, so the number should be
-higher at e.g. 1000 Hz.
+higher at e.g. 1000 Hz. At the same time, more or less redundant samples can be skipped by setting the skipSamples option to speed up identification.

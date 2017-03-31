@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
+'''
+open urdf, scale all masses and inertia with given value, save to new file
+'''
+
 import re
 from typing import AnyStr
 import numpy as np

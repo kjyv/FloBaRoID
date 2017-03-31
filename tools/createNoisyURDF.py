@@ -7,6 +7,9 @@ import identificationHelpers
 import argparse
 
 def main():
+    '''
+    open a urdf file and add noise to each parameter. Can be used for testing, but noisy params are usually not consistent, so may be of limited use.
+    '''
     parser = argparse.ArgumentParser(description='Load measurements and URDF model to get inertial parameters.')
     parser.add_argument('--urdf_input', required=True, type=str, help='the file to load the robot model from')
     parser.add_argument('--urdf_output', required=True, type=str, help='the file to save the noisy robot model to')

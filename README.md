@@ -74,17 +74,16 @@ You can do `pip install -r requirements.txt` for most of them. You might have to
 some dependencies if you get compile errors. If you're using on Ubuntu and also have ros installed,
 it is recommended to install with pip within a [virtualenv](https://virtualenv.pypa.io/en/stable/).
 
-Quick start tutorial:
+Also see the [Tutorial](documentation/TUTORIAL.md).
 
-See the [Tutorial](documentation/TUTORIAL.md).
+Known limitations:
 
-known issues:
-
-* trajectory optimization is limited to fixed-base robots (contacts simulation,
-  balance criterion etc. not implemented)
-* YARP excitation module is not generic (ROS should be)
-* using position control over YARP is not realtime safe and can expose timing issues (seems to happen especially with used python to C bridge)
+* trajectory optimization is limited to fixed-base robots (full simulation, balance criterion etc. not implemented)
+* YARP excitation module is not very generic (ROS should be)
+* using position control over YARP is not realtime safe and can expose timing issues (especially with python to C bridge)
+* Since preparing SDP matrices uses sympy expressions, most of the time for solving the identification problem is spent in symbolic manipulations rather than the actual convex optimization solver. Possibly the time demands can be reduced.
 
 SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
 
-Usage is licensed under the LGPL 3.0, see License.md. Please quote name and authors if you're using this software in any project.
+Usage is licensed under the LGPL 3.0, see License.md. Please quote the following publication if you're using this software for any project:
+`S. Bethge, J. Malzahn, N. Tsagarakis, D. Caldwell: "FloBaRoID — A Software Package for the Identification of Robot Dynamics Parameters", 26th International Conference on Robotics in Alpe-Adria-Danube Region (RAAD), 2017`

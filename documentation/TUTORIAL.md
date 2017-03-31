@@ -19,7 +19,7 @@ identified parameters is written. Another measurements file can be supplied for 
 `./identify.py --config configs/example.yaml  --model model/example.urdf --measurements \`
 `measurements.npz --verify measurements_2.npz --output model/example_identified.urdf`
 
-The output html file in output/ should look similar to [this output](..documentation/example output/output_kuka.html).
+The output html file in output/ should look similar to [this output](../documentation/example output/output_kuka.html).
 After the plots that compare a priori and identified estimated torques with the measurements, there are tables of the identified parameters and different error measures.
 The table columns show parameters for A priori (URDF), Identified and the absolute change between them. There also is a percentual difference value (%e) that is given in relation to the magnitude of the a priori value.
 

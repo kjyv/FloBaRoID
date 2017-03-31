@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
+''' more or less specific to walk-man: get maximum inertia matrix values over the
+    whole motion range '''
+
 import sys
 import numpy as np
 import numpy.linalg as la

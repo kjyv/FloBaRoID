@@ -42,7 +42,7 @@ requirements for identification module:
 
 * python 2.7 or >= 3.3
 * python modules
-    * numpy (> 1.8), scipy, sympy (>= 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
+    * numpy (> 1.8), scipy, sympy (== 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
     * iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
     * when using Python 2.7: future
     * when using Python < 3.5: typing
@@ -70,9 +70,7 @@ requirements for optimization module:
 * [fcl 0.5.0](https://github.com/flexible-collision-library/fcl/releases) and python-fcl (from https://github.com/jf---/python-fcl) (possibly disable octomap if there are errors)
  
 
-You can do `pip install -r requirements.txt` for most of them. You might have to install
-some dependencies if you get compile errors. If you're using on Ubuntu and also have ros installed,
-it is recommended to install with pip within a [virtualenv](https://virtualenv.pypa.io/en/stable/).
+You can do `pip install -r requirements.txt` for most of them but you will need to check for the correct versions of each library. You might have to install some library dependencies if you get compile errors. If you're using on Ubuntu and also have ros installed, it is recommended to install with pip within a [virtualenv](https://virtualenv.pypa.io/en/stable/).
 
 Also see the [Tutorial](documentation/TUTORIAL.md).
 

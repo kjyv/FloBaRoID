@@ -784,9 +784,9 @@ class Visualizer(object):
                     b = np.array(boxes[n_name][0]) * self.config['scaleCollisionHull']
                     p = np.array(boxes[n_name][1])
                     body['size3'] = np.array([b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2]])
-                    body['center'] = 0.5*np.array([np.abs(b[1][0])-np.abs(b[0][0]) + p[0],
-                                                   np.abs(b[1][1])-np.abs(b[0][1]) + p[1],
-                                                   np.abs(b[1][2])-np.abs(b[0][2])] + p[2])
+                    body['center'] = 0.5*np.array([(b[1][0])+(b[0][0]) + p[0],
+                                                   (b[1][1])+(b[0][1]) + p[1],
+                                                   (b[1][2])+(b[0][2])] + p[2])
                 except KeyError:
                     print('using cube for {}'.format(n_name))
                     body['size3'] = np.array([0.1, 0.1, 0.1])

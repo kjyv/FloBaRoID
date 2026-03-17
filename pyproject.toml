@@ -30,8 +30,6 @@ dependencies = [
     "kaleido==1.2.0",
     "pyoptsparse==2.15.0",
     "python-fcl>=0.7.0.10",
-    "ruff>=0.15.6",
-    "mypy>=1.19.1",
 ]
 
 [project.optional-dependencies]
@@ -50,3 +48,43 @@ python-preference = "managed"
 
 [tool.uv.sources]
 pyoptsparse = { git = "https://github.com/mdolab/pyoptsparse.git" }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.6",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "types-PyYAML",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E722",   # bare except (used in legacy code for broad error handling)
+    "E741",   # ambiguous variable name (common in math code: l, I, etc.)
+    "UP031",  # printf-style formatting (common in legacy code)
+]
+[tool.ruff.lint.per-file-ignores]
+"tools/*" = ["E402"]  # tools use sys.path.insert before local imports
+
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+show_error_codes = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--timeout=60"

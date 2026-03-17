@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import subprocess
 import os
+import subprocess
 import sys
 
 
 def test_identification_floating():
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
     try:
-        output = subprocess.check_output(
+        subprocess.check_output(
             "./examples/identify_threeLink.sh",
             cwd=path,
             shell=True,

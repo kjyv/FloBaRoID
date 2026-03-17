@@ -1,26 +1,21 @@
+import os
+import sys
 import time
-from typing import List, Dict
 
 import numpy as np
 import numpy.linalg as la
-
-import sympy
-from sympy import Symbol, solve, Matrix, BlockMatrix, Identity, eye
-import os, sys
+from sympy import BlockMatrix, Identity, Matrix, Symbol, eye, solve
 
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
 
 # from identify import Identification
-from identification import sdp_helpers
-from identification.sdp_helpers import LMI_PSD, LMI_PD
-from identification import helpers
-
 from colorama import Fore
+from lmi_sdp import LMI_PD, LMI_PSD
 
-from IPython import embed
+from identification import helpers, sdp_helpers
 
 
-class SDP(object):
+class SDP:
     def __init__(self, idf):
         # type: (Identification) -> None
         self.idf = idf
@@ -41,9 +36,7 @@ class SDP(object):
 
         print("Checking feasibility of a priori parameters...")
         replace = dict()
-        idable_params = sorted(
-            list(set(self.idf.model.identified_params).difference(self.delete_cols))
-        )
+        idable_params = sorted(list(set(self.idf.model.identified_params).difference(self.delete_cols)))
         syms = self.idf.model.param_syms[idable_params]
         for i in range(len(syms)):
             p = syms[i]
@@ -55,12 +48,12 @@ class SDP(object):
             if const_inst.shape[0] > 1:
                 if not np.all(la.eig(np.asarray(const_inst).astype(float))[0] > 0):
                     # matrix needs to be positive definite
-                    print("Constraint {} does not hold true for CAD params".format(l))
+                    print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
             else:
                 if not l.subs(replace).rhs[0] > 0:
                     # single values > 0
-                    print("Constraint {} does not hold true for CAD params".format(l))
+                    print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
         return feasible
 
@@ -150,19 +143,11 @@ class SDP(object):
                 linkConds = idf.model.getSubregressorsConditionNumbers()
             robotmass_apriori = 0
             for i in range(0, idf.model.num_links):
-                robotmass_apriori += idf.model.xStdModel[
-                    i * 10
-                ]  # count a priori link masses
+                robotmass_apriori += idf.model.xStdModel[i * 10]  # count a priori link masses
 
                 # for links that have too high condition number, don't change params
                 if idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]:
-                    print(
-                        Fore.YELLOW
-                        + "not changing parameters of link {} ({})!".format(
-                            i, idf.model.linkNames[i]
-                        )
-                        + Fore.RESET
-                    )
+                    print(Fore.YELLOW + f"not changing parameters of link {i} ({idf.model.linkNames[i]})!" + Fore.RESET)
                     # don't change mass
                     params_to_skip.append(i * 10)
 
@@ -184,26 +169,19 @@ class SDP(object):
                 params_to_skip.append(p)
 
             for p in set(params_to_skip):
-                if (
-                    idf.opt["identifyGravityParamsOnly"]
-                    and p not in idf.model.inertia_params
-                ) or not idf.opt["identifyGravityParamsOnly"]:
+                if (idf.opt["identifyGravityParamsOnly"] and p not in idf.model.inertia_params) or not idf.opt[
+                    "identifyGravityParamsOnly"
+                ]:
                     if p not in idf.opt["dontConstrain"]:
-                        D_other_blocks.append(
-                            Matrix([idf.model.xStdModel[p] - idf.model.param_syms[p]])
-                        )
-                        D_other_blocks.append(
-                            Matrix([idf.model.param_syms[p] - idf.model.xStdModel[p]])
-                        )
+                        D_other_blocks.append(Matrix([idf.model.xStdModel[p] - idf.model.param_syms[p]]))
+                        D_other_blocks.append(Matrix([idf.model.param_syms[p] - idf.model.xStdModel[p]]))
                         self.constr_per_param[p].append("cad")
 
             # constrain overall mass within bounds
             if idf.opt["limitOverallMass"]:
                 # use given overall mass else use overall mass from CAD
                 if idf.opt["limitMassVal"]:
-                    robotmaxmass = idf.opt["limitMassVal"] - sum(
-                        idf.model.xStdModel[0 : start_link * 10 : 10]
-                    )
+                    robotmaxmass = idf.opt["limitMassVal"] - sum(idf.model.xStdModel[0 : start_link * 10 : 10])
                     robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt["limitMassRange"]
                     robotmaxmass_lb = robotmaxmass * 1.0 - idf.opt["limitMassRange"]
                 else:
@@ -212,12 +190,8 @@ class SDP(object):
                     robotmaxmass_ub = robotmaxmass * 1.0 + idf.opt["limitMassRange"]
                     robotmaxmass_lb = robotmaxmass * 1.0 - idf.opt["limitMassRange"]
 
-                D_other_blocks.append(
-                    Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])])
-                )  # maximum mass
-                D_other_blocks.append(
-                    Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb])
-                )  # minimum mass
+                D_other_blocks.append(Matrix([robotmaxmass_ub - sum(idf.model.mass_syms[start_link:])]))  # maximum mass
+                D_other_blocks.append(Matrix([sum(idf.model.mass_syms[start_link:]) - robotmaxmass_lb]))  # minimum mass
 
             # start with pudb
             # import pudb; pu.db
@@ -226,30 +200,15 @@ class SDP(object):
             if idf.opt["limitMassToApriori"]:
                 # constrain each mass to env of a priori value
                 for i in range(start_link, idf.model.num_links):
-                    if not (
-                        idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]
-                    ):
+                    if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         p = i * 10
                         if p not in idf.opt["dontConstrain"]:
-                            bound = (
-                                np.abs(idf.model.xStdModel[p])
-                                * idf.opt["limitMassAprioriBoundary"]
-                            )
+                            bound = np.abs(idf.model.xStdModel[p]) * idf.opt["limitMassAprioriBoundary"]
                             # if np.abs(idf.model.xStdModel[p]) < 0.001:
                             #    bound += 0.001
 
-                            lb = Matrix(
-                                [
-                                    idf.model.mass_syms[i]
-                                    - (idf.model.xStdModel[p] - bound)
-                                ]
-                            )
-                            ub = Matrix(
-                                [
-                                    -idf.model.mass_syms[i]
-                                    + (idf.model.xStdModel[p] + bound)
-                                ]
-                            )
+                            lb = Matrix([idf.model.mass_syms[i] - (idf.model.xStdModel[p] - bound)])
+                            ub = Matrix([-idf.model.mass_syms[i] + (idf.model.xStdModel[p] + bound)])
                             D_other_blocks.append(lb)
                             D_other_blocks.append(ub)
                             self.constr_per_param[p].append("mA")
@@ -258,30 +217,15 @@ class SDP(object):
             if idf.opt["limitCOMToApriori"]:
                 # constrain each mass to env of a priori value
                 for i in range(start_link, idf.model.num_links):
-                    if not (
-                        idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]
-                    ):
+                    if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         for p in range(i * 10 + 1, i * 10 + 4):
                             if p not in idf.opt["dontConstrain"]:
-                                bound = (
-                                    np.abs(idf.model.xStdModel[p])
-                                    * idf.opt["limitCOMAprioriBoundary"]
-                                )
+                                bound = np.abs(idf.model.xStdModel[p]) * idf.opt["limitCOMAprioriBoundary"]
                                 if np.abs(idf.model.xStdModel[p]) < 0.01:
                                     bound += 0.01
 
-                                lb = Matrix(
-                                    [
-                                        idf.model.param_syms[p]
-                                        - (idf.model.xStdModel[p] - bound)
-                                    ]
-                                )
-                                ub = Matrix(
-                                    [
-                                        -idf.model.param_syms[p]
-                                        + (idf.model.xStdModel[p] + bound)
-                                    ]
-                                )
+                                lb = Matrix([idf.model.param_syms[p] - (idf.model.xStdModel[p] - bound)])
+                                ub = Matrix([-idf.model.param_syms[p] + (idf.model.xStdModel[p] + bound)])
                                 D_other_blocks.append(lb)
                                 D_other_blocks.append(ub)
                                 self.constr_per_param[p].append("cA")
@@ -289,14 +233,11 @@ class SDP(object):
             if idf.opt["restrictCOMtoHull"]:
                 link_cuboid_hulls = {}  # type: Dict[str, Tuple[List, List, List]]
                 for i in range(start_link, idf.model.num_links):
-                    if not (
-                        idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]
-                    ):
+                    if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         link_name = idf.model.linkNames[i]
                         box, pos, rot = idf.urdfHelpers.getBoundingBox(
                             input_urdf=idf.model.urdf_file,
-                            old_com=idf.model.xStdModel[i * 10 + 1 : i * 10 + 4]
-                            / idf.model.xStdModel[i * 10],
+                            old_com=idf.model.xStdModel[i * 10 + 1 : i * 10 + 4] / idf.model.xStdModel[i * 10],
                             link_name=link_name,
                         )
                         link_cuboid_hulls[link_name] = (box, pos, rot)
@@ -306,25 +247,16 @@ class SDP(object):
                         link_cuboid_hull = link_cuboid_hulls[link_name][0]
                         for j in range(3):
                             p = i * 10 + 1 + j
-                            if (
-                                p not in self.delete_cols
-                                and p not in idf.opt["dontConstrain"]
-                            ):
+                            if p not in self.delete_cols and p not in idf.opt["dontConstrain"]:
                                 lb = Matrix([[l[j] - m * link_cuboid_hull[0][j]]])
                                 ub = Matrix([[-l[j] + m * link_cuboid_hull[1][j]]])
                                 D_other_blocks.append(lb)
                                 D_other_blocks.append(ub)
                                 self.constr_per_param[p].append("hull")
 
-            elif (
-                not idf.opt["limitCOMToApriori"]
-                and idf.opt["identifyGravityParamsOnly"]
-            ):
+            elif not idf.opt["limitCOMToApriori"] and idf.opt["identifyGravityParamsOnly"]:
                 print(Fore.RED + "COM parameters are not constrained,", end=" ")
-                print(
-                    "might result in rank deficiency when solving SDP problem!"
-                    + Fore.RESET
-                )
+                print("might result in rank deficiency when solving SDP problem!" + Fore.RESET)
 
             # symmetry constraints
             if idf.opt["useSymmetryConstraints"] and idf.opt["symmetryConstraints"]:
@@ -356,39 +288,20 @@ class SDP(object):
                         # self.constr_per_param[idf.model.num_model_params + p].append('>0')
 
                         # Fv > 0
-                        D_other_blocks.append(
-                            Matrix([idf.model.friction_syms[p + idf.model.num_dofs]])
-                        )
-                        self.constr_per_param[
-                            idf.model.num_model_params + p + idf.model.num_dofs
-                        ].append(">0")
+                        D_other_blocks.append(Matrix([idf.model.friction_syms[p + idf.model.num_dofs]]))
+                        self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs].append(">0")
                         if not idf.opt["identifySymmetricVelFriction"]:
-                            D_other_blocks.append(
-                                Matrix(
-                                    [
-                                        idf.model.friction_syms[
-                                            p + idf.model.num_dofs * 2
-                                        ]
-                                    ]
-                                )
-                            )
-                            self.constr_per_param[
-                                idf.model.num_model_params + p + idf.model.num_dofs * 2
-                            ].append(">0")
+                            D_other_blocks.append(Matrix([idf.model.friction_syms[p + idf.model.num_dofs * 2]]))
+                            self.constr_per_param[idf.model.num_model_params + p + idf.model.num_dofs * 2].append(">0")
 
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
             self.LMIs = list(map(LMI_PD, self.D_blocks))
             self.epsilon_safemargin = 1e-6
-            self.LMIs_marg = list(
-                [
-                    LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0]))
-                    for lm in self.D_blocks
-                ]
-            )
+            self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in self.D_blocks])
 
         if idf.opt["showTiming"]:
-            print("Initializing LMIs took %.03f sec." % (t.interval))
+            print(f"Initializing LMIs took {t.interval:.3f} sec.")
 
     def identifyFeasibleStandardParameters(self, idf):
         # type: (Identification) -> None
@@ -431,9 +344,7 @@ class SDP(object):
             if idf.opt["useRegressorRegularization"]:
                 p_nid = idf.model.non_id
                 p_nid = list(
-                    set(p_nid)
-                    .difference(set(self.delete_cols))
-                    .intersection(set(idf.model.identified_params))
+                    set(p_nid).difference(set(self.delete_cols)).intersection(set(idf.model.identified_params))
                 )
                 contactForces = np.concatenate((contactForces, np.zeros(len(p_nid))))
 
@@ -447,11 +358,7 @@ class SDP(object):
             # since we use QR if YBase, Q2 is empty anyway, so rho2 = Q2*tau following the paper is zero
             # the code from sousa's notebook includes a different calculation for the upper bound:
             rho2_norm_sqr = (
-                la.norm(
-                    idf.model.torques_stack
-                    - idf.model.contactForcesSum
-                    - idf.model.YBase.dot(idf.model.xBase)
-                )
+                la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))
                 ** 2
             )
 
@@ -461,17 +368,13 @@ class SDP(object):
                 # get symbols that are non-id but are not in delete_cols already
                 delta_nonid = Matrix(idf.model.param_syms[p_nid])
                 # num_samples = YBase.shape[0]/idf.model.num_dofs
-                l = (float(idf.base_error) / len(p_nid)) * idf.opt[
-                    "regularizationFactor"
-                ]
+                l = (float(idf.base_error) / len(p_nid)) * idf.opt["regularizationFactor"]
 
                 # TODO: also use symengine to gain speedup?
                 # p = BlockMatrix([[(K*delta)], [delta_nonid]])
                 # Y = BlockMatrix([[Matrix(R1),             ZeroMatrix(R1.shape[0], len(p_nid))],
                 #                 [ZeroMatrix(len(p_nid), R1.shape[1]), l*Identity(len(p_nid))]])
-                Y = BlockMatrix(
-                    [[R1 * (K * delta)], [l * Identity(len(p_nid)) * delta_nonid]]
-                ).as_explicit()
+                Y = BlockMatrix([[R1 * (K * delta)], [l * Identity(len(p_nid)) * delta_nonid]]).as_explicit()
                 rho1_hat = np.concatenate((rho1, l * idf.model.xStdModel[p_nid]))
                 e_rho1 = Matrix(rho1_hat - contactForces) - Y
             else:
@@ -497,9 +400,7 @@ class SDP(object):
             # minimize estimation error of to-be-found parameters delta
             # (regressor dot std variables projected to base - contacts should be close to measured torques)
             u = Symbol("u")
-            U_rho = BlockMatrix(
-                [[Matrix([u - rho2_norm_sqr]), e_rho1.T], [e_rho1, I(e_rho1.shape[0])]]
-            )
+            U_rho = BlockMatrix([[Matrix([u - rho2_norm_sqr]), e_rho1.T], [e_rho1, I(e_rho1.shape[0])]])
 
             if idf.opt["verbose"] > 1:
                 print("Step 3...", time.ctime())
@@ -520,9 +421,7 @@ class SDP(object):
             # but is used to return primal as solution when failing cvxopt)
             if idf.opt["verbose"]:
                 print("Solving constrained OLS as SDP")
-            idable_params = sorted(
-                list(set(idf.model.identified_params).difference(self.delete_cols))
-            )
+            idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
             prime = idf.model.xStdModel[idable_params]
 
             if idf.opt["checkAPrioriFeasibility"]:
@@ -532,9 +431,7 @@ class SDP(object):
             if not idf.opt["onlyUseDSDP"]:
                 if idf.opt["verbose"]:
                     print("Solving with cvxopt...", end=" ")
-                solution, state = sdp_helpers.solve_sdp(
-                    objective_func, lmis, variables, primalstart=prime
-                )
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
             if idf.opt["onlyUseDSDP"] or state != "optimal":
@@ -548,7 +445,7 @@ class SDP(object):
 
             u = solution[0, 0]
             if u:
-                print("SDP found std solution with {} squared residual error".format(u))
+                print(f"SDP found std solution with {u} squared residual error")
             idf.model.xStd = np.asarray(solution[1:]).flatten()
 
             # prepend apriori values for 0'th link non-identifiable variables
@@ -557,7 +454,7 @@ class SDP(object):
             idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
 
         if idf.opt["showTiming"]:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+            print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
     def identifyFeasibleStandardParametersDirect(self, idf):
         # type: (Identification) -> None
@@ -583,9 +480,7 @@ class SDP(object):
             if idf.opt["useRegressorRegularization"] and len(p_nid):
                 # p_nid = list(set(p_nid).difference(set(self.delete_cols)))
                 # l = [0.001]*len(p_nid)
-                l = [(float(idf.base_error) / len(p_nid)) * 1.5] * len(
-                    p_nid
-                )  # proportion of distance term
+                l = [(float(idf.base_error) / len(p_nid)) * 1.5] * len(p_nid)  # proportion of distance term
                 YStd = np.vstack(
                     (
                         YStd,
@@ -602,16 +497,12 @@ class SDP(object):
             Q1 = Q[:, 0 : idf.model.num_identified_params]
             # Q2 = Q[:, idf.model.num_base_params:]
             rho1 = Q1.T.dot(tau)
-            R1 = np.array(
-                R[: idf.model.num_identified_params, : idf.model.num_identified_params]
-            )
+            R1 = np.array(R[: idf.model.num_identified_params, : idf.model.num_identified_params])
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # add contact forces
             if idf.opt["useRegressorRegularization"]:
-                contactForcesSum = np.concatenate(
-                    (idf.model.contactForcesSum, np.zeros(len(p_nid)))
-                )
+                contactForcesSum = np.concatenate((idf.model.contactForcesSum, np.zeros(len(p_nid))))
             else:
                 contactForcesSum = idf.model.contactForcesSum
             contactForces = Matrix(Q.T.dot(contactForcesSum))
@@ -627,10 +518,7 @@ class SDP(object):
                 print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
-            rho2_norm_sqr = (
-                la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))
-                ** 2
-            )
+            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
 
             # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             u = Symbol("u")
@@ -662,9 +550,7 @@ class SDP(object):
             # start at CAD data, might increase convergence speed (atm only works with dsdp5,
             # otherwise returns primal as solution when failing)
             prime = idf.model.xStdModel
-            solution, state = sdp_helpers.solve_sdp(
-                objective_func, lmis, variables, primalstart=prime
-            )
+            solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
             if state != "optimal":
@@ -677,7 +563,7 @@ class SDP(object):
 
             u = solution[0, 0]
             if u:
-                print("SDP found std solution with {} squared residual error".format(u))
+                print(f"SDP found std solution with {u} squared residual error")
             idf.model.xStd = np.asarray(solution[1:]).flatten()
 
             # prepend apriori values for 0'th link non-identifiable variables
@@ -686,7 +572,7 @@ class SDP(object):
             idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
 
         if idf.opt["showTiming"]:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+            print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
     def identifyFeasibleBaseParameters(self, idf):
         # type: (Identification) -> None
@@ -759,9 +645,7 @@ class SDP(object):
                 # this is true if using Gautier dependency matrix, otherwise
                 # correct is to properly transpose eqn base_n = a1*x1 + a2*x2 + ... +an*xn to
                 # 1*xi = a1*x1/ai + a2*x2/ai + ... + an*xn/ai - base_n/ai )
-                transposed_beta = Matrix(
-                    [solve(beta[i], delta_b[i])[0] for i in range(len(beta))]
-                )
+                transposed_beta = Matrix([solve(beta[i], delta_b[i])[0] for i in range(len(beta))])
                 self.varchange_dict = dict(zip(delta_b, beta_symbs + transposed_beta))
 
                 # add free vars to variables for optimization
@@ -773,12 +657,7 @@ class SDP(object):
                 self.varchange_dict = dict(zip(delta_b, beta_symbs - (beta - delta_b)))
 
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
-            self.DB_LMIs_marg = list(
-                [
-                    LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0]))
-                    for lm in DB_blocks
-                ]
-            )
+            self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in DB_blocks])
 
             Q, R = la.qr(idf.model.YBase)
             # Q1 = Q[:, 0:idf.model.num_base_params]
@@ -789,10 +668,7 @@ class SDP(object):
 
             e_rho1 = Matrix(rho1) - (R1 * beta_symbs)
 
-            rho2_norm_sqr = (
-                la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase))
-                ** 2
-            )
+            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
             u = Symbol("u")
             U_rho = BlockMatrix(
                 [
@@ -816,15 +692,11 @@ class SDP(object):
 
             # start at CAD data, might increase convergence speed (atm only works with dsdp5.
             # with cvxopt, only returns primal as solution when failing)
-            prime = np.concatenate(
-                (idf.model.xBaseModel, np.array(Pd.T * idf.model.xStdModel)[:, 0])
-            )
+            prime = np.concatenate((idf.model.xBaseModel, np.array(Pd.T * idf.model.xStdModel)[:, 0]))
 
             onlyUseDSDP = 0
             if not onlyUseDSDP:
-                solution, state = sdp_helpers.solve_sdp(
-                    objective_func, lmis, variables, primalstart=prime
-                )
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
             if onlyUseDSDP or state != "optimal":
@@ -837,17 +709,11 @@ class SDP(object):
 
             u = solution[0, 0]
             if u:
-                print(
-                    "SDP found base solution with {} error increase from OLS solution".format(
-                        u
-                    )
-                )
-            idf.model.xBase = np.asarray(
-                solution[1 : 1 + idf.model.num_base_params]
-            ).flatten()
+                print(f"SDP found base solution with {u} error increase from OLS solution")
+            idf.model.xBase = np.asarray(solution[1 : 1 + idf.model.num_base_params]).flatten()
 
         if idf.opt["showTiming"]:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+            print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
     def findFeasibleStdFromFeasibleBase(self, idf, xBase):
         # type: (Identification, np._ArrayLike) -> None
@@ -859,9 +725,7 @@ class SDP(object):
             I = Identity
 
             # symbols for std params
-            idable_params = sorted(
-                list(set(idf.model.identified_params).difference(self.delete_cols))
-            )
+            idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
             delta = Matrix(idf.model.param_syms[idable_params])
 
             # equations for base parameters expressed in independent std param symbols
@@ -870,27 +734,16 @@ class SDP(object):
             # add explicit constraints for each base param equation and estimated value
             D_base_val_blocks = []
             for i in range(idf.model.num_base_params):
-                D_base_val_blocks.append(
-                    Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)])
-                )
-                D_base_val_blocks.append(
-                    Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])])
-                )
+                D_base_val_blocks.append(Matrix([beta[i] - (xBase[i] - self.epsilon_safemargin)]))
+                D_base_val_blocks.append(Matrix([xBase[i] + (self.epsilon_safemargin - beta[i])]))
             self.D_blocks += D_base_val_blocks
 
-            self.LMIs_marg = list(
-                [
-                    LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0]))
-                    for lm in self.D_blocks
-                ]
-            )
+            self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in self.D_blocks])
 
             # closest to CAD but ignore non_identifiable params
             sol_cad_dist = Matrix(idf.model.xStdModel[idable_params]) - delta
             u = Symbol("u")
-            U_rho = BlockMatrix(
-                [[Matrix([u]), sol_cad_dist.T], [sol_cad_dist, I(len(idable_params))]]
-            )
+            U_rho = BlockMatrix([[Matrix([u]), sol_cad_dist.T], [sol_cad_dist, I(len(idable_params))]])
             U_rho = U_rho.as_explicit()
 
             lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
@@ -908,9 +761,7 @@ class SDP(object):
             if not onlyUseDSDP:
                 if idf.opt["verbose"]:
                     print("Solving with cvxopt...", end=" ")
-                solution, state = sdp_helpers.solve_sdp(
-                    objective_func, lmis, variables, primalstart=xStd
-                )
+                solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
             # try again with wider bounds and dsdp5 cmd line
             if onlyUseDSDP or state != "optimal":
@@ -925,11 +776,7 @@ class SDP(object):
 
             if state == "optimal":
                 u = solution[0, 0]
-                print(
-                    "SDP found std solution with distance {} from CAD solution (compared to {})".format(
-                        u, old_dist
-                    )
-                )
+                print(f"SDP found std solution with distance {u} from CAD solution (compared to {old_dist})")
                 idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
                 # prepend apriori values for 0'th link non-identifiable variables
@@ -937,22 +784,16 @@ class SDP(object):
                     idf.model.xStd = np.insert(idf.model.xStd, c, 0)
                 idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
             else:
-                print(
-                    "Could not find closer-to-CAD solution (solver state: {}), keeping previous solution".format(
-                        state
-                    )
-                )
+                print(f"Could not find closer-to-CAD solution (solver state: {state}), keeping previous solution")
 
         if idf.opt["showTiming"]:
-            print("Constrained SDP optimization took %.03f sec." % (t.interval))
+            print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
     def findFeasibleStdFromStd(self, idf, xStd):
         # type: (Identification, np._ArrayLike) -> (np._ArrayLike)
         """find closest feasible std solution for some std parameters (increases error)"""
 
-        idable_params = sorted(
-            list(set(idf.model.identified_params).difference(self.delete_cols))
-        )
+        idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
         delta = Matrix(idf.model.param_syms[idable_params])
         I = Identity
 
@@ -960,26 +801,18 @@ class SDP(object):
         # delta_d = (Pd.T*delta)
 
         u = Symbol("u")
-        U_delta = BlockMatrix(
-            [[Matrix([u]), (xStd - delta).T], [xStd - delta, I(len(idable_params))]]
-        )
+        U_delta = BlockMatrix([[Matrix([u]), (xStd - delta).T], [xStd - delta, I(len(idable_params))]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
         variables = [u] + list(delta)
         objective_func = u
 
         prime = idf.model.xStdModel[idable_params]
-        solution, state = sdp_helpers.solve_sdp(
-            objective_func, lmis, variables, primalstart=prime
-        )
+        solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
         u = solution[0, 0]
         if u:
-            print(
-                "SDP found std solution with {} error increase from previous solution".format(
-                    u
-                )
-            )
+            print(f"SDP found std solution with {u} error increase from previous solution")
         xStd = np.asarray(solution[1:]).flatten()
 
         return xStd

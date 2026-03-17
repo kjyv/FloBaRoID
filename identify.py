@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import sys
-from typing import cast, Dict, List, Iterable
+from typing import cast
+
+# plotting
+import matplotlib.pyplot as plt
 
 # math
 import numpy as np
@@ -10,22 +12,18 @@ import numpy.linalg as la
 import scipy
 import scipy.linalg as sla
 import scipy.stats as stats
-
-# plotting
-import matplotlib.pyplot as plt
+from colorama import Fore
 
 # kinematics, dynamics and URDF reading
 from idyntree import bindings as iDynTree
 
+import identification.helpers as helpers
+from identification import sdp
+from identification.data import Data
+
 # submodules
 from identification.model import Model
-from identification.data import Data
 from identification.output import OutputConsole
-from identification import sdp
-import identification.helpers as helpers
-
-from colorama import Fore
-from IPython import embed
 
 np.set_printoptions(linewidth=160)
 
@@ -42,7 +40,7 @@ np.set_printoptions(linewidth=160)
 # inequality approach
 
 
-class Identification(object):
+class Identification:
     def __init__(
         self,
         opt,
@@ -110,9 +108,7 @@ class Identification(object):
                 )
             )
             if self.opt["identifyFriction"]:
-                self.paramHelpers.addFrictionFromURDF(
-                    self.model, self.urdf_file_real, self.xStdReal
-                )
+                self.paramHelpers.addFrictionFromURDF(self.model, self.urdf_file_real, self.xStdReal)
 
         self.validation_file = validation_file
 
@@ -128,9 +124,7 @@ class Identification(object):
             estimateWith = self.opt["estimateWith"]
         # estimate torques with idyntree regressor and different params
         if estimateWith == "urdf":
-            tauEst = np.dot(
-                self.model.YStd, self.model.xStdModel[self.model.identified_params]
-            )
+            tauEst = np.dot(self.model.YStd, self.model.xStdModel[self.model.identified_params])
         elif estimateWith == "base_essential":
             tauEst = np.dot(self.model.YBase, self.xBase_essential)
         elif estimateWith == "base":
@@ -166,18 +160,12 @@ class Identification(object):
         if self.opt["addContacts"]:
             tauEst += self.model.contactForcesSum
 
-        self.tauEstimated = np.reshape(
-            tauEst, (self.data.num_used_samples, self.model.num_dofs + fb)
-        )
-        self.base_error = np.mean(
-            sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1)
-        )
+        self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
+        self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 
         # give some data statistics
         if print_stats and (self.opt["verbose"] or self.opt["showErrorHistogram"] == 1):
-            error_per_joint = np.mean(
-                self.model.tauMeasured - self.tauEstimated, axis=1
-            )
+            error_per_joint = np.mean(self.model.tauMeasured - self.tauEstimated, axis=1)
 
             # how gaussian is the error of the data vs estimation?
             # http://stats.stackexchange.com/questions/62291/can-one-measure-the-degree-of-empirical-data-being-gaussian
@@ -195,12 +183,8 @@ class Identification(object):
                 if p > 0.05:
                     print("error is normal distributed")
                 else:
-                    print("error is not normal distributed (p={})".format(p))
-                print(
-                    "k2: {} (the closer it is to 0, the closer to normal distributed)".format(
-                        k2
-                    )
-                )
+                    print(f"error is not normal distributed (p={p})")
+                print(f"k2: {k2} (the closer it is to 0, the closer to normal distributed)")
 
             if self.opt["showErrorHistogram"] == 1:
                 plt.hist(error_per_joint, 50)
@@ -231,15 +215,11 @@ class Identification(object):
 
         outfile = self.model.urdf_file + ".tmp.urdf"
 
-        self.urdfHelpers.replaceParamsInURDF(
-            input_urdf=self.model.urdf_file, output_urdf=outfile, new_params=params
-        )
+        self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file, output_urdf=outfile, new_params=params)
         if self.opt["useRBDL"]:
             import rbdl
 
-            self.model.rbdlModel = rbdl.loadModel(
-                outfile, floating_base=self.opt["floatingBase"], verbose=False
-            )
+            self.model.rbdlModel = rbdl.loadModel(outfile, floating_base=self.opt["floatingBase"], verbose=False)
             self.model.rbdlModel.gravity = np.array(self.model.gravity)
         else:
             val_loader = iDynTree.ModelLoader()
@@ -252,27 +232,19 @@ class Identification(object):
         self.opt["skipSamples"] = 8
 
         self.tauEstimatedValidation = None  # type: np._ArrayLike
-        for m_idx in self.progress(
-            range(0, v_data["positions"].shape[0], self.opt["skipSamples"] + 1)
-        ):
+        for m_idx in self.progress(range(0, v_data["positions"].shape[0], self.opt["skipSamples"] + 1)):
             if self.opt["useRBDL"]:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx, None, params)
             else:
-                torques = self.model.simulateDynamicsIDynTree(
-                    v_data, m_idx, val_kinDyn, params
-                )
+                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, val_kinDyn, params)
 
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques
             else:
-                self.tauEstimatedValidation = np.vstack(
-                    (self.tauEstimatedValidation, torques)
-                )
+                self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques))
 
         if self.opt["skipSamples"] > 0:
-            self.tauMeasuredValidation = v_data["torques"][
-                :: self.opt["skipSamples"] + 1
-            ]
+            self.tauMeasuredValidation = v_data["torques"][:: self.opt["skipSamples"] + 1]
             self.Tv = v_data["times"][:: self.opt["skipSamples"] + 1]
         else:
             self.tauMeasuredValidation = v_data["torques"]
@@ -294,11 +266,9 @@ class Identification(object):
             * 100
             / sla.norm(self.tauMeasuredValidation)
         )
-        print("Relative validation error: {}%".format(self.val_error))
-        self.val_residual = np.mean(
-            sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation, axis=1)
-        )
-        print("Absolute validation error: {} Nm".format(self.val_residual))
+        print(f"Relative validation error: {self.val_error}%")
+        self.val_residual = np.mean(sla.norm(self.tauEstimatedValidation - self.tauMeasuredValidation, axis=1))
+        print(f"Absolute validation error: {self.val_residual} Nm")
 
         torque_limits = []
         for joint in self.model.jointNames:
@@ -308,18 +278,14 @@ class Identification(object):
             self.tauEstimatedValidation,
             limits=torque_limits,
         )
-        print("NRMS validation error: {}%".format(self.val_nrms))
+        print(f"NRMS validation error: {self.val_nrms}%")
 
     def getBaseParamsFromParamError(self):
         # type: () -> None
-        self.model.xBase += (
-            self.model.xBaseModel
-        )  # both param vecs link relative linearized
+        self.model.xBase += self.model.xBaseModel  # both param vecs link relative linearized
 
         if self.opt["useEssentialParams"]:
-            self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[
-                self.baseEssentialIdx
-            ]
+            self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[self.baseEssentialIdx]
 
     def findStdFromBaseParameters(self):
         # type: () -> None
@@ -416,18 +382,14 @@ class Identification(object):
                 if np.mean(p) > 0.05:
                     print("error is normal distributed")
                 else:
-                    print("error is not normal distributed (p={})".format(p))
+                    print(f"error is not normal distributed (p={p})")
 
             if not self.opt["useAPriori"]:
-                pham_percent_start = (
-                    sla.norm(tauDiff) * 100 / sla.norm(self.tauEstimated)
-                )
+                pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.tauEstimated)
             else:
-                pham_percent_start = (
-                    sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
-                )
+                pham_percent_start = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
 
-            print("starting percentual error {}".format(pham_percent_start))
+            print(f"starting percentual error {pham_percent_start}")
 
             # rho_start = np.square(sla.norm(tauDiff))
             p_sigma_x = np.array([0])
@@ -441,22 +403,20 @@ class Identification(object):
                 prev_p_sigma_x = p_sigma_x
                 p_sigma_x = self.getStdDevForParams()
 
-                print("{} params|".format(self.model.num_base_params - b_c), end=" ")
+                print(f"{self.model.num_base_params - b_c} params|", end=" ")
 
                 ratio = np.max(p_sigma_x) / np.min(p_sigma_x)
-                print("min-max ratio of relative stddevs: {},".format(ratio), end=" ")
+                print(f"min-max ratio of relative stddevs: {ratio},", end=" ")
 
-                print("cond(YBase):{},".format(la.cond(self.model.YBase)), end=" ")
+                print(f"cond(YBase):{la.cond(self.model.YBase)},", end=" ")
 
                 if not self.opt["useAPriori"]:
                     tauDiff = self.model.tauMeasured - self.tauEstimated
                 else:
                     tauDiff = self.tauEstimated
-                pham_percent = (
-                    sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
-                )
+                pham_percent = sla.norm(tauDiff) * 100 / sla.norm(self.model.tauMeasured)
                 error_increase_pham = pham_percent_start - pham_percent
-                print("error delta {}".format(error_increase_pham))
+                print(f"error delta {error_increase_pham}")
 
                 # while loop condition moved to here
                 # TODO: consider to only stop when under ratio and
@@ -470,9 +430,7 @@ class Identification(object):
                     # put some values into global variable for output
                     self.baseNonEssentialIdx = not_essential_idx
                     self.baseEssentialIdx = [
-                        x
-                        for x in range(0, self.model.num_base_params)
-                        if x not in not_essential_idx
+                        x for x in range(0, self.model.num_base_params) if x not in not_essential_idx
                     ]
                     self.num_essential_params = len(self.baseEssentialIdx)
                     self.xBase_essential = np.zeros_like(xBase_orig)
@@ -515,16 +473,12 @@ class Identification(object):
                 b_c += 1
 
             not_essential_idx.pop()
-            print("essential rel stddevs: {}".format(prev_p_sigma_x))
+            print(f"essential rel stddevs: {prev_p_sigma_x}")
             self.p_sigma_x = prev_p_sigma_x
 
             # get indices of the essential base params
             self.baseNonEssentialIdx = not_essential_idx
-            self.baseEssentialIdx = [
-                x
-                for x in range(0, self.model.num_base_params)
-                if x not in not_essential_idx
-            ]
+            self.baseEssentialIdx = [x for x in range(0, self.model.num_base_params) if x not in not_essential_idx]
             self.num_essential_params = len(self.baseEssentialIdx)
 
             # leave previous base params and regressor unchanged
@@ -533,10 +487,10 @@ class Identification(object):
             self.model.YBase = YBase_orig
             self.model.xBase = xBase_orig
 
-            print("Got {} essential parameters".format(self.num_essential_params))
+            print(f"Got {self.num_essential_params} essential parameters")
 
         if self.opt["showTiming"]:
-            print("Getting base essential parameters took %.03f sec." % t.interval)
+            print(f"Getting base essential parameters took {t.interval:.3f} sec.")
 
     def findStdFromBaseEssParameters(self):
         """Find essential standard parameters from previously determined base essential parameters."""
@@ -547,9 +501,7 @@ class Identification(object):
 
         # intuitively, also the dependent columns should be essential as the linear combination
         # is used to identify and calc the error
-        useCADWeighting = (
-            0  # usually produces exact same result, but might be good for some tests
-        )
+        useCADWeighting = 0  # usually produces exact same result, but might be good for some tests
         if self.opt["useDependents"]:
             # also get the ones that are linearly dependent on them -> base params
             dependents = []  # type: List[int]
@@ -574,9 +526,7 @@ class Identification(object):
         #    self.stdEssentialIdx = np.fromiter((x for x in self.stdEssentialIdx if x not in ps), int)
 
         self.stdNonEssentialIdx = [
-            x
-            for x in range(0, self.model.num_identified_params)
-            if x not in self.stdEssentialIdx
+            x for x in range(0, self.model.num_identified_params) if x not in self.stdEssentialIdx
         ]
 
         # get \hat{x_e}, set zeros for non-essential params
@@ -596,8 +546,7 @@ class Identification(object):
                     if idx % 10 in [1, 2, 3]:  # com value
                         v = cast(
                             float,
-                            np.mean(self.model.xStdModel[p_start + 1 : p_start + 4])
-                            * 0.1,
+                            np.mean(self.model.xStdModel[p_start + 1 : p_start + 4]) * 0.1,
                         )
                     elif idx % 10 in [4, 5, 6, 7, 8, 9]:  # inertia value
                         inertia_range = np.array([4, 5, 6, 7, 8, 9]) + p_start
@@ -605,11 +554,7 @@ class Identification(object):
                             float,
                             np.mean(
                                 self.model.xStdModel[
-                                    np.where(self.model.xStdModel[inertia_range] != 0)[
-                                        0
-                                    ]
-                                    + p_start
-                                    + 4
+                                    np.where(self.model.xStdModel[inertia_range] != 0)[0] + p_start + 4
                                 ]
                             )
                             * 0.1,
@@ -631,9 +576,7 @@ class Identification(object):
             #    self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx] \
             #        + self.xBaseModel[self.baseEssentialIdx]
             # else:
-            self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[
-                self.baseEssentialIdx
-            ]
+            self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
     def identifyBaseParameters(self, YBase=None, tau=None, id_only=False):
         # type: (np._ArrayLike, np._ArrayLike, bool) -> None
@@ -648,19 +591,13 @@ class Identification(object):
         if self.opt["useBasisProjection"]:
             self.model.xBaseModel = self.model.xStdModel.dot(self.model.B)
         else:
-            self.model.xBaseModel = self.model.K.dot(
-                self.model.xStdModel[self.model.identified_params]
-            )
+            self.model.xBaseModel = self.model.K.dot(self.model.xStdModel[self.model.identified_params])
 
         if self.urdf_file_real:
             if self.opt["useBasisProjection"]:
-                self.xBaseReal = np.dot(
-                    self.model.Binv, self.xStdReal[self.model.identified_params]
-                )
+                self.xBaseReal = np.dot(self.model.Binv, self.xStdReal[self.model.identified_params])
             else:
-                self.xBaseReal = self.model.K.dot(
-                    self.xStdReal[self.model.identified_params]
-                )
+                self.xBaseReal = self.model.K.dot(self.xStdReal[self.model.identified_params])
 
         # note: using pinv is only ok if low condition number, otherwise numerical issues can happen
         # should always try to avoid inversion of ill-conditioned matrices if possible
@@ -686,11 +623,7 @@ class Identification(object):
         if id_only:
             return
 
-        if (
-            self.opt["showBaseParams"]
-            or self.opt["verbose"]
-            or self.opt["useRegressorRegularization"]
-        ):
+        if self.opt["showBaseParams"] or self.opt["verbose"] or self.opt["useRegressorRegularization"]:
             # get estimation once with previous ordinary LS solution parameters
             self.estimateRegressorTorques("base", print_stats=True)
             if "selectingBlocks" not in self.opt or not self.opt["selectingBlocks"]:
@@ -740,17 +673,11 @@ class Identification(object):
             self.model.YBase = G.dot(self.model.YBase)
             if self.opt["useAPriori"]:
                 # if identifying parameter error, weigh full tau
-                self.model.tau = G.dot(self.model.torques_stack) - G.dot(
-                    self.model.torquesAP_stack
-                )
+                self.model.tau = G.dot(self.model.torques_stack) - G.dot(self.model.torquesAP_stack)
             else:
                 self.model.tau = G.dot(self.model.tau)
             if self.opt["verbose"]:
-                print(
-                    "Condition number of WLS YBase: {}".format(
-                        la.cond(self.model.YBase)
-                    )
-                )
+                print(f"Condition number of WLS YBase: {la.cond(self.model.YBase)}")
 
             # get identified values using weighted matrices without weighing them again
             self.identifyBaseParameters(self.model.YBase, tau, id_only=True)
@@ -792,7 +719,7 @@ class Identification(object):
                 self.model.xStd = x_tmp
             """
         if self.opt["showTiming"]:
-            print("Identifying std parameters directly took %.03f sec." % t.interval)
+            print(f"Identifying std parameters directly took {t.interval:.3f} sec.")
 
     def identifyStandardEssentialParameters(self):
         """Identify standard essential parameters directly with non-singular standard regressor."""
@@ -806,9 +733,7 @@ class Identification(object):
             V_1e = VHe.T[:, 0:ne]
             U_1e = Ue[:, 0:ne]
             s_1e_inv = sla.inv(np.diag(se[0:ne]))
-            W_st_e_pinv = np.diag(self.xStdEssential).dot(
-                V_1e.dot(s_1e_inv).dot(U_1e.T)
-            )
+            W_st_e_pinv = np.diag(self.xStdEssential).dot(V_1e.dot(s_1e_inv).dot(U_1e.T))
             # W_st_e = la.pinv(W_st_e_pinv)
 
             # TODO: add contact forces
@@ -820,10 +745,7 @@ class Identification(object):
                 self.model.xStd = x_tmp
 
         if self.opt["showTiming"]:
-            print(
-                "Identifying %s std essential parameters took %.03f sec."
-                % (len(self.stdEssentialIdx), t.interval)
-            )
+            print(f"Identifying {len(self.stdEssentialIdx)} std essential parameters took {t.interval:.3f} sec.")
 
     def estimateParameters(self):
         """identify parameters using data and regressor (method depends on chosen options)"""
@@ -884,9 +806,7 @@ class Identification(object):
                     # directly estimate constrained std params, distance to CAD not minimized
                     if self.opt["estimateWith"] == "std_direct":
                         # self.identifyStandardParametersDirect()   #get std nonsingular regressor
-                        self.sdp.identifyFeasibleStandardParametersDirect(
-                            self
-                        )  # use with sdp
+                        self.sdp.identifyFeasibleStandardParametersDirect(self)  # use with sdp
                     else:
                         if self.opt["constrainUsingNL"]:
                             self.model.xStd = self.model.xStdModel.copy()
@@ -978,11 +898,7 @@ class Identification(object):
                                 "contains_base": False,
                                 "dataset": [
                                     {
-                                        "data": [
-                                            np.vstack(
-                                                (tauMeasured[:, i], tauEstimated[:, i])
-                                            ).T
-                                        ],
+                                        "data": [np.vstack((tauMeasured[:, i], tauEstimated[:, i])).T],
                                         "time": rel_time,
                                         "title": torque_labels[i],
                                     }
@@ -1001,9 +917,7 @@ class Identification(object):
                         "contains_base": False,
                         "dataset": [
                             {
-                                "data": [
-                                    np.vstack((tauMeasured[:, i], tauEstimated[:, i])).T
-                                ],
+                                "data": [np.vstack((tauMeasured[:, i], tauEstimated[:, i])).T],
                                 "time": rel_time,
                                 "title": torque_labels[i],
                             }
@@ -1021,9 +935,7 @@ class Identification(object):
                 if self.opt["plotErrors"]:
                     # plot joint torque errors
                     e = tauMeasured[:, i] - tauEstimated[:, i]
-                    datasets[-1]["dataset"][0]["data"][0] = np.vstack(
-                        (datasets[-1]["dataset"][0]["data"][0].T, e)
-                    ).T
+                    datasets[-1]["dataset"][0]["data"][0] = np.vstack((datasets[-1]["dataset"][0]["data"][0].T, e)).T
                     datasets[-1]["labels"].append("Error M/E")
 
             # positions per joint
@@ -1037,10 +949,7 @@ class Identification(object):
                             {
                                 "data": [
                                     self.data.samples["positions"][
-                                        0 : self.model.sample_end : self.opt[
-                                            "skipSamples"
-                                        ]
-                                        + 1,
+                                        0 : self.model.sample_end : self.opt["skipSamples"] + 1,
                                         i,
                                     ],
                                     # self.data.samples['target_positions'][0:self.model.sample_end:self.opt['skipSamples']+1, i]
@@ -1061,10 +970,7 @@ class Identification(object):
                     "dataset": [
                         {
                             "data": [
-                                self.data.samples["velocities"][
-                                    0 : self.model.sample_end : self.opt["skipSamples"]
-                                    + 1
-                                ]
+                                self.data.samples["velocities"][0 : self.model.sample_end : self.opt["skipSamples"] + 1]
                             ],
                             "time": rel_time,
                             "title": "Velocities",
@@ -1072,8 +978,7 @@ class Identification(object):
                         {
                             "data": [
                                 self.data.samples["accelerations"][
-                                    0 : self.model.sample_end : self.opt["skipSamples"]
-                                    + 1
+                                    0 : self.model.sample_end : self.opt["skipSamples"] + 1
                                 ]
                             ],
                             "time": rel_time,
@@ -1088,8 +993,7 @@ class Identification(object):
                     "unified_scaling": True,
                     "y_label": "Torque (Nm)",
                     "labels": torque_labels,
-                    "contains_base": self.opt["floatingBase"]
-                    and self.opt["plotBaseDynamics"],
+                    "contains_base": self.opt["floatingBase"] and self.opt["plotBaseDynamics"],
                     "dataset": [
                         {
                             "data": [tauMeasured],
@@ -1112,8 +1016,7 @@ class Identification(object):
                     "unified_scaling": True,
                     "y_label": "Torque (Nm)",
                     "labels": torque_labels,
-                    "contains_base": self.opt["floatingBase"]
-                    and self.opt["plotBaseDynamics"],
+                    "contains_base": self.opt["floatingBase"] and self.opt["plotBaseDynamics"],
                     "dataset": [
                         {
                             "data": [tauMeasured - tauEstimated],
@@ -1134,20 +1037,14 @@ class Identification(object):
                     "dataset": [
                         {
                             "data": [
-                                self.data.samples["positions"][
-                                    0 : self.model.sample_end : self.opt["skipSamples"]
-                                    + 1
-                                ]
+                                self.data.samples["positions"][0 : self.model.sample_end : self.opt["skipSamples"] + 1]
                             ],
                             "time": rel_time,
                             "title": "Positions",
                         },
                         {
                             "data": [
-                                self.data.samples["velocities"][
-                                    0 : self.model.sample_end : self.opt["skipSamples"]
-                                    + 1
-                                ]
+                                self.data.samples["velocities"][0 : self.model.sample_end : self.opt["skipSamples"] + 1]
                             ],
                             "time": rel_time,
                             "title": "Velocities",
@@ -1155,8 +1052,7 @@ class Identification(object):
                         {
                             "data": [
                                 self.data.samples["accelerations"][
-                                    0 : self.model.sample_end : self.opt["skipSamples"]
-                                    + 1
+                                    0 : self.model.sample_end : self.opt["skipSamples"] + 1
                                 ]
                             ],
                             "time": rel_time,
@@ -1168,15 +1064,11 @@ class Identification(object):
 
             if "positions_raw" in self.data.samples:
                 datasets[2]["dataset"][0]["data"].append(
-                    self.data.samples["positions_raw"][
-                        0 : self.model.sample_end : self.opt["skipSamples"] + 1
-                    ]
+                    self.data.samples["positions_raw"][0 : self.model.sample_end : self.opt["skipSamples"] + 1]
                 )
             if "velocities_raw" in self.data.samples:
                 datasets[2]["dataset"][1]["data"].append(
-                    self.data.samples["velocities_raw"][
-                        0 : self.model.sample_end : self.opt["skipSamples"] + 1
-                    ]
+                    self.data.samples["velocities_raw"][0 : self.model.sample_end : self.opt["skipSamples"] + 1]
                 )
 
         if self.validation_file:
@@ -1185,8 +1077,7 @@ class Identification(object):
                     "unified_scaling": True,
                     "y_label": "Torque (Nm)",
                     "labels": torque_labels,
-                    "contains_base": self.opt["floatingBase"]
-                    and self.opt["plotBaseDynamics"],
+                    "contains_base": self.opt["floatingBase"] and self.opt["plotBaseDynamics"],
                     "dataset": [  # {'data': [self.tauMeasuredValidation],
                         # 'time': rel_vtime, 'title': 'Measured Validation'},
                         {
@@ -1221,22 +1112,18 @@ class Identification(object):
                 size = self.__dict__[v].nbytes
                 total += size
                 print(
-                    "{}: {} ".format(v, (humanize.naturalsize(size, binary=True))),
+                    f"{v}: {humanize.naturalsize(size, binary=True)} ",
                     end=" ",
                 )
             # TODO: extend for builtins
-        print("- total: {}".format(humanize.naturalsize(total, binary=True)))
+        print(f"- total: {humanize.naturalsize(total, binary=True)}")
 
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Load measurements and URDF model to get inertial parameters."
-    )
-    parser.add_argument(
-        "--config", required=True, type=str, help="use options from given config file"
-    )
+    parser = argparse.ArgumentParser(description="Load measurements and URDF model to get inertial parameters.")
+    parser.add_argument("--config", required=True, type=str, help="use options from given config file")
     parser.add_argument(
         "-m",
         "--model",
@@ -1286,22 +1173,20 @@ def main():
                               Identifies on all joints if not specified.",
     )
 
-    parser.add_argument(
-        "--plot", help="whether to plot measurements", action="store_true"
-    )
+    parser.add_argument("--plot", help="whether to plot measurements", action="store_true")
     parser.set_defaults(plot=False, regressor=None, model_real=None)
     args = parser.parse_args()
 
     import yaml
 
-    with open(args.config, "r") as stream:
+    with open(args.config) as stream:
         try:
             config = yaml.load(stream, Loader=yaml.SafeLoader)
         except yaml.YAMLError as exc:
             print(exc)
 
     # capture stdout and print
-    class Logger(object):
+    class Logger:
         def __init__(self):
             self.terminal = sys.stdout
             self.log = ""
@@ -1369,9 +1254,7 @@ def main():
 
     if args.model_output:
         if not idf.paramHelpers.isPhysicalConsistent(idf.model.xStd):
-            print(
-                "can't create urdf file with estimated parameters since they are not physical consistent."
-            )
+            print("can't create urdf file with estimated parameters since they are not physical consistent.")
         else:
             idf.urdfHelpers.replaceParamsInURDF(
                 input_urdf=args.model,

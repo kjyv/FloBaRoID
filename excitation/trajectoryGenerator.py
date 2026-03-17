@@ -1,10 +1,7 @@
-from typing import List, Dict, Tuple, Union, Any
-
 import numpy as np
-from idyntree import bindings as iDynTree
 
-from identification.model import Model
 from identification.data import Data
+from identification.model import Model
 
 
 def simulateTrajectory(config, trajectory, model=None, measurements=None):
@@ -48,9 +45,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
             qdot = np.deg2rad(qdot)
         trajectory_data["target_velocities"].append(qdot)
 
-        qddot = np.array(
-            [trajectory.getAcceleration(d) for d in range(config["num_dofs"])]
-        )
+        qddot = np.array([trajectory.getAcceleration(d) for d in range(config["num_dofs"])])
         if config["useDeg"]:
             qddot = np.deg2rad(qddot)
         trajectory_data["target_accelerations"].append(qddot)
@@ -63,13 +58,9 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     # convert lists to numpy arrays
     trajectory_data["target_positions"] = np.array(trajectory_data["target_positions"])
     trajectory_data["positions"] = trajectory_data["target_positions"]
-    trajectory_data["target_velocities"] = np.array(
-        trajectory_data["target_velocities"]
-    )
+    trajectory_data["target_velocities"] = np.array(trajectory_data["target_velocities"])
     trajectory_data["velocities"] = trajectory_data["target_velocities"]
-    trajectory_data["target_accelerations"] = np.array(
-        trajectory_data["target_accelerations"]
-    )
+    trajectory_data["target_accelerations"] = np.array(trajectory_data["target_accelerations"])
     trajectory_data["accelerations"] = trajectory_data["target_accelerations"]
     trajectory_data["torques"] = np.array(trajectory_data["torques"])
     trajectory_data["times"] = np.array(trajectory_data["times"])
@@ -88,9 +79,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         # contact_wrench[2] = 9.81 * 3.0 # -g * mass
         contact_wrench = np.random.rand(6) * 10
 
-        trajectory_data["base_rpy"] = (
-            np.random.rand((3 * num_samples)).reshape((num_samples, 3)) * 0.5
-        )
+        trajectory_data["base_rpy"] = np.random.rand(3 * num_samples).reshape((num_samples, 3)) * 0.5
 
         """
         contact_wrench[2] = 9.81 # * 139.122814
@@ -115,9 +104,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
 
         trajectory_data['base_rpy'][:] += np.array([roll, pitch, yaw])
         """
-        trajectory_data["contacts"] = np.array(
-            {contactFrame: np.tile(contact_wrench, (num_samples, 1))}
-        )
+        trajectory_data["contacts"] = np.array({contactFrame: np.tile(contact_wrench, (num_samples, 1))})
     else:
         # TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
         trajectory_data["contacts"] = np.array({})
@@ -165,7 +152,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
     return trajectory_data, data
 
 
-class Trajectory(object):
+class Trajectory:
     """base trajectory class"""
 
     def getAngle(self, dof):
@@ -304,7 +291,7 @@ class PulsedTrajectory(Trajectory):
         return abs(self.getVelocity(0)) < thresh
 
 
-class OscillationGenerator(object):
+class OscillationGenerator:
     def __init__(self, w_f, a, b, q0, nf, use_deg):
         """
         generate periodic oscillation from fourier series (Swevers, 1997)
@@ -339,9 +326,7 @@ class OscillationGenerator(object):
     def getVelocity(self, t):
         dq = 0.0
         for l in range(1, self.nf + 1):
-            dq += self.a[l - 1] * np.cos(self.w_f * l * t) + self.b[l - 1] * np.sin(
-                self.w_f * l * t
-            )
+            dq += self.a[l - 1] * np.cos(self.w_f * l * t) + self.b[l - 1] * np.sin(self.w_f * l * t)
         if self.use_deg:
             dq = np.rad2deg(dq)
         return dq
@@ -349,9 +334,9 @@ class OscillationGenerator(object):
     def getAcceleration(self, t):
         ddq = 0.0
         for l in range(1, self.nf + 1):
-            ddq += -self.a[l - 1] * self.w_f * l * np.sin(self.w_f * l * t) + self.b[
-                l - 1
-            ] * self.w_f * l * np.cos(self.w_f * l * t)
+            ddq += -self.a[l - 1] * self.w_f * l * np.sin(self.w_f * l * t) + self.b[l - 1] * self.w_f * l * np.cos(
+                self.w_f * l * t
+            )
         if self.use_deg:
             ddq = np.rad2deg(ddq)
         return ddq
@@ -387,7 +372,7 @@ class FixedPositionTrajectory(Trajectory):
                     return angle_set["angles"][dof]
 
             # if no angle found (shouldn't happen)
-            print("Warning: no angle found for time {}".format(self.time))
+            print(f"Warning: no angle found for time {self.time}")
             return 0.0
         else:
             # Walk-Man:

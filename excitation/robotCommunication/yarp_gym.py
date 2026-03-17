@@ -1,6 +1,7 @@
 import sys
-import yarp
+
 import numpy as np
+import yarp
 
 
 def gen_position_msg(msg_port, angles):
@@ -8,9 +9,7 @@ def gen_position_msg(msg_port, angles):
     bottle.clear()
     angles_right, angles_left = angles[0:6], angles[6:]
     bottle.fromString(
-        "(set_legs_refs {} {}) 0".format(
-            " ".join(map(str, angles_right)), " ".join(map(str, angles_left))
-        )
+        "(set_legs_refs {} {}) 0".format(" ".join(map(str, angles_right)), " ".join(map(str, angles_left)))
     )
     return bottle
 
@@ -18,7 +17,7 @@ def gen_position_msg(msg_port, angles):
 def gen_command(msg_port, command):
     bottle = msg_port.prepare()
     bottle.clear()
-    bottle.fromString("({}) 0".format(command))
+    bottle.fromString(f"({command}) 0")
     return bottle
 
 
@@ -42,13 +41,10 @@ def main(config, trajectory, out):
 
     t_init = yarp.Time.now()
     t_elapsed = 0.0
-    duration = (
-        config["args"].periods * trajectory.getPeriodLength()
-    )  # init overall run duration to a periodic length
+    duration = config["args"].periods * trajectory.getPeriodLength()  # init overall run duration to a periodic length
 
     measured_positions = list()
     measured_velocities = list()
-    measured_accelerations = list()
     measured_torques = list()
     measured_time = list()
 
@@ -66,12 +62,8 @@ def main(config, trajectory, out):
     while t_elapsed < duration:
         trajectory.setTime(t_elapsed)
         target_angles = [trajectory.getAngle(i) for i in range(0, config["num_dofs"])]
-        target_velocities = [
-            trajectory.getVelocity(i) for i in range(0, config["num_dofs"])
-        ]
-        target_accelerations = [
-            trajectory.getAcceleration(i) for i in range(0, config["num_dofs"])
-        ]
+        target_velocities = [trajectory.getVelocity(i) for i in range(0, config["num_dofs"])]
+        target_accelerations = [trajectory.getAcceleration(i) for i in range(0, config["num_dofs"])]
         # for i in range(0, config['num_dofs']):
         #    target_velocities[i]+=velocity_correction[i]
 
@@ -113,7 +105,7 @@ def main(config, trajectory, out):
 
         positions = np.zeros(config["num_dofs"])
         velocities = np.zeros(config["num_dofs"])
-        accelerations = np.zeros(config["num_dofs"])
+        np.zeros(config["num_dofs"])
         torques = np.zeros(config["num_dofs"])
 
         if config["num_dofs"] == b_positions.size():

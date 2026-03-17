@@ -1,33 +1,26 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import sys
-from typing import Dict
-
-import numpy as np
-from colorama import Fore, Back, Style
-from idyntree import bindings as iDynTree
 
 import argparse
+import sys
 
-parser = argparse.ArgumentParser(
-    description="Send an excitation trajectory and record measurements to <filename>."
+import numpy as np
+import yaml
+from colorama import Fore
+from idyntree import bindings as iDynTree
+
+from excitation.optimizer import plotter
+from excitation.trajectoryGenerator import (
+    FixedPositionTrajectory,
+    PulsedTrajectory,
+    simulateTrajectory,
 )
-parser.add_argument(
-    "--model", required=True, type=str, help="the file to load the robot model from"
-)
-parser.add_argument(
-    "--filename", type=str, help="the filename to save the measurements to"
-)
-parser.add_argument(
-    "--trajectory", type=str, help="the file to load the trajectory from"
-)
-parser.add_argument(
-    "--config", required=True, type=str, help="use options from given config file"
-)
-parser.add_argument(
-    "--dryrun", help="don't actually send the trajectory", action="store_true"
-)
+
+parser = argparse.ArgumentParser(description="Send an excitation trajectory and record measurements to <filename>.")
+parser.add_argument("--model", required=True, type=str, help="the file to load the robot model from")
+parser.add_argument("--filename", type=str, help="the filename to save the measurements to")
+parser.add_argument("--trajectory", type=str, help="the file to load the trajectory from")
+parser.add_argument("--config", required=True, type=str, help="use options from given config file")
+parser.add_argument("--dryrun", help="don't actually send the trajectory", action="store_true")
 
 parser.add_argument("--plot", help="plot measured data", action="store_true")
 parser.add_argument(
@@ -36,14 +29,10 @@ parser.add_argument(
     help="plot targets instead of measurements",
     action="store_true",
 )
-parser.set_defaults(
-    plot=False, plot_targets=False, dryrun=False, filename="measurements.npz"
-)
+parser.set_defaults(plot=False, plot_targets=False, dryrun=False, filename="measurements.npz")
 args = parser.parse_args()
 
-import yaml
-
-with open(args.config, "r") as stream:
+with open(args.config) as stream:
     try:
         config = yaml.load(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
@@ -60,13 +49,6 @@ config["num_dofs"] = len(config["jointNames"])
 # append parent dir for relative import
 # import os
 # sys.path.insert(1, os.path.join(sys.path[0], '..'))
-
-from excitation.optimizer import plotter
-from excitation.trajectoryGenerator import (
-    PulsedTrajectory,
-    FixedPositionTrajectory,
-    simulateTrajectory,
-)
 
 traj_data = {}  # type: Dict[str, np._ArrayLike]   # hold some global data vars in here
 
@@ -85,14 +67,14 @@ def main():
             # static posture file
             trajectory = FixedPositionTrajectory(config)
             trajectory.initWithAngles(tf["angles"])
-            print("using static postures from file {}".format(traj_file))
+            print(f"using static postures from file {traj_file}")
         else:
             # proper trajectory
             trajectory = PulsedTrajectory(config["num_dofs"], use_deg=tf["use_deg"])
             trajectory.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"])
-            print("using trajectory from file {}".format(traj_file))
-    except IOError:
-        print("No trajectory file found, can't excite ({})!".format(traj_file))
+            print(f"using trajectory from file {traj_file}")
+    except OSError:
+        print(f"No trajectory file found, can't excite ({traj_file})!")
         sys.exit(1)
 
     # generating simulation of trajectory in any case
@@ -138,13 +120,13 @@ def main():
         if tau_len < traj_data["torques"].shape[0]:
             # less measured samples than input samples
             traj_data["Tau"][:, :] = traj_data["torques"][0:tau_len, :]
-            if config["exciteMethod"] == None:
+            if config["exciteMethod"] is None:
                 traj_data["V"][:, :] = traj_data["velocities"][0:tau_len, :]
         else:
             # less or equal input samples than measured samples
             torques_len = traj_data["torques"].shape[0]
             traj_data["Tau"][:torques_len, :] = traj_data["torques"][:, :]
-            if config["exciteMethod"] == None:
+            if config["exciteMethod"] is None:
                 traj_data["V"] = traj_data["velocities"][:, :]
 
     # filter, differentiate, convert, etc.
@@ -163,9 +145,7 @@ def main():
     # use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
     # (simulate again with measured/filtered data)
     if config["excitationSimulate"]:
-        traj_data_sim, data = simulateTrajectory(
-            config, trajectory, measurements=traj_data
-        )
+        traj_data_sim, data = simulateTrajectory(config, trajectory, measurements=traj_data)
         traj_data["Tau"] = data.samples["torques"]
 
     saveMeasurements(args.filename, traj_data)
@@ -214,7 +194,7 @@ def saveMeasurements(filename, data):
             frequency=data["measured_frequency"],
         )
 
-    print("saved measurements to {}".format(args.filename))
+    print(f"saved measurements to {args.filename}")
 
 
 if __name__ == "__main__":

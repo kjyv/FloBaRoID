@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 
+import argparse
+
+import identificationHelpers
 import numpy as np
 from idyntree import bindings as iDynTree
-import identificationHelpers
-import argparse
 
 
 def main():
     """
     open a urdf file and add noise to each parameter. Can be used for testing, but noisy params are usually not consistent, so may be of limited use.
     """
-    parser = argparse.ArgumentParser(
-        description="Load measurements and URDF model to get inertial parameters."
-    )
+    parser = argparse.ArgumentParser(description="Load measurements and URDF model to get inertial parameters.")
     parser.add_argument(
         "--urdf_input",
         required=True,
@@ -25,9 +24,7 @@ def main():
         type=str,
         help="the file to save the noisy robot model to",
     )
-    parser.add_argument(
-        "--noise", required=False, type=float, help="scale of noise (default 0.01)"
-    )
+    parser.add_argument("--noise", required=False, type=float, help="scale of noise (default 0.01)")
     parser.set_defaults(noise=0.01)
     args = parser.parse_args()
 

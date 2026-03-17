@@ -1,22 +1,14 @@
-from typing import Tuple, List
-
-import sympy
-from sympy import Symbol
-import numpy as np
-
 import cvxopt
-from cvxopt import matrix
 import lmi_sdp
+import numpy as np
+from colorama import Fore
+from cvxopt import matrix
+from lmi_sdp import lmi_to_coeffs
 
 epsilon_sdptol = 1e-6
 
-from colorama import Fore, Back
-from lmi_sdp import LMI_PD, LMI_PSD, lmi_to_coeffs
 
-
-def to_cvxopt(
-    objective_func, lmis, variables, objective_type="minimize", split_blocks=True
-):
+def to_cvxopt(objective_func, lmis, variables, objective_type="minimize", split_blocks=True):
     """Prepare objective and LMI to be used with cvxopt SDP solver.
 
     Parameters
@@ -120,9 +112,7 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     elif primalstart is not None:
         # return primalstart if no solution was found
         print(Fore.RED + "{}".format(sdpout["status"]) + Fore.RESET)
-        sdpout["x"] = np.reshape(
-            np.concatenate(([0], primalstart)), (len(primalstart) + 1, 1)
-        )
+        sdpout["x"] = np.reshape(np.concatenate(([0], primalstart)), (len(primalstart) + 1, 1))
     return np.asarray(sdpout["x"]), state
 
 
@@ -138,9 +128,7 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         "DSDP_Monitor": 10,
     }
     if wide_bounds:
-        sdpout = cvxopt.solvers.sdp(
-            c, Gs=Gs, hs=hs, beta=10e15, gama=10e15, solver="dsdp"
-        )
+        sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, beta=10e15, gama=10e15, solver="dsdp")
     else:
         sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs, solver="dsdp")
     state = sdpout["status"]
@@ -155,15 +143,13 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
 def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.ndarray, str]
     """use dsdp5 directly (faster than cvxopt, can use starting points, more robust)"""
-    import subprocess
     import os
+    import subprocess
 
     sdpadat = to_sdpa_sparse(objf, lmis, variables)
     import uuid
 
-    dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "sdpa_dat_{}".format(uuid.uuid4())
-    )
+    dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"sdpa_dat_{uuid.uuid4()}")
     if not os.path.exists(dir):
         os.makedirs(dir)
 
@@ -189,7 +175,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
                 "-save",
                 "dsdp5.out",
                 "-gaptol",
-                "{}".format(epsilon_sdptol),
+                f"{epsilon_sdptol}",
             ]
             + bounds
             + ["-y0", "primal.dat"],
@@ -203,7 +189,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         shutil.rmtree(dir)
         return np.zeros((len(variables) + 1, 1)), "stopped"
     except subprocess.CalledProcessError as e:
-        print("DSDP stopped early: {}".format(e.returncode))
+        print(f"DSDP stopped early: {e.returncode}")
         state = "stopped"
         result = e.output
 
@@ -228,7 +214,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         print(Fore.RED + error[0] + Fore.RESET)
     else:
         print(state)
-    outfile = open(os.path.join(dir, "dsdp5.out"), "r").readlines()
+    outfile = open(os.path.join(dir, "dsdp5.out")).readlines()
     sol = [float(v) for v in outfile[0].split()]
 
     # remove tmp dir again

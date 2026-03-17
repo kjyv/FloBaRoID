@@ -1,24 +1,16 @@
-import time
-from typing import cast, Any, List, Dict, Iterable, Union, Tuple, AnyStr
 import os
-
-import numpy as np
-import numpy.linalg as la
-
-import xml.etree.ElementTree as ET
-
-from colorama import Fore
-from tqdm import tqdm
-
-from idyntree import bindings as iDynTree
 
 # define exception for python < 3
 import sys
+import time
+import xml.etree.ElementTree as ET
+from typing import cast
 
-if sys.version_info < (3, 0):
-
-    class FileNotFoundError(OSError):
-        pass
+import numpy as np
+import numpy.linalg as la
+from colorama import Fore
+from idyntree import bindings as iDynTree
+from tqdm import tqdm
 
 
 def getNRMSE(data_ref, data_est, normalize=True, limits=None):
@@ -92,7 +84,7 @@ def eulerAnglesToRotationMatrix(theta):
     return R
 
 
-class Progress(object):
+class Progress:
     def __init__(self, config):
         # type: (Dict[str, Any]) -> None
         self.config = config  # type: Dict[str, Any]
@@ -105,7 +97,7 @@ class Progress(object):
             return iter
 
 
-class Timer(object):
+class Timer:
     def __enter__(self):
         self.start = time.perf_counter()
         return self
@@ -115,7 +107,7 @@ class Timer(object):
         self.interval = self.end - self.start
 
 
-class ParamHelpers(object):
+class ParamHelpers:
     def __init__(self, model, opt):
         # type: (Model, Dict[str, Any]) -> None
         self.model = model
@@ -139,9 +131,7 @@ class ParamHelpers(object):
                 cons[i] = cast(bool, params[i * 4] > 0)
         else:
             for i in range(0, params.shape[0]):
-                if (
-                    (i % 10 == 0) and i < self.model.num_model_params
-                ):  # for each link (and not friction)
+                if (i % 10 == 0) and i < self.model.num_model_params:  # for each link (and not friction)
                     p_vec = iDynTree.Vector10()
                     for j in range(0, 10):
                         p_vec.setVal(j, params[i + j])
@@ -196,7 +186,7 @@ class ParamHelpers(object):
     def isPhysicalConsistent(self, params):
         # type: (np._ArrayLike[float]) -> bool
         """give boolean consistency statement for a set of parameters"""
-        return not (False in self.checkPhysicalConsistencyNoTriangle(params).values())
+        return False not in self.checkPhysicalConsistencyNoTriangle(params).values()
 
     def invvech(self, params):
         # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
@@ -299,17 +289,11 @@ class ParamHelpers(object):
                     params[i + 3] = com_z / link_mass  # z of first moment -> z of com
                 else:
                     params[i + 1] = params[i + 2] = params[i + 3] = 0
-                p_com = iDynTree.PositionRaw(
-                    params[i + 1], params[i + 2], params[i + 3]
-                )
+                p_com = iDynTree.PositionRaw(params[i + 1], params[i + 2], params[i + 3])
 
                 # inertias
-                rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(
-                    params[i + 4 : i + 10]
-                )
-                s_inertia = iDynTree.SpatialInertia(
-                    link_mass, p_com, rot_inertia_origin
-                )
+                rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i + 4 : i + 10])
+                s_inertia = iDynTree.SpatialInertia(link_mass, p_com, rot_inertia_origin)
                 rot_inertia_com = s_inertia.getRotationalInertiaWrtCenterOfMass()
                 params[i + 4] = rot_inertia_com.getVal(0, 0)  # xx w.r.t. com
                 params[i + 5] = rot_inertia_com.getVal(0, 1)  # xy w.r.t. com
@@ -332,18 +316,12 @@ class ParamHelpers(object):
                 params[i + 1] = com_x * link_mass  # x of first moment of mass
                 params[i + 2] = com_y * link_mass  # y of first moment of mass
                 params[i + 3] = com_z * link_mass  # z of first moment of mass
-                p_com = iDynTree.PositionRaw(
-                    params[i + 1], params[i + 2], params[i + 3]
-                )
+                p_com = iDynTree.PositionRaw(params[i + 1], params[i + 2], params[i + 3])
 
                 # inertias
-                rot_inertia_com = self.inertiaParams2RotationalInertiaRaw(
-                    params[i + 4 : i + 10]
-                )
+                rot_inertia_com = self.inertiaParams2RotationalInertiaRaw(params[i + 4 : i + 10])
                 s_inertia = iDynTree.SpatialInertia(link_mass, p_com, rot_inertia_com)
-                s_inertia.fromRotationalInertiaWrtCenterOfMass(
-                    link_mass, p_com, rot_inertia_com
-                )
+                s_inertia.fromRotationalInertiaWrtCenterOfMass(link_mass, p_com, rot_inertia_com)
                 rot_inertia = s_inertia.getRotationalInertiaWrtFrameOrigin()
                 params[i + 4] = rot_inertia.getVal(0, 0)  # xx w.r.t. com
                 params[i + 5] = rot_inertia.getVal(0, 1)  # xy w.r.t. com
@@ -375,7 +353,7 @@ class ParamHelpers(object):
                     params[start + nd + nd + i] = friction[j]["f_velocity"]
 
 
-class URDFHelpers(object):
+class URDFHelpers:
     def __init__(self, paramHelpers, model, opt):
         # type: (ParamHelpers, model.Model, Dict) -> None
         self.paramHelpers = paramHelpers
@@ -408,9 +386,7 @@ class URDFHelpers(object):
             per_link = 4
             xStdBary = new_params.copy()
             for i in range(self.model.num_links):
-                xStdBary[i * per_link + 1 : i * per_link + 3 + 1] /= xStdBary[
-                    i * per_link
-                ]
+                xStdBary[i * per_link + 1 : i * per_link + 3 + 1] /= xStdBary[i * per_link]
         else:
             per_link = 10
             xStdBary = self.paramHelpers.paramsLink2Bary(new_params)
@@ -420,42 +396,32 @@ class URDFHelpers(object):
         for l in tree.findall("link"):
             if l.attrib["name"] in self.model.linkNames:
                 link_id = self.model.linkNames.index(l.attrib["name"])
-                l.find("inertial/mass").attrib["value"] = "{}".format(
-                    xStdBary[link_id * per_link]
-                )
-                l.find("inertial/origin").attrib["xyz"] = "{} {} {}".format(
-                    xStdBary[link_id * per_link + 1],
-                    xStdBary[link_id * per_link + 2],
-                    xStdBary[link_id * per_link + 3],
+                l.find("inertial/mass").attrib["value"] = f"{xStdBary[link_id * per_link]}"
+                l.find("inertial/origin").attrib["xyz"] = (
+                    f"{xStdBary[link_id * per_link + 1]} {xStdBary[link_id * per_link + 2]} {xStdBary[link_id * per_link + 3]}"
                 )
                 if not self.opt["identifyGravityParamsOnly"]:
                     inert = l.find("inertial/inertia")
-                    inert.attrib["ixx"] = "{}".format(xStdBary[link_id * 10 + 4])
-                    inert.attrib["ixy"] = "{}".format(xStdBary[link_id * 10 + 5])
-                    inert.attrib["ixz"] = "{}".format(xStdBary[link_id * 10 + 6])
-                    inert.attrib["iyy"] = "{}".format(xStdBary[link_id * 10 + 7])
-                    inert.attrib["iyz"] = "{}".format(xStdBary[link_id * 10 + 8])
-                    inert.attrib["izz"] = "{}".format(xStdBary[link_id * 10 + 9])
+                    inert.attrib["ixx"] = f"{xStdBary[link_id * 10 + 4]}"
+                    inert.attrib["ixy"] = f"{xStdBary[link_id * 10 + 5]}"
+                    inert.attrib["ixz"] = f"{xStdBary[link_id * 10 + 6]}"
+                    inert.attrib["iyy"] = f"{xStdBary[link_id * 10 + 7]}"
+                    inert.attrib["iyz"] = f"{xStdBary[link_id * 10 + 8]}"
+                    inert.attrib["izz"] = f"{xStdBary[link_id * 10 + 9]}"
 
         # write friction of joints
         for l in tree.findall("joint"):
             if l.attrib["name"] in self.model.jointNames:
                 joint_id = self.model.jointNames.index(l.attrib["name"])
                 if self.opt["identifyFriction"]:
-                    f_c = cast(
-                        float, xStdBary[self.model.num_links * per_link + joint_id]
-                    )
+                    f_c = cast(float, xStdBary[self.model.num_links * per_link + joint_id])
                     if self.opt["identifyGravityParamsOnly"]:
                         f_v = 0.0
                     else:
                         if self.opt["identifySymmetricVelFriction"]:
                             f_v = cast(
                                 float,
-                                xStdBary[
-                                    self.model.num_model_params
-                                    + self.model.num_dofs
-                                    + joint_id
-                                ],
+                                xStdBary[self.model.num_model_params + self.model.num_dofs + joint_id],
                             )
                         else:
                             print(
@@ -467,9 +433,9 @@ class URDFHelpers(object):
                 else:
                     # parameters were identified assuming there was no friction
                     f_c = f_v = 0.0
-                l.find("dynamics").attrib["friction"] = "{}".format(f_c)
+                l.find("dynamics").attrib["friction"] = f"{f_c}"
                 if not self.opt["identifyGravityParamsOnly"]:
-                    l.find("dynamics").attrib["damping"] = "{}".format(f_v)
+                    l.find("dynamics").attrib["damping"] = f"{f_v}"
 
         tree.write(output_urdf, xml_declaration=True)
 
@@ -505,9 +471,7 @@ class URDFHelpers(object):
             filepath = None
 
         # if path is ros package path, get absolute system path
-        if filepath and (
-            filepath.startswith("package") or filepath.startswith("model")
-        ):
+        if filepath and (filepath.startswith("package") or filepath.startswith("model")):
             try:
                 import resource_retriever  # ros package
 
@@ -550,7 +514,6 @@ class URDFHelpers(object):
         box_size = box_pos = box_rpy = [0.0, 0.0, 0.0]
         for l in tree.findall("link"):
             if l.attrib["name"] == link_name:
-                link_found = True
                 m = l.find("visual/geometry/box")
                 if m is not None:
                     box_size, box_pos, box_rpy = getBoxAttribs(m, l)
@@ -580,26 +543,16 @@ class URDFHelpers(object):
             num_neighbors = idyn_model.getNrOfNeighbors(l)
             for n in range(num_neighbors):
                 nb = idyn_model.getNeighbor(l, n)
-                neighbors[link_name]["links"].append(
-                    idyn_model.getLinkName(nb.neighborLink)
-                )
-                neighbors[link_name]["joints"].append(
-                    idyn_model.getJointName(nb.neighborJoint)
-                )
+                neighbors[link_name]["links"].append(idyn_model.getLinkName(nb.neighborLink))
+                neighbors[link_name]["joints"].append(idyn_model.getJointName(nb.neighborJoint))
 
         if connected:
             # for each neighbor link, add links connected via a fixed joint also as neighbors
-            neighbors_tmp = (
-                neighbors.copy()
-            )  # don't modify in place so no recursive loops happen
+            neighbors_tmp = neighbors.copy()  # don't modify in place so no recursive loops happen
             for l in range(idyn_model.getNrOfLinks()):
                 link_name = idyn_model.getLinkName(l)
-                for nb in neighbors_tmp[link_name][
-                    "links"
-                ]:  # look at all neighbors of l
-                    for j_name in neighbors_tmp[nb][
-                        "joints"
-                    ]:  # check each joint of a neighbor of l
+                for nb in neighbors_tmp[link_name]["links"]:  # look at all neighbors of l
+                    for j_name in neighbors_tmp[nb]["joints"]:  # check each joint of a neighbor of l
                         j = idyn_model.getJoint(idyn_model.getJointIndex(j_name))
                         # check all connected joints if they are fixed, if so add connected link as neighbor
                         if j.isFixedJoint():
@@ -610,10 +563,7 @@ class URDFHelpers(object):
                             else:
                                 nb_fixed = j_l0
                             nb_fixed_name = idyn_model.getLinkName(nb_fixed)
-                            if (
-                                nb_fixed != l
-                                and nb_fixed_name not in neighbors[link_name]["links"]
-                            ):
+                            if nb_fixed != l and nb_fixed_name not in neighbors[link_name]["links"]:
                                 neighbors[link_name]["links"].append(nb_fixed_name)
 
         return neighbors
@@ -693,9 +643,7 @@ class URDFHelpers(object):
                 if self.opt["verbose"]:
                     print(
                         Fore.YELLOW
-                        + "Mesh file {} or box geometry not found for link '{}'! Using a {}m cube around a priori COM.".format(
-                            filename, link_name, length
-                        )
+                        + f"Mesh file {filename} or box geometry not found for link '{link_name}'! Using a {length}m cube around a priori COM."
                         + Fore.RESET
                     )
                 return cube, pos_0, rot_0
@@ -716,9 +664,7 @@ class URDFHelpers(object):
             if j.attrib["type"] == "revolute":
                 l = j.find("limit")
                 if l is not None:
-                    torque = float(
-                        l.attrib["effort"]
-                    )  # this is not really the physical limit but controller limit
+                    torque = float(l.attrib["effort"])  # this is not really the physical limit but controller limit
                     lower = float(l.attrib["lower"])
                     upper = float(l.attrib["upper"])
                     velocity = float(l.attrib["velocity"])

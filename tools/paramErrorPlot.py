@@ -1,20 +1,16 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-import sys
-from typing import AnyStr, List
 
 # math
-import numpy as np
-import numpy.linalg as la
+import argparse
 
 # plotting
 import matplotlib.pyplot as plt
+import numpy as np
+import numpy.linalg as la
 
 # kinematics, dynamics and URDF reading
 from idyntree import bindings as iDynTree
-
-import argparse
 
 parser = argparse.ArgumentParser(description="Scale mass and inertia from <model>.")
 parser.add_argument(
@@ -134,19 +130,13 @@ if __name__ == "__main__":
         p_model = loadModelfromURDF(filename[0])
 
         # mass error norm
-        mass_errors = la.norm(
-            getParamErrors(ref_model, p_model, num_links, group="mass")
-        )
+        mass_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group="mass"))
 
         # com error norm
-        com_errors = la.norm(
-            getParamErrors(ref_model, p_model, num_links, group="COM"), axis=1
-        )
+        com_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group="COM"), axis=1)
 
         # inertia error norm
-        inertia_error_tensors = getParamErrors(
-            ref_model, p_model, num_links, group="inertia"
-        )
+        inertia_error_tensors = getParamErrors(ref_model, p_model, num_links, group="inertia")
         inertia_errors = []
         for i in range(len(inertia_error_tensors)):
             inertia_errors.append(la.norm(inertia_error_tensors[i]))

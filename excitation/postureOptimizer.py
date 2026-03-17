@@ -13,16 +13,12 @@ class PostureOptimizer(Optimizer):
 
     def __init__(self, config, idf, model, simulation_func, world=None):
         # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
-        super(PostureOptimizer, self).__init__(
-            config, idf, model, simulation_func, world=world
-        )
+        super().__init__(config, idf, model, simulation_func, world=world)
 
         self.idf = idf
 
         # get joint ranges
-        self.limits = URDFHelpers.getJointLimits(
-            config["urdf"], use_deg=False
-        )  # will always be compared to rad
+        self.limits = URDFHelpers.getJointLimits(config["urdf"], use_deg=False)  # will always be compared to rad
         self.trajectory = FixedPositionTrajectory(self.config)
 
         self.num_postures = self.config["numStaticPostures"]
@@ -34,11 +30,7 @@ class PostureOptimizer(Optimizer):
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
         # amount of collision checks to be done
-        eff_links = (
-            self.model.num_links
-            - len(self.config["ignoreLinksForCollision"])
-            + len(self.world_links)
-        )
+        eff_links = self.model.num_links - len(self.config["ignoreLinksForCollision"]) + len(self.world_links)
         self.num_constraints = self.num_postures * (eff_links * (eff_links - 1) // 2)
 
         # get neighbors
@@ -73,13 +65,9 @@ class PostureOptimizer(Optimizer):
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
         if self.mpi_size > 1:
-            print(
-                "process {}, iter #{}/{}".format(
-                    self.mpi_rank, self.iter_cnt, self.iter_max
-                )
-            )
+            print(f"process {self.mpi_rank}, iter #{self.iter_cnt}/{self.iter_max}")
         else:
-            print("call #{}/{}".format(self.iter_cnt, self.iter_max))
+            print(f"call #{self.iter_cnt}/{self.iter_max}")
 
         # init vars
         fail = False
@@ -96,7 +84,7 @@ class PostureOptimizer(Optimizer):
             print("checking collisions")
         for p in range(self.num_postures):
             if self.config["verbose"] > 1:
-                print("Posture {}".format(p))
+                print(f"Posture {p}")
             q = x[p * self.num_dofs : (p + 1) * self.num_dofs]
 
             for l0 in range(self.model.num_links + len(self.world_links)):
@@ -104,28 +92,22 @@ class PostureOptimizer(Optimizer):
                     l0_name = (self.model.linkNames + self.world_links)[l0]
                     l1_name = (self.model.linkNames + self.world_links)[l1]
 
-                    if (
-                        l0 >= l1
-                    ):  # don't need, distance is the same in both directions; same link never collides
+                    if l0 >= l1:  # don't need, distance is the same in both directions; same link never collides
                         continue
                     if (
                         l0_name in self.config["ignoreLinksForCollision"]
                         or l1_name in self.config["ignoreLinksForCollision"]
                     ):
                         continue
-                    if [l0_name, l1_name] in self.config[
-                        "ignoreLinkPairsForCollision"
-                    ] or [l1_name, l0_name] in self.config[
-                        "ignoreLinkPairsForCollision"
-                    ]:
+                    if [l0_name, l1_name] in self.config["ignoreLinkPairsForCollision"] or [
+                        l1_name,
+                        l0_name,
+                    ] in self.config["ignoreLinkPairsForCollision"]:
                         continue
 
                     # neighbors can't collide with a proper joint range, so ignore
                     if l0 < self.model.num_links and l1 < self.model.num_links:
-                        if (
-                            l0_name in self.neighbors[l1_name]["links"]
-                            or l1_name in self.neighbors[l0_name]["links"]
-                        ):
+                        if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
                             continue
 
                     if l0 < l1:
@@ -140,9 +122,7 @@ class PostureOptimizer(Optimizer):
         self.trajectory.initWithAngles(angles)
         old_verbose = self.config["verbose"]
         self.config["verbose"] = 0
-        trajectory_data, data = self.sim_func(
-            self.config, self.trajectory, model=self.model
-        )
+        trajectory_data, data = self.sim_func(self.config, self.trajectory, model=self.model)
 
         # identify parameters with this trajectory
         self.idf.data.init_from_data(trajectory_data)
@@ -185,17 +165,15 @@ class PostureOptimizer(Optimizer):
 
         self.showVisualizerAngles(x)
 
-        print(
-            "Objective function value: {} (last best: {})".format(f, self.last_best_f)
-        )
+        print(f"Objective function value: {f} (last best: {self.last_best_f})")
 
         if self.config["verbose"]:
             if hasattr(self.opt_prob, "is_gradient") and self.opt_prob.is_gradient:
                 print("(Gradient evaluation)")
-            print("Parameter error: {}".format(param_error))
+            print(f"Parameter error: {param_error}")
             if self.config["verbose"] > 1:
-                print("Angles: {}".format(angles))
-                print("Constraints ({} link distances): {}".format(len(g), list(g)))
+                print(f"Angles: {angles}")
+                print(f"Constraints ({len(g)} link distances): {list(g)}")
 
         # keep last best solution (some solvers don't properly keep it or don't consider gradient values)
         if c and f < self.last_best_f:
@@ -251,7 +229,7 @@ class PostureOptimizer(Optimizer):
                 else:
                     initial = 0.0
 
-                name = "p_{} q_{}".format(p, d)
+                name = f"p_{p} q_{d}"
                 self._var_names.append(name)
                 opt_prob.addVar(name, value=initial, lower=low, upper=high)
 
@@ -289,15 +267,13 @@ class PostureOptimizer(Optimizer):
 
             num_vars = self.num_postures * self.num_dofs
             # num of gradient evals divided by parallel processes times iterations
-            self.local_iter_max = (num_vars * 2 // self.mpi_size) * self.config[
-                "localOptIterations"
-            ]
+            self.local_iter_max = (num_vars * 2 // self.mpi_size) * self.config["localOptIterations"]
         else:
             # ipopt, not really correct
             num_vars = self.num_postures * self.num_dofs
-            self.local_iter_max = (
-                (num_vars + self.num_constraints) // self.mpi_size
-            ) * self.config["localOptIterations"]
+            self.local_iter_max = ((num_vars + self.num_constraints) // self.mpi_size) * self.config[
+                "localOptIterations"
+            ]
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

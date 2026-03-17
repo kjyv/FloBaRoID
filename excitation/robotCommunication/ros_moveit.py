@@ -1,17 +1,18 @@
 import sys
-import numpy as np
-# import threading
 
-import rospy
 import moveit_commander
+import numpy as np
+
+# import threading
+import rospy
+from sensor_msgs.msg import JointState
 
 # from moveit_msgs.msg import RobotTrajectory, DisplayTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
-from sensor_msgs.msg import JointState
 
 
 # records the states obtained from joint_states messages
-class RecordJointStates(object):
+class RecordJointStates:
     def __init__(self):
         # rospy.init_node('joint_states_listener')
         # self.lock = threading.Lock()
@@ -31,9 +32,7 @@ class RecordJointStates(object):
         self.name = msg.name
         self.positions.append(msg.position)
         self.velocities.append(msg.velocity)
-        self.torques.append(
-            msg.effort
-        )  # ros "effort" is force for linear or torque for rotational joints
+        self.torques.append(msg.effort)  # ros "effort" is force for linear or torque for rotational joints
         self.times.append(msg.header.stamp.secs + msg.header.stamp.nsecs / 1.0e9)
 
 

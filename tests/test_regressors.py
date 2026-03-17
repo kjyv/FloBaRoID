@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+import os
 
 import numpy as np
 import numpy.linalg as la
 
 # kinematics, dynamics and URDF reading
 from idyntree import bindings as iDynTree
-from IPython import embed
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-
-import os
 
 urdf_file = os.path.join(os.path.dirname(__file__), "../model/threeLinks.urdf")
 contactFrame = "contact_ft"
@@ -30,7 +26,7 @@ def test_regressors():
     n_dofs = kinDyn.getNrOfDegreesOfFreedom()
     num_links = idyn_model.getNrOfLinks()
     num_model_params = num_links * 10
-    num_out = n_dofs + 6  # floating base
+    n_dofs + 6  # floating base
     num_samples = 100
 
     xStdModel = iDynTree.VectorDynSize(num_model_params)
@@ -82,16 +78,12 @@ def test_regressors():
         kinDyn.setRobotState(world_T_base, s, base_velocity, ds, gravity_vec)
 
         regressor = iDynTree.MatrixDynSize()
-        if not kinDyn.inverseDynamicsInertialParametersRegressor(
-            base_acc_vec6, ddq, regressor
-        ):
+        if not kinDyn.inverseDynamicsInertialParametersRegressor(base_acc_vec6, ddq, regressor):
             print("Error during numeric computation of regressor")
 
         regressor = regressor.toNumPy()
 
-        row_index = (
-            n_dofs + 6
-        ) * sample_index  # index for current row in stacked regressor matrix
+        row_index = (n_dofs + 6) * sample_index  # index for current row in stacked regressor matrix
         np.copyto(regressor_stack[row_index : row_index + n_dofs + 6], regressor)
 
         # inverse dynamics
@@ -118,9 +110,7 @@ def test_regressors():
         jacobian = iDynTree.MatrixDynSize(6, dim)
         kinDyn2.getFrameFreeFloatingJacobian(contactFrame, jacobian)
         jacobian = jacobian.toNumPy()
-        contactForceSum[sample_index * dim : (sample_index + 1) * dim] = jacobian.T.dot(
-            contact
-        )
+        contactForceSum[sample_index * dim : (sample_index + 1) * dim] = jacobian.T.dot(contact)
 
     regressor_torques = np.dot(regressor_stack, xStdModel) + contactForceSum
     idyn_torques += contactForceSum

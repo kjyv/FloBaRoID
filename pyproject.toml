@@ -9,7 +9,7 @@ dependencies = [
     "numpy==2.4.3",
     "scipy==1.17.1",
     # dynamics
-    "idyntree~=14.2.0",
+    "idyntree",
     # sdp
     "sympy==1.12.1",
     "cvxopt==1.3.3",
@@ -49,6 +49,7 @@ python-preference = "managed"
 
 [tool.uv.sources]
 pyoptsparse = { git = "https://github.com/mdolab/pyoptsparse.git", tag = "v2.15.0" }
+idyntree = { git = "https://github.com/robotology/idyntree.git", tag = "v15.0.0" }
 
 [dependency-groups]
 dev = [

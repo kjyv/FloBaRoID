@@ -745,14 +745,8 @@ class Visualizer(object):
             if len(self.mesh_lists):
                 self.show_meshes = True
 
-    def addIDynTreeModel(self,
-                  model,          # type: iDynTree.DynamicsComputations
-                  boxes,          # type: Dict[str, Tuple[List, List, List]]     # link hulls
-                  real_links,     # type: List[str]           # all the links that are not fake
-                  ignore_links    # type: List[str]           # links that will not be drawn
-                  ):
-        # type: (...) -> None
-        ''' helper frunction that adds boxes for iDynTree model at position and rotations for
+    def addIDynTreeModel(self, kinDyn, boxes, real_links, ignore_links):
+        ''' helper function that adds boxes for iDynTree model at position and rotations for
         given joint angles'''
 
         if self.window_closed:
@@ -760,8 +754,8 @@ class Visualizer(object):
             self._initCamera()
 
         self.bodies = []
-        for l in range(model.getNrOfLinks()):
-            n_name = model.getFrameName(l)
+        for l in range(kinDyn.getNrOfLinks()):
+            n_name = kinDyn.getFrameName(l)
             if n_name in ignore_links:
                 continue
             if n_name not in real_links:
@@ -788,7 +782,7 @@ class Visualizer(object):
                     body['size3'] = np.array([0.1, 0.1, 0.1])
                     body['center'] = [0.0, 0.0, 0.0]
 
-            t = model.getWorldTransform(l)
+            t = kinDyn.getWorldTransform(l)
             body['position'] = t.getPosition().toNumPy()
             rpy = t.getRotation().asRPY()
             body['rotation'] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
@@ -837,10 +831,13 @@ if __name__ == '__main__':
             print(exc)
 
     from idyntree import bindings as iDynTree
-    dynComp = iDynTree.DynamicsComputations()
-    dynComp.loadRobotModelFromFile(args.model)
-    world_gravity = iDynTree.SpatialAcc.FromPython([0,0,-9.81,0,0,0])
-    n_dof = dynComp.getNrOfDegreesOfFreedom()
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(args.model)
+    kinDyn = iDynTree.KinDynComputations()
+    kinDyn.loadRobotModel(loader.model())
+    gravity = iDynTree.Vector3()
+    gravity.setVal(2, -9.81)
+    n_dof = kinDyn.getNrOfDegreesOfFreedom()
     config['num_dofs'] = n_dof
     config['urdf'] = args.model
 
@@ -913,10 +910,12 @@ if __name__ == '__main__':
                     idx = 0
                 q0 = data['positions'][idx, :]
 
-        q = iDynTree.VectorDynSize.FromPython(q0)
-        dq = iDynTree.VectorDynSize.FromPython([0.0]*n_dof)
-        dynComp.setRobotState(q, dq, dq, world_gravity)
-        v.addIDynTreeModel(dynComp, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
+        s = iDynTree.JointPosDoubleArray(n_dof)
+        ds = iDynTree.JointDOFsDoubleArray(n_dof)
+        for _i in range(n_dof):
+            s.setVal(_i, float(q0[_i]))
+        kinDyn.setRobotState(s, ds, gravity)
+        v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
 
         if args.world:
             v.addWorld(world_boxes)

@@ -22,25 +22,11 @@ parser.add_argument('--fb', required=False, type=bool, help='is the model floati
 args = parser.parse_args()
 
 def mapToJointNames(matrix, row=None):
-    generator = iDynTree.DynamicsRegressorGenerator()
-    generator.loadRobotAndSensorsModelFromFile(args.model)
-    if args.fb:
-        regrXml = '''
-        <regressor>
-          <baseLinkDynamics/>
-          <jointTorqueDynamics>
-            <allJoints/>
-          </jointTorqueDynamics>
-        </regressor>'''
-    else:
-        regrXml = '''
-        <regressor>
-          <jointTorqueDynamics>
-            <allJoints/>
-          </jointTorqueDynamics>
-        </regressor>'''
-    generator.loadRegressorStructureFromString(regrXml)
-    jointNames = re.sub(r"DOF Index: \d+ Name: ", "", generator.getDescriptionOfDegreesOfFreedom()).split()
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(args.model)
+    kinDyn = iDynTree.KinDynComputations()
+    kinDyn.loadRobotModel(loader.model())
+    jointNames = re.sub(r"DOF Index: \d+ Name: ", "", kinDyn.getDescriptionOfDegreesOfFreedom()).split()
 
     if args.fb:
         fb = 6

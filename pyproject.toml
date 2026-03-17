@@ -1,6 +1,6 @@
 [project]
 name = "flobaroid"
-version = "0.1.0"
+version = "0.9.0"
 description = "FLOating BAse RObot dynamical IDentification"
 readme = "README.md"
 license = "LGPL-3.0"

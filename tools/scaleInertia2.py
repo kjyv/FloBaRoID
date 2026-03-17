@@ -19,11 +19,10 @@ parser.add_argument('--scale', required=True, type=float, help='the value to sca
 args = parser.parse_args()
 
 def loadModel(urdf_file):
-    # type: (AnyStr) -> (iDynTree.DynamicsComputations)
-    dynComp = iDynTree.DynamicsComputations()
-    dynComp.loadRobotModelFromFile(urdf_file)
-
-    return dynComp
+    # type: (AnyStr) -> (iDynTree.Model)
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(urdf_file)
+    return loader.model()
 
 def toNumPy(mat):
     return np.fromstring(mat.toString(), sep=' ').reshape(mat.rows(), mat.cols())
@@ -32,7 +31,7 @@ if __name__ == '__main__':
 
     scaling = args.scale
 
-    dynComp = loadModel(args.model)
+    model = loadModel(args.model)
 
     import xml.etree.ElementTree as ET
     # preserve comments
@@ -43,10 +42,9 @@ if __name__ == '__main__':
             self.end(ET.Comment)
     tree = ET.parse(args.model, parser=ET.XMLParser(target=PCBuilder()))
 
-    for link_id in range(dynComp.getNrOfLinks()):
-        link_name = dynComp.getFrameName(link_id)  # not really clean (when are there other frames than link frames, sensors?)
-        link_id = dynComp.getLinkIndex(link_name)  # so, make double sure
-        spat_inertia = dynComp.getLinkInertia(link_id)
+    for link_id in range(model.getNrOfLinks()):
+        link_name = model.getLinkName(link_id)
+        spat_inertia = model.getLink(link_id).getInertia()
 
         inertia = toNumPy(spat_inertia.getRotationalInertiaWrtCenterOfMass())
         mass = spat_inertia.getMass()

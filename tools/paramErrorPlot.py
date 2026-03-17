@@ -21,11 +21,10 @@ parser.add_argument('--model', required=True, nargs='+', action='append', type=s
 args = parser.parse_args()
 
 def loadModelfromURDF(urdf_file):
-    # type: (AnyStr) -> (iDynTree.DynamicsComputations)
-    dynComp = iDynTree.DynamicsComputations()
-    dynComp.loadRobotModelFromFile(urdf_file)
-
-    return dynComp
+    # type: (AnyStr) -> (iDynTree.Model)
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(urdf_file)
+    return loader.model()
 
 def matToNumPy(mat):
     return np.fromstring(mat.toString(), sep=' ').reshape(mat.rows(), mat.cols())
@@ -65,7 +64,7 @@ def plotErrors(errors, labels):
     plt.show()
 
 def getParamErrors(ref_model, p_model, num_links, group="COM"):
-    # type: (iDynTree.DynamicsComputations, iDynTree.DynamicsComputations, int, AnyStr) -> (List[float])
+    # type: (iDynTree.Model, iDynTree.Model, int, AnyStr) -> (List[float])
     """ give error for groups of params """
 
     errors = []
@@ -73,14 +72,14 @@ def getParamErrors(ref_model, p_model, num_links, group="COM"):
     for link_id in range(num_links):
         p_link_name = linkNames[link_id]
         p_link_id = p_model.getLinkIndex(p_link_name)
-        p_spat_inertia = p_model.getLinkInertia(p_link_id)
+        p_spat_inertia = p_model.getLink(p_link_id).getInertia()
         p_inertia = matToNumPy(p_spat_inertia.getRotationalInertiaWrtCenterOfMass())
         p_mass = p_spat_inertia.getMass()
         p_com = vecToNumPy(p_spat_inertia.getCenterOfMass())
 
         ref_link_name = linkNames[link_id]
         ref_link_id = ref_model.getLinkIndex(ref_link_name)
-        ref_spat_inertia = ref_model.getLinkInertia(ref_link_id)
+        ref_spat_inertia = ref_model.getLink(ref_link_id).getInertia()
         ref_inertia = matToNumPy(ref_spat_inertia.getRotationalInertiaWrtCenterOfMass())
         ref_mass = ref_spat_inertia.getMass()
         ref_com = vecToNumPy(ref_spat_inertia.getCenterOfMass())
@@ -98,25 +97,11 @@ def getParamErrors(ref_model, p_model, num_links, group="COM"):
 if __name__ == '__main__':
 
     ref_model = loadModelfromURDF(args.ref_model)
-    generator = iDynTree.DynamicsRegressorGenerator()
-    if not generator.loadRobotAndSensorsModelFromFile(args.ref_model):
-        sys.exit()
-
-    regrXml = '''
-    <regressor>
-      <jointTorqueDynamics>
-        <allJoints/>
-      </jointTorqueDynamics>
-    </regressor>'''
-    generator.loadRegressorStructureFromString(regrXml)
-    num_links = generator.getNrOfLinks() - generator.getNrOfFakeLinks()
+    num_links = ref_model.getNrOfLinks()
 
     linkNames = []    # type: List[AnyStr]
-    import re
-    for d in generator.getDescriptionOfParameters().strip().split("\n"):
-        link = re.findall(r"of link (.*)", d)[0]
-        if link not in linkNames:
-            linkNames.append(link)
+    for i in range(num_links):
+        linkNames.append(ref_model.getLinkName(i))
 
     methods_com_errors = []
     methods_inertia_errors = []
@@ -147,4 +132,3 @@ if __name__ == '__main__':
     labels = ['ID Inertia + COM (Known Mass)', 'ID all parameters (20% wrong masses)']
     plotErrors(methods_com_errors, labels=labels)
     plotErrors(methods_inertia_errors, labels=labels)
-

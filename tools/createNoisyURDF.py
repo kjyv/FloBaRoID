@@ -16,17 +16,16 @@ def main():
     parser.set_defaults(noise=0.01)
     args = parser.parse_args()
 
-    model = iDynTree.Model()
-    iDynTree.modelFromURDF(args.urdf_input, model)
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(args.urdf_input)
+    model = loader.model()
     link_names = []
     for i in range(0, model.getNrOfLinks()):
         link_names.append(model.getLinkName(i))
     n_params = model.getNrOfLinks()*10
 
-    dynComp = iDynTree.DynamicsComputations()
-    dynComp.loadRobotModelFromFile(args.urdf_input)
     xStdModel = iDynTree.VectorDynSize(n_params)
-    dynComp.getModelDynamicsParameters(xStdModel)
+    model.getInertialParameters(xStdModel)
     xStdModel = xStdModel.toNumPy()
     # percentage noise
     #for p in range(0, len(xStdModel)):

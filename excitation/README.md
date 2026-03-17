@@ -9,13 +9,27 @@ trajectory (in simulation of course). Set the option `optimizeTrajectory` in you
 enable this. It is important to set good bounds to narrow the search space and to have proper joint
 angle, velocity and torque limits in the URDF model file. See further comments in the sample
 configuration files.
+Run the optimizer with:
+
+```bash
+uv run trajectory.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf
+```
+
+This saves the optimized trajectory parameters to `<model>.trajectory.npz` by default (override with `--filename`). The resulting trajectory file can then be passed to `excite.py` via `--trajectory`.
 
 ## Show trajectory data
 
-In order to show curves of an optimized or previously recorded trajectory again, 
-`excite.py --plot --dryrun --filename <measurement file>` can be used. Using
-`visualizer.py --config <config> --model <model urdf> --trajectory <measurement file>`
-a 3D representation of the model and trajectory can be shown.
+In order to show curves of an optimized or previously recorded trajectory again:
+
+```bash
+uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --plot --dryrun --filename measurements.npz
+```
+
+For a 3D representation of the model and trajectory:
+
+```bash
+uv run visualizer.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --trajectory measurements.npz
+```
 
 ## Excitation modules
 
@@ -46,10 +60,14 @@ it is then possible to manually set positions, e.g. by writing
 `(set_legs_refs 0 0 0 0 0 0 0 0 0 0 0 0) 0`
 
 
-To generate excitation trajectories and send them to the robot, set 
-the option exciteMethod to 'yarp' and run `./excite.py [...]`.
-This will also read the resulting joint torques measurements and write them to a file
-measurements.npz
+To generate excitation trajectories and send them to the robot, set
+the option exciteMethod to 'yarp' and run:
+
+```bash
+uv run excite.py --config configs/walkman_cad.yaml --model model/walkman.urdf --filename measurements.npz
+```
+
+This will also read the resulting joint torques measurements and write them to the given file.
 
 ## Generate excitation for Kuka LWR4+
 
@@ -60,8 +78,12 @@ start controllers, simulator and moveit (to directly use the hardware add option
 
 (make sure that gazebo plugin gets loaded in world file and joint\_state\_publisher has high enough rate param of 100-200 Hz set in launch file)
 
-To generate excitation trajectories and send them to the robot, set 
-the option exciteMethod to 'ros' and run `./excite.py [...]`.
+To generate excitation trajectories and send them to the robot, set
+the option exciteMethod to 'ros' and run:
+
+```bash
+uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
+```
 
 
 ## Measurements data file structure

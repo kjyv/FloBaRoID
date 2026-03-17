@@ -30,6 +30,7 @@ dependencies = [
     "kaleido==1.2.0",
     "pyoptsparse==2.15.0",
     "python-fcl>=0.7.0.10",
+    "mypy>=1.19.1",
 ]
 
 [project.optional-dependencies]
@@ -84,6 +85,11 @@ check_untyped_defs = true
 show_error_codes = true
 warn_unused_configs = true
 ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "."
+exclude = [
+    "excitation/robotCommunication",  # ros/yarp modules, not testable without ROS
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

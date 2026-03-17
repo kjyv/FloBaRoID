@@ -423,8 +423,7 @@ class Visualizer:
         y = 100
         self.width = 800
         self.height = 600
-        platform = pyglet.window.get_platform()
-        display = platform.get_default_display()
+        display = pyglet.display.get_display()
         screen = display.get_default_screen()
         try:
             config_temp = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)

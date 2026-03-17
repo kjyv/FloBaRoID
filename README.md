@@ -10,14 +10,6 @@ humanoid robots. It aims to provide a complete solution for obtaining physical c
 <img alt="Visualization of Kuka LWR4+" src="documentation/kuka_vis.png" width="38%">
 </div>
 
-Tools:
-
-* **trajectory.py**: generate optimized trajectories
-* **excite.py**: send trajectory to control the robot movement and record the resulting measurements
-* **identify.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
-* **visualize.py**: show 3D robot model of URDF, trajectory motion
-
-
 Features:
 
 * find optimized excitation trajectories with non-linear global optimization (as parameters of fourier-series for periodic soft trajectories)
@@ -38,20 +30,48 @@ Features:
 * plotting of measured and estimated joint state and torques (interactive, HTML, PDF or Tikz)
 * output of the identified parameters directly into URDF
 
-## Installation
+### Before installation
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
-
-```bash
-uv sync
-```
-
-### System dependencies
+You'll need some or all of these depenencies installed in your system:
 
 * **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
 * **ipopt** (for iDynTree build): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian)
 * **dsdp5** (command line executable, required for SDP-constrained identification)
+
+## Installation
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then
+run e.g. `uv run identify.py` to run the tools in uv virtual env. It will install necessary dependencies
+automatically. 
+
+## Commands
+
+* **trajectory.py**: generate optimized trajectories
+
+```bash
+uv run trajectory.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf
+```
+
+Saves to `<model>.trajectory.npz` by default (e.g. `model/kuka_lwr4.urdf.trajectory.npz`). Override with `--filename`.
+
+* **excite.py**: send trajectory to control the robot movement and record the resulting measurements
+
+```bash
+uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
+```
+
+* **identify.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
+
+```bash
+uv run identify.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --measurements measurements.npz
+```
+
+* **visualizer.py**: show 3D robot model of URDF, trajectory motion
+
+```bash
+uv run visualizer.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --trajectory model/kuka_lwr4.urdf.trajectory.npz
+```
 
 ### Optional extras
 

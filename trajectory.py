@@ -8,8 +8,8 @@ import yaml
 from idyntree import bindings as iDynTree
 
 from excitation.postureOptimizer import PostureOptimizer
-from excitation.trajectoryGenerator import PulsedTrajectory
-from excitation.trajectoryOptimizer import TrajectoryOptimizer, simulateTrajectory
+from excitation.trajectoryGenerator import PulsedTrajectory, simulateTrajectory
+from excitation.trajectoryOptimizer import TrajectoryOptimizer
 from identification.model import Model
 from identify import Identification
 

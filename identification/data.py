@@ -12,7 +12,7 @@ import scipy as sp
 from scipy import signal
 from scipy import misc
 from identification.helpers import Timer
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 import matplotlib.pyplot as plt
 from IPython import embed

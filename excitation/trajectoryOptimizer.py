@@ -8,7 +8,7 @@ import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
 import pyOpt
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 from colorama import Fore
 
 from identification.model import Model

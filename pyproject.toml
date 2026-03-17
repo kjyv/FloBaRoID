@@ -1,0 +1,43 @@
+[project]
+name = "flobaroid"
+version = "0.1.0"
+description = "FLOating BAse RObot dynamical IDentification"
+readme = "README.md"
+license = "LGPL-3.0"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "sympy==1.0",
+    "cvxopt",
+    "pylmi-sdp",
+    "idyntree",
+    "ipython",
+    "pyyaml",
+    # visualization
+    "colorama",
+    "palettable",
+    "humanize",
+    "tqdm",
+    "jinja2",
+    "matplotlib",
+    "mpld3",
+    "trimesh",
+    "PyOpenGL",
+    "pyglet",
+    "ruff>=0.15.6",
+    "mypy>=1.14.1",
+]
+
+[project.optional-dependencies]
+visualization = [
+]
+tikz-plots = [
+    "matplotlib2tikz",
+]
+parallel = [
+    "mpi4py",
+]
+
+[tool.uv]
+python-preference = "managed"

@@ -5,7 +5,7 @@ from builtins import object
 from typing import List, Dict, Tuple, Union, Any
 
 import numpy as np
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 from identification.model import Model
 from identification.data import Data

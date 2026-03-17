@@ -9,7 +9,7 @@ from typing import Dict
 
 import numpy as np
 from colorama import Fore, Back, Style
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 import argparse
 parser = argparse.ArgumentParser(description='Send an excitation trajectory and record measurements to <filename>.')
@@ -27,7 +27,7 @@ args = parser.parse_args()
 import yaml
 with open(args.config, 'r') as stream:
     try:
-        config = yaml.load(stream)
+        config = yaml.load(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
         print(exc)
 

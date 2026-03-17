@@ -11,7 +11,7 @@ from scipy import signal
 import scipy.linalg as sla
 import sympy
 from sympy import symbols
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 from IPython import embed
 
 import os
@@ -34,11 +34,11 @@ if __name__ == '__main__':
     q = iDynTree.VectorDynSize(n_dofs)
     q.zero()
     dq = iDynTree.VectorDynSize(n_dofs)
-    #dq.fromList([1.0]*n_dofs)
+    #dq.FromPython([1.0]*n_dofs)
     dq.zero()
     ddq = iDynTree.VectorDynSize(n_dofs)
     ddq.zero()
-    world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
+    world_gravity = iDynTree.SpatialAcc.FromPython([0, 0, -9.81, 0, 0, 0])
     base_velocity = iDynTree.Twist()
     base_velocity.zero()
     base_acceleration = iDynTree.ClassicalAcc()

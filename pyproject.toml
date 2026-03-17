@@ -30,6 +30,8 @@ dependencies = [
     "kaleido==1.2.0",
     "pyoptsparse==2.15.0",
     "python-fcl>=0.7.0.10",
+    "ruff>=0.15.6",
+    "mypy>=1.19.1",
 ]
 
 [project.optional-dependencies]

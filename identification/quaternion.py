@@ -1,40 +1,40 @@
-
 import math
 import numpy as np
+
 
 class Quaternion(object):
     @classmethod
     def rotateVbyQ(cls, v, q):
-        ''' rotate vector v (v0,v1,v2) b quaternion q (x,y,z,w) '''
+        """rotate vector v (v0,v1,v2) b quaternion q (x,y,z,w)"""
         qv = np.zeros(4)
         qv[:3] = v.copy()
 
         qconj = Quaternion.conjugate(q)
-        q_prime = Quaternion.prod( Quaternion.prod(q, qv), qconj )
+        q_prime = Quaternion.prod(Quaternion.prod(q, qv), qconj)
         return q_prime[:3]
 
     def prod(q1, q2):
-        """ Perform the Hamiltonian product of two quaternions. Note that this product
-            is non-commutative -- this function returns q1 x q2. """
+        """Perform the Hamiltonian product of two quaternions. Note that this product
+        is non-commutative -- this function returns q1 x q2."""
 
         if (len(q1) != 4) or (len(q2) != 4):
-            raise TypeError('Parameters cannot be interpreted as quaternions')
+            raise TypeError("Parameters cannot be interpreted as quaternions")
 
         qprod = np.zeros(4)
 
-        qprod[0] = q1[3]*q2[0] + q1[0]*q2[3] + q1[1]*q2[2] - q1[2]*q2[1]
-        qprod[1] = q1[3]*q2[1] - q1[0]*q2[2] + q1[1]*q2[3] + q1[2]*q2[0]
-        qprod[2] = q1[3]*q2[2] + q1[0]*q2[1] - q1[1]*q2[0] + q1[2]*q2[3]
-        qprod[3] = q1[3]*q2[3] - q1[0]*q2[0] - q1[1]*q2[1] - q1[2]*q2[2]
+        qprod[0] = q1[3] * q2[0] + q1[0] * q2[3] + q1[1] * q2[2] - q1[2] * q2[1]
+        qprod[1] = q1[3] * q2[1] - q1[0] * q2[2] + q1[1] * q2[3] + q1[2] * q2[0]
+        qprod[2] = q1[3] * q2[2] + q1[0] * q2[1] - q1[1] * q2[0] + q1[2] * q2[3]
+        qprod[3] = q1[3] * q2[3] - q1[0] * q2[0] - q1[1] * q2[1] - q1[2] * q2[2]
 
         return qprod
 
     @classmethod
     def conjugate(cls, q):
-        """ Compute the quaternion conjugate of q.  """
+        """Compute the quaternion conjugate of q."""
 
         if len(q) != 4:
-            raise TypeError('Parameter `q` cannot be interpreted as a quaternion')
+            raise TypeError("Parameter `q` cannot be interpreted as a quaternion")
 
         qconj = np.zeros(4)
         qconj[0] = -q[0]
@@ -43,7 +43,6 @@ class Quaternion(object):
         qconj[3] = q[3]
 
         return qconj
-
 
     @classmethod
     def fromRPY(cls, roll, pitch, yaw):
@@ -55,15 +54,15 @@ class Quaternion(object):
         t5 = np.sin(pitch * 0.5)
 
         q = np.zeros(4)
-        q[0] = t0 * t3 * t4 - t1 * t2 * t5  #x
-        q[1] = t0 * t2 * t5 + t1 * t3 * t4  #y
-        q[2] = t1 * t2 * t4 - t0 * t3 * t5  #z
-        q[3] = t0 * t2 * t4 + t1 * t3 * t5  #w
+        q[0] = t0 * t3 * t4 - t1 * t2 * t5  # x
+        q[1] = t0 * t2 * t5 + t1 * t3 * t4  # y
+        q[2] = t1 * t2 * t4 - t0 * t3 * t5  # z
+        q[3] = t0 * t2 * t4 + t1 * t3 * t5  # w
         return q
 
     @classmethod
     def fromSO3(cls, rotMat):
-        """ Return quaternion from rotation matrix. """
+        """Return quaternion from rotation matrix."""
 
         """
         # transforms3d
@@ -87,7 +86,7 @@ class Quaternion(object):
         return q
         """
 
-        '''
+        """
         # siciliano
         def sign(x):
             if x < 0:
@@ -102,25 +101,37 @@ class Quaternion(object):
         w = 0.5 * np.sqrt(np.sum(np.diag(rotMat)) + 1)
 
         return [x,y,z,w]
-        '''
+        """
 
         # from "Converting a Rotation Matrix to a Quaternion" by Mike Day
         r = rotMat
 
-        if r[2,2] < 0:
-            if r[0,0] > r[1,1]:
-                t = 1 + r[0,0] - r[1,1] - r[2,2]
-                q = np.array([t, r[0,1]+r[1,0], r[2,0]+r[0,2], r[1,2]-r[2,1]], dtype=np.float64)
+        if r[2, 2] < 0:
+            if r[0, 0] > r[1, 1]:
+                t = 1 + r[0, 0] - r[1, 1] - r[2, 2]
+                q = np.array(
+                    [t, r[0, 1] + r[1, 0], r[2, 0] + r[0, 2], r[1, 2] - r[2, 1]],
+                    dtype=np.float64,
+                )
             else:
-                t = 1 - r[0,0] + r[1,1] - r[2,2]
-                q = np.array([r[0,1]+r[1,0], t, r[1,2]+r[2,1], r[2,0]-r[0,2]], dtype=np.float64)
+                t = 1 - r[0, 0] + r[1, 1] - r[2, 2]
+                q = np.array(
+                    [r[0, 1] + r[1, 0], t, r[1, 2] + r[2, 1], r[2, 0] - r[0, 2]],
+                    dtype=np.float64,
+                )
         else:
-            if r[0,0] < -r[1,1]:
-                t = 1 - r[0,0] - r[1,1] + r[2,2]
-                q = np.array([r[2,0]+r[0,2], r[1,2]+r[2,1], t, r[0,1]-r[1,0]], dtype=np.float64)
+            if r[0, 0] < -r[1, 1]:
+                t = 1 - r[0, 0] - r[1, 1] + r[2, 2]
+                q = np.array(
+                    [r[2, 0] + r[0, 2], r[1, 2] + r[2, 1], t, r[0, 1] - r[1, 0]],
+                    dtype=np.float64,
+                )
             else:
-                t = 1 + r[0,0] + r[1,1] + r[2,2]
-                q = np.array([r[1,2]-r[2,1], r[2,0]-r[0,2], r[0,1]-r[1,0], t], dtype=np.float64)
+                t = 1 + r[0, 0] + r[1, 1] + r[2, 2]
+                q = np.array(
+                    [r[1, 2] - r[2, 1], r[2, 0] - r[0, 2], r[0, 1] - r[1, 0], t],
+                    dtype=np.float64,
+                )
         q *= 0.5 / np.sqrt(t)
 
         return q
@@ -145,10 +156,10 @@ class Quaternion(object):
         """
 
         x, y, z, w = quaternion
-        xx = x ** 2
-        yy = y ** 2
-        zz = z ** 2
-        ww = w ** 2
+        xx = x**2
+        yy = y**2
+        zz = z**2
+        ww = w**2
         xy = x * y
         wz = w * z
         xz = x * z
@@ -156,8 +167,10 @@ class Quaternion(object):
         yz = y * z
         wx = w * x
 
-        return np.array([
-                [2*(ww + xx) - 1, 2*(xy - wz),         2*(xz + wy)],
-                [2*(xy + wz),     2*(ww + yy) - 1,     2*(yz - wx)],
-                [2*(xz - wy),     2*(yz + wx),     2*(ww + zz) - 1]
-               ])
+        return np.array(
+            [
+                [2 * (ww + xx) - 1, 2 * (xy - wz), 2 * (xz + wy)],
+                [2 * (xy + wz), 2 * (ww + yy) - 1, 2 * (yz - wx)],
+                [2 * (xz - wy), 2 * (yz + wx), 2 * (ww + zz) - 1],
+            ]
+        )

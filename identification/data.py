@@ -1,3 +1,5 @@
+from typing import Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as la
@@ -8,23 +10,21 @@ from identification.helpers import Timer
 
 
 class Data:
-    def __init__(self, opt):
-        # type: (Dict[str, Any]) -> None
+    def __init__(self, opt: dict[str, Any]) -> None:
         self.opt = opt
-        self.measurements = {}  # type: Dict[str, np._ArrayLike]   #loaded data
+        self.measurements: dict[str, np.ndarray] = {}  # loaded data
         self.num_loaded_samples = 0  # no of samples from file
         self.num_used_samples = 0  # no of samples after skipping
-        self.samples = {}  # type: Dict[str, np._ArrayLike]   #selected data (when using block selection)
+        self.samples: dict[str, np.ndarray] = {}  # selected data (when using block selection)
 
-        self.usedBlocks = list()  # type: List[int]
-        self.unusedBlocks = list()  # type: List[int]
-        self.seenBlocks = list()  # type: List[int]
+        self.usedBlocks: list[tuple[Any, ...]] = list()
+        self.unusedBlocks: list[tuple[Any, ...]] = list()
+        self.seenBlocks: list[tuple[Any, ...]] = list()
 
         # has some data been loaded?
         self.inited = False
 
-    def init_from_data(self, data):
-        # type: (Dict[str, np._ArrayLike]) -> None
+    def init_from_data(self, data: dict[str, np.ndarray]) -> None:
         """load data from numpy array"""
 
         self.samples = self.measurements = data.copy()
@@ -44,7 +44,7 @@ class Data:
                 for fn in fa:
                     try:
                         # python3
-                        m = np.load(fn, encoding="latin1", fix_imports=True)
+                        m = np.load(fn, encoding="latin1", fix_imports=True, allow_pickle=True)
                     except:
                         # python2.7
                         m = np.load(fn)

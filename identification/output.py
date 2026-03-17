@@ -660,8 +660,8 @@ class OutputMatplotlib:
 
             # unified scaling
             if group["unified_scaling"]:
-                ymin = 0
-                ymax = 0
+                ymin: float = 0.0
+                ymax: float = 0.0
                 for i in range(n_subplots):
                     ymin = min(float(np.min(group["dataset"][i]["data"])), ymin) * 1.05
                     ymax = max(float(np.max(group["dataset"][i]["data"])), ymax) * 1.05
@@ -790,7 +790,7 @@ class OutputMatplotlib:
                     ax.set_ylabel(group["y_label"])
 
             fig.subplots_adjust(hspace=2)
-            fig.set_tight_layout(True)
+            fig.tight_layout()
 
             from matplotlib2tikz import save as tikz_save
 

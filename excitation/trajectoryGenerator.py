@@ -1,11 +1,16 @@
+from __future__ import annotations
+
+from typing import Any
+
 import numpy as np
 
 from identification.data import Data
 from identification.model import Model
 
 
-def simulateTrajectory(config, trajectory, model=None, measurements=None):
-    # type: (Dict, Trajectory, Model, np._ArrayLike) -> Tuple[Dict, Data]
+def simulateTrajectory(
+    config: dict, trajectory: Trajectory, model: Model | None = None, measurements: dict | None = None
+) -> tuple[dict, Data]:
     # generate data arrays for simulation and regressor building
     old_sim = config["simulateTorques"]
     config["simulateTorques"] = True
@@ -25,7 +30,7 @@ def simulateTrajectory(config, trajectory, model=None, measurements=None):
         model = Model(config, urdf)
 
     data = Data(config)
-    trajectory_data = {}  # type: Dict[str, Union[List, np._ArrayLike]]
+    trajectory_data: dict[str, Any] = {}
     trajectory_data["target_positions"] = []
     trajectory_data["target_velocities"] = []
     trajectory_data["target_accelerations"] = []
@@ -180,20 +185,19 @@ class PulsedTrajectory(Trajectory):
     internal time value)
     """
 
-    def __init__(self, dofs, use_deg=False):
-        # type: (List, bool) -> None
+    def __init__(self, dofs: int, use_deg: bool = False) -> None:
         self.dofs = dofs
-        self.oscillators = list()  # type: List[OscillationGenerator]
+        self.oscillators: list[OscillationGenerator] = list()
         self.use_deg = use_deg
         self.w_f_global = 1.0
 
     def initWithRandomParams(self):
         # init with random params
         # TODO: use specified bounds
-        a = [0] * self.dofs
-        b = [0] * self.dofs
-        nf = np.random.randint(1, 4, self.dofs)
-        q = np.random.rand(self.dofs) * 2 - 1
+        a: list[Any] = [0] * self.dofs
+        b: list[Any] = [0] * self.dofs
+        nf: Any = np.random.randint(1, 4, self.dofs)
+        q: Any = np.random.rand(self.dofs) * 2 - 1
         for i in range(0, self.dofs):
             maximum = 2.0 - np.abs(q[i])
             a[i] = np.random.rand(nf[i]) * maximum - maximum / 2
@@ -225,7 +229,7 @@ class PulsedTrajectory(Trajectory):
             )
         return self
 
-    def initWithParams(self, a, b, q, nf, wf=None):
+    def initWithParams(self, a: Any, b: Any, q: Any, nf: Any, wf: Any = None) -> PulsedTrajectory:
         """init with given params
         a - list of dof coefficients a
         b - list of dof coefficients b
@@ -345,15 +349,13 @@ class OscillationGenerator:
 class FixedPositionTrajectory(Trajectory):
     """generate static 'trajectories'"""
 
-    def __init__(self, config):
-        # type: (Dict) -> None
+    def __init__(self, config: dict) -> None:
         self.config = config
         self.time = 0.0
         self.use_deg = self.config["useDeg"]
-        self.angles = None  # type: List[Dict[str, any]]
+        self.angles: list[dict[str, Any]] | None = None
 
-    def initWithAngles(self, angles):
-        # type: (List[Dict[str, Any]]) -> None
+    def initWithAngles(self, angles: list[dict[str, Any]]) -> None:
         """angles is a list containing for each posture a dict {
             start_time: float    # starting time in seconds of posture
             angles: List[float]  # angles for each joint
@@ -362,11 +364,10 @@ class FixedPositionTrajectory(Trajectory):
         self.angles = angles
         self.posLength = angles[1]["start_time"] - angles[0]["start_time"]
 
-    def getAngle(self, dof):
-        # type: (int) -> float
+    def getAngle(self, dof: int) -> float:
         """get angle at current time for joint dof"""
 
-        if np.any(self.angles):
+        if self.angles is not None:
             for angle_set in self.angles:
                 if angle_set["start_time"] >= self.time - self.posLength:
                     return angle_set["angles"][dof]
@@ -474,6 +475,8 @@ class FixedPositionTrajectory(Trajectory):
 
     def getPeriodLength(self):
         """get the length of the trajectory in seconds"""
+        if self.angles is None:
+            raise RuntimeError("angles not initialized; call initWithAngles() first")
         return self.angles[1]["start_time"] * len(self.angles)
 
     def setTime(self, time):

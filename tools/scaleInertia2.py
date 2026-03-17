@@ -4,7 +4,10 @@
 open urdf, scale all masses and inertia with given value, save to new file
 """
 
+from __future__ import annotations
+
 import argparse
+from typing import cast
 
 import numpy as np
 from idyntree import bindings as iDynTree
@@ -16,8 +19,7 @@ parser.add_argument("--scale", required=True, type=float, help="the value to sca
 args = parser.parse_args()
 
 
-def loadModel(urdf_file):
-    # type: (AnyStr) -> (iDynTree.Model)
+def loadModel(urdf_file: str | bytes) -> iDynTree.Model:
     loader = iDynTree.ModelLoader()
     loader.loadModelFromFile(urdf_file)
     return loader.model()
@@ -37,9 +39,10 @@ if __name__ == "__main__":
     # preserve comments
     class PCBuilder(ET.TreeBuilder):
         def comment(self, data):
-            self.start(ET.Comment, {})
+            comment_tag = cast(str, ET.Comment)  # ET.Comment is a callable used as a special tag sentinel
+            self.start(comment_tag, {})
             self.data(data)
-            self.end(ET.Comment)
+            self.end(comment_tag)
 
     tree = ET.parse(args.model, parser=ET.XMLParser(target=PCBuilder()))
 
@@ -86,11 +89,13 @@ if __name__ == "__main__":
 
         for l in tree.findall("link"):
             if l.attrib["name"] == link_name:
-                try:
-                    l.find("inertial/mass").attrib["value"] = f"{mass}"
-                except AttributeError:
+                mass_el = l.find("inertial/mass")
+                if mass_el is None:
                     continue
+                mass_el.attrib["value"] = f"{mass}"
                 inert = l.find("inertial/inertia")
+                if inert is None:
+                    continue
                 inert.attrib["ixx"] = f"{inertia[0, 0]}"
                 inert.attrib["ixy"] = f"{inertia[0, 1]}"
                 inert.attrib["ixz"] = f"{inertia[0, 2]}"

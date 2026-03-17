@@ -50,7 +50,7 @@ class NLOPT(Optimizer):
 
         self.inner_iter = 0
         self.last_best_u = 1e16
-        self.last_best_x = None  # type: List
+        self.last_best_x: np.ndarray | None = None
 
         self.param_weights = np.zeros(self.model.num_all_params - self.start_link * self.per_link)
         for p in range(len(self.param_weights)):
@@ -170,7 +170,8 @@ class NLOPT(Optimizer):
             diff = x - apriori  # *self.param_weights
             u = np.square(la.norm(diff))
 
-        cons = []  # type: List[float]
+        cons: list[float] = []
+        cons_base: list[float] = [0.0]
         if not self.min_est_error:
             # base equations == xBase as constraints
             if self.idf.opt["useBasisProjection"]:
@@ -178,8 +179,6 @@ class NLOPT(Optimizer):
             else:
                 cons_base = list(self.model.K[:, self.start_param :].dot(x) - self.xBase_feas)
             cons += cons_base
-        else:
-            cons_base = [0]  # type: List[float]
 
         cons_inertia = [0.0] * self.nl * 3
         cons_tri = [0.0] * self.nl * 3
@@ -206,8 +205,8 @@ class NLOPT(Optimizer):
                 cons += cons_tri
 
         # constrain overall mass
+        cons_mass_sum: list[float] = [0.0]
         if self.idf.opt["limitOverallMass"]:
-            cons_mass_sum = [0.0] * 1
             est_mass = np.sum(x[0 : self.model.num_model_params - self.start_link : self.per_link])
             cons_mass_sum[0] = est_mass
             cons += cons_mass_sum
@@ -231,7 +230,7 @@ class NLOPT(Optimizer):
         if self.idf.opt["showOptimizationGraph"] and self.mpi_rank == 0:
             if c or not getattr(self.opt_prob, "is_gradient", False):
                 self.xar.append(self.inner_iter)
-                self.yar.append(u)
+                self.yar.append(float(u))
                 self.x_constr.append(c)
                 self.updateGraph()
 
@@ -245,7 +244,7 @@ class NLOPT(Optimizer):
         # keep best solution manually
         if u < self.last_best_u and c:
             self.last_best_x = x
-            self.last_best_u = u
+            self.last_best_u = float(u)
             if self.idf.opt["verbose"]:
                 print("keeping new best solution")
 
@@ -276,7 +275,8 @@ class NLOPT(Optimizer):
             diff = x_std - apriori
             u = np.square(la.norm(diff))
 
-        cons = []  # type: List[float]
+        cons: list[float] = []
+        cons_base: list[float] = [0.0]
         if not self.min_est_error:
             # base equations == xBase as constraints
             if self.idf.opt["useBasisProjection"]:
@@ -284,8 +284,6 @@ class NLOPT(Optimizer):
             else:
                 cons_base = list(self.model.K[:, self.start_param :].dot(x_std) - self.xBase_feas)
             cons += cons_base
-        else:
-            cons_base = [0]  # type: List[float]
 
         # constrain norm(Q) = 1 (quaternion corresponding to rotation matrix in SO(3))
         cons_det_q = [0.0] * (self.nl)
@@ -298,8 +296,8 @@ class NLOPT(Optimizer):
         cons += cons_det_q
         cons += cons_ident_q
         # constrain overall mass
+        cons_mass_sum: list[float] = [0.0]
         if self.idf.opt["limitOverallMass"]:
-            cons_mass_sum = [0.0] * 1
             est_mass = np.sum(x[0 : self.model.num_model_params - self.start_link : self.per_link + 1])
             cons_mass_sum[0] = est_mass
             cons += cons_mass_sum
@@ -323,7 +321,7 @@ class NLOPT(Optimizer):
         if self.idf.opt["showOptimizationGraph"] and self.mpi_rank == 0:
             if c or not getattr(self.opt_prob, "is_gradient", False):
                 self.xar.append(self.inner_iter)
-                self.yar.append(u)
+                self.yar.append(float(u))
                 self.x_constr.append(c)
                 self.updateGraph()
 
@@ -337,7 +335,7 @@ class NLOPT(Optimizer):
         # keep best solution manually (whatever these solvers are doing...)
         if u < self.last_best_u and c:
             self.last_best_x = x
-            self.last_best_u = u
+            self.last_best_u = float(u)
             if self.idf.opt["verbose"]:
                 print("keeping new best solution")
 
@@ -613,7 +611,7 @@ class NLOPT(Optimizer):
             # pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
             # pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
         else:
-            print("Solver unknown")
+            raise RuntimeError(f"Unknown nlOptSolver: {self.idf.opt['nlOptSolver']!r}")
 
         self.opt_prob = opt
         # run optimizer (use FD for gradient-based solvers)

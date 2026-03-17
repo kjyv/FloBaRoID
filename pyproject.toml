@@ -87,9 +87,14 @@ warn_unused_configs = true
 ignore_missing_imports = true
 explicit_package_bases = true
 mypy_path = "."
+files = ["."]
 exclude = [
-    "excitation/robotCommunication",  # ros/yarp modules, not testable without ROS
+    "excitation/robotCommunication/.*",  # ros/yarp modules, not testable without ROS
 ]
+
+[[tool.mypy.overrides]]
+module = "excitation.robotCommunication.*"
+ignore_errors = true  # ros/yarp modules, not testable without ROS
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

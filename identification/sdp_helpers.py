@@ -1,3 +1,5 @@
+from typing import Any
+
 import cvxopt
 import lmi_sdp
 import numpy as np
@@ -77,8 +79,9 @@ def to_sdpa_sparse(
     return s
 
 
-def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike) -> Tuple[np.ndarray, str]
+def cvxopt_conelp(
+    objf: Any, lmis: list[Any], variables: list[Any], primalstart: np.ndarray | None = None
+) -> tuple[np.ndarray, str]:
     """using cvxopt conelp to solve SDP program
 
     a more exact but possibly less robust solver than dsdp5
@@ -116,8 +119,9 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
     return np.asarray(sdpout["x"]), state
 
 
-def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.ndarray, str]
+def cvxopt_dsdp5(
+    objf: Any, lmis: list[Any], variables: list[Any], primalstart: np.ndarray | None = None, wide_bounds: bool = False
+) -> tuple[np.ndarray, str]:
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
@@ -140,8 +144,9 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     return np.asarray(sdpout["x"]), state
 
 
-def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.ndarray, str]
+def dsdp5(
+    objf: Any, lmis: list[Any], variables: list[Any], primalstart: np.ndarray | None = None, wide_bounds: bool = False
+) -> tuple[np.ndarray, str]:
     """use dsdp5 directly (faster than cvxopt, can use starting points, more robust)"""
     import os
     import subprocess

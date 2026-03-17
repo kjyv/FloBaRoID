@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import os
 
 # define exception for python < 3
 import sys
 import time
 import xml.etree.ElementTree as ET
-from typing import cast
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from identification.model import Model
 
 import numpy as np
 import numpy.linalg as la
@@ -13,8 +19,9 @@ from idyntree import bindings as iDynTree
 from tqdm import tqdm
 
 
-def getNRMSE(data_ref, data_est, normalize=True, limits=None):
-    # type: (np._ArrayLike, np._ArrayLike, bool, np._ArrayLike) -> np._ArrayLike[float]
+def getNRMSE(
+    data_ref: np.ndarray, data_est: np.ndarray, normalize: bool = True, limits: np.ndarray | list | None = None
+) -> float:
     """get (normalized) root mean square error between estimated values and "standard".
     if limits is supplied, normalization is done from maximum range of torques rather than observed
     range in the data"""
@@ -34,12 +41,12 @@ def getNRMSE(data_ref, data_est, normalize=True, limits=None):
         range = ymax - ymin
         if range.shape[0] < rmsd.shape[0]:
             # floating base
-            return np.mean(rmsd[6:] / range) * 100
+            return float(np.mean(rmsd[6:] / range) * 100)
         else:
             # fixed base
-            return np.mean(rmsd / range) * 100
+            return float(np.mean(rmsd / range) * 100)
     else:
-        return np.mean(rmsd) * 100
+        return float(np.mean(rmsd) * 100)
 
 
 def rotationMatrixToEulerAngles(R):
@@ -85,12 +92,10 @@ def eulerAnglesToRotationMatrix(theta):
 
 
 class Progress:
-    def __init__(self, config):
-        # type: (Dict[str, Any]) -> None
-        self.config = config  # type: Dict[str, Any]
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config: dict[str, Any] = config
 
-    def progress(self, iter):
-        # type: (Iterable) -> Iterable
+    def progress(self, iter: Iterable) -> Iterable:
         if self.config["verbose"]:
             return tqdm(iter)
         else:
@@ -108,13 +113,11 @@ class Timer:
 
 
 class ParamHelpers:
-    def __init__(self, model, opt):
-        # type: (Model, Dict[str, Any]) -> None
+    def __init__(self, model: Model, opt: dict[str, Any]) -> None:
         self.model = model
         self.opt = opt
 
-    def checkPhysicalConsistency(self, params, full=False):
-        # type: (np._ArrayLike, bool) -> (Dict[int, bool])
+    def checkPhysicalConsistency(self, params: np.ndarray, full: bool = False) -> dict[int, bool]:
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite, triangle inequaltiy for eigenvalues of inertia tensor expressed at COM)
@@ -124,7 +127,7 @@ class ParamHelpers:
 
         when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
-        cons = {}  # type: (Dict[int, bool])
+        cons: dict[int, bool] = {}
         if self.opt["identifyGravityParamsOnly"] and not full:
             for i in range(0, self.model.num_links):
                 # masses need to be positive
@@ -140,8 +143,7 @@ class ParamHelpers:
                     cons[i // 10] = si.isPhysicallyConsistent()
         return cons
 
-    def checkPhysicalConsistencyNoTriangle(self, params, full=False):
-        # type: (np._ArrayLike, bool) -> (Dict[int, bool])
+    def checkPhysicalConsistencyNoTriangle(self, params: np.ndarray, full: bool = False) -> dict[int, bool]:
         """
         check params for physical consistency
         (mass positive, inertia tensor positive definite)
@@ -151,7 +153,7 @@ class ParamHelpers:
 
         when full is True, a 10 parameter per link vector is expected, regardless of global options
         """
-        cons = {}  # type: (Dict[int, bool])
+        cons: dict[int, bool] = {}
 
         if self.opt["identifyGravityParamsOnly"] and not full:
             for i in range(0, self.model.num_links):
@@ -183,13 +185,11 @@ class ParamHelpers:
         """
         return cons
 
-    def isPhysicalConsistent(self, params):
-        # type: (np._ArrayLike[float]) -> bool
+    def isPhysicalConsistent(self, params: np.ndarray) -> bool:
         """give boolean consistency statement for a set of parameters"""
         return False not in self.checkPhysicalConsistencyNoTriangle(params).values()
 
-    def invvech(self, params):
-        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
+    def invvech(self, params: np.ndarray) -> np.ndarray:
         """give full inertia tensor from vectorized form
         expect vector of 6 values (xx, xy, xz, yy, yz, zz).T"""
         tensor = np.zeros((3, 3))
@@ -216,8 +216,7 @@ class ParamHelpers:
         tensor[2, 2] = value
         return tensor
 
-    def vech(self, params):
-        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
+    def vech(self, params: np.ndarray) -> np.ndarray:
         """return vectorization of symmetric 3x3 matrix (only up to diagonal)"""
         vec = np.zeros(6)
         vec[0] = params[0, 0]
@@ -228,8 +227,7 @@ class ParamHelpers:
         vec[5] = params[2, 2]
         return vec
 
-    def inertiaTensorFromParams(self, params):
-        # type: (np._ArrayLike[float]) -> (List[np._ArrayLike[float]])
+    def inertiaTensorFromParams(self, params: np.ndarray) -> list[np.ndarray]:
         """take a parameter vector and return list of full inertia tensors (one for each link)"""
         tensors = list()
         for i in range(len(params)):
@@ -238,12 +236,11 @@ class ParamHelpers:
                 tensors.append(tensor)
         return tensors
 
-    def inertiaParams2RotationalInertiaRaw(self, params):
-        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
+    def inertiaParams2RotationalInertiaRaw(self, params: np.ndarray) -> np.ndarray:
         """take values from inertia parameter vector and create iDynTree RotationalInertiaRaw matrix
         expects six parameter vector"""
 
-        inertia = iDynTree.RotationalInertiaRaw()
+        inertia = iDynTree.RotationalInertia()
         # xx of inertia matrix w.r.t. link origin
         value = params[0]
         inertia.setVal(0, 0, value)
@@ -267,8 +264,7 @@ class ParamHelpers:
         inertia.setVal(2, 2, value)
         return inertia
 
-    def paramsLink2Bary(self, params):
-        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
+    def paramsLink2Bary(self, params: np.ndarray) -> np.ndarray:
         """convert params from iDynTree values (relative to link frame) to barycentric parameters
         (usable in URDF) (changed in place)"""
 
@@ -289,7 +285,7 @@ class ParamHelpers:
                     params[i + 3] = com_z / link_mass  # z of first moment -> z of com
                 else:
                     params[i + 1] = params[i + 2] = params[i + 3] = 0
-                p_com = iDynTree.PositionRaw(params[i + 1], params[i + 2], params[i + 3])
+                p_com = iDynTree.Position(params[i + 1], params[i + 2], params[i + 3])
 
                 # inertias
                 rot_inertia_origin = self.inertiaParams2RotationalInertiaRaw(params[i + 4 : i + 10])
@@ -303,8 +299,7 @@ class ParamHelpers:
                 params[i + 9] = rot_inertia_com.getVal(2, 2)  # zz w.r.t. com
         return params
 
-    def paramsBary2Link(self, params):
-        # type: (np._ArrayLike[float]) -> (np._ArrayLike[float])
+    def paramsBary2Link(self, params: np.ndarray) -> np.ndarray:
         params = params.copy()
         for i in range(0, len(params)):
             if (i % 10 == 0) and i < self.model.num_model_params:  # for each link
@@ -316,7 +311,7 @@ class ParamHelpers:
                 params[i + 1] = com_x * link_mass  # x of first moment of mass
                 params[i + 2] = com_y * link_mass  # y of first moment of mass
                 params[i + 3] = com_z * link_mass  # z of first moment of mass
-                p_com = iDynTree.PositionRaw(params[i + 1], params[i + 2], params[i + 3])
+                p_com = iDynTree.Position(params[i + 1], params[i + 2], params[i + 3])
 
                 # inertias
                 rot_inertia_com = self.inertiaParams2RotationalInertiaRaw(params[i + 4 : i + 10])
@@ -333,8 +328,7 @@ class ParamHelpers:
         return params
 
     @staticmethod
-    def addFrictionFromURDF(model, urdf_file, params):
-        # type: (model.Model, str, np._ArrayLike[float]) -> None
+    def addFrictionFromURDF(model: Model, urdf_file: str, params: np.ndarray) -> None:
         """get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector"""
 
         friction = URDFHelpers.getJointFriction(urdf_file)
@@ -354,15 +348,13 @@ class ParamHelpers:
 
 
 class URDFHelpers:
-    def __init__(self, paramHelpers, model, opt):
-        # type: (ParamHelpers, model.Model, Dict) -> None
+    def __init__(self, paramHelpers: ParamHelpers, model: Model, opt: dict) -> None:
         self.paramHelpers = paramHelpers
         self.model = model
         self.opt = opt
-        self.parsed_xml = {}  # type: Dict[ET]
+        self.parsed_xml: dict[str, Any] = {}
 
-    def parseURDF(self, input_urdf):
-        # type: (str) -> ET
+    def parseURDF(self, input_urdf: str) -> ET.ElementTree[Any]:
 
         try:
             return self.parsed_xml[input_urdf]
@@ -370,16 +362,16 @@ class URDFHelpers:
             # preserve comments
             class PCBuilder(ET.TreeBuilder):
                 def comment(self, data):
-                    self.start(ET.Comment, {})
+                    comment_tag = cast(str, ET.Comment)  # ET.Comment is a callable used as a special tag sentinel
+                    self.start(comment_tag, {})
                     self.data(data)
-                    self.end(ET.Comment)
+                    self.end(comment_tag)
 
             tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
             self.parsed_xml[input_urdf] = tree
             return tree
 
-    def replaceParamsInURDF(self, input_urdf, output_urdf, new_params):
-        # type: (str, str, np._ArrayLike[float]) -> None
+    def replaceParamsInURDF(self, input_urdf: str, output_urdf: str, new_params: np.ndarray) -> None:
         """set new inertia parameters from params and urdf_file, write to new temp file"""
 
         if self.opt["identifyGravityParamsOnly"]:
@@ -396,12 +388,18 @@ class URDFHelpers:
         for l in tree.findall("link"):
             if l.attrib["name"] in self.model.linkNames:
                 link_id = self.model.linkNames.index(l.attrib["name"])
-                l.find("inertial/mass").attrib["value"] = f"{xStdBary[link_id * per_link]}"
-                l.find("inertial/origin").attrib["xyz"] = (
-                    f"{xStdBary[link_id * per_link + 1]} {xStdBary[link_id * per_link + 2]} {xStdBary[link_id * per_link + 3]}"
-                )
+                mass_el = l.find("inertial/mass")
+                if mass_el is not None:
+                    mass_el.attrib["value"] = f"{xStdBary[link_id * per_link]}"
+                origin_el = l.find("inertial/origin")
+                if origin_el is not None:
+                    origin_el.attrib["xyz"] = (
+                        f"{xStdBary[link_id * per_link + 1]} {xStdBary[link_id * per_link + 2]} {xStdBary[link_id * per_link + 3]}"
+                    )
                 if not self.opt["identifyGravityParamsOnly"]:
                     inert = l.find("inertial/inertia")
+                    if inert is None:
+                        continue
                     inert.attrib["ixx"] = f"{xStdBary[link_id * 10 + 4]}"
                     inert.attrib["ixy"] = f"{xStdBary[link_id * 10 + 5]}"
                     inert.attrib["ixz"] = f"{xStdBary[link_id * 10 + 6]}"
@@ -433,28 +431,28 @@ class URDFHelpers:
                 else:
                     # parameters were identified assuming there was no friction
                     f_c = f_v = 0.0
-                l.find("dynamics").attrib["friction"] = f"{f_c}"
-                if not self.opt["identifyGravityParamsOnly"]:
-                    l.find("dynamics").attrib["damping"] = f"{f_v}"
+                dynamics_el = l.find("dynamics")
+                if dynamics_el is not None:
+                    dynamics_el.attrib["friction"] = f"{f_c}"
+                    if not self.opt["identifyGravityParamsOnly"]:
+                        dynamics_el.attrib["damping"] = f"{f_v}"
 
         tree.write(output_urdf, xml_declaration=True)
 
-    def getLinkNames(self, input_urdf):
-        # type: (str) -> List[str]
+    def getLinkNames(self, input_urdf: str) -> list[str]:
 
         links = []
         tree = self.parseURDF(input_urdf)
         for l in tree.findall("link"):
-            if len(l.getchildren()) > 0:  # ignore fake links
+            if len(list(l)) > 0:  # ignore fake links
                 links.append(l.attrib["name"])
         return links
 
-    def getMeshPath(self, input_urdf, link_name):
-        # type: (AnyStr, AnyStr) -> AnyStr
+    def getMeshPath(self, input_urdf: str, link_name: str) -> str | None:
 
         tree = self.parseURDF(input_urdf)
         link_found = False
-        filepath = None  # type: AnyStr
+        filepath: str | None = None
         for l in tree.findall("link"):
             if l.attrib["name"] == link_name:
                 link_found = True
@@ -480,17 +478,18 @@ class URDFHelpers:
                 # r.read() #get file into memory
             except ImportError:
                 # if no ros installed, try to get stl files from 'meshes' dir relative to urdf files
-                filename = filepath.split("/")
+                filename_parts = filepath.split("/")
                 try:
-                    filename = filename[filename.index(self.opt["meshBaseDir"]) :]
-                    filepath = "/".join(input_urdf.split("/")[:-1] + filename)
+                    filename_parts = filename_parts[filename_parts.index(self.opt["meshBaseDir"]) :]
+                    filepath = "/".join(input_urdf.split("/")[:-1] + filename_parts)
                 except ValueError:
                     filepath = None
 
         return filepath
 
-    def getLinkGeometry(self, input_urdf, link_name):
-        # type: (str, str) -> Tuple[List[float], List[float], List[float]]
+    def getLinkGeometry(
+        self, input_urdf: str, link_name: str
+    ) -> tuple[list[float], list[float], list[float] | np.ndarray]:
 
         tree = self.parseURDF(input_urdf)
 
@@ -511,30 +510,27 @@ class URDFHelpers:
                 box_pos = box_rpy = "0 0 0"
             return box_size, box_pos, box_rpy
 
-        box_size = box_pos = box_rpy = [0.0, 0.0, 0.0]
+        box_size_s = box_pos_s = box_rpy_s = "0 0 0"
         for l in tree.findall("link"):
             if l.attrib["name"] == link_name:
                 m = l.find("visual/geometry/box")
                 if m is not None:
-                    box_size, box_pos, box_rpy = getBoxAttribs(m, l)
+                    box_size_s, box_pos_s, box_rpy_s = getBoxAttribs(m, l)
                 else:
                     m = l.find("visual/collision/box")
                     if m is not None:
-                        box_size, box_pos, box_rpy = getBoxAttribs(m, l)
-                    else:
-                        box_size = box_pos = box_rpy = "0 0 0"  # type: ignore
-                box_size = [float(i) for i in box_size.split()]
-                box_pos = [float(i) for i in box_pos.split()]
-                box_rpy = [float(i) for i in box_rpy.split()]
+                        box_size_s, box_pos_s, box_rpy_s = getBoxAttribs(m, l)
                 break
+        box_size = [float(i) for i in box_size_s.split()]
+        box_pos = [float(i) for i in box_pos_s.split()]
+        box_rpy = [float(i) for i in box_rpy_s.split()]
         return (box_size, box_pos, box_rpy)
 
     @staticmethod
-    def getNeighbors(idyn_model, connected=True):
-        # type: (iDynTree.Model, bool) -> Dict[str, Dict[str, List[int]]]
+    def getNeighbors(idyn_model: Any, connected: bool = True) -> dict[str, dict[str, list[Any]]]:
 
         # get neighbors for each link
-        neighbors = {}  # type: Dict[str, Dict[str, List[int]]]
+        neighbors: dict[str, dict[str, list[str]]] = {}
         for l in range(idyn_model.getNrOfLinks()):
             link_name = idyn_model.getLinkName(l)
             # if link_name not in self.model.linkNames:  # ignore links that are ignored in the generator
@@ -568,8 +564,9 @@ class URDFHelpers:
 
         return neighbors
 
-    def getBoundingBox(self, input_urdf, old_com, link_name, scaling=True):
-        # type: (str, List[float], str, bool) -> Tuple[List[List[float]], List[float], np._ArrayLike]
+    def getBoundingBox(
+        self, input_urdf: str, old_com: list[float], link_name: str, scaling: bool = True
+    ) -> tuple[list[list[float]], list[float], np.ndarray | list[float]]:
         """Return bounding box for one link derived from mesh file if possible.
         If no mesh file is found, a cube around the old COM is returned.
         Expects old_com in barycentric form!"""
@@ -649,12 +646,11 @@ class URDFHelpers:
                 return cube, pos_0, rot_0
 
     @staticmethod
-    def getJointLimits(input_urdf, use_deg=False):
-        # type: (str, bool) -> Dict[str, Dict[str, float]]
+    def getJointLimits(input_urdf: str, use_deg: bool = False) -> dict[str, dict[str, float]]:
         import xml.etree.ElementTree as ET
 
         tree = ET.parse(input_urdf)
-        limits = {}  # type: Dict[str, Dict[str, float]]
+        limits: dict[str, dict[str, float]] = {}
         for j in tree.findall("joint"):
             name = j.attrib["name"]
             torque = 0.0
@@ -682,14 +678,13 @@ class URDFHelpers:
         return limits
 
     @staticmethod
-    def getJointFriction(input_urdf):
-        # type: (AnyStr) -> Dict[AnyStr, Dict[AnyStr, float]]
+    def getJointFriction(input_urdf: str) -> dict[str, dict[str, float]]:
         """return friction values for each revolute joint from a urdf"""
 
         import xml.etree.ElementTree as ET
 
         tree = ET.parse(input_urdf)
-        friction = {}  # type: Dict[AnyStr, Dict[AnyStr, float]]
+        friction: dict[str, dict[str, float]] = {}
         for j in tree.findall("joint"):
             name = j.attrib["name"]
             constant = 0.0

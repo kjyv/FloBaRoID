@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import annotations
 
 # math
 import argparse
@@ -30,8 +31,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def loadModelfromURDF(urdf_file):
-    # type: (AnyStr) -> (iDynTree.Model)
+def loadModelfromURDF(urdf_file: str | bytes) -> iDynTree.Model:
     loader = iDynTree.ModelLoader()
     loader.loadModelFromFile(urdf_file)
     return loader.model()
@@ -81,8 +81,9 @@ def plotErrors(errors, labels):
     plt.show()
 
 
-def getParamErrors(ref_model, p_model, num_links, group="COM"):
-    # type: (iDynTree.Model, iDynTree.Model, int, AnyStr) -> (List[float])
+def getParamErrors(
+    ref_model: iDynTree.Model, p_model: iDynTree.Model, num_links: int, group: str | bytes = "COM"
+) -> list[float]:
     """give error for groups of params"""
 
     errors = []
@@ -116,7 +117,7 @@ if __name__ == "__main__":
     ref_model = loadModelfromURDF(args.ref_model)
     num_links = ref_model.getNrOfLinks()
 
-    linkNames = []  # type: List[AnyStr]
+    linkNames: list[str] = []
     for i in range(num_links):
         linkNames.append(ref_model.getLinkName(i))
 

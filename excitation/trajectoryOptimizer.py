@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
@@ -14,6 +17,7 @@ from identification.helpers import URDFHelpers
 class TrajectoryOptimizer(Optimizer):
     def __init__(self, config, idf, model, simulation_func, world=None):
         super().__init__(config, idf, model, simulation_func, world=world)
+        self.sim_func: Callable = simulation_func  # narrow: always non-None in this subclass
 
         # init some classes
         self.limits = URDFHelpers.getJointLimits(config["urdf"], use_deg=False)  # will always be compared to rad
@@ -31,9 +35,9 @@ class TrajectoryOptimizer(Optimizer):
 
         # angle offsets
         if self.config["trajectoryAngleRanges"] and self.config["trajectoryAngleRanges"][0] is not None:
-            self.qmin = []  # type: List[float]
-            self.qmax = []  # type: List[float]
-            self.qinit = []  # type: List[float]
+            self.qmin: list[float] | np.ndarray = []
+            self.qmax: list[float] | np.ndarray = []
+            self.qinit: list[float] | np.ndarray = []
             for i in range(0, self.num_dofs):
                 low = self.config["trajectoryAngleRanges"][i][0]
                 high = self.config["trajectoryAngleRanges"][i][1]
@@ -84,7 +88,7 @@ class TrajectoryOptimizer(Optimizer):
         self.num_coll_constraints = eff_links * (eff_links - 1) // 2
 
         # ignore neighbors
-        nb_pairs = []  # type: List[Tuple]
+        nb_pairs: list[tuple] = []
         for link in self.neighbors:
             if link in self.config["ignoreLinksForCollision"]:
                 continue
@@ -147,7 +151,7 @@ class TrajectoryOptimizer(Optimizer):
           The approximation is done using forward differences
         """
 
-        x0 = np.asfarray(x)
+        x0 = np.asarray(x, dtype=float)
         f0 = f(*((x0,) + args))
         jac = np.zeros((x0.size, f0.size))
         dx = np.zeros(x0.size)
@@ -396,8 +400,7 @@ class TrajectoryOptimizer(Optimizer):
         funcs = {"f": f, "g": np.array(g)}
         return funcs, bool(fail)
 
-    def addVarsAndConstraints(self, opt_prob):
-        # type: (pyoptsparse.Optimization) -> None
+    def addVarsAndConstraints(self, opt_prob: Any) -> None:
         """Add variables, define bounds."""
 
         self._var_names: list[str] = []
@@ -426,8 +429,7 @@ class TrajectoryOptimizer(Optimizer):
         # add constraint vars (constraint functions are in obfunc)
         opt_prob.addConGroup("g", self.num_constraints, lower=0.0, upper=np.inf)
 
-    def optimizeTrajectory(self):
-        # type: () -> PulsedTrajectory
+    def optimizeTrajectory(self) -> "PulsedTrajectory":
         # use non-linear optimization to find parameters for minimal
         # condition number trajectory
 

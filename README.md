@@ -42,7 +42,7 @@ You'll need some or all of these depenencies installed in your system:
 ## Installation
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then
-run e.g. `uv run identify.py` to run the tools in uv virtual env. It will install necessary dependencies
+run e.g. `uv run identifier.py` to run the tools in uv virtual env. It will install necessary dependencies
 automatically. 
 
 ## Commands
@@ -61,10 +61,10 @@ Saves to `<model>.trajectory.npz` by default (e.g. `model/kuka_lwr4.urdf.traject
 uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
 ```
 
-* **identify.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
+* **identifier.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
 
 ```bash
-uv run identify.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --measurements measurements.npz
+uv run identifier.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --measurements measurements.npz
 ```
 
 * **visualizer.py**: show 3D robot model of URDF, trajectory motion

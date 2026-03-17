@@ -1,5 +1,13 @@
+from __future__ import annotations
+
 import random
 import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from identification.model import Model
+    from identifier import Identification
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,8 +32,7 @@ from idyntree import bindings as iDynTree
 from identification.helpers import eulerAnglesToRotationMatrix
 
 
-def plotter(config, data=None, filename=None):
-    # type: (Dict, np._ArrayLike, str) -> None
+def plotter(config: dict, data: dict | None = None, filename: str | None = None) -> None:
     fig = plt.figure(1)
     fig.clear()
     if False:
@@ -56,6 +63,8 @@ def plotter(config, data=None, filename=None):
 
     if not data:
         # reload measurements from this or last run (if run dry)
+        if filename is None:
+            return
         measurements = np.load(filename)
         Q = measurements["positions"]
         Qraw = measurements["positions_raw"]
@@ -170,7 +179,7 @@ def plotter(config, data=None, filename=None):
                 plt.plot(T, dat[d_i], label=title, color=colors[0], alpha=1 - (d_i / 2.0))
         d += 1
     leg = plt.figlegend(lines, labels, "upper right", fancybox=True, fontsize=10)
-    leg.draggable()
+    leg.set_draggable(True)
 
     plt.subplots_adjust(hspace=2)
     plt.tight_layout()
@@ -181,8 +190,14 @@ def plotter(config, data=None, filename=None):
 class Optimizer:
     """base class for different optimizers"""
 
-    def __init__(self, config, idf, model, simulation_func, world=None):
-        # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
+    def __init__(
+        self,
+        config: dict[str, Any],
+        idf: Identification,
+        model: Model,
+        simulation_func: Callable | None,
+        world: str | None = None,
+    ) -> None:
 
         self.config = config
         self.sim_func = simulation_func
@@ -197,9 +212,15 @@ class Optimizer:
         self.last_best_sol = np.array([])
 
         self.iter_cnt = 0  # iteration counter
-        self.last_g = None  # type: List[float]    # last constraint values
+        self.last_g: list[float] | None = None  # last constraint values
         self.is_global = False
         self.local_iter_max = "(unknown)"
+
+        # attributes declared here for type checking; set by subclasses
+        self.trajectory: Any = None
+        self.world_gravity: Any = None
+        self.num_postures: int = 0
+        self._var_names: list[str] = []
 
         # init parallel runs
         self.parallel = parallel
@@ -216,7 +237,7 @@ class Optimizer:
             self.initGraph()
 
         # init link data
-        self.link_cuboid_hulls = {}  # type: Dict[str, List]
+        self.link_cuboid_hulls: dict[str, list] = {}
         for i in range(self.model.num_links):
             link_name = self.model.linkNames[i]
             box, pos, rot = idf.urdfHelpers.getBoundingBox(
@@ -228,7 +249,7 @@ class Optimizer:
             self.link_cuboid_hulls[link_name] = [box, pos, rot]
 
         self.world = world
-        self.world_links = []  # type: List[str]
+        self.world_links: list[str] = []
         if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
@@ -248,16 +269,13 @@ class Optimizer:
 
         self.world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
 
-    def testBounds(self, x):
-        # type: (np._ArrayLike) -> bool
+    def testBounds(self, x: np.ndarray) -> bool:
         raise NotImplementedError
 
-    def testConstraints(self, g):
-        # type: (np._ArrayLike) -> bool
+    def testConstraints(self, g: np.ndarray) -> bool:
         raise NotImplementedError
 
-    def getLinkDistance(self, l0_name, l1_name, joint_q):
-        # type: (str, str, np._ArrayLike[float]) -> float
+    def getLinkDistance(self, l0_name: str, l1_name: str, joint_q: np.ndarray) -> float:
         """get shortest distance from link with id l0 to link with id l1 for posture joint_q"""
 
         import fcl
@@ -347,19 +365,22 @@ class Optimizer:
 
             # set draw method for visualizer. This taps into local variables here, a bit unclean...
             def draw_model():
-                if self.trajectory:
+                if self.trajectory and self.visualizer.trajectory:
                     # get data of trajectory
                     self.visualizer.trajectory.setTime(self.visualizer.display_index / self.visualizer.fps)
                     q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.num_dofs)]
                 else:
                     p_id = self.visualizer.display_index
-                    q0 = self.visualizer.angles[p_id * self.num_dofs : (p_id + 1) * self.num_dofs]
+                    angles = self.visualizer.angles
+                    if angles is None:
+                        return
+                    q0 = angles[p_id * self.num_dofs : (p_id + 1) * self.num_dofs]
 
                 q = iDynTree.VectorDynSize.FromPython(q0)
                 dq = iDynTree.VectorDynSize.FromPython([0.0] * self.num_dofs)
-                self.model.dynComp.setRobotState(q, dq, dq, self.world_gravity)
+                self.model.kinDyn.setRobotState(q, dq, dq, self.world_gravity)
                 self.visualizer.addIDynTreeModel(
-                    self.model.dynComp,
+                    self.model.kinDyn,
                     self.link_cuboid_hulls,
                     self.model.linkNames,
                     self.config["ignoreLinksForCollision"],
@@ -375,7 +396,8 @@ class Optimizer:
         if self.config["showModelVisualization"] and self.mpi_rank == 0:  # and c:
             self.visualizer.display_max = self.num_postures
             self.visualizer.angles = x
-            self.visualizer.event_callback()
+            if self.visualizer.event_callback:
+                self.visualizer.event_callback()
             self.visualizer.run()
 
     def showVisualizerTrajectory(self, t):
@@ -386,11 +408,11 @@ class Optimizer:
             self.visualizer.display_max = t.getPeriodLength() * self.visualizer.fps  # length of trajectory
             self.visualizer.trajectory = t
             self.visualizer.playable = True
-            self.visualizer.event_callback()
+            if self.visualizer.event_callback:
+                self.visualizer.event_callback()
             self.visualizer.run()
 
-    def objectiveFunc(self, x, test=False):
-        # type: (np._ArrayLike[float], bool) -> Tuple[float, np._ArrayLike, bool]
+    def objectiveFunc(self, x: np.ndarray, test: bool = False) -> tuple[float, np.ndarray, bool]:
         """calculate objective function and return objective function value f, constraint values g
         and a fail flag"""
         raise NotImplementedError
@@ -402,9 +424,9 @@ class Optimizer:
         self.fig = plt.figure(0)
         self.ax1 = self.fig.add_subplot(1, 1, 1)
         plt.ion()
-        self.xar = []  # type: List[int]    # x value, i.e. iteration count
-        self.yar = []  # type: List[float]  # y value, i.e. obj func value
-        self.x_constr = []  # type: List[bool]   # within constraints or not (feasible)
+        self.xar: list[int] = []  # x value, i.e. iteration count
+        self.yar: list[float] = []  # y value, i.e. obj func value
+        self.x_constr: list[bool] = []  # within constraints or not (feasible)
         self.ax1.plot(self.xar, self.yar)
         self.ax1.set_xlabel("Function evaluation #")
         self.ax1.set_ylabel("Objective function value")
@@ -451,7 +473,7 @@ class Optimizer:
           The approximation is done using forward differences
         """
 
-        x0 = np.asfarray(x)
+        x0 = np.asarray(x, dtype=float)
         f0 = f(*((x0,) + args))
         jac = np.zeros((x0.size, f0.size))
         dx = np.zeros(x0.size)
@@ -479,8 +501,7 @@ class Optimizer:
                         self.last_best_f = other_best_f
                         self.last_best_sol = other_best_sol
 
-    def runOptimizer(self, opt_prob):
-        # type: (pyoptsparse.Optimization) -> np._ArrayLike[float]
+    def runOptimizer(self, opt_prob: Any) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
 
         from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP

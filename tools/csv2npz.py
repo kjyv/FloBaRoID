@@ -13,8 +13,9 @@ from idyntree import bindings as iDynTree
 
 import matplotlib
 import matplotlib.pyplot as plt
-from distutils.version import LooseVersion
-if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
+try:
+    plt.style.use('seaborn-v0_8-muted')
+except OSError:
     plt.style.use('seaborn-muted')
 
 sys.path.insert(1, os.path.join(sys.path[0], '..'))

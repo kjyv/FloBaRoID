@@ -7,8 +7,9 @@ import numpy.linalg as la
 import matplotlib
 import matplotlib.pyplot as plt
 
-from distutils.version import LooseVersion
-if LooseVersion(matplotlib.__version__) >= LooseVersion('1.5'):
+try:
+    plt.style.use('seaborn-v0_8-pastel')
+except OSError:
     plt.style.use('seaborn-pastel')
 
 try:

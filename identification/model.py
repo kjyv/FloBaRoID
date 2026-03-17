@@ -15,7 +15,7 @@ from identification.data import Data
 
 from IPython import embed
 
-np.core.arrayprint._line_width = 160
+np.set_printoptions(linewidth=160)
 
 class Model(object):
     def __init__(self, opt, urdf_file, regressor_file=None, regressor_init=True):

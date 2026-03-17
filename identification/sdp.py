@@ -6,10 +6,6 @@ import numpy.linalg as la
 
 import sympy
 from sympy import Symbol, solve, Matrix, BlockMatrix, Identity, eye
-from distutils.version import LooseVersion
-if LooseVersion(sympy.__version__) < LooseVersion('0.7.5'):
-    print("Old sympy version found (< 0.7.5)! Please update.")
-
 import os, sys
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 

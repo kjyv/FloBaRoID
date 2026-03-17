@@ -213,11 +213,11 @@ class Data(object):
         # use std dev ratio
         ##self.estimateRegressorTorques()
         """
-        # get standard deviation of measurement and modeling error \sigma_{rho}^2
+        # get standard deviation of measurement and modeling error sigma_{rho}^2
         rho = np.square(la.norm(self.tauMeasured-self.tauEstimated))
         sigma_rho = rho/(self.num_used_samples-self.model.num_base_params)
 
-        # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+        # get standard deviation sigma_{x} (of the estimated parameter vector x)
         C_xx = sigma_rho*(la.inv(np.dot(self.YBase.T, self.YBase)))
         sigma_x = np.diag(C_xx)
 

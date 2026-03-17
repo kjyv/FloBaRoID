@@ -1,10 +1,7 @@
 from typing import Tuple, List
 
 import sympy
-from sympy import Basic, BlockDiagMatrix, Symbol, sympify
-from distutils.version import LooseVersion
-old_sympy = LooseVersion(sympy.__version__) < LooseVersion('0.7.4')
-
+from sympy import Symbol
 import numpy as np
 
 import cvxopt
@@ -14,96 +11,7 @@ import lmi_sdp
 epsilon_sdptol = 1e-6
 
 from colorama import Fore, Back
-
-#simplified LMI definitions (works with newer sympy, lmi_sdp variants do not)
-def LMI_PD(lhs, rhs=0):
-    # type: (sympy.Eq, sympy.Eq) -> (sympy.Eq)
-    if old_sympy:
-        lmi = lmi_sdp.LMI_PD(lhs, rhs)
-    else:
-        lmi = lhs > sympify(rhs)
-
-    return lmi
-
-def LMI_PSD(lhs, rhs=0):
-    # type: (sympy.Eq, sympy.Eq) -> (sympy.Eq)
-    if old_sympy:
-        lmi = lmi_sdp.LMI_PSD(lhs, rhs)
-    else:
-        lmi = lhs >= sympify(rhs)
-    return lmi
-
-##copied some methods from lmi_sdp here for compatibility changes
-def lmi_to_coeffs(lmi, variables, split_blocks=False):
-    # type: (List[sympy.Matrix], List[Symbol], bool) -> List[sympy.Matrix]
-    """Transforms LMIs from symbolic to numerical.
-
-    Parameters
-    ----------
-    lmi: symbolic LMI or Matrix, or a list of them
-    variables: list of symbols
-    split_blocks: bool or string
-        If set to True, function tries to subdivide each LMI into
-        smaller diagonal blocks. If set to 'BlockDiagMatrix',
-        BlockDiagMatrix's are split into their diagonal blocks but the
-        funtion does not try to subdivide them any further.
-
-    Returns
-    -------
-    coeffs: list of numerical LMIs
-        List of numerical LMIs where each one is a pair where the first
-        element is a list of numpy arrays corresponding to the coefficients of
-        each variable, and the second element is a numpy array with zero order
-        coefficients (constants not  multipling by any variable). The
-        numerical coefficients are extracted from the matrix `M` of the
-        canonical PSD (or PD) LMI form `M>=0` (or `M>0`).
-
-    Example
-    -------
-    >>> from sympy import Matrix
-    >>> from sympy.abc import x, y, z
-    >>> from lmi_sdp import LMI_PSD, lmi_to_coeffs
-    >>> vars = [x, y, z]
-    >>> m = Matrix([[x+3, y-2], [y-2, z]])
-    >>> lmi = LMI_PSD(m)
-    >>> lmi_to_coeffs(lmi, vars)
-    [([array([[ 1.,  0.],
-           [ 0.,  0.]]), array([[ 0.,  1.],
-           [ 1.,  0.]]), array([[ 0.,  0.],
-           [ 0.,  1.]])], array([[ 3., -2.],
-           [-2.,  0.]]))]
-    """
-
-    if old_sympy:
-        return lmi_sdp.lmi_to_coeffs(lmi, variables, split_blocks)
-
-    if isinstance(lmi, Basic):
-        lmis = [lmi]
-    else:
-        lmis = list(lmi)
-
-    slms = []  # SLM stands for 'Symmetric Linear Matrix'
-    for lmi in lmis:
-        if lmi.is_Matrix:
-            lmi = LMI_PSD(lmi)
-        lm = lmi.canonical.gts
-        slms.append(lm)
-
-    if split_blocks:
-        orig_slms = slms
-        slms = []
-        for slm in orig_slms:
-            if isinstance(slm, BlockDiagMatrix):
-                if split_blocks == 'BlockDiagMatrix':
-                    slms += slm.diag
-                else:
-                    slms += sum([d.get_diag_blocks() for d in slm.diag], [])
-            else:
-                slms += slm.get_diag_blocks()
-
-    coeffs = [lmi_sdp.lm_sym_to_coeffs(slm, variables) for slm in slms]
-
-    return coeffs
+from lmi_sdp import LMI_PD, LMI_PSD, lmi_to_coeffs
 
 def to_cvxopt(objective_func, lmis, variables, objective_type='minimize',
               split_blocks=True):

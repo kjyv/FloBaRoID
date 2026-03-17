@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import numpy as np
 import numpy.linalg as la
@@ -11,12 +11,14 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import os
+
 urdf_file = os.path.join(os.path.dirname(__file__), "../model/threeLinks.urdf")
-contactFrame = 'contact_ft'
+contactFrame = "contact_ft"
+
 
 def test_regressors():
-    #get some random state values and compare inverse dynamics torques with torques
-    #obtained with regressor and parameter vector
+    # get some random state values and compare inverse dynamics torques with torques
+    # obtained with regressor and parameter vector
 
     loader = iDynTree.ModelLoader()
     loader.loadModelFromFile(urdf_file)
@@ -44,16 +46,16 @@ def test_regressors():
     kinDyn2 = iDynTree.KinDynComputations()
     kinDyn2.loadRobotModel(loader.model())
 
-    regressor_stack = np.zeros(shape=((n_dofs+6)*num_samples, num_model_params))
-    idyn_torques = np.zeros(shape=((n_dofs+6)*num_samples))
-    contactForceSum = np.zeros(shape=((n_dofs+6)*num_samples))
+    regressor_stack = np.zeros(shape=((n_dofs + 6) * num_samples, num_model_params))
+    idyn_torques = np.zeros(shape=((n_dofs + 6) * num_samples))
+    contactForceSum = np.zeros(shape=((n_dofs + 6) * num_samples))
 
     for sample_index in range(0, num_samples):
-        q_np = ((np.random.ranf(n_dofs)*2-1)*np.pi)
-        dq_np = ((np.random.ranf(n_dofs)*2-1)*np.pi)
-        ddq_np = ((np.random.ranf(n_dofs)*2-1)*np.pi)
-        base_vel_np = np.pi*np.random.rand(6)
-        base_acc_np = np.pi*np.random.rand(6)
+        q_np = (np.random.ranf(n_dofs) * 2 - 1) * np.pi
+        dq_np = (np.random.ranf(n_dofs) * 2 - 1) * np.pi
+        ddq_np = (np.random.ranf(n_dofs) * 2 - 1) * np.pi
+        base_vel_np = np.pi * np.random.rand(6)
+        base_acc_np = np.pi * np.random.rand(6)
 
         # build JointPosDoubleArray / JointDOFsDoubleArray
         s = iDynTree.JointPosDoubleArray(n_dofs)
@@ -64,8 +66,8 @@ def test_regressors():
             ds.setVal(j, dq_np[j])
             ddq.setVal(j, ddq_np[j])
 
-        #rpy = [0,0,0]
-        rpy = np.random.ranf(3)*0.1
+        # rpy = [0,0,0]
+        rpy = np.random.ranf(3) * 0.1
         rot = iDynTree.Rotation.RPY(rpy[0], rpy[1], rpy[2])
         pos = iDynTree.Position.Zero()
         world_T_base = iDynTree.Transform(rot, pos).inverse()
@@ -80,13 +82,17 @@ def test_regressors():
         kinDyn.setRobotState(world_T_base, s, base_velocity, ds, gravity_vec)
 
         regressor = iDynTree.MatrixDynSize()
-        if not kinDyn.inverseDynamicsInertialParametersRegressor(base_acc_vec6, ddq, regressor):
+        if not kinDyn.inverseDynamicsInertialParametersRegressor(
+            base_acc_vec6, ddq, regressor
+        ):
             print("Error during numeric computation of regressor")
 
         regressor = regressor.toNumPy()
 
-        row_index = (n_dofs+6)*sample_index   # index for current row in stacked regressor matrix
-        np.copyto(regressor_stack[row_index:row_index+n_dofs+6], regressor)
+        row_index = (
+            n_dofs + 6
+        ) * sample_index  # index for current row in stacked regressor matrix
+        np.copyto(regressor_stack[row_index : row_index + n_dofs + 6], regressor)
 
         # inverse dynamics
         kinDyn2.setRobotState(world_T_base, s, base_velocity, ds, gravity_vec)
@@ -104,7 +110,7 @@ def test_regressors():
         baseWrench = gen_torques.baseWrench()
         jointTorques = gen_torques.jointTorques()
         torques = np.concatenate((baseWrench.toNumPy(), jointTorques.toNumPy()))
-        np.copyto(idyn_torques[row_index:row_index+n_dofs+6], torques)
+        np.copyto(idyn_torques[row_index : row_index + n_dofs + 6], torques)
 
         # contacts
         dim = n_dofs + 6
@@ -112,20 +118,23 @@ def test_regressors():
         jacobian = iDynTree.MatrixDynSize(6, dim)
         kinDyn2.getFrameFreeFloatingJacobian(contactFrame, jacobian)
         jacobian = jacobian.toNumPy()
-        contactForceSum[sample_index*dim:(sample_index+1)*dim] = jacobian.T.dot(contact)
+        contactForceSum[sample_index * dim : (sample_index + 1) * dim] = jacobian.T.dot(
+            contact
+        )
 
     regressor_torques = np.dot(regressor_stack, xStdModel) + contactForceSum
     idyn_torques += contactForceSum
 
     error = np.reshape(regressor_torques - idyn_torques, (num_samples, dim))
 
-    #plots = plt.plot(range(0, num_samples), error)
-    #plt.legend(plots, ['f_x', 'f_y', 'f_z', 'm_x', 'm_y', 'm_z', 'j_0'])
-    #plt.show()
+    # plots = plt.plot(range(0, num_samples), error)
+    # plt.legend(plots, ['f_x', 'f_y', 'f_z', 'm_x', 'm_y', 'm_z', 'j_0'])
+    # plt.show()
 
     error_norm = la.norm(error)
     print(error_norm)
     assert error_norm <= 0.01
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     test_regressors()

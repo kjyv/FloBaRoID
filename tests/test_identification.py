@@ -40,11 +40,12 @@ def _generate_synthetic_data(urdf_file, n_samples=2000, noise_std=0.05, seed=42)
     gravity.setVal(2, -9.81)
 
     from identification.helpers import URDFHelpers
+
     limits = URDFHelpers.getJointLimits(urdf_file, use_deg=False)
     joint_names = [model.getJointName(i) for i in range(model.getNrOfDOFs())]
-    q_lo = np.array([limits[j]['lower'] for j in joint_names])
-    q_hi = np.array([limits[j]['upper'] for j in joint_names])
-    dq_max = np.array([limits[j]['velocity'] for j in joint_names])
+    q_lo = np.array([limits[j]["lower"] for j in joint_names])
+    q_hi = np.array([limits[j]["upper"] for j in joint_names])
+    dq_max = np.array([limits[j]["velocity"] for j in joint_names])
 
     positions = np.zeros((n_samples, n_dofs))
     velocities = np.zeros((n_samples, n_dofs))
@@ -83,11 +84,11 @@ def _generate_synthetic_data(urdf_file, n_samples=2000, noise_std=0.05, seed=42)
         torques[idx] = tau
 
     return {
-        'positions': positions,
-        'velocities': velocities,
-        'accelerations': accelerations,
-        'torques': torques,
-        'times': times,
+        "positions": positions,
+        "velocities": velocities,
+        "accelerations": accelerations,
+        "torques": torques,
+        "times": times,
     }
 
 
@@ -95,7 +96,7 @@ def _generate_synthetic_data(urdf_file, n_samples=2000, noise_std=0.05, seed=42)
 def synth_data_path():
     """Generate synthetic data once and provide path to temp npz file."""
     synth = _generate_synthetic_data(_urdf_file, n_samples=2000, noise_std=0.05)
-    with tempfile.NamedTemporaryFile(suffix='.npz', delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as f:
         tmp_path = f.name
         np.savez(f, **synth)
     yield tmp_path
@@ -107,33 +108,33 @@ def _base_config():
     with open(_config_file) as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    config['floatingBase'] = 0
-    config['identifyFriction'] = 0
-    config['identifyClosestToCAD'] = 0
-    config['useAPriori'] = 0
-    config['simulateTorques'] = 0
-    config['useStructuralRegressor'] = 1
-    config['identifyGravityParamsOnly'] = 0
-    config['startOffset'] = 0
-    config['skipSamples'] = 0
-    config['selectBlocksFromMeasurements'] = 0
-    config['createPlots'] = 0
-    config['verbose'] = 0
-    config['showTiming'] = 0
-    config['useRBDL'] = 0
-    config['constrainUsingNL'] = 0
-    config['filterRegressor'] = 0
-    config['estimateWith'] = 'std'
-    config['restrictCOMtoHull'] = 0
-    config['limitOverallMass'] = 0
-    config['limitMassToApriori'] = 0
-    config['randomSamples'] = 5000
+    config["floatingBase"] = 0
+    config["identifyFriction"] = 0
+    config["identifyClosestToCAD"] = 0
+    config["useAPriori"] = 0
+    config["simulateTorques"] = 0
+    config["useStructuralRegressor"] = 1
+    config["identifyGravityParamsOnly"] = 0
+    config["startOffset"] = 0
+    config["skipSamples"] = 0
+    config["selectBlocksFromMeasurements"] = 0
+    config["createPlots"] = 0
+    config["verbose"] = 0
+    config["showTiming"] = 0
+    config["useRBDL"] = 0
+    config["constrainUsingNL"] = 0
+    config["filterRegressor"] = 0
+    config["estimateWith"] = "std"
+    config["restrictCOMtoHull"] = 0
+    config["limitOverallMass"] = 0
+    config["limitMassToApriori"] = 0
+    config["randomSamples"] = 5000
     return config
 
 
 def _cleanup_regressor_cache():
     """Remove cached regressor files so tests don't interfere with each other."""
-    for suffix in ['.regressor.npz', '.gravity_regressor.npz']:
+    for suffix in [".regressor.npz", ".gravity_regressor.npz"]:
         cache = _urdf_file + suffix
         if os.path.exists(cache):
             os.unlink(cache)
@@ -144,7 +145,7 @@ def test_identification_ols(synth_data_path):
     from identify import Identification
 
     config = _base_config()
-    config['constrainToConsistent'] = 0
+    config["constrainToConsistent"] = 0
 
     try:
         idf = Identification(config, _urdf_file, None, [[synth_data_path]], None, None)
@@ -161,10 +162,12 @@ def test_identification_ols(synth_data_path):
         relative_residual = residual * 100 / la.norm(idf.model.tauMeasured)
         print(f"OLS torque residual: {relative_residual:.4f}%")
 
-        assert relative_base_error < 0.05, \
+        assert relative_base_error < 0.05, (
             f"Base params too far from ground truth: {relative_base_error:.2%}"
-        assert relative_residual < 1.0, \
+        )
+        assert relative_residual < 1.0, (
             f"Torque residual too high: {relative_residual:.4f}%"
+        )
     finally:
         _cleanup_regressor_cache()
 
@@ -174,16 +177,16 @@ def test_identification_sdp(synth_data_path):
     from identify import Identification
 
     config = _base_config()
-    config['constrainToConsistent'] = 1
-    config['identifyClosestToCAD'] = 1
-    config['identifyFriction'] = 1
-    config['identifySymmetricVelFriction'] = 1
-    config['limitOverallMass'] = 1
-    config['limitMassVal'] = 16.0
-    config['limitMassRange'] = 0.3
-    config['limitMassToApriori'] = 1
-    config['limitMassAprioriBoundary'] = 0.5
-    config['restrictCOMtoHull'] = 1
+    config["constrainToConsistent"] = 1
+    config["identifyClosestToCAD"] = 1
+    config["identifyFriction"] = 1
+    config["identifySymmetricVelFriction"] = 1
+    config["limitOverallMass"] = 1
+    config["limitMassVal"] = 16.0
+    config["limitMassRange"] = 0.3
+    config["limitMassToApriori"] = 1
+    config["limitMassAprioriBoundary"] = 0.5
+    config["restrictCOMtoHull"] = 1
 
     try:
         idf = Identification(config, _urdf_file, None, [[synth_data_path]], None, None)
@@ -196,8 +199,9 @@ def test_identification_sdp(synth_data_path):
         cons = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
         inconsistent = [link for link, ok in cons.items() if not ok]
         print(f"SDP physical consistency (positive mass + PD inertia): {cons}")
-        assert len(inconsistent) == 0, \
+        assert len(inconsistent) == 0, (
             f"Identified parameters not physically consistent for links: {inconsistent}"
+        )
 
         # check torque prediction (SDP may have slightly higher residual than OLS
         # since it constrains the solution space)
@@ -206,8 +210,9 @@ def test_identification_sdp(synth_data_path):
         relative_residual = residual * 100 / la.norm(idf.model.tauMeasured)
         print(f"SDP torque residual: {relative_residual:.4f}%")
 
-        assert relative_residual < 5.0, \
+        assert relative_residual < 5.0, (
             f"Torque residual too high: {relative_residual:.4f}%"
+        )
 
         # base params should still be reasonable (SDP trades accuracy for consistency)
         base_error = la.norm(idf.model.xBase - idf.model.xBaseModel)
@@ -218,5 +223,5 @@ def test_identification_sdp(synth_data_path):
         _cleanup_regressor_cache()
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '-s'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

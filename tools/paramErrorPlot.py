@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import sys
 from typing import AnyStr, List
@@ -15,10 +15,24 @@ import matplotlib.pyplot as plt
 from idyntree import bindings as iDynTree
 
 import argparse
-parser = argparse.ArgumentParser(description='Scale mass and inertia from <model>.')
-parser.add_argument('--ref_model', required=True, type=str, help='the file to load the reference parameters from')
-parser.add_argument('--model', required=True, nargs='+', action='append', type=str, help='the file to load the parameters to compare from')
+
+parser = argparse.ArgumentParser(description="Scale mass and inertia from <model>.")
+parser.add_argument(
+    "--ref_model",
+    required=True,
+    type=str,
+    help="the file to load the reference parameters from",
+)
+parser.add_argument(
+    "--model",
+    required=True,
+    nargs="+",
+    action="append",
+    type=str,
+    help="the file to load the parameters to compare from",
+)
 args = parser.parse_args()
+
 
 def loadModelfromURDF(urdf_file):
     # type: (AnyStr) -> (iDynTree.Model)
@@ -26,11 +40,14 @@ def loadModelfromURDF(urdf_file):
     loader.loadModelFromFile(urdf_file)
     return loader.model()
 
+
 def matToNumPy(mat):
-    return np.fromstring(mat.toString(), sep=' ').reshape(mat.rows(), mat.cols())
+    return np.fromstring(mat.toString(), sep=" ").reshape(mat.rows(), mat.cols())
+
 
 def vecToNumPy(vec):
-    return np.fromstring(vec.toString(), sep=' ')
+    return np.fromstring(vec.toString(), sep=" ")
+
 
 def plotErrors(errors, labels):
     fig, ax = plt.subplots()
@@ -39,33 +56,38 @@ def plotErrors(errors, labels):
     std_dev = np.zeros(num_vals)
 
     index = np.arange(num_vals)
-    bar_width = 1/len(errors) - 0.1
+    bar_width = 1 / len(errors) - 0.1
 
     opacity = 0.4
-    error_config = {'ecolor': '0.3'}
+    error_config = {"ecolor": "0.3"}
 
-    colors = ['g', 'r', 'b', 'y']
+    colors = ["g", "r", "b", "y"]
 
     for i in range(len(errors)):
-        plt.bar(index+bar_width*i, errors[i], bar_width,
-                     alpha=opacity,
-                     color=colors[i],
-                     yerr=std_dev,
-                     error_kw=error_config,
-                     label=labels[i])
+        plt.bar(
+            index + bar_width * i,
+            errors[i],
+            bar_width,
+            alpha=opacity,
+            color=colors[i],
+            yerr=std_dev,
+            error_kw=error_config,
+            label=labels[i],
+        )
 
-    plt.xlabel('Link Index')
-    plt.ylabel('Error Norm')
-    plt.title('Param error by method')
-    plt.xticks(index + bar_width / 2, linkNames, rotation='vertical')
+    plt.xlabel("Link Index")
+    plt.ylabel("Error Norm")
+    plt.title("Param error by method")
+    plt.xticks(index + bar_width / 2, linkNames, rotation="vertical")
     plt.legend()
 
     plt.tight_layout()
     plt.show()
 
+
 def getParamErrors(ref_model, p_model, num_links, group="COM"):
     # type: (iDynTree.Model, iDynTree.Model, int, AnyStr) -> (List[float])
-    """ give error for groups of params """
+    """give error for groups of params"""
 
     errors = []
 
@@ -84,22 +106,21 @@ def getParamErrors(ref_model, p_model, num_links, group="COM"):
         ref_mass = ref_spat_inertia.getMass()
         ref_com = vecToNumPy(ref_spat_inertia.getCenterOfMass())
 
-        if group == 'COM':
+        if group == "COM":
             errors.append(ref_com - p_com)
-        elif group == 'mass':
+        elif group == "mass":
             errors.append(ref_mass - p_mass)
-        elif group == 'inertia':
+        elif group == "inertia":
             errors.append(ref_inertia - p_inertia)
 
     return errors
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     ref_model = loadModelfromURDF(args.ref_model)
     num_links = ref_model.getNrOfLinks()
 
-    linkNames = []    # type: List[AnyStr]
+    linkNames = []  # type: List[AnyStr]
     for i in range(num_links):
         linkNames.append(ref_model.getLinkName(i))
 
@@ -113,22 +134,28 @@ if __name__ == '__main__':
         p_model = loadModelfromURDF(filename[0])
 
         # mass error norm
-        mass_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group='mass'))
+        mass_errors = la.norm(
+            getParamErrors(ref_model, p_model, num_links, group="mass")
+        )
 
         # com error norm
-        com_errors = la.norm(getParamErrors(ref_model, p_model, num_links, group='COM'), axis=1)
+        com_errors = la.norm(
+            getParamErrors(ref_model, p_model, num_links, group="COM"), axis=1
+        )
 
         # inertia error norm
-        inertia_error_tensors = getParamErrors(ref_model, p_model, num_links, group='inertia')
+        inertia_error_tensors = getParamErrors(
+            ref_model, p_model, num_links, group="inertia"
+        )
         inertia_errors = []
         for i in range(len(inertia_error_tensors)):
             inertia_errors.append(la.norm(inertia_error_tensors[i]))
 
-        #methods_mass_errors.append(mass_errors)
+        # methods_mass_errors.append(mass_errors)
         methods_com_errors.append(com_errors)
         methods_inertia_errors.append(inertia_errors)
 
-    #labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
-    labels = ['ID Inertia + COM (Known Mass)', 'ID all parameters (20% wrong masses)']
+    # labels = ['ID COM (Kown Mass)', "(3) ID Inertia (Known Mass + ID'd COM)", '(2) ID Inertia + COM (Known Mass)', '(1) ID all (20% wrong masses)']
+    labels = ["ID Inertia + COM (Known Mass)", "ID all parameters (20% wrong masses)"]
     plotErrors(methods_com_errors, labels=labels)
     plotErrors(methods_inertia_errors, labels=labels)

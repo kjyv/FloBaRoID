@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import sys
 
@@ -13,61 +13,99 @@ from excitation.trajectoryOptimizer import TrajectoryOptimizer, simulateTrajecto
 from excitation.postureOptimizer import PostureOptimizer
 
 import argparse
-parser = argparse.ArgumentParser(description='Generate excitation trajectories, save to <filename>.')
-parser.add_argument('--filename', type=str, help='the filename to save the trajectory to, otherwise <model>.trajectory.npz')
-parser.add_argument('--config', required=True, type=str, help="use options from given config file")
-parser.add_argument('--model', required=True, type=str, help='the file to load the robot model from')
-parser.add_argument('--model_real', required=False, type=str, help='the file to load the "real" robot model from')
-parser.add_argument('--world', required=False, type=str, help='the file to load world links from')
+
+parser = argparse.ArgumentParser(
+    description="Generate excitation trajectories, save to <filename>."
+)
+parser.add_argument(
+    "--filename",
+    type=str,
+    help="the filename to save the trajectory to, otherwise <model>.trajectory.npz",
+)
+parser.add_argument(
+    "--config", required=True, type=str, help="use options from given config file"
+)
+parser.add_argument(
+    "--model", required=True, type=str, help="the file to load the robot model from"
+)
+parser.add_argument(
+    "--model_real",
+    required=False,
+    type=str,
+    help='the file to load the "real" robot model from',
+)
+parser.add_argument(
+    "--world", required=False, type=str, help="the file to load world links from"
+)
 args = parser.parse_args()
 
 import yaml
-with open(args.config, 'r') as stream:
+
+with open(args.config, "r") as stream:
     try:
         config = yaml.load(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
         print(exc)
 
-config['urdf'] = args.model
-config['urdf_real'] = args.model_real
-if config['useStaticTrajectories'] and not config['urdf_real']:
-    print('When optimizing static postures, need model_real argument!')
+config["urdf"] = args.model
+config["urdf_real"] = args.model_real
+if config["useStaticTrajectories"] and not config["urdf_real"]:
+    print("When optimizing static postures, need model_real argument!")
     sys.exit()
-config['jointNames'] = iDynTree.StringVector([])
-if not iDynTree.dofsListFromURDF(config['urdf'], config['jointNames']):
+config["jointNames"] = iDynTree.StringVector([])
+if not iDynTree.dofsListFromURDF(config["urdf"], config["jointNames"]):
     sys.exit()
-config['num_dofs'] = len(config['jointNames'])
-config['skipSamples'] = 0
+config["num_dofs"] = len(config["jointNames"])
+config["skipSamples"] = 0
+
 
 def main():
     # save either optimized or random trajectory parameters to filename
     if args.filename:
         traj_file = args.filename
     else:
-        traj_file = config['urdf'] + '.trajectory.npz'
+        traj_file = config["urdf"] + ".trajectory.npz"
 
-    if config['optimizeTrajectory']:
+    if config["optimizeTrajectory"]:
         # find trajectory params by optimization
-        old_sim = config['simulateTorques']
-        config['simulateTorques'] = True
-        model = Model(config, config['urdf'])
-        if config['useStaticTrajectories']:
-            old_gravity = config['identifyGravityParamsOnly']
-            idf = Identification(config, config['urdf'], config['urdf_real'], measurements_files=None,
-                                 regressor_file=None, validation_file=None)
-            trajectoryOptimizer = PostureOptimizer(config, idf, model, simulation_func=simulateTrajectory, world=args.world)
-            config['identifyGravityParamsOnly'] = old_gravity
+        old_sim = config["simulateTorques"]
+        config["simulateTorques"] = True
+        model = Model(config, config["urdf"])
+        if config["useStaticTrajectories"]:
+            old_gravity = config["identifyGravityParamsOnly"]
+            idf = Identification(
+                config,
+                config["urdf"],
+                config["urdf_real"],
+                measurements_files=None,
+                regressor_file=None,
+                validation_file=None,
+            )
+            trajectoryOptimizer = PostureOptimizer(
+                config, idf, model, simulation_func=simulateTrajectory, world=args.world
+            )
+            config["identifyGravityParamsOnly"] = old_gravity
         else:
-            idf = Identification(config, config['urdf'], urdf_file_real=None, measurements_files=None,
-                                 regressor_file=None, validation_file=None)
-            trajectoryOptimizer = TrajectoryOptimizer(config, idf, model, simulation_func=simulateTrajectory, world=args.world)
+            idf = Identification(
+                config,
+                config["urdf"],
+                urdf_file_real=None,
+                measurements_files=None,
+                regressor_file=None,
+                validation_file=None,
+            )
+            trajectoryOptimizer = TrajectoryOptimizer(
+                config, idf, model, simulation_func=simulateTrajectory, world=args.world
+            )
 
         trajectory = trajectoryOptimizer.optimizeTrajectory()
-        config['simulateTorques'] = old_sim
+        config["simulateTorques"] = old_sim
     else:
         # use some random params
         print("no optimized trajectory found, generating random one")
-        trajectory = PulsedTrajectory(config['num_dofs'], use_deg=config['useDeg']).initWithRandomParams()
+        trajectory = PulsedTrajectory(
+            config["num_dofs"], use_deg=config["useDeg"]
+        ).initWithRandomParams()
         print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
         print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
         print("q {}".format(trajectory.q.tolist()))
@@ -76,13 +114,22 @@ def main():
 
     print("Saving found trajectory to {}".format(traj_file))
 
-    if config['useStaticTrajectories']:
+    if config["useStaticTrajectories"]:
         # always saved with rad angles
         np.savez(traj_file, static=True, angles=trajectory.angles)
     else:
         # TODO: remove degrees option
-        np.savez(traj_file, use_deg=trajectory.use_deg, static=False, a=trajectory.a, b=trajectory.b,
-                 q=trajectory.q, nf=trajectory.nf, wf=trajectory.w_f_global)
+        np.savez(
+            traj_file,
+            use_deg=trajectory.use_deg,
+            static=False,
+            a=trajectory.a,
+            b=trajectory.b,
+            q=trajectory.q,
+            nf=trajectory.nf,
+            wf=trajectory.w_f_global,
+        )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

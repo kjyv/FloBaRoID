@@ -71,18 +71,17 @@ requirements for excitation module:
 * for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
 * for other robots, new modules will have to be written
 
-requirements for optimization module:
+requirements for trajectory optimization module:
 
-* optimization: python modules: iDynTree, pyOpt (fork at https://github.com/kjyv/pyOpt is recommended)
-* pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
+* optional (if you want to use ipopt): pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
-* [fcl 0.5.0](https://github.com/flexible-collision-library/fcl/releases) and python-fcl (from https://github.com/jf---/python-fcl) (possibly disable octomap if there are errors)
 
 Also see the [Tutorial](documentation/TUTORIAL.md).
 
 Known limitations:
 
-* trajectory optimization is limited to fixed-base robots (full simulation, balance criterion etc. not implemented)
+* trajectory optimization is limited to fixed-base robots at the moment (full
+  simulation, balance criterion etc. not implemented)
 * YARP excitation module is not very generic (ROS should be)
 * using position control over YARP is not realtime safe and can expose timing issues (especially with python to C bridge)
 * Since preparing SDP matrices uses sympy expressions, most of the time for solving the identification problem is spent in symbolic manipulations rather than the actual convex optimization solver. Possibly the time demands can be reduced.

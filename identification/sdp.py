@@ -336,7 +336,7 @@ class SDP(object):
 
             Q, R = la.qr(YBase)
             Q1 = Q[:, 0:idf.model.num_base_params]
-            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])
+            R1 = np.array(R[:idf.model.num_base_params, :idf.model.num_base_params])
             rho1 = Q1.T.dot(tau)
 
             contactForces = Q.T.dot(idf.model.contactForcesSum)
@@ -428,7 +428,7 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
-            if idf.opt['onlyUseDSDP'] or state is not 'optimal':
+            if idf.opt['onlyUseDSDP'] or state != 'optimal':
                 if idf.opt['verbose']:
                     print("Solving with dsdp5...", end=' ')
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
@@ -438,8 +438,7 @@ class SDP(object):
             u = solution[0, 0]
             if u:
                 print("SDP found std solution with {} squared residual error".format(u))
-            delta_star = np.matrix(solution[1:])  # type: np.matrix
-            idf.model.xStd = np.squeeze(np.asarray(delta_star))
+            idf.model.xStd = np.asarray(solution[1:]).flatten()
 
             # prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -486,7 +485,7 @@ class SDP(object):
             Q1 = Q[:, 0:idf.model.num_identified_params]
             #Q2 = Q[:, idf.model.num_base_params:]
             rho1 = Q1.T.dot(tau)
-            R1 = np.matrix(R[:idf.model.num_identified_params, :idf.model.num_identified_params])
+            R1 = np.array(R[:idf.model.num_identified_params, :idf.model.num_identified_params])
 
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             # add contact forces
@@ -538,7 +537,7 @@ class SDP(object):
             solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             #try again with wider bounds and dsdp5 cmd line
-            if state is not 'optimal':
+            if state != 'optimal':
                 print("Trying again with dsdp5 solver")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
@@ -547,8 +546,7 @@ class SDP(object):
             u = solution[0,0]
             if u:
                 print("SDP found std solution with {} squared residual error".format(u))
-            delta_star = np.matrix(solution[1:])
-            idf.model.xStd = np.squeeze(np.asarray(delta_star))
+            idf.model.xStd = np.asarray(solution[1:]).flatten()
 
             #prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -647,8 +645,7 @@ class SDP(object):
             Q, R = la.qr(idf.model.YBase)
             #Q1 = Q[:, 0:idf.model.num_base_params]
             #Q2 = Q[:, idf.model.num_base_params:]
-            R1 = np.matrix(R[:idf.model.num_base_params, :idf.model.num_base_params])  # type: np.matrix[float]
-
+            R1 = np.array(R[:idf.model.num_base_params, :idf.model.num_base_params])  
             # OLS: minimize ||tau - Y*x_base||^2 (simplify)=> minimize ||rho1.T - R1*K*delta||^2
             rho1 = Q.T.dot(idf.model.torques_stack - idf.model.contactForcesSum)
 
@@ -681,7 +678,7 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             #try again with wider bounds and dsdp5 cmd line
-            if onlyUseDSDP or state is not 'optimal':
+            if onlyUseDSDP or state != 'optimal':
                 print("Trying again with dsdp5 solver")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime, wide_bounds=True)
@@ -690,9 +687,7 @@ class SDP(object):
             u = solution[0,0]
             if u:
                 print("SDP found base solution with {} error increase from OLS solution".format(u))
-            beta_star = np.matrix(solution[1:1+idf.model.num_base_params])  # type: np.matrix[float]
-
-            idf.model.xBase = np.squeeze(np.asarray(beta_star))
+            idf.model.xBase = np.asarray(solution[1:1+idf.model.num_base_params]).flatten()
 
         if idf.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))
@@ -748,7 +743,7 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd)
 
             # try again with wider bounds and dsdp5 cmd line
-            if onlyUseDSDP or state is not 'optimal':
+            if onlyUseDSDP or state != 'optimal':
                 if idf.opt['verbose']:
                     print("Solving with dsdp5...", end=' ')
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
@@ -796,7 +791,6 @@ class SDP(object):
         u = solution[0, 0]
         if u:
             print("SDP found std solution with {} error increase from previous solution".format(u))
-        delta_star = np.matrix(solution[1:])
-        xStd = np.squeeze(np.asarray(delta_star))
+        xStd = np.asarray(solution[1:]).flatten()
 
         return xStd

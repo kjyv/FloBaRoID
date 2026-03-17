@@ -221,10 +221,6 @@ class Optimizer(object):
 
         self.world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
 
-        # init some vars for link distance
-        vel = [0.0]*self.num_dofs
-        self.dq_zero = iDynTree.VectorDynSize.FromPython(vel)
-        self.world_gravity = iDynTree.SpatialAcc.FromPython(self.model.gravity)
 
 
     def testBounds(self, x):
@@ -239,15 +235,17 @@ class Optimizer(object):
         # type: (str, str, np._ArrayLike[float]) -> float
         '''get shortest distance from link with id l0 to link with id l1 for posture joint_q'''
 
-        from fcl import fcl, collision_data, transform
+        import fcl
 
         #get link rotation and position in world frame
-        q = iDynTree.VectorDynSize.FromPython(joint_q)
-        self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
+        s = iDynTree.JointPosDoubleArray(self.num_dofs)
+        ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
+        for j in range(self.num_dofs):
+            s.setVal(j, float(joint_q[j]))
+        self.model.kinDyn.setRobotState(s, ds, self.model.gravity_vec)
 
         if l0_name in self.model.linkNames:    # if robot link
-            f0 = self.model.dynComp.getFrameIndex(l0_name)
-            t0 = self.model.dynComp.getWorldTransform(f0)
+            t0 = self.model.kinDyn.getWorldTransform(l0_name)
             rot0 = t0.getRotation().toNumPy()
             pos0 = t0.getPosition().toNumPy()
             s0 = self.config['scaleCollisionHull']
@@ -257,8 +255,7 @@ class Optimizer(object):
             s0 = 1
 
         if l1_name in self.model.linkNames:    # if robot link
-            f1 = self.model.dynComp.getFrameIndex(l1_name)
-            t1 = self.model.dynComp.getWorldTransform(f1)
+            t1 = self.model.kinDyn.getWorldTransform(l1_name)
             rot1 = t1.getRotation().toNumPy()
             pos1 = t1.getPosition().toNumPy()
             s1 = self.config['scaleCollisionHull']
@@ -285,20 +282,22 @@ class Optimizer(object):
         b1 = fcl.Box(b[1][0]-b[0][0], b[1][1]-b[0][1], b[1][2]-b[0][2])
 
         # move box to pos + box center pos (model has pos in link origin, box has zero at center)
-        o0 = fcl.CollisionObject(b0, transform.Transform(rot0, pos0+b0_center))
-        o1 = fcl.CollisionObject(b1, transform.Transform(rot1, pos1+b1_center))
+        o0 = fcl.CollisionObject(b0, fcl.Transform(rot0, pos0+b0_center))
+        o1 = fcl.CollisionObject(b1, fcl.Transform(rot1, pos1+b1_center))
 
-        distance, d_result = fcl.distance(o0, o1, collision_data.DistanceRequest(True))
+        d_request = fcl.DistanceRequest(True)
+        d_result = fcl.DistanceResult()
+        distance = fcl.distance(o0, o1, d_request, d_result)
 
         if distance < 0:
             if self.config['verbose'] > 1:
                 print("Collision of {} and {}".format(l0_name, l1_name))
 
             # get proper collision and depth since optimization should also know how much constraint is violated
-            cr = collision_data.CollisionRequest()
+            cr = fcl.CollisionRequest()
             cr.enable_contact = True
-            cr.enable_cost = True
-            collision, c_result = fcl.collide(o0, o1, cr)
+            c_result = fcl.CollisionResult()
+            fcl.collide(o0, o1, cr, c_result)
 
             # sometimes no contact is found even though distance is less than 0?
             if len(c_result.contacts):
@@ -435,28 +434,25 @@ class Optimizer(object):
                         self.last_best_sol = other_best_sol
 
     def runOptimizer(self, opt_prob):
-        # type: (pyOpt.Optimization) -> np._ArrayLike[float]
+        # type: (pyoptsparse.Optimization) -> np._ArrayLike[float]
         ''' call global followed by local optimizer, return solution '''
 
-        import pyOpt
-
-        initial = [v.value for v in list(opt_prob.getVarSet().values())]
+        from pyoptsparse import SLSQP, ALPSO, NSGA2, PSQP, IPOPT
 
         if self.config['useGlobalOptimization']:
-            ### optimize using pyOpt (global)
+            ### global optimization
             sr = random.SystemRandom()
             if self.config['globalSolver'] == 'NSGA2':
+                opt = NSGA2()  # genetic algorithm
                 if parallel:
-                    opt = pyOpt.NSGA2(pll_type='POA') # genetic algorithm
-                else:
-                    opt = pyOpt.NSGA2()
+                    opt.setOption('parallelType', 'POA')
                 if self.config['globalOptSize'] % 4:
                     raise IOError("globalOptSize needs to be a multiple of 4 for NSGA2")
                 opt.setOption('PopSize', self.config['globalOptSize'])   # Population Size (a Multiple of 4)
                 opt.setOption('maxGen', self.config['globalOptIterations'])   # Maximum Number of Generations
                 opt.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
                 opt.setOption('xinit', 1)       # Use Initial Solution Flag (0 - random population, 1 - use given solution)
-                opt.setOption('seed', sr.random())   # Random Number Seed 0..1 (0 - Auto based on time clock)
+                opt.setOption('seed', sr.randint(1, 2**31))   # Random Number Seed
                 #pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
                 opt.setOption('pMut_real', 0.5)   # Probablity of Mutation of Real Variables (1/nreal)
                 #eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
@@ -465,10 +461,9 @@ class Optimizer(object):
                 #pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
                 self.iter_max = self.config['globalOptSize']*self.config['globalOptIterations']
             elif self.config['globalSolver'] == 'ALPSO':
+                opt = ALPSO()  #augmented lagrange particle swarm optimization
                 if parallel:
-                    opt = pyOpt.ALPSO(pll_type='SPM')  #augmented lagrange particle swarm optimization
-                else:
-                    opt = pyOpt.ALPSO()  #augmented lagrange particle swarm optimization
+                    opt.setOption('parallelType', 'SPM')
                 opt.setOption('stopCriteria', 0)   # stop at max iters
                 opt.setOption('dynInnerIter', 1)   # dynamic inner iter number
                 opt.setOption('maxInnerIter', 5)
@@ -477,7 +472,7 @@ class Optimizer(object):
                 opt.setOption('printOuterIters', 1)
                 opt.setOption('SwarmSize', self.config['globalOptSize'])
                 opt.setOption('xinit', 1)
-                opt.setOption('seed', sr.random()*self.mpi_size) #(self.mpi_rank+1)/self.mpi_size)
+                opt.setOption('seed', sr.randint(1, 2**31))
                 #opt.setOption('vcrazy', 1e-2)
                 #TODO: how to properly limit max number of function calls?
                 # no. func calls = (SwarmSize * inner) * outer + SwarmSize
@@ -490,22 +485,17 @@ class Optimizer(object):
 
             # run global optimization
 
-            #try:
-                #reuse history
-            #    opt(opt_prob, store_hst=False, hot_start=True) #, xstart=initial)
-            #except NameError:
-
             if self.config['verbose']:
                 print('Running global optimization with {}'.format(self.config['globalSolver']))
             self.is_global = True
-            opt(opt_prob, store_hst=False) #, xstart=initial)
+            sol = opt(opt_prob, storeHistory=False)
 
             if self.mpi_rank == 0:
-                print(opt_prob.solution(0))
+                print(sol)
 
             self.gather_solutions()
 
-        ### pyOpt local
+        ### local optimization
         if self.config['useLocalOptimization']:
             print("Runnning local gradient based solver")
 
@@ -515,12 +505,12 @@ class Optimizer(object):
             # after using global optimization, refine solution with gradient based method init
             # optimizer (more or less local)
             if self.config['localSolver'] == 'SLSQP':
-                opt2 = pyOpt.SLSQP()   #sequential least squares
+                opt2 = SLSQP()   #sequential least squares
                 opt2.setOption('MAXIT', self.config['localOptIterations'])
                 if self.config['verbose']:
                     opt2.setOption('IPRINT', 0)
             elif self.config['localSolver'] == 'IPOPT':
-                opt2 = pyOpt.IPOPT()
+                opt2 = IPOPT()
                 opt2.setOption('linear_solver', 'ma57')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
                 opt2.setOption('max_iter', self.config['localOptIterations'])
                 if self.config['verbose']:
@@ -528,41 +518,26 @@ class Optimizer(object):
                 else:
                     opt2.setOption('print_level', 0)  #0 none ... 5 max
             elif self.config['localSolver'] == 'PSQP':
-                opt2 = pyOpt.PSQP()
+                opt2 = PSQP()
                 opt2.setOption('MIT', self.config['localOptIterations'])  # max iterations
                 #opt2.setOption('MFV', ??)  # max function evaluations
-            elif self.config['localSolver'] == 'COBYLA':
-                if parallel:
-                    opt2 = pyOpt.COBYLA(pll_type='POA')
-                else:
-                    opt2 = pyOpt.COBYLA()
-                opt2.setOption('MAXFUN', self.config['localOptIterations'])  # max iterations
-                opt2.setOption('RHOBEG', 0.1)  # initial step size
-                if self.config['verbose']:
-                    opt2.setOption('IPRINT', 2)
 
             self.iter_max = self.local_iter_max
 
-            # use best constrained solution from last run (might be better than what solver thinks)
+            # use best constrained solution from last run
             if len(self.last_best_sol) > 0:
-                for i in range(len(opt_prob.getVarSet())):
-                    opt_prob.getVar(i).value = self.last_best_sol[i]
+                dvs = {name: self.last_best_sol[i]
+                       for i, name in enumerate(self._var_names)}
+                opt_prob.setDVs(dvs)
 
             if self.config['verbose']:
                 print('Runing local optimization with {}'.format(self.config['localSolver']))
             self.is_global = False
-            if self.config['localSolver'] in ['COBYLA', 'CONMIN']:
-                opt2(opt_prob, store_hst=False)
-            else:
-                if parallel:
-                    opt2(opt_prob, sens_step=0.1, sens_mode='pgc', store_hst=False)
-                else:
-                    opt2(opt_prob, sens_step=0.1, store_hst=False)
+            sol = opt2(opt_prob, sens='FD', sensStep=0.1, storeHistory=False)
 
             self.gather_solutions()
 
         if self.mpi_rank == 0:
-            sol = opt_prob.solution(0)
             print(sol)
             #sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 

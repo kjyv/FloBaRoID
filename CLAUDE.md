@@ -9,13 +9,15 @@
 
 ## Development rules
 
+- Absolutely don't remove code comments when there is no reason to do so (functionality is the same
+  and the code describes what is happening)
+- Don't remove "TODO:" comments unless you implemeted or fixed the thing mentioned
 - Always use type annotations for better code clarity; don't use Union or Optional anymore
 - Don't put import or exports in __init__.py files without asking and getting confirmation
 - Always put imports at the top of the file, never within methods
 - When you need e.g. a company name for a plant, don't split the plant_slug, always get the
   company properly from DB fields. This is just an example and is to be followed for all slugs
   that contain other data
-- Don't remove "TODO:" comments unless you implemeted or fixed the thing mentioned
 
 - The project uses pyproject.toml and uv for packages and virtual env management
 - After finishing a task, you must always run

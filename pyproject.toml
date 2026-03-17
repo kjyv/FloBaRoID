@@ -28,6 +28,8 @@ dependencies = [
     "pyglet==2.1.13",
     "plotly==6.6.0",
     "kaleido==1.2.0",
+    "pyoptsparse==2.15.0",
+    "python-fcl>=0.7.0.10",
 ]
 
 [project.optional-dependencies]
@@ -43,3 +45,6 @@ parallel = [
 
 [tool.uv]
 python-preference = "managed"
+
+[tool.uv.sources]
+pyoptsparse = { git = "https://github.com/mdolab/pyoptsparse.git" }

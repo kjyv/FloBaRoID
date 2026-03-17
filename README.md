@@ -98,6 +98,12 @@ requirements for trajectory optimization module:
 
 Also see the [Tutorial](documentation/TUTORIAL.md).
 
+**Note on iDynTree and floating base identification:** iDynTree versions before
+v14.3.0 have a bug where base wrench computation is incorrect when the floating
+base frame is not the root link ([#1285](https://github.com/gbionics/idyntree/issues/1285)).
+This affects floating base identification results. Upgrade to iDynTree >= 14.3.0
+once available on PyPI. Fixed-base identification (e.g. Kuka LWR4+) is not affected.
+
 Known limitations:
 
 * trajectory optimization is limited to fixed-base robots at the moment (full

@@ -1,12 +1,5 @@
 #-*- coding: utf-8 -*-
 
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-from future import standard_library
-standard_library.install_aliases()
-from builtins import range
-from builtins import object
 from typing import Tuple
 
 import sys
@@ -530,6 +523,184 @@ class OutputMatplotlib(object):
         self.datasets = datasets
         self.text = text
 
+    @staticmethod
+    def _to_rgba(c, alpha=1.0):
+        """Convert palette color (0..1 floats) to plotly rgba string"""
+        return 'rgba({},{},{},{})'.format(int(c[0]*255), int(c[1]*255), int(c[2]*255), alpha)
+
+    def _build_plotly_figures(self, idf, skip=5):
+        """Build list of plotly Figure objects from datasets"""
+        from plotly.subplots import make_subplots
+        import plotly.graph_objects as go
+
+        figures = []
+        for ds in self.progress(range(len(self.datasets))):
+            group = self.datasets[ds]
+            n_subplots = len(group['dataset'])
+            fig = make_subplots(rows=n_subplots, cols=1, shared_xaxes=True,
+                                vertical_spacing=0.02)
+
+            for d_i in range(n_subplots):
+                d = group['dataset'][d_i]
+                row = d_i + 1
+
+                for data_i in range(len(d['data'])):
+                    if len(d['data'][data_i].shape) > 1:
+                        # data matrices — one trace per column
+                        for i in range(d['data'][data_i].shape[1]):
+                            label = group['labels'][i] if data_i == 0 else None
+                            is_base = i < 6 and group.get('contains_base', False)
+                            dash = 'dash' if is_base else 'solid'
+                            if idf.opt['plotErrors']:
+                                n = 3 if idf.opt['plotPrioriTorques'] else 2
+                                if i == n:
+                                    dash = 'dash'
+                            alpha = 1.0 - (data_i / 2.0)
+                            fig.add_trace(go.Scatter(
+                                x=d['time'][::skip], y=d['data'][data_i][::skip, i],
+                                name=label, legendgroup=label,
+                                showlegend=(data_i == 0 and d_i == 0),
+                                line=dict(color=self._to_rgba(colors[i], alpha), dash=dash),
+                                mode='lines',
+                            ), row=row, col=1)
+                    else:
+                        label = group['labels'][d_i]
+                        alpha = 1.0 - (data_i / 2.0)
+                        fig.add_trace(go.Scatter(
+                            x=d['time'][::skip], y=d['data'][data_i][::skip],
+                            name=label, showlegend=(d_i == 0),
+                            line=dict(color=self._to_rgba(colors[0], alpha)),
+                            mode='lines',
+                        ), row=row, col=1)
+
+                fig.update_yaxes(title_text=group.get('y_label', ''), row=row, col=1)
+                # subplot title as annotation
+                fig.add_annotation(text=d['title'], xref='x domain', yref='y domain',
+                                   x=0.5, y=1.05, showarrow=False,
+                                   row=row, col=1)
+
+            # unified scaling
+            if group['unified_scaling']:
+                ymin = 0
+                ymax = 0
+                for i in range(n_subplots):
+                    ymin = min(float(np.min(group['dataset'][i]['data'])), ymin) * 1.05
+                    ymax = max(float(np.max(group['dataset'][i]['data'])), ymax) * 1.05
+                for r in range(1, n_subplots + 1):
+                    fig.update_yaxes(range=[ymin, ymax], row=r, col=1)
+
+            fig.update_xaxes(title_text="Time (s)", row=n_subplots, col=1)
+            fig.update_layout(height=300 * n_subplots, legend=dict(orientation='h'))
+            figures.append(fig)
+
+        return figures
+
+    def _render_html(self, idf, filename):
+        """Render datasets as interactive HTML using plotly"""
+        from jinja2 import Environment, FileSystemLoader
+
+        figures = self._build_plotly_figures(idf)
+        html_fragments = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in figures]
+
+        path = os.path.dirname(os.path.abspath(__file__))
+        template_environment = Environment(autoescape=False,
+                                           loader=FileSystemLoader(os.path.join(path, '../output')),
+                                           trim_blocks=False)
+        context = {'figures': html_fragments, 'text': self.text}
+        outfile = os.path.join(path, '..', 'output', filename)
+        import codecs
+        with codecs.open(outfile, 'w', 'utf-8') as f:
+            html = template_environment.get_template("templates/index.html").render(context)
+            f.write(html)
+        print("Saved output at file://{}".format(os.path.abspath(outfile)))
+
+    def _render_pdf(self, idf, filename):
+        """Render datasets as PDF using plotly + kaleido"""
+        figures = self._build_plotly_figures(idf)
+
+        base, ext = os.path.splitext(filename)
+        if not ext:
+            ext = '.pdf'
+
+        if len(figures) == 1:
+            figures[0].write_image(filename, format='pdf', width=1200,
+                                   height=figures[0].layout.height or 800)
+        else:
+            for i, fig in enumerate(figures):
+                outname = '{}_{}{}'.format(base, i, ext)
+                fig.write_image(outname, format='pdf', width=1200,
+                                height=fig.layout.height or 800)
+
+        print("Saved PDF output at {}".format(os.path.abspath(filename)))
+
+    def _render_interactive(self, idf):
+        """Show datasets interactively in browser using plotly"""
+        figures = self._build_plotly_figures(idf)
+        for fig in figures:
+            fig.show()
+
+    def _render_tikz(self, idf, filename):
+        """Render datasets as tikz using matplotlib"""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        font_size = 12
+        if idf.opt['plotPerJoint']:
+            font_size = 30
+        matplotlib.rcParams.update({'font.size': font_size})
+        matplotlib.rcParams.update({'axes.labelsize': font_size -5})
+        matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
+        matplotlib.rcParams.update({'axes.titlesize': font_size -2})
+        matplotlib.rcParams.update({'legend.fontsize': font_size -2})
+        matplotlib.rcParams.update({'xtick.labelsize': font_size -5})
+        matplotlib.rcParams.update({'ytick.labelsize': font_size -5})
+        matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
+        matplotlib.rcParams.update({'patch.linewidth': font_size / 15.})
+        matplotlib.rcParams.update({'grid.linewidth': font_size / 20.})
+
+        skip = 5
+
+        for ds in self.progress(range(len(self.datasets))):
+            group = self.datasets[ds]
+            fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True, squeeze=False)
+            axes = axes[:, 0]
+
+            if group['unified_scaling']:
+                ymin = 0
+                ymax = 0
+                for i in range(len(group['dataset'])):
+                    ymin = np.min((np.min(group['dataset'][i]['data']), ymin)) * 1.05
+                    ymax = np.max((np.max(group['dataset'][i]['data']), ymax)) * 1.05
+
+            for d_i in range(len(group['dataset'])):
+                d = group['dataset'][d_i]
+                ax = axes[d_i]
+                if group['unified_scaling']:
+                    ax.set_ylim([ymin, ymax])
+                for data_i in range(0, len(d['data'])):
+                    if len(d['data'][data_i].shape) > 1:
+                        for i in range(0, d['data'][data_i].shape[1]):
+                            l = group['labels'][i] if data_i == 0 else ''
+                            ls = '-'
+                            if i < 6 and 'contains_base' in group and group['contains_base']:
+                                ls = 'dashed'
+                            ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l,
+                                    color=colors[i], alpha=1-(data_i/2.0), linestyle=ls)
+                    else:
+                        ax.plot(d['time'][::skip], d['data'][data_i][::skip],
+                                label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
+                ax.grid(which='both', linestyle="dotted", alpha=0.8)
+                if 'y_label' in group:
+                    ax.set_ylabel(group['y_label'])
+
+            fig.subplots_adjust(hspace=2)
+            fig.set_tight_layout(True)
+
+            from matplotlib2tikz import save as tikz_save
+            tikz_save('{}_{}_{}.tex'.format(filename,
+                group['dataset'][0]['title'].replace('_','-'), ds // idf.model.num_dofs),
+                figureheight = '\\figureheight', figurewidth = '\\figurewidth', show_info=False)
+
     def render(self, idf, filename='output.html'):
         progress_inst = helpers.Progress(idf.opt)
         self.progress = progress_inst.progress
@@ -538,157 +709,15 @@ class OutputMatplotlib(object):
             filename = idf.opt['outputFilename']
 
         if idf.opt['outputAs'] == 'html':
-            # write matplotlib/d3 plots to html file
-            import matplotlib
-            import matplotlib.pyplot as plt, mpld3
-            import matplotlib.axes
-
-            from mpld3 import plugins
-            from jinja2 import Environment, FileSystemLoader
-        elif idf.opt['outputAs'] in ['pdf', 'interactive', 'tikz']:
-            # show plots in separate matplotlib windows
-            import matplotlib
-            if idf.opt['outputAs'] == 'pdf':
-                from matplotlib.backends.backend_pdf import PdfPages
-                pp = PdfPages(filename)
-            import matplotlib.pyplot as plt
-            import matplotlib.axes
+            self._render_html(idf, filename)
+        elif idf.opt['outputAs'] == 'pdf':
+            self._render_pdf(idf, filename)
+        elif idf.opt['outputAs'] == 'interactive':
+            self._render_interactive(idf)
+        elif idf.opt['outputAs'] == 'tikz':
+            self._render_tikz(idf, filename)
         else:
             print("No proper output method given. Not plotting.")
-            return
-
-        font_size = 10
-        if idf.opt['outputAs'] in ['pdf', 'tikz']:
-            if idf.opt['plotPerJoint']:
-                font_size = 30
-            else:
-                font_size = 12
-            matplotlib.rcParams.update({'font.size': font_size})
-            matplotlib.rcParams.update({'axes.labelsize': font_size -5})
-            matplotlib.rcParams.update({'axes.linewidth': font_size / 15.})
-            matplotlib.rcParams.update({'axes.titlesize': font_size -2})
-            matplotlib.rcParams.update({'legend.fontsize': font_size -2})
-            matplotlib.rcParams.update({'xtick.labelsize': font_size -5})
-            matplotlib.rcParams.update({'ytick.labelsize': font_size -5})
-            matplotlib.rcParams.update({'lines.linewidth': font_size / 15.})
-            matplotlib.rcParams.update({'patch.linewidth': font_size / 15.})
-            matplotlib.rcParams.update({'grid.linewidth': font_size / 20.})
-
-
-        # skip some samples so graphs don't get too large/detailed TODO: change skip so that some
-        # maximum number of points is plotted (determined by screen etc.)
-        skip = 5
-
-        #create figures and plots
-        figures = list()
-        for ds in self.progress(range(len(self.datasets))):
-            group = self.datasets[ds]
-            fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True, squeeze=False)
-            axes = axes[:, 0]  # flatten to 1D array
-            # scale unified scaling figures to same ranges and add some margin
-            if group['unified_scaling']:
-                ymin = 0
-                ymax = 0
-                for i in range(len(group['dataset'])):
-                    ymin = np.min((np.min(group['dataset'][i]['data']), ymin)) * 1.05
-                    ymax = np.max((np.max(group['dataset'][i]['data']), ymax)) * 1.05
-
-            #plot each group of data
-            for d_i in range(len(group['dataset'])):
-                d = group['dataset'][d_i]
-                if not issubclass(type(axes), matplotlib.axes.SubplotBase):
-                    ax = axes[d_i]
-                else:
-                    ax = axes
-                    axes = [axes]
-                if idf.opt['outputAs'] != 'tikz':
-                    ax.set_title(d['title'])
-                if group['unified_scaling']:
-                    ax.set_ylim([ymin, ymax])
-                for data_i in range(0, len(d['data'])):
-                    if len(d['data'][data_i].shape) > 1:
-                        #data matrices
-                        for i in range(0, d['data'][data_i].shape[1]):
-                            l = group['labels'][i] if data_i == 0 else ''
-                            if i < 6 and 'contains_base' in group and group['contains_base']:
-                                ls = 'dashed'
-                            else:
-                                ls = '-'
-                            dashes = ()      # type: Tuple
-                            if idf.opt['plotErrors']:
-                                if idf.opt['plotPrioriTorques']:
-                                    n = 3
-                                else:
-                                    n = 2
-                                if i == n:
-                                    ls = 'dashed'
-                                    dashes = (3, 0.5)
-                            ax.plot(d['time'][::skip], d['data'][data_i][::skip, i], label=l,
-                                    color=colors[i], alpha=1-(data_i/2.0), linestyle=ls,
-                                    dashes=dashes)
-                    else:
-                        #data vector
-                        ax.plot(d['time'][::skip], d['data'][data_i][::skip],
-                                label=group['labels'][d_i], color=colors[0], alpha=1-(data_i/2.0))
-
-                ax.grid(which='both', linestyle="dotted", alpha=0.8)
-                if 'y_label' in group:
-                    ax.set_ylabel(group['y_label'])
-
-            if idf.opt['outputAs'] != 'tikz':
-                ax.set_xlabel("Time (s)")
-
-            plt.setp([a.get_xticklabels() for a in axes[:-1]], visible=False)
-            #plt.setp([a.get_yticklabels() for a in axes], fontsize=8)
-
-            if idf.opt['plotLegend']:
-                handles, labels = ax.get_legend_handles_labels()
-                if idf.opt['outputAs'] == 'html':
-                    #TODO: show legend properly (see mpld3 bug #274)
-                    #leg = fig.legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='')
-                    leg = axes[0].legend(handles, labels, loc='upper right', fancybox=True, fontsize=10, title='', prop={'size': 8})
-                else:
-                    leg = plt.figlegend(handles, labels, loc='upper right', fancybox=True,
-                            fontsize=font_size, title='', prop={'size': font_size-3})
-                    leg.draggable()
-
-            fig.subplots_adjust(hspace=2)
-            fig.set_tight_layout(True)
-
-            if idf.opt['outputAs'] == 'html':
-                plugins.clear(fig)
-                plugins.connect(fig, plugins.Reset(), plugins.BoxZoom(), plugins.Zoom(enabled=False),
-                                plugins.MousePosition(fontsize=14, fmt=".5g"))
-                figures.append(mpld3.fig_to_html(fig))
-            elif idf.opt['outputAs'] == 'interactive':
-                plt.show(block=False)
-            elif idf.opt['outputAs'] == 'pdf':
-                pp.savefig(plt.gcf())
-            elif idf.opt['outputAs'] == 'tikz':
-                from matplotlib2tikz import save as tikz_save
-                tikz_save('{}_{}_{}.tex'.format(filename,
-                    group['dataset'][0]['title'].replace('_','-'), ds // idf.model.num_dofs),
-                    figureheight = '\\figureheight', figurewidth = '\\figurewidth', show_info=False)
-
-        if idf.opt['outputAs'] == 'html':
-            path = os.path.dirname(os.path.abspath(__file__))
-            template_environment = Environment(autoescape=False,
-                                               loader=FileSystemLoader(os.path.join(path, '../output')),
-                                               trim_blocks=False)
-
-            context = { 'figures': figures, 'text': self.text }
-            outfile = os.path.join(path, '..', 'output', filename)
-            import codecs
-            with codecs.open(outfile, 'w', 'utf-8') as f:
-                html = template_environment.get_template("templates/index.html").render(context)
-                f.write(html)
-
-            print("Saved output at file://{}".format(outfile))
-        elif idf.opt['outputAs'] == 'interactive':
-            #keep non-blocking plot windows open
-            plt.show()
-        elif idf.opt['outputAs'] == 'pdf':
-            pp.close()
 
     def openURL(self):
         import subprocess, time

@@ -20,19 +20,20 @@ dependencies = [
     "humanize",
     "tqdm",
     "jinja2",
-    "matplotlib",
-    "mpld3",
     "trimesh",
     "PyOpenGL",
     "pyglet",
     "ruff>=0.15.6",
     "mypy>=1.14.1",
+    "plotly>=6.6.0",
+    "kaleido>=1.2.0",
 ]
 
 [project.optional-dependencies]
 visualization = [
 ]
 tikz-plots = [
+    "matplotlib",
     "matplotlib2tikz",
 ]
 parallel = [

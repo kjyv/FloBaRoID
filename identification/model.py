@@ -15,7 +15,6 @@ from scipy import signal
 from sympy import Matrix, symbols
 
 import identification.helpers as helpers
-from identification.quaternion import Quaternion
 
 np.set_printoptions(linewidth=160)
 
@@ -173,12 +172,6 @@ class Model:
         self.gravity_vec.setVal(1, 0.0)
         self.gravity_vec.setVal(2, -9.81)
 
-        if self.opt["useRBDL"]:
-            import rbdl
-
-            self.rbdlModel = rbdl.loadModel(self.urdf_file, floating_base=self.opt["floatingBase"], verbose=False)
-            self.rbdlModel.gravity = np.array(self.gravity[0:3])
-
         # get model parameters (10 inertial params per link)
         xStdModel = iDynTree.VectorDynSize(self.num_model_params)
         self.idyn_model.getInertialParameters(xStdModel)
@@ -220,75 +213,6 @@ class Model:
             for j, pname in enumerate(param_names):
                 desc += f"Parameter {i * 10 + j}: {pname} of link {link_name}\n"
         return desc
-
-    def simulateDynamicsRBDL(
-        self, samples: dict[str, np.ndarray], sample_idx: int, dynComp: Any = None, xStdModel: np.ndarray | None = None
-    ) -> np.ndarray:
-        import rbdl
-
-        # read sample data
-        q = samples["positions"][sample_idx]
-        qdot = samples["velocities"][sample_idx]
-        qddot = samples["accelerations"][sample_idx]
-        fb = 0
-
-        if xStdModel is None:
-            xStdModel = self.xStdModel
-
-        if self.opt["floatingBase"]:
-            fb = 6
-            # The twist (linear/angular velocity) of the base, expressed in the world
-            # orientation frame and with respect to the base origin
-            # (samples are base frame)
-            base_velocity = samples["base_velocity"][sample_idx]
-            # The 6d classical acceleration (linear/angular acceleration) of the base
-            # expressed in the world orientation frame and with respect to the base
-            # origin
-            # (samples are base frame)
-            base_acc = samples["base_acceleration"][sample_idx]
-            rpy = samples["base_rpy"][sample_idx]
-
-            # the first three elements (0,1,2) of q are the position variables of the floating body
-            # elements 3,4,5 of q are the x,y,z components of the quaternion of the floating body
-            # the w component of the quaternion is appended at the end (?)
-            rotq = Quaternion.fromRPY(rpy[0], rpy[1], rpy[2])
-            q = np.concatenate((np.array([0, 0, 0]), rotq[0:3], q, np.array([rotq[3]])))
-
-            # q = np.concatenate((np.array([0,0,0, 0,0,0]), q, np.array([0])))
-            # how to get body id of base link (joint)?
-            # self.rbdlModel.SetQuaternion(4, rotq, q)
-
-            # the first three elements (0,1,2) of qdot is the linear velocity of the floating body
-            # elements 3,4,5 of qdot is the angular velocity of the floating body
-            # (world or base frame?)
-            qdot = np.concatenate([base_velocity, qdot])
-
-            # the first three elements (0,1,2) of qddot is the linear acceleration of the floating body
-            # elements 3,4,5 of qddot is the angular acceleration of the floating body
-            # (world or base frame?)
-            qddot = np.concatenate([base_acc, qddot])
-
-        # compute inverse dynamics with rbdl
-        tau = np.zeros_like(qdot)
-        rbdl.InverseDynamics(self.rbdlModel, q, qdot, qddot, tau)
-
-        if self.opt["identifyFriction"]:
-            # add friction torques
-            # constant
-            sign = 1  # np.sign(vel)
-            p_constant = range(self.friction_params_start, self.friction_params_start + self.num_dofs)
-            tau[fb:] += sign * xStdModel[p_constant]
-
-            # vel dependents
-            if not self.opt["identifyGravityParamsOnly"]:
-                # (take only first half of params as they are not direction dependent in urdf anyway)
-                p_vel = range(
-                    self.friction_params_start + self.num_dofs,
-                    self.friction_params_start + self.num_dofs * 2,
-                )
-                tau[fb:] += xStdModel[p_vel] * qdot[fb:]
-
-        return tau
 
     def simulateDynamicsIDynTree(
         self, samples: dict[str, np.ndarray], sample_idx: int, kinDyn: Any = None, xStdModel: np.ndarray | None = None
@@ -426,11 +350,7 @@ class Model:
                 # in case that we simulate the torque measurements, need torque estimation for a priori parameters
                 # or that we need to simulate the base reaction forces for floating base
                 if self.opt["simulateTorques"] or self.opt["useAPriori"] or self.opt["floatingBase"]:
-                    if self.opt["useRBDL"]:
-                        # TODO: make sure joint order of torques is the same as iDynTree!
-                        sim_torques = self.simulateDynamicsRBDL(data.samples, m_idx)
-                    else:
-                        sim_torques = self.simulateDynamicsIDynTree(data.samples, m_idx)
+                    sim_torques = self.simulateDynamicsIDynTree(data.samples, m_idx)
 
                     if self.opt["useAPriori"]:
                         # torques sometimes contain nans, just a very small C number that gets converted to nan?

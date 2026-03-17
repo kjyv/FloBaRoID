@@ -121,7 +121,6 @@ def _base_config():
     config["createPlots"] = 0
     config["verbose"] = 0
     config["showTiming"] = 0
-    config["useRBDL"] = 0
     config["constrainUsingNL"] = 0
     config["filterRegressor"] = 0
     config["estimateWith"] = "std"

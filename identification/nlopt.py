@@ -4,7 +4,7 @@ import sys
 
 import numpy as np
 import numpy.linalg as la
-import pyOpt
+from pyoptsparse import Optimization, SLSQP, PSQP, ALPSO, NSGA2, IPOPT
 
 from .quaternion import Quaternion
 
@@ -231,7 +231,7 @@ class NLOPT(Optimizer):
         c = self.testConstraints(cons)
 
         if self.idf.opt['showOptimizationGraph'] and self.mpi_rank == 0:
-            if c or not self.opt_prob.is_gradient:
+            if c or not getattr(self.opt_prob, 'is_gradient', False):
                 self.xar.append(self.inner_iter)
                 self.yar.append(u)
                 self.x_constr.append(c)
@@ -320,7 +320,7 @@ class NLOPT(Optimizer):
         c = self.testConstraints(cons)
 
         if self.idf.opt['showOptimizationGraph'] and self.mpi_rank == 0:
-            if c or not self.opt_prob.is_gradient:
+            if c or not getattr(self.opt_prob, 'is_gradient', False):
                 self.xar.append(self.inner_iter)
                 self.yar.append(u)
                 self.x_constr.append(c)
@@ -366,6 +366,7 @@ class NLOPT(Optimizer):
         return result
 
     def addVarsAndConstraints(self, opt):
+        """Add variables and constraints for the optimization problem."""
         if not self.idf.opt['identifyGravityParamsOnly']:
             # only constrain triangle inequality if it holds true for starting point
             self.use_tri_ineq = not (False in self.idf.paramHelpers.checkPhysicalConsistency(self.model.xStd).values())
@@ -377,57 +378,58 @@ class NLOPT(Optimizer):
         else:
             print("Not constraining to triangle inequality")
 
+        self._var_names: list[str] = []
+
         ## add variables for standard params
         for i in self.identified_params:
             p = self.model.param_syms[i]
             if i % self.per_link == 0 and i < self.model.num_model_params:   #mass
-                opt.addVar(str(p), type="c", lower=0.1, upper=np.inf)
+                self._var_names.append(str(p))
+                opt.addVar(str(p), lower=0.1, upper=np.inf)
             else:
                 if not self.idf.opt['identifyGravityParamsOnly'] and i >= self.model.num_model_params:   #friction
                     #TODO: remove friction from optimization (they shouldn't change and are not dependent in base params)
-                    opt.addVar(str(p), type="c", lower=0.0, upper=np.inf)
+                    self._var_names.append(str(p))
+                    opt.addVar(str(p), lower=0.0, upper=np.inf)
                 else:
                     if i % self.per_link not in [1,2,3] and self.idf.opt['optInFeasibleParamSpace']:
                         pass
                     else:
                         #inertia: unbounded variable
-                        opt.addVar(str(p), type="c", lower=-np.inf, upper=np.inf)
+                        self._var_names.append(str(p))
+                        opt.addVar(str(p), lower=-np.inf, upper=np.inf)
 
             # add variables for feasible parametrization space
             if self.idf.opt['optInFeasibleParamSpace'] and not self.idf.opt['identifyGravityParamsOnly']:
                 if i % self.per_link == 4 and i < self.model.num_model_params:
                     l = i // 10
                     # Q as rotation matrix in R^3x3
-                    opt.addVar('q0_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q1_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q2_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q3_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q4_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q5_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q6_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q7_{}'.format(l), type="c", lower=-10, upper=10)
-                    opt.addVar('q8_{}'.format(l), type="c", lower=-10, upper=10)
+                    for qi in range(9):
+                        name = 'q{}_{}'.format(qi, l)
+                        self._var_names.append(name)
+                        opt.addVar(name, lower=-10, upper=10)
                     # L ln R^3+
-                    opt.addVar('l0_{}'.format(l), type="c", lower=0, upper=np.inf)
-                    opt.addVar('l1_{}'.format(l), type="c", lower=0, upper=np.inf)
-                    opt.addVar('l2_{}'.format(l), type="c", lower=0, upper=np.inf)
+                    for li in range(3):
+                        name = 'l{}_{}'.format(li, l)
+                        self._var_names.append(name)
+                        opt.addVar(name, lower=0, upper=np.inf)
 
         ## constraints
 
         # add constraints for projection to feasible base parameters (equality constraints before
         # inequality)
         if not self.min_est_error:
-            opt.addConGroup('xbase', len(self.xBase_feas), 'e', equal=0.0)
+            opt.addConGroup('xbase', len(self.xBase_feas), lower=0.0, upper=0.0)
 
         if not self.idf.opt['optInFeasibleParamSpace']:
             # add naive consistency constraints (inertia positive definite, triangel inequality)
             if not self.idf.opt['identifyGravityParamsOnly']:
-                opt.addConGroup('inertia', 3*self.nl, 'i', lower=0.0, upper=100)
+                opt.addConGroup('inertia', 3*self.nl, lower=0.0, upper=100)
                 if self.use_tri_ineq:
-                    opt.addConGroup('tri_ineq', 3*self.nl, 'i', lower=0.0, upper=100)
+                    opt.addConGroup('tri_ineq', 3*self.nl, lower=0.0, upper=100)
         else:
-            opt.addConGroup('det R > 0', self.nl, 'i', lower=0.0, upper=np.inf)
-            opt.addConGroup('R.T*R = I', self.nl, 'i', lower=-0.001, upper=0.001) #equal=0.0)
+            opt.addConGroup('det R > 0', self.nl, lower=0.0, upper=np.inf)
+            opt.addConGroup('R.T*R = I', self.nl, lower=-0.001, upper=0.001)
 
         # constraints for overall mass
         if self.idf.opt['limitOverallMass']:
@@ -435,23 +437,75 @@ class NLOPT(Optimizer):
             if not self.idf.opt['floatingBase'] and self.idf.opt['deleteFixedBase']:
                 lower = upper = self.idf.opt['limitMassVal'] - self.idf.model.xStd[0]
 
-            opt.addConGroup('mass sum', 1, 'i',
+            opt.addConGroup('mass sum', 1,
                             lower=lower*(1-self.idf.opt['limitMassRange']),
                             upper=upper*(1+self.idf.opt['limitMassRange']))
 
         # constraints for COM in enclosing hull
         if self.idf.opt['restrictCOMtoHull']:
-            opt.addConGroup('com', 6*self.nl, 'i', lower=0.0, upper=100)
+            opt.addConGroup('com', 6*self.nl, lower=0.0, upper=100)
 
+
+    def _objFuncWrapperStd(self, xdict: dict) -> tuple[dict, bool]:
+        """Wrapper for minimizeSolToCADStd to convert pyOptSparse dict API."""
+        x = np.array([xdict[name] for name in self._var_names]).flatten()
+        u, cons, fail = self.minimizeSolToCADStd(x)
+        funcs: dict[str, Any] = {'u': u}
+        # distribute constraints into their named groups
+        idx = 0
+        if not self.min_est_error:
+            n = len(self.xBase_feas)
+            funcs['xbase'] = np.array(cons[idx:idx + n])
+            idx += n
+        if not self.idf.opt['optInFeasibleParamSpace']:
+            if not self.idf.opt['identifyGravityParamsOnly']:
+                n = 3 * self.nl
+                funcs['inertia'] = np.array(cons[idx:idx + n])
+                idx += n
+                if self.use_tri_ineq:
+                    funcs['tri_ineq'] = np.array(cons[idx:idx + n])
+                    idx += n
+        if self.idf.opt['limitOverallMass']:
+            funcs['mass sum'] = np.array(cons[idx:idx + 1])
+            idx += 1
+        if self.idf.opt['restrictCOMtoHull']:
+            n = 6 * self.nl
+            funcs['com'] = np.array(cons[idx:idx + n])
+            idx += n
+        return funcs, bool(fail)
+
+    def _objFuncWrapperFeasible(self, xdict: dict) -> tuple[dict, bool]:
+        """Wrapper for minimizeSolToCADFeasible to convert pyOptSparse dict API."""
+        x = np.array([xdict[name] for name in self._var_names]).flatten()
+        u, cons, fail = self.minimizeSolToCADFeasible(x)
+        funcs: dict[str, Any] = {'u': u}
+        # distribute constraints into their named groups
+        idx = 0
+        if not self.min_est_error:
+            n = len(self.xBase_feas)
+            funcs['xbase'] = np.array(cons[idx:idx + n])
+            idx += n
+        funcs['det R > 0'] = np.array(cons[idx:idx + self.nl])
+        idx += self.nl
+        funcs['R.T*R = I'] = np.array(cons[idx:idx + self.nl])
+        idx += self.nl
+        if self.idf.opt['limitOverallMass']:
+            funcs['mass sum'] = np.array(cons[idx:idx + 1])
+            idx += 1
+        if self.idf.opt['restrictCOMtoHull']:
+            n = 6 * self.nl
+            funcs['com'] = np.array(cons[idx:idx + n])
+            idx += n
+        return funcs, bool(fail)
 
     def identifyFeasibleStdFromFeasibleBase(self, xBase):
         self.xBase_feas = xBase
 
         # formulate problem as objective function
         if self.idf.opt['optInFeasibleParamSpace']:
-            opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCADFeasible)
+            opt = Optimization('Constrained OLS', self._objFuncWrapperFeasible)
         else:
-            opt = pyOpt.Optimization('Constrained OLS', self.minimizeSolToCADStd)
+            opt = Optimization('Constrained OLS', self._objFuncWrapperStd)
         opt.addObj('u')
 
         '''
@@ -466,16 +520,19 @@ class NLOPT(Optimizer):
         # most solvers to perform well)
         if self.idf.opt['optInFeasibleParamSpace']:
             x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
-            for i in range(len(opt.getVarSet())):
-                #atm, we have 16*no_link + n_dof vars
+            dvs = {}
+            for i, name in enumerate(self._var_names):
                 if i < len(x_cons):
-                    opt.getVar(i).value = x_cons[i]
+                    dvs[name] = x_cons[i]
                 else:
                     j = i - len(x_cons)
-                    opt.getVar(i).value = self.model.xStd[self.idf.model.num_model_params + j]
+                    dvs[name] = self.model.xStd[self.idf.model.num_model_params + j]
+            opt.setDVs(dvs)
         else:
-            for i in range(len(opt.getVarSet())):
-                opt.getVar(i).value = self.model.xStd[i+self.start_link*self.per_link]
+            dvs = {}
+            for i, name in enumerate(self._var_names):
+                dvs[name] = self.model.xStd[i + self.start_link * self.per_link]
+            opt.setDVs(dvs)
 
         if self.idf.opt['verbose']:
             print(opt)
@@ -484,7 +541,7 @@ class NLOPT(Optimizer):
             # not necessarily deterministic
             if self.idf.opt['verbose']:
                 print('Using IPOPT')
-            solver = pyOpt.IPOPT()
+            solver = IPOPT()
             #solver.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
             #for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
             solver.setOption('max_iter', self.idf.opt['nlOptMaxIterations'])
@@ -500,7 +557,7 @@ class NLOPT(Optimizer):
             # solve optimization problem
             if self.idf.opt['verbose']:
                 print('Using SLSQP')
-            solver = pyOpt.SLSQP(disp_opts=True)
+            solver = SLSQP()
             solver.setOption('MAXIT', self.idf.opt['nlOptMaxIterations'])
             if self.idf.opt['verbose']:
                 solver.setOption('IPRINT', 0)
@@ -509,7 +566,7 @@ class NLOPT(Optimizer):
             # solve optimization problem
             if self.idf.opt['verbose']:
                 print('Using PSQP')
-            solver = pyOpt.PSQP(disp_opts=True)
+            solver = PSQP()
             solver.setOption('MIT', self.idf.opt['nlOptMaxIterations'])
             if self.idf.opt['verbose']:
                 solver.setOption('IPRINT', 0)
@@ -517,7 +574,7 @@ class NLOPT(Optimizer):
         elif self.idf.opt['nlOptSolver'] == 'ALPSO':
             if self.idf.opt['verbose']:
                 print('Using ALPSO')
-            solver = pyOpt.ALPSO(disp_opts=True)
+            solver = ALPSO()
             solver.setOption('stopCriteria', 0)
             solver.setOption('dynInnerIter', 1)   # dynamic inner iter number
             solver.setOption('maxInnerIter', 5)
@@ -530,7 +587,7 @@ class NLOPT(Optimizer):
         elif self.idf.opt['nlOptSolver'] == 'NSGA2':
             if self.idf.opt['verbose']:
                 print('Using NSGA2')
-            solver = pyOpt.NSGA2(disp_opts=True)
+            solver = NSGA2()
             solver.setOption('PopSize', 100)   # Population Size (a Multiple of 4)
             solver.setOption('maxGen', self.config['nlOptMaxIterations'])   # Maximum Number of Generations
             solver.setOption('PrintOut', 0)    # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
@@ -546,18 +603,18 @@ class NLOPT(Optimizer):
             print('Solver unknown')
 
         self.opt_prob = opt
-        solver(opt)         #run optimizer
-
-        # set best solution again (is often different than final solver solution)
-        if self.last_best_x is not None:
-            for i in range(len(opt.getVarSet())):
-                opt.getVar(i).value = self.last_best_x[i]
+        # run optimizer (use FD for gradient-based solvers)
+        if self.idf.opt['nlOptSolver'] in ['IPOPT', 'SLSQP', 'PSQP']:
+            solver(opt, sens='FD')
         else:
+            solver(opt)
+
+        # use manually tracked best solution (solver may not keep the best feasible one)
+        if self.last_best_x is None:
             self.last_best_x = self.model.xStd[self.start_param:]
 
-        sol = opt.solution(0)
         if self.idf.opt['verbose']:
-            print(sol)
+            print(opt)
 
         if self.idf.opt['optInFeasibleParamSpace'] and len(self.last_best_x) > len(self.model.xStd[self.start_param:]):
             # we get consistent parameterized params as solution

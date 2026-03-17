@@ -80,7 +80,7 @@ def to_sdpa_sparse(objective_func, lmis, variables, objective_type='minimize',
     return s
 
 def cvxopt_conelp(objf, lmis, variables, primalstart=None):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike) -> Tuple[np.ndarray, str]
     ''' using cvxopt conelp to solve SDP program
 
         a more exact but possibly less robust solver than dsdp5
@@ -114,11 +114,11 @@ def cvxopt_conelp(objf, lmis, variables, primalstart=None):
         # return primalstart if no solution was found
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
         sdpout['x'] = np.reshape( np.concatenate(([0], primalstart)), (len(primalstart)+1, 1) )
-    return np.matrix(sdpout['x']), state
+    return np.asarray(sdpout['x']), state
 
 
 def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.ndarray, str]
     # using cvxopt interface to dsdp5
     # (not using primal atm)
     import cvxopt.solvers
@@ -134,11 +134,11 @@ def cvxopt_dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         #print("(does not necessarily mean feasible)")
     else:
         print(Fore.RED + '{}'.format(sdpout['status']) + Fore.RESET)
-    return np.matrix(sdpout['x']), state
+    return np.asarray(sdpout['x']), state
 
 
 def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
-    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.matrix, str]
+    # type: (List[Symbol], List[sympy.Eq], List[Symbol], np._ArrayLike, bool) -> Tuple[np.ndarray, str]
     ''' use dsdp5 directly (faster than cvxopt, can use starting points, more robust) '''
     import subprocess
     import os
@@ -173,7 +173,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
         print("dsdp5 not found, skipping")
         import shutil
         shutil.rmtree(dir)
-        return np.matrix(np.zeros((len(variables)+1, 1))), 'stopped'
+        return np.zeros((len(variables)+1, 1)), 'stopped'
     except subprocess.CalledProcessError as e:
         print("DSDP stopped early: {}".format(e.returncode))
         state = 'stopped'
@@ -207,7 +207,7 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
     import shutil
     shutil.rmtree(dir)
 
-    return np.matrix(sol).T, state
+    return np.array(sol).reshape(-1, 1), state
 
 
 #set a default solver

@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple, Union
 import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
-import pyOpt
+from pyoptsparse import Optimization
 from idyntree import bindings as iDynTree
 from colorama import Fore
 
@@ -74,8 +74,9 @@ class TrajectoryOptimizer(Optimizer):
 
         # collision constraints
 
-        self.idyn_model = iDynTree.Model()
-        iDynTree.modelFromURDF(self.config['urdf'], self.idyn_model)
+        loader = iDynTree.ModelLoader()
+        loader.loadModelFromFile(self.config['urdf'])
+        self.idyn_model = loader.model()
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
         # amount of collision checks to be done
@@ -95,8 +96,12 @@ class TrajectoryOptimizer(Optimizer):
             for l in nb_real:
                 if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
                     nb_pairs.append((link, l))
+        # only count ignore pairs where both links are actually in the model
+        all_links = set(self.model.linkNames + self.world_links)
+        effective_ignore_pairs = [p for p in self.config['ignoreLinkPairsForCollision']
+                                 if p[0] in all_links and p[1] in all_links]
         self.num_coll_constraints -=  (len(nb_pairs) +        # neighbors
-                                  len(self.config['ignoreLinkPairsForCollision']))  # custom combinations
+                                  len(effective_ignore_pairs))  # custom combinations
         self.num_constraints += self.num_coll_constraints
 
         self.initVisualizer()
@@ -273,10 +278,10 @@ class TrajectoryOptimizer(Optimizer):
         print(Fore.RESET)
 
         if self.config['verbose']:
-            if self.opt_prob.is_gradient:
+            if hasattr(self.opt_prob, 'is_gradient') and self.opt_prob.is_gradient:
                 print("(Gradient evaluation)")
 
-        if self.mpi_rank == 0 and not self.opt_prob.is_gradient and self.config['showOptimizationGraph']:
+        if self.mpi_rank == 0 and not getattr(self.opt_prob, 'is_gradient', False) and self.config['showOptimizationGraph']:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -322,23 +327,23 @@ class TrajectoryOptimizer(Optimizer):
         res_c = np.all(g[c_s:] > 0)
         if not res:
             print("constraints violated:")
-            if True in np.in1d(list(range(1, 2*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
+            if True in np.isin(list(range(1, 2*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
                 print("- angle limits")
                 print(np.array(g)[list(range(1, 2*self.num_dofs))])
-            if True in np.in1d(list(range(2*self.num_dofs, 3*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
+            if True in np.isin(list(range(2*self.num_dofs, 3*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
                 print("- max velocity limits")
                 #print np.array(g)[range(2*self.num_dofs,3*self.num_dofs)]
-            if True in np.in1d(list(range(3*self.num_dofs, 4*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
+            if True in np.isin(list(range(3*self.num_dofs, 4*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
                 print("- max torque limits")
 
             if self.config['minVelocityConstraint']:
-                if True in np.in1d(list(range(4*self.num_dofs, 5*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
+                if True in np.isin(list(range(4*self.num_dofs, 5*self.num_dofs)), np.where(g >= self.config['minTolConstr'])):
                     print("- min velocity limits")
 
             if not res_c:
                 print("- collision constraints")
 
-            #if True in np.in1d(range(5*self.num_dofs,6*self.num_dofs), np.where(g >= self.config['minTolConstr'])):
+            #if True in np.isin(range(5*self.num_dofs,6*self.num_dofs), np.where(g >= self.config['minTolConstr'])):
             #    print "- min torque limits"
             #    print g[range(5*self.num_dofs,6*self.num_dofs)]
         return res and res_c
@@ -349,27 +354,42 @@ class TrajectoryOptimizer(Optimizer):
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
 
+    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
+        """Wrapper to convert pyOptSparse dict-based API to flat array."""
+        x = np.array([xdict[name] for name in self._var_names]).flatten()
+        f, g, fail = self.objectiveFunc(x)
+        funcs = {'f': f, 'g': np.array(g)}
+        return funcs, bool(fail)
+
     def addVarsAndConstraints(self, opt_prob):
-        # type: (pyOpt.Optimization) -> None
-        ''' add variables, define bounds '''
+        # type: (pyoptsparse.Optimization) -> None
+        """Add variables, define bounds."""
+
+        self._var_names: list[str] = []
 
         # w_f - pulsation
-        opt_prob.addVar('wf', 'c', value=self.wf_init, lower=self.wf_min, upper=self.wf_max)
+        self._var_names.append('wf')
+        opt_prob.addVar('wf', value=self.wf_init, lower=self.wf_min, upper=self.wf_max)
 
         # q - offsets
         for i in range(self.num_dofs):
-            opt_prob.addVar('q_%d'%i,'c', value=self.qinit[i], lower=self.qmin[i], upper=self.qmax[i])
+            name = 'q_%d' % i
+            self._var_names.append(name)
+            opt_prob.addVar(name, value=self.qinit[i], lower=self.qmin[i], upper=self.qmax[i])
         # a, b - sin/cos params
         for i in range(self.num_dofs):
             for j in range(self.nf[0]):
-                opt_prob.addVar('a{}_{}'.format(i,j), 'c', value=self.ainit[i][j], lower=self.amin, upper=self.amax)
+                name = 'a{}_{}'.format(i, j)
+                self._var_names.append(name)
+                opt_prob.addVar(name, value=self.ainit[i][j], lower=self.amin, upper=self.amax)
         for i in range(self.num_dofs):
             for j in range(self.nf[0]):
-                opt_prob.addVar('b{}_{}'.format(i,j), 'c', value=self.binit[i][j], lower=self.bmin, upper=self.bmax)
+                name = 'b{}_{}'.format(i, j)
+                self._var_names.append(name)
+                opt_prob.addVar(name, value=self.binit[i][j], lower=self.bmin, upper=self.bmax)
 
         # add constraint vars (constraint functions are in obfunc)
-        opt_prob.addConGroup('g', self.num_constraints, type='i', lower=0.0, upper=np.inf)
-        #print opt_prob
+        opt_prob.addConGroup('g', self.num_constraints, lower=0.0, upper=np.inf)
 
 
     def optimizeTrajectory(self):
@@ -378,7 +398,7 @@ class TrajectoryOptimizer(Optimizer):
         # condition number trajectory
 
         # Instanciate Optimization Problem
-        opt_prob = pyOpt.Optimization('Trajectory optimization', self.objectiveFunc)
+        opt_prob = Optimization('Trajectory optimization', self._objFuncWrapper)
         opt_prob.addObj('f')
         self.opt_prob = opt_prob
 

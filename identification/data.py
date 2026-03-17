@@ -4,7 +4,6 @@ import numpy as np
 import numpy.linalg as la
 import scipy as sp
 from scipy import signal
-from scipy import misc
 from identification.helpers import Timer
 from idyntree import bindings as iDynTree
 

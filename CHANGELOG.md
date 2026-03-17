@@ -51,6 +51,13 @@ Joint state vectors changed from `VectorDynSize` to `JointPosDoubleArray` /
 - Upgraded sympy 1.0 → 1.12.1
 - Removed custom `LMI_PD`/`LMI_PSD`/`lmi_to_coeffs` wrappers, using `lmi_sdp` directly
 
+### Trajectory optimization (pyOpt → pyOptSparse)
+- Replaced pyOpt (unmaintained since 2014) with pyOptSparse (actively maintained fork)
+- pyOptSparse installed from git (not on PyPI)
+- Adapted objective functions to dict-based API (`{name: value}` instead of flat arrays)
+- Removed COBYLA support (not available in pyOptSparse; use SLSQP instead)
+- Added integration tests for OLS and SDP-constrained identification
+
 ### Cleanup
 - Removed Python 2 compatibility (`__future__`, `builtins`, `future` package)
 - Removed `distutils` usage (version checks for ancient library versions)

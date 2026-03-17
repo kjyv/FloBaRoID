@@ -214,16 +214,10 @@ class Identification:
         outfile = self.model.urdf_file + ".tmp.urdf"
 
         self.urdfHelpers.replaceParamsInURDF(input_urdf=self.model.urdf_file, output_urdf=outfile, new_params=params)
-        if self.opt["useRBDL"]:
-            import rbdl
-
-            self.model.rbdlModel = rbdl.loadModel(outfile, floating_base=self.opt["floatingBase"], verbose=False)
-            self.model.rbdlModel.gravity = np.array(self.model.gravity)
-        else:
-            val_loader = iDynTree.ModelLoader()
-            val_loader.loadModelFromFile(outfile)
-            val_kinDyn = iDynTree.KinDynComputations()
-            val_kinDyn.loadRobotModel(val_loader.model())
+        val_loader = iDynTree.ModelLoader()
+        val_loader.loadModelFromFile(outfile)
+        val_kinDyn = iDynTree.KinDynComputations()
+        val_kinDyn.loadRobotModel(val_loader.model())
         os.remove(outfile)
 
         old_skip = self.opt["skipSamples"]
@@ -231,10 +225,7 @@ class Identification:
 
         self.tauEstimatedValidation: np.ndarray = np.array([])
         for m_idx in self.progress(range(0, v_data["positions"].shape[0], self.opt["skipSamples"] + 1)):
-            if self.opt["useRBDL"]:
-                torques = self.model.simulateDynamicsRBDL(v_data, m_idx, None, params)
-            else:
-                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, val_kinDyn, params)
+            torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, val_kinDyn, params)
 
             if self.tauEstimatedValidation.size == 0:
                 self.tauEstimatedValidation = torques

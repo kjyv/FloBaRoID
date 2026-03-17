@@ -83,7 +83,6 @@ uv sync --extra parallel         # mpi4py
 ### Additional non-PyPI dependencies
 
 * symengine.py (to speedup SDP, optional)
-* rbdl (alternative for inverse dynamics, optional)
 
 requirements for excitation module:
 

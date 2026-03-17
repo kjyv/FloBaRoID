@@ -27,7 +27,7 @@ import identification.helpers as helpers
 from colorama import Fore
 from IPython import embed
 
-np.core.arrayprint._line_width = 160
+np.set_printoptions(linewidth=160)
 
 # Referenced papers:
 # Gautier, 1991: Numerical Calculation of the base Inertial Parameters of Robots
@@ -303,12 +303,12 @@ class Identification(object):
         if self.opt['floatingBase']: fb = 6
         else: fb = 0
 
-        # get relative standard deviation of measurement and modeling error \sigma_{rho}^2
+        # get relative standard deviation of measurement and modeling error sigma_{rho}^2
         r = self.data.num_used_samples * (self.model.num_dofs + fb)
         rho = np.square(sla.norm(tauDiff))
         sigma_rho = rho / (r - self.model.num_base_params)
 
-        # get standard deviation \sigma_{x} (of the estimated parameter vector x)
+        # get standard deviation sigma_{x} (of the estimated parameter vector x)
         C_xx = sigma_rho * (sla.pinv(np.dot(self.model.YBase.T, self.model.YBase)))
         sigma_x = np.diag(C_xx)
 
@@ -624,7 +624,7 @@ class Identification(object):
             else:
                 tauDiff = self.tauEstimated
 
-            # get standard deviation of measurement and modeling error \sigma_{rho}^2
+            # get standard deviation of measurement and modeling error sigma_{rho}^2
             # for each joint subsystem (rho is assumed zero mean independent noise)
             self.sigma_rho = np.square(sla.norm(tauDiff)) / (r-self.model.num_base_params)
             '''

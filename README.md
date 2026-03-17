@@ -51,7 +51,7 @@ uv sync
 * **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
 * **ipopt** (for iDynTree build): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian)
-* **dsdp5** (command line executable, optional — used as fallback SDP solver)
+* **dsdp5** (command line executable, required for SDP-constrained identification)
 
 ### Optional extras
 

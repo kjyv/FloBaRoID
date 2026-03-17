@@ -1,9 +1,3 @@
-from __future__ import division
-from __future__ import print_function
-from __future__ import absolute_import
-from builtins import range
-from builtins import object
-
 from typing import List, Dict, Any
 
 import numpy as np

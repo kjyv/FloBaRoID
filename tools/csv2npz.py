@@ -4,9 +4,6 @@
 ''' read data from different kinds of csv data files and save preprocessed as npz.
     Allows simulation of torques and correcting for sign and offset errors.'''
 
-from __future__ import division
-from __future__ import print_function
-from builtins import range
 import sys
 import os
 import argparse

@@ -1,7 +1,3 @@
-from __future__ import division
-from __future__ import print_function
-from builtins import range
-from builtins import object
 import sys
 import numpy as np
 #import threading

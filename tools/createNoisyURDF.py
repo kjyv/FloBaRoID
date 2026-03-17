@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from builtins import range
 import numpy as np
 from idyntree import bindings as iDynTree
 import identificationHelpers

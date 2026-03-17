@@ -90,7 +90,7 @@ uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --
 
 The measurements retrieved from excitation are saved in a numpy .npz binary file archive which
 includes multiple data streams. All data fields have the same amount of samples S relative to the
-time in field 'times'. The same structure is expected by identification.py.
+time in field 'times'. The same structure is expected by identifier.py.
 
 |field name|content|
 |---|---|
@@ -111,7 +111,7 @@ time in field 'times'. The same structure is expected by identification.py.
 Values in [] are optional.
 Values with * only need to be specified when using floating base dynamics.
 
-All data is expected by identify.py to already be cleaned and low-pass filtered and to not
+All data is expected by identifier.py to already be cleaned and low-pass filtered and to not
 include any big measurement errors. The noise should ideally be gaussian and have zero mean.
 
 The sampling frequency should be sufficiently high (e.g. at least 100 Hz) to get reasonably good position and velocity derivatives.

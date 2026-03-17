@@ -105,7 +105,6 @@ def main(config, trajectory, out):
 
         positions = np.zeros(config["num_dofs"])
         velocities = np.zeros(config["num_dofs"])
-        np.zeros(config["num_dofs"])
         torques = np.zeros(config["num_dofs"])
 
         if config["num_dofs"] == b_positions.size():

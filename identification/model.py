@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 import sys
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from identification.data import Data
 
 import numpy as np
 import numpy.linalg as la
@@ -15,10 +21,27 @@ np.set_printoptions(linewidth=160)
 
 
 class Model:
-    def __init__(self, opt, urdf_file, regressor_file=None, regressor_init=True):
-        # (Dict[str, Any, str, str]) -> None
+    def __init__(
+        self,
+        opt: dict[str, Any],
+        urdf_file: str,
+        regressor_file: str | None = None,
+        regressor_init: bool = True,
+    ) -> None:
         self.urdf_file = urdf_file
         self.opt = opt
+
+        # attributes set by Identification after construction
+        self.xBase: np.ndarray = np.array([])
+        self.xBaseModel: np.ndarray = np.array([])
+        self.YBaseInv: np.ndarray = np.array([])
+        self.xStd: np.ndarray = np.array([])
+        self.contactForcesSum: np.ndarray = np.array([])
+
+        # attributes set by computeRegressorLinDepsQR (called from __init__ when regressor_init=True)
+        self.base_deps: np.ndarray | Matrix = np.array([])
+        self.non_id: list[int] = []
+        self.identifiable: list[int] = []
 
         progress_inst = helpers.Progress(opt)
         self.progress = progress_inst.progress
@@ -53,13 +76,13 @@ class Model:
             with open(regressor_file) as filename:
                 regrXml = filename.read()
 
-            self.jointNames = []  # type: List[str]
+            self.jointNames: list[str] = []
             import xml.etree.ElementTree as ET
 
             tree = ET.fromstring(regrXml)
             for l in tree.iter():
                 if l.tag == "joint":
-                    self.jointNames.append(l.text)
+                    self.jointNames.append(l.text or "")
             self.num_dofs = len(self.jointNames)
         else:
             import re
@@ -91,13 +114,13 @@ class Model:
         if self.opt["verbose"]:
             print(f"# links: {self.num_links}")
 
-        self.inertia_params = list()  # type: List[int]
-        self.mass_params = list()  # type: List[int]
+        self.inertia_params: list[int] = list()
+        self.mass_params: list[int] = list()
         for i in range(self.num_links):
             self.mass_params.append(i * 10)
             self.inertia_params.extend([i * 10 + 4, i * 10 + 5, i * 10 + 6, i * 10 + 7, i * 10 + 8, i * 10 + 9])
 
-        self.linkNames = []  # type: List[str]
+        self.linkNames: list[str] = []
         for i in range(self.num_links):
             self.linkNames.append(self.idyn_model.getLinkName(i))
         if self.opt["verbose"]:
@@ -177,8 +200,7 @@ class Model:
             # groupings)
             self.computeRegressorLinDepsQR()
 
-    def getDescriptionOfParameters(self):
-        # type: () -> str
+    def getDescriptionOfParameters(self) -> str:
         """Generate parameter descriptions (replaces old DynamicsRegressorGenerator method)"""
         param_names = [
             "mass",
@@ -199,8 +221,9 @@ class Model:
                 desc += f"Parameter {i * 10 + j}: {pname} of link {link_name}\n"
         return desc
 
-    def simulateDynamicsRBDL(self, samples, sample_idx, dynComp=None, xStdModel=None):
-        # type: (Dict[str, np._ArrayLike], int, iDynTree.DynamicsComputations, np._ArrayLike[float]) -> np._ArrayLike[float]
+    def simulateDynamicsRBDL(
+        self, samples: dict[str, np.ndarray], sample_idx: int, dynComp: Any = None, xStdModel: np.ndarray | None = None
+    ) -> np.ndarray:
         import rbdl
 
         # read sample data
@@ -267,8 +290,9 @@ class Model:
 
         return tau
 
-    def simulateDynamicsIDynTree(self, samples, sample_idx, kinDyn=None, xStdModel=None):
-        # type: (Dict[str, np._ArrayLike], int, Any, np._ArrayLike[float]) -> np._ArrayLike[float]
+    def simulateDynamicsIDynTree(
+        self, samples: dict[str, np.ndarray], sample_idx: int, kinDyn: Any = None, xStdModel: np.ndarray | None = None
+    ) -> np.ndarray:
         """compute torques for one time step of measurements"""
 
         if kinDyn is None:
@@ -336,8 +360,7 @@ class Model:
         else:
             return torques
 
-    def computeRegressors(self, data, only_simulate=False):
-        # type: (Model, Data, bool) -> (None)
+    def computeRegressors(self, data: Data, only_simulate: bool = False) -> None:
         """compute regressors from measurements for each time step of the measurement data
         and stack them vertically. also stack measured torques and get simulation data.
         for floating base, get estimated base forces (6D wrench) and add to torque measure stack
@@ -918,22 +941,22 @@ class Model:
 
         # define sympy symbols for each std column
         self.base_syms = sympy.Matrix([sympy.Symbol("beta" + str(i), real=True) for i in range(self.num_base_params)])
-        self.param_syms = list()  # type: List[sympy.Symbol]
-        self.mass_syms = list()  # type: List[sympy.Symbol]
-        self.friction_syms = list()  # type: List[sympy.Symbol]
+        param_syms_list: list[sympy.Symbol] = list()
+        self.mass_syms: list[sympy.Symbol] = list()
+        self.friction_syms: list[sympy.Symbol] = list()
         # indices of params within full param vector that are going to be identified
-        self.identified_params = list()  # type: List[int]
+        self.identified_params: list[int] = list()
         for i in range(0, self.num_links):
             # mass
             m = symbols(f"m_{i}")
-            self.param_syms.append(m)
+            param_syms_list.append(m)
             self.identified_params.append(i * 10)
             self.mass_syms.append(m)
 
             # first moment of mass
             p = f"c_{i}"  # symbol prefix
             syms = [symbols(p + "x"), symbols(p + "y"), symbols(p + "z")]
-            self.param_syms.extend(syms)
+            param_syms_list.extend(syms)
             self.identified_params.extend([i * 10 + 1, i * 10 + 2, i * 10 + 3])
 
             # 3x3 inertia tensor about link-frame (for link i)
@@ -949,7 +972,7 @@ class Model:
                 symbols(p + "yz"),
                 symbols(p + "zz"),
             ]
-            self.param_syms.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
+            param_syms_list.extend([syms[0], syms[1], syms[2], syms[4], syms[5], syms[8]])
 
             if not self.opt["identifyGravityParamsOnly"]:
                 self.identified_params.extend(
@@ -967,28 +990,28 @@ class Model:
             mp = self.num_model_params
             for i in range(0, self.num_dofs):
                 s = [symbols(f"Fc_{i}")]
-                self.param_syms.extend(s)
+                param_syms_list.extend(s)
                 self.friction_syms.extend(s)
                 self.identified_params.append(mp + i)
             if not self.opt["identifyGravityParamsOnly"]:
                 if self.opt["identifySymmetricVelFriction"]:
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv_{i}")]
-                        self.param_syms.extend(s)
+                        param_syms_list.extend(s)
                         self.friction_syms.extend(s)
                         self.identified_params.append(mp + self.num_dofs + i)
                 else:
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv+_{i}")]
-                        self.param_syms.extend(s)
+                        param_syms_list.extend(s)
                         self.friction_syms.extend(s)
                         self.identified_params.append(mp + self.num_dofs + i)
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv-_{i}")]
-                        self.param_syms.extend(s)
+                        param_syms_list.extend(s)
                         self.friction_syms.extend(s)
                         self.identified_params.append(mp + 2 * self.num_dofs + i)
-        self.param_syms = np.array(self.param_syms)
+        self.param_syms: np.ndarray = np.array(param_syms_list)
 
         ## get symbolic equations for base param dependencies
         # Each dependent parameter can be ignored (non-identifiable) or it can be
@@ -1011,7 +1034,7 @@ class Model:
         # find std parameters that have no effect on estimation (not single or contributing to base
         # equations)
         # TODO: also put this in regressor cache file
-        base_deps_syms = []  # type: List[sympy.Symbol]
+        base_deps_syms: list[Any] = []
         for i in range(self.base_deps.shape[0]):
             for s in self.base_deps[i].free_symbols:
                 if s not in base_deps_syms:
@@ -1035,7 +1058,7 @@ class Model:
 
             # use base column dependencies to get combined params of base regressor with
             # coontribution on each each link (a bit inexact I guess)
-            base_columns = list()  # type: List[int]
+            base_columns: list[int] = list()
             for k in range(i * 10, i * 10 + 9 + 1):
                 for j in range(0, self.num_base_params):
                     if self.param_syms[k] in self.base_deps[j].free_symbols:

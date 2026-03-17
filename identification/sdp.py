@@ -1,6 +1,12 @@
+from __future__ import annotations
+
 import os
 import sys
 import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from identifier import Identification
 
 import numpy as np
 import numpy.linalg as la
@@ -16,12 +22,11 @@ from identification import helpers, sdp_helpers
 
 
 class SDP:
-    def __init__(self, idf):
-        # type: (Identification) -> None
+    def __init__(self, idf: Identification) -> None:
         self.idf = idf
 
         # collect constraint flags for display
-        self.constr_per_param = {}  # type: Dict[int, List[str]]
+        self.constr_per_param: dict[int, list[str]] = {}
         for i in self.idf.model.identified_params:
             self.constr_per_param[i] = []
 
@@ -29,8 +34,7 @@ class SDP:
     def mrepl(m, repl):
         return m.applyfunc(lambda x: x.xreplace(repl))
 
-    def checkFeasibility(self, prime):
-        # type: (np._ArrayLike) -> bool
+    def checkFeasibility(self, prime: np.ndarray) -> bool:
         """check for a given parameter vector, e.g. a starting point, if it is within the LMI
         constraints"""
 
@@ -57,8 +61,7 @@ class SDP:
                     feasible = False
         return feasible
 
-    def initSDP_LMIs(self, idf, remove_nonid=True):
-        # type: (Identification, bool) -> None
+    def initSDP_LMIs(self, idf: Identification, remove_nonid: bool = True) -> None:
         """initialize LMI matrices to set physical consistency constraints for SDP solver
         based on Sousa, 2014 and corresponding code (https://github.com/cdsousa/IROS2013-Feas-Ident-WAM7)
         """
@@ -231,7 +234,7 @@ class SDP:
                                 self.constr_per_param[p].append("cA")
 
             if idf.opt["restrictCOMtoHull"]:
-                link_cuboid_hulls = {}  # type: Dict[str, Tuple[List, List, List]]
+                link_cuboid_hulls: dict[str, tuple] = {}
                 for i in range(start_link, idf.model.num_links):
                     if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         link_name = idf.model.linkNames[i]
@@ -303,8 +306,7 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Initializing LMIs took {t.interval:.3f} sec.")
 
-    def identifyFeasibleStandardParameters(self, idf):
-        # type: (Identification) -> None
+    def identifyFeasibleStandardParameters(self, idf: Identification) -> None:
         """use SDP optimization to solve constrained OLS to find globally optimal physically
         feasible std parameters (not necessarily unique). Based on code from Sousa, 2014
         """
@@ -412,7 +414,7 @@ class SDP:
             if idf.opt["verbose"]:
                 print("Add constraint LMIs")
             lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-            variables = [u] + list(delta)
+            variables = [u] + list(delta)  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
             objective_func = u
 
             # solve SDP
@@ -456,8 +458,7 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
-    def identifyFeasibleStandardParametersDirect(self, idf):
-        # type: (Identification) -> None
+    def identifyFeasibleStandardParametersDirect(self, idf: Identification) -> None:
         """use SDP optimzation to solve constrained OLS to find globally optimal physically
         feasible std parameters. Based on code from Sousa, 2014
         """
@@ -484,7 +485,7 @@ class SDP:
                 YStd = np.vstack(
                     (
                         YStd,
-                        (l * np.identity(idf.model.num_identified_params)[p_nid].T).T,
+                        (np.array(l) * np.identity(idf.model.num_identified_params)[p_nid].T).T,
                     )
                 )
                 tau = np.concatenate((tau, l * idf.model.xStdModel[p_nid]))
@@ -539,7 +540,7 @@ class SDP:
             if idf.opt["verbose"]:
                 print("Add constraint LMIs")
             lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-            variables = [u] + list(delta)
+            variables = [u] + list(delta)  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
 
             # solve SDP
             objective_func = u
@@ -574,8 +575,7 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
-    def identifyFeasibleBaseParameters(self, idf):
-        # type: (Identification) -> None
+    def identifyFeasibleBaseParameters(self, idf: Identification) -> None:
         """use SDP optimization to solve OLS to find physically feasible base parameters (i.e. for
         which a consistent std solution exists), based on code from github.com/cdsousa/wam7_dyn_ident
         """
@@ -610,7 +610,7 @@ class SDP:
             if idf.opt["useBasisProjection"]:
                 # determined through base matrix, which included other variables too
                 # (find first variable in eq, chosen as independent here)
-                delta_b_syms = []  # type: List[sympy.Symbol]
+                delta_b_syms: list[Any] = []
                 for i in range(idf.model.base_deps.shape[0]):
                     for s in idf.model.base_deps[i].free_symbols:
                         if s not in delta_b_syms:
@@ -627,10 +627,10 @@ class SDP:
             if idf.opt["useBasisProjection"]:
                 # determined from base eqns
                 delta_not_d = idf.model.base_deps[0].free_symbols
-                for e in idf.model.base_deps:
+                for e in list(idf.model.base_deps):  # type: ignore[arg-type]  # sympy Matrix stubs missing __iter__
                     delta_not_d = delta_not_d.union(e.free_symbols)
                 delta_d_syms = []
-                for s in delta:
+                for s in delta:  # type: ignore[attr-defined]  # sympy MutableDenseMatrix has no __iter__ in stubs
                     if s not in delta_not_d:
                         delta_d_syms.append(s)
                 delta_d = Matrix(delta_d_syms)
@@ -646,15 +646,15 @@ class SDP:
                 # correct is to properly transpose eqn base_n = a1*x1 + a2*x2 + ... +an*xn to
                 # 1*xi = a1*x1/ai + a2*x2/ai + ... + an*xn/ai - base_n/ai )
                 transposed_beta = Matrix([solve(beta[i], delta_b[i])[0] for i in range(len(beta))])
-                self.varchange_dict = dict(zip(delta_b, beta_symbs + transposed_beta))
+                self.varchange_dict = dict(zip(delta_b, beta_symbs + transposed_beta))  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
 
                 # add free vars to variables for optimization
-                for eq in transposed_beta:
+                for eq in list(transposed_beta):  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
                     for s in eq.free_symbols:
-                        if s not in delta_d:
+                        if s not in delta_d:  # type: ignore[operator]
                             delta_d = delta_d.col_join(Matrix([s]))
             else:
-                self.varchange_dict = dict(zip(delta_b, beta_symbs - (beta - delta_b)))
+                self.varchange_dict = dict(zip(delta_b, beta_symbs - (beta - delta_b)))  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
 
             DB_blocks = [self.mrepl(Di, self.varchange_dict) for Di in self.D_blocks]
             self.DB_LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in DB_blocks])
@@ -682,7 +682,7 @@ class SDP:
                 print("Add constraint LMIs")
 
             lmis = [LMI_PSD(U_rho)] + self.DB_LMIs_marg
-            variables = [u] + list(beta_symbs) + list(delta_d)
+            variables = [u] + list(beta_symbs) + list(delta_d)  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
 
             # solve SDP
             objective_func = u
@@ -715,8 +715,7 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
-    def findFeasibleStdFromFeasibleBase(self, idf, xBase):
-        # type: (Identification, np._ArrayLike) -> None
+    def findFeasibleStdFromFeasibleBase(self, idf: Identification, xBase: np.ndarray) -> None:
         """find a std feasible solution for feasible base solution (exists by definition) while
         minimizing param distance to a-priori parameters
         """
@@ -747,7 +746,7 @@ class SDP:
             U_rho = U_rho.as_explicit()
 
             lmis = [LMI_PSD(U_rho)] + self.LMIs_marg
-            variables = [u] + list(delta)
+            variables = [u] + list(delta)  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
             objective_func = u  # 'find' problem
 
             xStd = np.delete(idf.model.xStd, self.delete_cols)
@@ -789,8 +788,7 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
 
-    def findFeasibleStdFromStd(self, idf, xStd):
-        # type: (Identification, np._ArrayLike) -> (np._ArrayLike)
+    def findFeasibleStdFromStd(self, idf: Identification, xStd: np.ndarray) -> np.ndarray:
         """find closest feasible std solution for some std parameters (increases error)"""
 
         idable_params = sorted(list(set(idf.model.identified_params).difference(self.delete_cols)))
@@ -804,7 +802,7 @@ class SDP:
         U_delta = BlockMatrix([[Matrix([u]), (xStd - delta).T], [xStd - delta, I(len(idable_params))]])
         U_delta = U_delta.as_explicit()
         lmis = [LMI_PSD(U_delta)] + self.LMIs_marg
-        variables = [u] + list(delta)
+        variables = [u] + list(delta)  # type: ignore[call-overload]  # sympy Matrix stubs missing __iter__
         objective_func = u
 
         prime = idf.model.xStdModel[idable_params]

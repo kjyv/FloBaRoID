@@ -12,6 +12,7 @@ class Quaternion:
         q_prime = Quaternion.prod(Quaternion.prod(q, qv), qconj)
         return q_prime[:3]
 
+    @staticmethod
     def prod(q1, q2):
         """Perform the Hamiltonian product of two quaternions. Note that this product
         is non-commutative -- this function returns q1 x q2."""

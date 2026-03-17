@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from identification.model import Model
+    from identifier import Identification
+
 import matplotlib.pyplot as plt
 import numpy as np
 from idyntree import bindings as iDynTree
@@ -11,9 +20,16 @@ from identification.helpers import URDFHelpers
 class PostureOptimizer(Optimizer):
     """find angles of n static positions for identification of gravity parameters"""
 
-    def __init__(self, config, idf, model, simulation_func, world=None):
-        # type: (Dict[str, Any], Identification, Model, Callable[[Dict, Trajectory, Model, np._ArrayLike], Tuple[Dict, Data]], str) -> None
+    def __init__(
+        self,
+        config: dict[str, Any],
+        idf: Identification,
+        model: Model,
+        simulation_func: Callable,
+        world: str | None = None,
+    ) -> None:
         super().__init__(config, idf, model, simulation_func, world=world)
+        self.sim_func: Callable = simulation_func  # narrow: always non-None in this subclass
 
         self.idf = idf
 
@@ -34,7 +50,7 @@ class PostureOptimizer(Optimizer):
         self.num_constraints = self.num_postures * (eff_links * (eff_links - 1) // 2)
 
         # get neighbors
-        nb_pairs = []  # type: List[Tuple]
+        nb_pairs: list[tuple] = []
         for link in self.neighbors:
             if link in self.config["ignoreLinksForCollision"]:
                 continue
@@ -150,7 +166,7 @@ class PostureOptimizer(Optimizer):
         param_error = self.idf.xStdReal[id_grav] - self.idf.model.xStd[id_grav_id]
         """
         param_error = self.idf.xBaseReal - self.idf.model.xBase
-        f = np.linalg.norm(param_error) ** 2  # + np.std(param_error)
+        f = float(np.linalg.norm(param_error) ** 2)  # + np.std(param_error)
 
         c = self.testConstraints(g)
         if (
@@ -191,8 +207,7 @@ class PostureOptimizer(Optimizer):
         funcs = {"f": f, "g": np.array(g)}
         return funcs, bool(fail)
 
-    def addVarsAndConstraints(self, opt_prob):
-        # type: (pyoptsparse.Optimization) -> None
+    def addVarsAndConstraints(self, opt_prob: Any) -> None:
         """Add variables, define bounds.
         variable type: 'c' - continuous, 'i' - integer, 'd' - discrete (choices)
         constraint types: 'i' - inequality, 'e' - equality
@@ -237,10 +252,9 @@ class PostureOptimizer(Optimizer):
         # for each link mesh distance to each other link, should be >0
         opt_prob.addConGroup("g", self.num_constraints, lower=0.0, upper=np.inf)
 
-    def vecToParam(self, x):
-        # type: (np._ArrayLike[float]) -> List[Dict[str, Any]]
+    def vecToParam(self, x: np.ndarray) -> list[dict[str, Any]]:
         # put solution vector into form for trajectory class
-        angles = []  # type: List[Dict[str, Any]]     # matrix angles for each posture
+        angles: list[dict[str, Any]] = []  # matrix angles for each posture
         for n in range(self.num_postures):
             angles.append(
                 {
@@ -250,8 +264,7 @@ class PostureOptimizer(Optimizer):
             )
         return angles
 
-    def optimizeTrajectory(self):
-        # type: () -> FixedPositionTrajectory
+    def optimizeTrajectory(self) -> FixedPositionTrajectory:
         # use non-linear optimization to find parameters
 
         ## describe optimization problem with pyOptSparse classes

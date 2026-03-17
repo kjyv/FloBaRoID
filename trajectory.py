@@ -8,10 +8,10 @@ import yaml
 from idyntree import bindings as iDynTree
 
 from excitation.postureOptimizer import PostureOptimizer
-from excitation.trajectoryGenerator import PulsedTrajectory, simulateTrajectory
+from excitation.trajectoryGenerator import FixedPositionTrajectory, PulsedTrajectory, simulateTrajectory
 from excitation.trajectoryOptimizer import TrajectoryOptimizer
 from identification.model import Model
-from identify import Identification
+from identifier import Identification
 
 parser = argparse.ArgumentParser(description="Generate excitation trajectories, save to <filename>.")
 parser.add_argument(
@@ -70,7 +70,7 @@ def main():
                 regressor_file=None,
                 validation_file=None,
             )
-            trajectoryOptimizer = PostureOptimizer(
+            trajectoryOptimizer: PostureOptimizer | TrajectoryOptimizer = PostureOptimizer(
                 config, idf, model, simulation_func=simulateTrajectory, world=args.world
             )
             config["identifyGravityParamsOnly"] = old_gravity
@@ -103,9 +103,13 @@ def main():
 
     if config["useStaticTrajectories"]:
         # always saved with rad angles
-        np.savez(traj_file, static=True, angles=trajectory.angles)
+        if not isinstance(trajectory, FixedPositionTrajectory) or trajectory.angles is None:
+            raise RuntimeError("Expected initialized FixedPositionTrajectory for static trajectories")
+        np.savez(traj_file, static=True, angles=np.array(trajectory.angles, dtype=object))
     else:
         # TODO: remove degrees option
+        if not isinstance(trajectory, PulsedTrajectory):
+            raise RuntimeError("Expected PulsedTrajectory for non-static trajectories")
         np.savez(
             traj_file,
             use_deg=trajectory.use_deg,

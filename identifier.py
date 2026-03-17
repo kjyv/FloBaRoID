@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-from typing import cast
+from typing import Any, cast
 
 # plotting
 import matplotlib.pyplot as plt
@@ -20,8 +20,6 @@ from idyntree import bindings as iDynTree
 import identification.helpers as helpers
 from identification import sdp
 from identification.data import Data
-
-# submodules
 from identification.model import Model
 from identification.output import OutputConsole
 
@@ -43,14 +41,13 @@ np.set_printoptions(linewidth=160)
 class Identification:
     def __init__(
         self,
-        opt,
-        urdf_file,
-        urdf_file_real,
-        measurements_files,
-        regressor_file,
-        validation_file,
-    ):
-        # type: (Dict, str, str, str, str, str) -> None
+        opt: dict,
+        urdf_file: str,
+        urdf_file_real: str | None,
+        measurements_files: str | list | None,
+        regressor_file: str | None,
+        validation_file: str | None,
+    ) -> None:
         self.opt = opt
 
         # some additional options (experiments)
@@ -89,7 +86,7 @@ class Identification:
 
             self.nlopt = NLOPT(self)
 
-        self.tauEstimated = None  # type: np._ArrayLike
+        self.tauEstimated: np.ndarray = np.array([])
         self.res_error = 100  # last residual error in percent
 
         self.urdf_file_real = urdf_file_real
@@ -115,8 +112,7 @@ class Identification:
         progress_inst = helpers.Progress(opt)
         self.progress = progress_inst.progress
 
-    def estimateRegressorTorques(self, estimateWith=None, print_stats=False):
-        # type: (str, bool) -> None
+    def estimateRegressorTorques(self, estimateWith: str | None = None, print_stats: bool = False) -> None:
         """get torque estimations using regressor, prepare for plotting"""
 
         if not estimateWith:
@@ -206,6 +202,8 @@ class Identification:
 
         import os
 
+        if self.validation_file is None:
+            return
         v_data = np.load(self.validation_file)
 
         if self.opt["estimateWith"] == "urdf":
@@ -231,14 +229,14 @@ class Identification:
         old_skip = self.opt["skipSamples"]
         self.opt["skipSamples"] = 8
 
-        self.tauEstimatedValidation = None  # type: np._ArrayLike
+        self.tauEstimatedValidation: np.ndarray = np.array([])
         for m_idx in self.progress(range(0, v_data["positions"].shape[0], self.opt["skipSamples"] + 1)):
             if self.opt["useRBDL"]:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx, None, params)
             else:
                 torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, val_kinDyn, params)
 
-            if self.tauEstimatedValidation is None:
+            if self.tauEstimatedValidation.size == 0:
                 self.tauEstimatedValidation = torques
             else:
                 self.tauEstimatedValidation = np.vstack((self.tauEstimatedValidation, torques))
@@ -280,15 +278,13 @@ class Identification:
         )
         print(f"NRMS validation error: {self.val_nrms}%")
 
-    def getBaseParamsFromParamError(self):
-        # type: () -> None
+    def getBaseParamsFromParamError(self) -> None:
         self.model.xBase += self.model.xBaseModel  # both param vecs link relative linearized
 
         if self.opt["useEssentialParams"]:
             self.xBase_essential[self.baseEssentialIdx] += self.model.xBaseModel[self.baseEssentialIdx]
 
-    def findStdFromBaseParameters(self):
-        # type: () -> None
+    def findStdFromBaseParameters(self) -> None:
         """find std parameter from base parameters (simply projection method)"""
         # Note: assumes that xBase is still in error form if using a priori
         # i.e. don't call after getBaseParamsFromParamError
@@ -303,8 +299,7 @@ class Identification:
         if self.opt["useAPriori"]:
             self.model.xStd += self.model.xStdModel[self.model.identified_params]
 
-    def getStdDevForParams(self):
-        # type: () -> (np._ArrayLike[float])
+    def getStdDevForParams(self) -> np.ndarray:
         # this might not be working correctly
         if self.opt["useAPriori"]:
             tauDiff = self.model.tauMeasured - self.tauEstimated
@@ -356,8 +351,8 @@ class Identification:
             b_c = 0
 
             # list of param indices to keep the original indices when deleting columns
-            base_idx = list(range(0, self.model.num_base_params))
-            not_essential_idx = list()  # type: List[int]
+            base_idx: list[int] | np.ndarray = list(range(0, self.model.num_base_params))
+            not_essential_idx: list[int] = list()
             ratio = 0
 
             # get initial errors of estimation
@@ -504,12 +499,12 @@ class Identification:
         useCADWeighting = 0  # usually produces exact same result, but might be good for some tests
         if self.opt["useDependents"]:
             # also get the ones that are linearly dependent on them -> base params
-            dependents = []  # type: List[int]
+            dependents: list[int] = []
             # to_delete = []
             for i in range(0, self.model.base_deps.shape[0]):
                 if i in self.baseEssentialIdx:
                     for s in self.model.base_deps[i].free_symbols:
-                        idx = self.model.param_syms.index(s)
+                        idx = int(np.where(self.model.param_syms == s)[0][0])
                         if idx not in dependents:
                             dependents.append(idx)
 
@@ -578,8 +573,9 @@ class Identification:
             # else:
             self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
-    def identifyBaseParameters(self, YBase=None, tau=None, id_only=False):
-        # type: (np._ArrayLike, np._ArrayLike, bool) -> None
+    def identifyBaseParameters(
+        self, YBase: np.ndarray | None = None, tau: np.ndarray | None = None, id_only: bool = False
+    ) -> None:
         """use previously computed regressors and identify base parameter vector using ordinary or
         weighted least squares."""
 
@@ -848,8 +844,7 @@ class Identification:
                     if self.opt["useAPriori"]:
                         self.getBaseParamsFromParamError()
 
-    def plot(self, text=None):
-        # type: (str) -> None
+    def plot(self, text: str | None = None) -> None:
         """Create state and torque plots."""
 
         if self.opt["verbose"]:
@@ -884,7 +879,7 @@ class Identification:
             torque_labels = self.model.baseNames + self.model.jointNames
 
         if self.opt["plotPerJoint"]:
-            datasets = []
+            datasets: list[Any] = []
             # plot base dynamics
             if self.opt["floatingBase"]:
                 if self.opt["plotBaseDynamics"]:
@@ -1198,7 +1193,7 @@ def main():
         def flush(self):
             self.terminal.flush()
 
-    sys.stdout = Logger()  # type: ignore
+    sys.stdout = Logger()  # type: ignore[assignment]  # Logger is a partial TextIO implementation for logging
     logger = sys.stdout
 
     # for ipython, reset this with

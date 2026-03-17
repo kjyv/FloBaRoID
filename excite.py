@@ -50,7 +50,7 @@ config["num_dofs"] = len(config["jointNames"])
 # import os
 # sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
-traj_data = {}  # type: Dict[str, np._ArrayLike]   # hold some global data vars in here
+traj_data: dict[str, np.ndarray] = {}  # hold some global data vars in here
 
 
 def main():
@@ -63,6 +63,7 @@ def main():
     try:
         # replay optimized trajectory if found
         tf = np.load(traj_file, encoding="latin1")
+        trajectory: FixedPositionTrajectory | PulsedTrajectory
         if "static" in tf and tf["static"]:
             # static posture file
             trajectory = FixedPositionTrajectory(config)

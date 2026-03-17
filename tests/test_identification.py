@@ -142,7 +142,7 @@ def _cleanup_regressor_cache():
 
 def test_identification_ols(synth_data_path):
     """Test unconstrained OLS identification: base params and torque prediction."""
-    from identify import Identification
+    from identifier import Identification
 
     config = _base_config()
     config["constrainToConsistent"] = 0
@@ -170,7 +170,7 @@ def test_identification_ols(synth_data_path):
 
 def test_identification_sdp(synth_data_path):
     """Test SDP-constrained identification: physical consistency and torque prediction."""
-    from identify import Identification
+    from identifier import Identification
 
     config = _base_config()
     config["constrainToConsistent"] = 1

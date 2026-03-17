@@ -13,6 +13,7 @@
   and the code describes what is happening)
 - Don't remove "TODO:" comments unless you implemeted or fixed the thing mentioned
 - Always use type annotations for better code clarity; don't use Union or Optional anymore
+- Don't attempt to fix mypy errors using `# type: ignore`, fix them properly
 - Don't put import or exports in __init__.py files without asking and getting confirmation
 - Always put imports at the top of the file, never within methods
 - When you need e.g. a company name for a plant, don't split the plant_slug, always get the

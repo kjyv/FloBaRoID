@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
-from __future__ import division
-from __future__ import print_function
-from __future__ import absolute_import
-from builtins import input
-from builtins import zip
-from builtins import range
-from builtins import object
 import sys
 from typing import cast, Dict, List, Iterable
 

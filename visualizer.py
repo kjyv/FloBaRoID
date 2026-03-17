@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
-from __future__ import division
-from __future__ import print_function
-from builtins import range
-from builtins import object
 from typing import Tuple, List, Dict, Callable, Any
 import math
 import collections

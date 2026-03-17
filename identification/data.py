@@ -1,17 +1,13 @@
-from typing import List, Dict, Any
-
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
-from scipy import signal
-from identification.helpers import Timer
 from idyntree import bindings as iDynTree
 
-import matplotlib.pyplot as plt
-from IPython import embed
+from identification.helpers import Timer
 
 
-class Data(object):
+class Data:
     def __init__(self, opt):
         # type: (Dict[str, Any]) -> None
         self.opt = opt
@@ -35,11 +31,7 @@ class Data(object):
         self.num_loaded_samples = self.samples["positions"].shape[0]
         self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
         if self.opt["verbose"]:
-            print(
-                "loaded {} data samples (using {})".format(
-                    self.num_loaded_samples, self.num_used_samples
-                )
-            )
+            print(f"loaded {self.num_loaded_samples} data samples (using {self.num_used_samples})")
         self.inited = True
 
     def init_from_files(self, measurements_files):
@@ -66,9 +58,7 @@ class Data(object):
                                     # contacts
                                     contact_dict = {}
                                     for c in m[k].item(0).keys():
-                                        if (
-                                            c != "dummy_sim"
-                                        ):  # could be removed but is here for compatibility
+                                        if c != "dummy_sim":  # could be removed but is here for compatibility
                                             contact_dict[c] = m[k].item(0)[c][so:, :]
                                     self.measurements[k] = np.array(contact_dict)
                                 else:
@@ -96,25 +86,15 @@ class Data(object):
                                     mv[k] = m[k] - m[k][so] + (m[k][so + 1] - m[k][so])
                                     # add after last timestamp of previous data
                                     mv[k] = mv[k] + self.measurements[k][-1]
-                                self.measurements[k] = np.concatenate(
-                                    (self.measurements[k], mv[k][so:]), axis=0
-                                )
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][so:]), axis=0)
                             else:
-                                self.measurements[k] = np.concatenate(
-                                    (self.measurements[k], mv[k][so:, :]), axis=0
-                                )
+                                self.measurements[k] = np.concatenate((self.measurements[k], mv[k][so:, :]), axis=0)
                     m.close()
 
             self.num_loaded_samples = self.measurements["positions"].shape[0]
-            self.num_used_samples = self.num_loaded_samples // (
-                self.opt["skipSamples"] + 1
-            )
+            self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
             if self.opt["verbose"]:
-                print(
-                    "loaded {} measurement samples (using {})".format(
-                        self.num_loaded_samples, self.num_used_samples
-                    )
-                )
+                print(f"loaded {self.num_loaded_samples} measurement samples (using {self.num_used_samples})")
 
             # create data that identification is working on (subset of all measurements)
             self.samples = {}
@@ -126,18 +106,14 @@ class Data(object):
                     if self.measurements[k].ndim == 0:
                         self.samples[k] = self.measurements[k]
                     elif self.measurements[k].ndim == 1:
-                        self.samples[k] = self.measurements[k][
-                            self.block_pos : self.block_pos + self.opt["blockSize"]
-                        ]
+                        self.samples[k] = self.measurements[k][self.block_pos : self.block_pos + self.opt["blockSize"]]
                     else:
                         self.samples[k] = self.measurements[k][
                             self.block_pos : self.block_pos + self.opt["blockSize"], :
                         ]
 
                 self.num_selected_samples = self.samples["positions"].shape[0]
-                self.num_used_samples = self.num_selected_samples // (
-                    self.opt["skipSamples"] + 1
-                )
+                self.num_used_samples = self.num_selected_samples // (self.opt["skipSamples"] + 1)
             else:
                 # simply use all data
                 self.samples = self.measurements
@@ -145,7 +121,7 @@ class Data(object):
             # in samples dict
 
         if self.opt["showTiming"]:
-            print("(loading samples from file took %.03f sec.)" % t.interval)
+            print(f"(loading samples from file took {t.interval:.3f} sec.)")
 
         self.inited = True
 
@@ -162,13 +138,11 @@ class Data(object):
 
     def updateNumSamples(self):
         self.num_selected_samples = self.samples["positions"].shape[0]
-        self.num_used_samples = self.num_selected_samples // (
-            self.opt["skipSamples"] + 1
-        )
+        self.num_used_samples = self.num_selected_samples // (self.opt["skipSamples"] + 1)
 
     def removeLastSampleBlock(self):
         if self.opt["verbose"]:
-            print("removing block starting at {}".format(self.block_pos))
+            print(f"removing block starting at {self.block_pos}")
         for k in self.measurements.keys():
             self.samples[k] = np.delete(
                 self.samples[k],
@@ -182,11 +156,7 @@ class Data(object):
             )
         self.updateNumSamples()
         if self.opt["verbose"]:
-            print(
-                "we now have {} samples selected (using {})".format(
-                    self.num_selected_samples, self.num_used_samples
-                )
-            )
+            print(f"we now have {self.num_selected_samples} samples selected (using {self.num_used_samples})")
 
     def getNextSampleBlock(self):
         """fill samples with next measurements block"""
@@ -198,24 +168,16 @@ class Data(object):
             self.opt["blockSize"] = self.num_loaded_samples - self.block_pos
 
         if self.opt["verbose"]:
-            print(
-                "getting next block: {}/{}".format(
-                    self.block_pos, self.num_loaded_samples
-                )
-            )
+            print(f"getting next block: {self.block_pos}/{self.num_loaded_samples}")
 
         # TODO: add contacts into this logic as well
         for k in self.measurements.keys():
             if self.measurements[k].ndim == 0:
                 mv = self.measurements[k]
             elif self.measurements[k].ndim == 1:
-                mv = self.measurements[k][
-                    self.block_pos : self.block_pos + self.opt["blockSize"]
-                ]
+                mv = self.measurements[k][self.block_pos : self.block_pos + self.opt["blockSize"]]
             else:
-                mv = self.measurements[k][
-                    self.block_pos : self.block_pos + self.opt["blockSize"], :
-                ]
+                mv = self.measurements[k][self.block_pos : self.block_pos + self.opt["blockSize"], :]
             self.samples[k] = mv
 
         self.updateNumSamples()
@@ -267,9 +229,7 @@ class Data(object):
         new_condition_number = np.max(p_sigma_x)/np.min(p_sigma_x)
         """
 
-        self.seenBlocks.append(
-            (self.block_pos, self.opt["blockSize"], new_condition_number, linkConds)
-        )
+        self.seenBlocks.append((self.block_pos, self.opt["blockSize"], new_condition_number, linkConds))
 
     def selectBlocks(self):
         """of all blocks loaded, select only those that create minimal condition number (cf. Venture, 2010)"""
@@ -286,11 +246,11 @@ class Data(object):
             (b, bs, cond, linkConds) = block
             if cond > perc_cond:
                 if self.opt["verbose"]:
-                    print("not using block starting at {} (cond {})".format(b, cond))
+                    print(f"not using block starting at {b} (cond {cond})")
                 self.unusedBlocks.append(block)
             else:
                 if self.opt["verbose"]:
-                    print("using block starting at {} (cond {})".format(b, cond))
+                    print(f"using block starting at {b} (cond {cond})")
                 self.usedBlocks.append(block)
 
                 # create variance matrix
@@ -322,16 +282,13 @@ class Data(object):
                 to_delete.append(v_idx[sort_idx][i])
                 i += 1
             # remove first if two are too close
-            elif (
-                np.abs(variances[sort_idx][i - 1] - variances[sort_idx][i])
-                < np.abs(variances[sort_idx][i]) * dist
-            ):
+            elif np.abs(variances[sort_idx][i - 1] - variances[sort_idx][i]) < np.abs(variances[sort_idx][i]) * dist:
                 to_delete.append(v_idx[sort_idx][i - 1])
             i += 1
 
         for d in np.sort(to_delete)[::-1]:
             if self.opt["verbose"]:
-                print("delete block {}".format(self.usedBlocks[d][0]))
+                print(f"delete block {self.usedBlocks[d][0]}")
             del self.usedBlocks[d]
 
     def assembleSelectedBlocks(self):
@@ -358,9 +315,7 @@ class Data(object):
                 elif self.measurements[k].ndim == 1:
                     mv = self.measurements[k][b : b + bs]
                     # fix time offsets
-                    mv = (
-                        mv - mv[0] + (mv[1] - mv[0])
-                    )  # let values start with first time diff
+                    mv = mv - mv[0] + (mv[1] - mv[0])  # let values start with first time diff
                     mv = mv + self.samples[k][-1]  # add after previous times
                     self.samples[k] = np.concatenate((self.samples[k], mv), axis=0)
                 else:
@@ -384,14 +339,12 @@ class Data(object):
                 if isinstance(self.samples[k].item(0), dict):
                     # contacts
                     for c in self.samples[k].item(0).keys():
-                        self.samples[k].item(0)[c] = np.delete(
-                            self.samples[k].item(0)[c], to_delete, 0
-                        )
+                        self.samples[k].item(0)[c] = np.delete(self.samples[k].item(0)[c], to_delete, 0)
             else:
                 self.samples[k] = np.delete(self.samples[k], to_delete, 0)
         self.updateNumSamples()
         if self.opt["verbose"]:
-            print("remaining samples: {}".format(self.num_used_samples))
+            print(f"remaining samples: {self.num_used_samples}")
 
     def preprocess(
         self,
@@ -437,12 +390,7 @@ class Data(object):
                 diff[1] = (array[2] - array[0]) / (2 * div)
                 for i in range(2, size - 2):
                     div = times[i] - times[i - 1]
-                    diff[i] = (
-                        -array[i + 2]
-                        + 8 * array[i + 1]
-                        - 8 * array[i - 1]
-                        + array[i - 2]
-                    ) / (12 * div)
+                    diff[i] = (-array[i + 2] + 8 * array[i + 1] - 8 * array[i - 1] + array[i - 2]) / (12 * div)
                 diff[size - 2] = (array[size - 1] - array[size - 3]) / (2 * div)
                 diff[size - 1] = (array[size - 1] - array[size - 2]) / div
             else:
@@ -565,12 +513,8 @@ class Data(object):
             IMUlinAcc_orig = IMUlinAcc.copy()
             IMUrotVel_orig = IMUrotVel.copy()
             for j in range(0, 3):
-                IMUlinAcc[:, j] = sp.signal.medfilt(
-                    IMUlinAcc_orig[:, j], median_kernel_size
-                )
-                IMUrotVel[:, j] = sp.signal.medfilt(
-                    IMUrotVel_orig[:, j], median_kernel_size
-                )
+                IMUlinAcc[:, j] = sp.signal.medfilt(IMUlinAcc_orig[:, j], median_kernel_size)
+                IMUrotVel[:, j] = sp.signal.medfilt(IMUrotVel_orig[:, j], median_kernel_size)
 
             # plot_filter(b_8, a_8)
 
@@ -597,11 +541,7 @@ class Data(object):
 
                 grav_norm = np.mean(la.norm(IMUlinAccWorld, axis=1))
                 if grav_norm < 9.81 or grav_norm > 9.82:
-                    print(
-                        "Warning: mean base acceleration is different than gravity ({})!".format(
-                            grav_norm
-                        )
-                    )
+                    print(f"Warning: mean base acceleration is different than gravity ({grav_norm})!")
                     # scale up/down
                     # IMUlinAccWorld *= 9.81/grav_norm
 
@@ -617,10 +557,7 @@ class Data(object):
                     for j in range(0, 3):
                         # only start integrating when acceleration is small
                         for s in range(0, IMUlinAccWorld.shape[0]):
-                            if (
-                                la.norm(IMUlinAccWorld[s : s + 10, j])
-                                < self.opt["zeroAccThresh"]
-                            ):
+                            if la.norm(IMUlinAccWorld[s : s + 10, j]) < self.opt["zeroAccThresh"]:
                                 start = np.max((s, start))
                                 break
 
@@ -639,12 +576,8 @@ class Data(object):
 
                 # integrate linear acceleration to get velocity
                 for j in range(0, 3):
-                    IMUlinVel[:, j] = sp.integrate.cumtrapz(
-                        IMUlinAcc[:, j], T, initial=0
-                    )
-                    IMUlinVel[:, j] -= np.mean(
-                        IMUlinVel[:, j]
-                    )  # indefinite integral, better constant correction?
+                    IMUlinVel[:, j] = sp.integrate.cumtrapz(IMUlinAcc[:, j], T, initial=0)
+                    IMUlinVel[:, j] -= np.mean(IMUlinVel[:, j])  # indefinite integral, better constant correction?
                     # IMUlinVel[j, :] = R.T.dot(IMUlinVel[j, :])
 
             # get rotational acceleration as simple derivative of velocity

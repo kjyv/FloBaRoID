@@ -1,11 +1,8 @@
-from typing import List, Tuple, Dict
-import sys
 import random
+import sys
 
-import numpy as np
-import numpy.linalg as la
-import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 
 try:
     plt.style.use("seaborn-v0_8-pastel")
@@ -32,8 +29,8 @@ def plotter(config, data=None, filename=None):
     fig = plt.figure(1)
     fig.clear()
     if False:
-        from random import sample
         from itertools import permutations
+        from random import sample
 
         # get a random color wheel
         Nlines = 200
@@ -55,9 +52,7 @@ def plotter(config, data=None, filename=None):
 
         from palettable.tableau import Tableau_10, Tableau_20
 
-        colors += (
-            Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
-        )
+        colors += Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
 
     if not data:
         # reload measurements from this or last run (if run dry)
@@ -90,13 +85,13 @@ def plotter(config, data=None, filename=None):
         num_samples = data["positions"].shape[0]
 
     if config["verbose"]:
-        print("loaded {} measurement samples".format(num_samples))
+        print(f"loaded {num_samples} measurement samples")
 
     if "plot_targets" in config and config["plot_targets"]:
         print("tracking error per joint:")
         for i in range(0, config["num_dofs"]):
             sse = np.sum((Q[:, i] - Q_t[:, i]) ** 2)
-            print("joint {}: {}".format(i, sse))
+            print(f"joint {i}: {sse}")
 
     # print("histogram of time diffs")
     # dT = np.diff(T)
@@ -166,19 +161,13 @@ def plotter(config, data=None, filename=None):
         for d_i in range(0, len(dat)):
             if len(dat[d_i].shape) > 1:
                 for i in range(0, config["num_dofs"]):
-                    l = (
-                        config["jointNames"][i] if d_i == 0 else ""
-                    )  # only put joint names in the legend once
+                    l = config["jointNames"][i] if d_i == 0 else ""  # only put joint names in the legend once
                     labels.append(l)
-                    line = plt.plot(
-                        T, dat[d_i][:, i], color=colors[i], alpha=1 - (d_i / 2.0)
-                    )
+                    line = plt.plot(T, dat[d_i][:, i], color=colors[i], alpha=1 - (d_i / 2.0))
                     lines.append(line[0])
             else:
                 # dat vector
-                plt.plot(
-                    T, dat[d_i], label=title, color=colors[0], alpha=1 - (d_i / 2.0)
-                )
+                plt.plot(T, dat[d_i], label=title, color=colors[0], alpha=1 - (d_i / 2.0))
         d += 1
     leg = plt.figlegend(lines, labels, "upper right", fancybox=True, fontsize=10)
     leg.draggable()
@@ -189,7 +178,7 @@ def plotter(config, data=None, filename=None):
     plt.show()
 
 
-class Optimizer(object):
+class Optimizer:
     """base class for different optimizers"""
 
     def __init__(self, config, idf, model, simulation_func, world=None):
@@ -232,8 +221,7 @@ class Optimizer(object):
             link_name = self.model.linkNames[i]
             box, pos, rot = idf.urdfHelpers.getBoundingBox(
                 input_urdf=self.model.urdf_file,
-                old_com=self.model.xStdModel[i * 10 + 1 : i * 10 + 4]
-                / self.model.xStdModel[i * 10],
+                old_com=self.model.xStdModel[i * 10 + 1 : i * 10 + 4] / self.model.xStdModel[i * 10],
                 link_name=link_name,
                 scaling=False,
             )
@@ -244,7 +232,7 @@ class Optimizer(object):
         if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
-                print("World links: {}".format(self.world_links))
+                print(f"World links: {self.world_links}")
             for link_name in self.world_links:
                 box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf=world,
@@ -256,17 +244,9 @@ class Optimizer(object):
                 if link_name not in self.link_cuboid_hulls:
                     self.link_cuboid_hulls[link_name] = [box, pos, rot]
                 else:
-                    print(
-                        Fore.RED
-                        + "Warning: link {} declared in model and world file!".format(
-                            link_name
-                        )
-                        + Fore.RESET
-                    )
+                    print(Fore.RED + f"Warning: link {link_name} declared in model and world file!" + Fore.RESET)
 
-        self.world_boxes = {
-            link: self.link_cuboid_hulls[link] for link in self.world_links
-        }
+        self.world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
 
     def testBounds(self, x):
         # type: (np._ArrayLike) -> bool
@@ -344,7 +324,7 @@ class Optimizer(object):
 
         if distance < 0:
             if self.config["verbose"] > 1:
-                print("Collision of {} and {}".format(l0_name, l1_name))
+                print(f"Collision of {l0_name} and {l1_name}")
 
             # get proper collision and depth since optimization should also know how much constraint is violated
             cr = fcl.CollisionRequest()
@@ -363,26 +343,17 @@ class Optimizer(object):
             from visualizer import Visualizer
 
             self.visualizer = Visualizer(self.config)
-            self.visualizer.loadMeshes(
-                self.model.urdf_file, self.model.linkNames, self.idf.urdfHelpers
-            )
+            self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, self.idf.urdfHelpers)
 
             # set draw method for visualizer. This taps into local variables here, a bit unclean...
             def draw_model():
                 if self.trajectory:
                     # get data of trajectory
-                    self.visualizer.trajectory.setTime(
-                        self.visualizer.display_index / self.visualizer.fps
-                    )
-                    q0 = [
-                        self.visualizer.trajectory.getAngle(d)
-                        for d in range(self.num_dofs)
-                    ]
+                    self.visualizer.trajectory.setTime(self.visualizer.display_index / self.visualizer.fps)
+                    q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.num_dofs)]
                 else:
                     p_id = self.visualizer.display_index
-                    q0 = self.visualizer.angles[
-                        p_id * self.num_dofs : (p_id + 1) * self.num_dofs
-                    ]
+                    q0 = self.visualizer.angles[p_id * self.num_dofs : (p_id + 1) * self.num_dofs]
 
                 q = iDynTree.VectorDynSize.FromPython(q0)
                 dq = iDynTree.VectorDynSize.FromPython([0.0] * self.num_dofs)
@@ -411,10 +382,8 @@ class Optimizer(object):
         """show visualizer for joint trajectory t"""
         if self.config["showModelVisualization"] and self.mpi_rank == 0:  # and c:
             self.visualizer.setModelTrajectory(t)
-            freq = self.config["excitationFrequency"]
-            self.visualizer.display_max = (
-                t.getPeriodLength() * self.visualizer.fps
-            )  # length of trajectory
+            self.config["excitationFrequency"]
+            self.visualizer.display_max = t.getPeriodLength() * self.visualizer.fps  # length of trajectory
             self.visualizer.trajectory = t
             self.visualizer.playable = True
             self.visualizer.event_callback()
@@ -506,7 +475,7 @@ class Optimizer(object):
                     other_best_f, other_best_sol, rank = received_objs[proc]
 
                     if other_best_f < self.last_best_f:
-                        print("received better solution from {}".format(rank))
+                        print(f"received better solution from {rank}")
                         self.last_best_f = other_best_f
                         self.last_best_sol = other_best_sol
 
@@ -514,7 +483,7 @@ class Optimizer(object):
         # type: (pyoptsparse.Optimization) -> np._ArrayLike[float]
         """call global followed by local optimizer, return solution"""
 
-        from pyoptsparse import SLSQP, ALPSO, NSGA2, PSQP, IPOPT
+        from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP
 
         if self.config["useGlobalOptimization"]:
             ### global optimization
@@ -524,31 +493,19 @@ class Optimizer(object):
                 if parallel:
                     opt.setOption("parallelType", "POA")
                 if self.config["globalOptSize"] % 4:
-                    raise IOError("globalOptSize needs to be a multiple of 4 for NSGA2")
-                opt.setOption(
-                    "PopSize", self.config["globalOptSize"]
-                )  # Population Size (a Multiple of 4)
-                opt.setOption(
-                    "maxGen", self.config["globalOptIterations"]
-                )  # Maximum Number of Generations
-                opt.setOption(
-                    "PrintOut", 0
-                )  # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
-                opt.setOption(
-                    "xinit", 1
-                )  # Use Initial Solution Flag (0 - random population, 1 - use given solution)
+                    raise OSError("globalOptSize needs to be a multiple of 4 for NSGA2")
+                opt.setOption("PopSize", self.config["globalOptSize"])  # Population Size (a Multiple of 4)
+                opt.setOption("maxGen", self.config["globalOptIterations"])  # Maximum Number of Generations
+                opt.setOption("PrintOut", 0)  # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
+                opt.setOption("xinit", 1)  # Use Initial Solution Flag (0 - random population, 1 - use given solution)
                 opt.setOption("seed", sr.randint(1, 2**31))  # Random Number Seed
                 # pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
-                opt.setOption(
-                    "pMut_real", 0.5
-                )  # Probablity of Mutation of Real Variables (1/nreal)
+                opt.setOption("pMut_real", 0.5)  # Probablity of Mutation of Real Variables (1/nreal)
                 # eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
                 # eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
                 # pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
                 # pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
-                self.iter_max = (
-                    self.config["globalOptSize"] * self.config["globalOptIterations"]
-                )
+                self.iter_max = self.config["globalOptSize"] * self.config["globalOptIterations"]
             elif self.config["globalSolver"] == "ALPSO":
                 opt = ALPSO()  # augmented lagrange particle swarm optimization
                 if parallel:
@@ -565,9 +522,9 @@ class Optimizer(object):
                 # opt.setOption('vcrazy', 1e-2)
                 # TODO: how to properly limit max number of function calls?
                 # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-                self.iter_max = opt.getOption("SwarmSize") * opt.getOption(
-                    "maxInnerIter"
-                ) * opt.getOption("maxOuterIter") + opt.getOption("SwarmSize")
+                self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
+                    "maxOuterIter"
+                ) + opt.getOption("SwarmSize")
                 self.iter_max = self.iter_max // self.mpi_size
             else:
                 print("Solver {} not defined".format(self.config["globalSolver"]))
@@ -576,11 +533,7 @@ class Optimizer(object):
             # run global optimization
 
             if self.config["verbose"]:
-                print(
-                    "Running global optimization with {}".format(
-                        self.config["globalSolver"]
-                    )
-                )
+                print("Running global optimization with {}".format(self.config["globalSolver"]))
             self.is_global = True
             sol = opt(opt_prob, storeHistory=False)
 
@@ -605,9 +558,7 @@ class Optimizer(object):
                     opt2.setOption("IPRINT", 0)
             elif self.config["localSolver"] == "IPOPT":
                 opt2 = IPOPT()
-                opt2.setOption(
-                    "linear_solver", "ma57"
-                )  # mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+                opt2.setOption("linear_solver", "ma57")  # mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
                 opt2.setOption("max_iter", self.config["localOptIterations"])
                 if self.config["verbose"]:
                     opt2.setOption("print_level", 4)  # 0 none ... 5 max
@@ -615,27 +566,18 @@ class Optimizer(object):
                     opt2.setOption("print_level", 0)  # 0 none ... 5 max
             elif self.config["localSolver"] == "PSQP":
                 opt2 = PSQP()
-                opt2.setOption(
-                    "MIT", self.config["localOptIterations"]
-                )  # max iterations
+                opt2.setOption("MIT", self.config["localOptIterations"])  # max iterations
                 # opt2.setOption('MFV', ??)  # max function evaluations
 
             self.iter_max = self.local_iter_max
 
             # use best constrained solution from last run
             if len(self.last_best_sol) > 0:
-                dvs = {
-                    name: self.last_best_sol[i]
-                    for i, name in enumerate(self._var_names)
-                }
+                dvs = {name: self.last_best_sol[i] for i, name in enumerate(self._var_names)}
                 opt_prob.setDVs(dvs)
 
             if self.config["verbose"]:
-                print(
-                    "Runing local optimization with {}".format(
-                        self.config["localSolver"]
-                    )
-                )
+                print("Runing local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
             sol = opt2(opt_prob, sens="FD", sensStep=0.1, storeHistory=False)
 
@@ -646,9 +588,7 @@ class Optimizer(object):
             # sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
 
             if len(self.last_best_sol) > 0:
-                print(
-                    "using last best constrained solution instead of given solver solution."
-                )
+                print("using last best constrained solution instead of given solver solution.")
 
                 print("testing final solution")
                 # self.iter_cnt = 0

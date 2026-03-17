@@ -1,21 +1,19 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-from typing import Tuple, List, Dict, Callable, Any
-import math
 import collections
-import sys
+import math
 import os
+import sys
 
 import numpy as np
-from OpenGL import GLU
-from OpenGL.GL.shaders import compileShader, compileProgram
 import pyglet
+from OpenGL import GLU
+from OpenGL.GL.shaders import compileProgram, compileShader
 from pyglet import gl
 from pyglet.window import key
 
+from excitation.trajectoryGenerator import PulsedTrajectory
 from identification.model import Model
-from excitation.trajectoryGenerator import PulsedTrajectory, Trajectory
 
 
 # convert python list to gldouble array
@@ -30,7 +28,7 @@ def glvecf(v):
 # define some geometries
 
 
-class Cube(object):
+class Cube:
     """vertices for a cube of size 1"""
 
     def __init__(self):
@@ -127,23 +125,19 @@ class Cube(object):
         )
 
 
-class Coord(object):
+class Coord:
     """vertices for 3-axis coordinate system arrows"""
 
     def __init__(self):
         l = 0.2
-        self.vertices = np.array(
-            [0.0, 0.0, 0.0, l, 0.0, 0.0, 0.0, l, 0.0, 0.0, 0.0, l], np.float32
-        )
+        self.vertices = np.array([0.0, 0.0, 0.0, l, 0.0, 0.0, 0.0, l, 0.0, 0.0, 0.0, l], np.float32)
         self.indices = np.array([0, 1, 0, 2, 0, 3], np.ushort)
 
     def getVerticeList(self):
-        return pyglet.graphics.vertex_list_indexed(
-            len(self.vertices) // 3, self.indices, ("v3f", self.vertices)
-        )
+        return pyglet.graphics.vertex_list_indexed(len(self.vertices) // 3, self.indices, ("v3f", self.vertices))
 
 
-class Grid(object):
+class Grid:
     """vertices for the coordinate grid"""
 
     def __init__(self):
@@ -171,12 +165,10 @@ class Grid(object):
         self.indices = np.array(self.indices, np.ushort).flatten()
 
     def getVerticeList(self):
-        return pyglet.graphics.vertex_list_indexed(
-            len(self.vertices) // 3, self.indices, ("v3f", self.vertices)
-        )
+        return pyglet.graphics.vertex_list_indexed(len(self.vertices) // 3, self.indices, ("v3f", self.vertices))
 
 
-class Mesh(object):
+class Mesh:
     def __init__(self, mesh_file, scaling):
         # type: (str, np._ArrayLike) -> None
         import trimesh
@@ -201,7 +193,7 @@ class Mesh(object):
         )
 
 
-class FirstPersonCamera(object):
+class FirstPersonCamera:
     DEFAULT_MOVEMENT_SPEED = 2.0
     DEFAULT_MOUSE_SENSITIVITY = 0.2
     DEFAULT_KEY_MAP = {
@@ -213,7 +205,7 @@ class FirstPersonCamera(object):
         "down": key.LSHIFT,
     }
 
-    class InputHandler(object):
+    class InputHandler:
         def __init__(self):
             self.pressed = collections.defaultdict(bool)
             self.dx = 0
@@ -358,7 +350,7 @@ class FirstPersonCamera(object):
         pyglet.gl.glTranslatef(*self.__position)
 
 
-class Visualizer(object):
+class Visualizer:
     def __init__(self, config):
         # type: (Dict[str, Any]) -> None
         # some vars
@@ -392,14 +384,14 @@ class Visualizer(object):
 
         move_keys = "lshift, space"  # &#8679; &#x2423;
         enter_key = "enter"  # &#x2324;
-        legend = """<font face="Helvetica,Arial" size=15>wasd, {} - move around <br/>
+        legend = f"""<font face="Helvetica,Arial" size=15>wasd, {move_keys} - move around <br/>
         mouse drag - look <br/>
-        {} - play/stop trajectory <br/>
+        {enter_key} - play/stop trajectory <br/>
         &#x2190; &#x2192; - prev/next frame <br/>
         m - show mesh/bounding boxes <br/>
         c - continous/blocking (for optimizer) <br/>
         q - close <br/>
-        </font>""".format(move_keys, enter_key)
+        </font>"""
         self.help_label = pyglet.text.HTMLLabel(
             legend,
             x=10,
@@ -421,11 +413,7 @@ class Visualizer(object):
         self.updateLabels()
 
     def updateLabels(self):
-        self.info_label.text = (
-            '<font face="Helvetica,Arial" size=15>Index: {}</font>'.format(
-                self.display_index
-            )
-        )
+        self.info_label.text = f'<font face="Helvetica,Arial" size=15>Index: {self.display_index}</font>'
 
     def update(self, dt=None):
         self.camera.update(dt)
@@ -439,9 +427,7 @@ class Visualizer(object):
         display = platform.get_default_display()
         screen = display.get_default_screen()
         try:
-            config_temp = gl.Config(
-                double_buffer=True, depth_size=32, sample_buffers=1, samples=4
-            )
+            config_temp = gl.Config(double_buffer=True, depth_size=32, sample_buffers=1, samples=4)
             config = screen.get_best_config(config_temp)
             self.anti_alias = True
         except pyglet.window.NoSuchConfigException:
@@ -449,9 +435,7 @@ class Visualizer(object):
             config = screen.get_best_config(config_temp)
             self.anti_alias = False
 
-        self.window = pyglet.window.Window(
-            self.width, self.height, resizable=True, visible=False, config=config
-        )
+        self.window = pyglet.window.Window(self.width, self.height, resizable=True, visible=False, config=config)
         self.window_closed = False
         self.window.set_minimum_size(320, 200)
         self.window.set_location(x, y)
@@ -529,15 +513,13 @@ class Visualizer(object):
             mat_emission = [0.2, 0.2, 0.2, 1.0]
             gl.glMaterialfv(gl.GL_FRONT, gl.GL_EMISSION, glvecf(mat_emission))
         else:
-            print("Undefined material {}".format(name))
+            print(f"Undefined material {name}")
 
     def _initGL(self):
         gl.glClearColor(0.8, 0.8, 0.9, 0)
         gl.glClearDepth(1.0)  # Enables Clearing Of The Depth Buffer
         gl.glDepthFunc(gl.GL_LESS)  # The Type Of Depth Test To Do
-        gl.glHint(
-            gl.GL_PERSPECTIVE_CORRECTION_HINT, gl.GL_NICEST
-        )  # make stuff look nice
+        gl.glHint(gl.GL_PERSPECTIVE_CORRECTION_HINT, gl.GL_NICEST)  # make stuff look nice
         gl.glEnable(gl.GL_LINE_SMOOTH)
         gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
         if self.anti_alias:
@@ -669,11 +651,7 @@ class Visualizer(object):
                 self.mode = "b"
 
         if symbol == key.I:
-            print(
-                "Camera pos:{} pitch:{} yaw:{}".format(
-                    self.camera.position, self.camera.pitch, self.camera.yaw
-                )
-            )
+            print(f"Camera pos:{self.camera.position} pitch:{self.camera.pitch} yaw:{self.camera.yaw}")
 
         if symbol == key.R:
             print("Reset camera")
@@ -792,13 +770,13 @@ class Visualizer(object):
         dim = body["size3"]
         gl.glScalef(dim[0], dim[1], dim[2])
         self.setMaterial(body["material"])
-        if body["geometry"] is "box":
+        if body["geometry"] == "box":
             if transparent:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)  # Wireframe
             self.drawCube()
             if transparent:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-        elif body["geometry"] is "mesh":
+        elif body["geometry"] == "mesh":
             self.drawMesh(body["name"])
 
         gl.glPopMatrix()
@@ -820,9 +798,7 @@ class Visualizer(object):
             body["geometry"] = "box"
             body["material"] = "white rubber"
             b = np.array(boxes[linkName][0])
-            body["size3"] = np.array(
-                [b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]]
-            )
+            body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
             body["center"] = 0.5 * np.array(
                 [
                     np.abs(b[1][0]) - np.abs(b[0][0]),
@@ -852,9 +828,7 @@ class Visualizer(object):
                     # use last mesh scale (from getMeshPath)
                     scale = urdfHelpers.mesh_scaling.split(" ")
                     scale = [float(scale[0]), float(scale[1]), float(scale[2])]
-                    self.mesh_lists[linkNames[i]] = Mesh(
-                        filename, scale
-                    ).getVerticeList()
+                    self.mesh_lists[linkNames[i]] = Mesh(filename, scale).getVerticeList()
             if len(self.mesh_lists):
                 self.show_meshes = True
 
@@ -886,9 +860,7 @@ class Visualizer(object):
                 try:
                     b = np.array(boxes[n_name][0]) * self.config["scaleCollisionHull"]
                     p = np.array(boxes[n_name][1])
-                    body["size3"] = np.array(
-                        [b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]]
-                    )
+                    body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
                     body["center"] = 0.5 * np.array(
                         [
                             np.abs(b[1][0]) - np.abs(b[0][0]) + p[0],
@@ -898,7 +870,7 @@ class Visualizer(object):
                         + p[2]
                     )
                 except KeyError:
-                    print("using cube for {}".format(n_name))
+                    print(f"using cube for {n_name}")
                     body["size3"] = np.array([0.1, 0.1, 0.1])
                     body["center"] = [0.0, 0.0, 0.0]
 
@@ -907,10 +879,7 @@ class Visualizer(object):
             rpy = t.getRotation().asRPY()
             body["rotation"] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
 
-            if (
-                "transparentLinks" in self.config
-                and n_name in self.config["transparentLinks"]
-            ):
+            if "transparentLinks" in self.config and n_name in self.config["transparentLinks"]:
                 body["transparent"] = True
 
             self.bodies.append(body)
@@ -940,12 +909,8 @@ class Visualizer(object):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Visualize postures or trajectories from file"
-    )
-    parser.add_argument(
-        "--config", required=True, type=str, help="use options from given config file"
-    )
+    parser = argparse.ArgumentParser(description="Visualize postures or trajectories from file")
+    parser.add_argument("--config", required=True, type=str, help="use options from given config file")
     parser.add_argument(
         "-m",
         "--model",
@@ -959,14 +924,12 @@ if __name__ == "__main__":
         type=str,
         help="the file to load the trajectory from",
     )
-    parser.add_argument(
-        "--world", required=False, type=str, help="the file to load world links from"
-    )
+    parser.add_argument("--world", required=False, type=str, help="the file to load world links from")
     args = parser.parse_args()
 
     import yaml
 
-    with open(args.config, "r") as stream:
+    with open(args.config) as stream:
         try:
             config = yaml.load(stream, Loader=yaml.SafeLoader)
         except yaml.YAMLError as exc:
@@ -988,7 +951,7 @@ if __name__ == "__main__":
     linkNames = g_model.linkNames
 
     # get bounding boxes for model
-    from identification.helpers import URDFHelpers, ParamHelpers
+    from identification.helpers import ParamHelpers, URDFHelpers
 
     paramHelpers = ParamHelpers(None, config)
     urdfHelpers = URDFHelpers(paramHelpers, None, config)
@@ -1056,9 +1019,7 @@ if __name__ == "__main__":
         for _i in range(n_dof):
             s.setVal(_i, float(q0[_i]))
         kinDyn.setRobotState(s, ds, gravity)
-        v.addIDynTreeModel(
-            kinDyn, link_cuboid_hulls, linkNames, config["ignoreLinksForCollision"]
-        )
+        v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, config["ignoreLinksForCollision"])
 
         if args.world:
             v.addWorld(world_boxes)
@@ -1070,9 +1031,7 @@ if __name__ == "__main__":
             v.display_max = len(data["angles"])  # number of postures
         elif data_type == "trajectory":
             trajectory = PulsedTrajectory(n_dof, use_deg=data["use_deg"])
-            trajectory.initWithParams(
-                data["a"], data["b"], data["q"], data["nf"], data["wf"]
-            )
+            trajectory.initWithParams(data["a"], data["b"], data["q"], data["nf"], data["wf"])
             v.setModelTrajectory(trajectory)
 
             v.freq = config["excitationFrequency"]

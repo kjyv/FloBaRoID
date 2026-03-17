@@ -1,8 +1,7 @@
-import math
 import numpy as np
 
 
-class Quaternion(object):
+class Quaternion:
     @classmethod
     def rotateVbyQ(cls, v, q):
         """rotate vector v (v0,v1,v2) b quaternion q (x,y,z,w)"""

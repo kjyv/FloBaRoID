@@ -162,12 +162,8 @@ def test_identification_ols(synth_data_path):
         relative_residual = residual * 100 / la.norm(idf.model.tauMeasured)
         print(f"OLS torque residual: {relative_residual:.4f}%")
 
-        assert relative_base_error < 0.05, (
-            f"Base params too far from ground truth: {relative_base_error:.2%}"
-        )
-        assert relative_residual < 1.0, (
-            f"Torque residual too high: {relative_residual:.4f}%"
-        )
+        assert relative_base_error < 0.05, f"Base params too far from ground truth: {relative_base_error:.2%}"
+        assert relative_residual < 1.0, f"Torque residual too high: {relative_residual:.4f}%"
     finally:
         _cleanup_regressor_cache()
 
@@ -199,9 +195,7 @@ def test_identification_sdp(synth_data_path):
         cons = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
         inconsistent = [link for link, ok in cons.items() if not ok]
         print(f"SDP physical consistency (positive mass + PD inertia): {cons}")
-        assert len(inconsistent) == 0, (
-            f"Identified parameters not physically consistent for links: {inconsistent}"
-        )
+        assert len(inconsistent) == 0, f"Identified parameters not physically consistent for links: {inconsistent}"
 
         # check torque prediction (SDP may have slightly higher residual than OLS
         # since it constrains the solution space)
@@ -210,9 +204,7 @@ def test_identification_sdp(synth_data_path):
         relative_residual = residual * 100 / la.norm(idf.model.tauMeasured)
         print(f"SDP torque residual: {relative_residual:.4f}%")
 
-        assert relative_residual < 5.0, (
-            f"Torque residual too high: {relative_residual:.4f}%"
-        )
+        assert relative_residual < 5.0, f"Torque residual too high: {relative_residual:.4f}%"
 
         # base params should still be reasonable (SDP trades accuracy for consistency)
         base_error = la.norm(idf.model.xBase - idf.model.xBaseModel)

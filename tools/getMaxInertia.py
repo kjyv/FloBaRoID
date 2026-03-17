@@ -1,20 +1,14 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """more or less specific to walk-man: get maximum inertia matrix values over the
 whole motion range"""
 
+import os
 import sys
+
 import numpy as np
 import numpy.linalg as la
-from scipy import signal
-import scipy.linalg as sla
-import sympy
-from sympy import symbols
 from idyntree import bindings as iDynTree
-from IPython import embed
-
-import os
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _project_dir = os.path.join(_script_dir, "..")
@@ -61,9 +55,7 @@ if __name__ == "__main__":
     getMaxima = 1
 
     for i in range(n_dofs):
-        for pos_val in np.arange(
-            limits[jointNames[i]]["lower"], limits[jointNames[i]]["upper"], 0.01
-        ):
+        for pos_val in np.arange(limits[jointNames[i]]["lower"], limits[jointNames[i]]["upper"], 0.01):
             for j in range(n_dofs):
                 s.setVal(j, 0.0)
 
@@ -141,14 +133,10 @@ if __name__ == "__main__":
             """
 
     if getMaxima:
-        print("maxima {}".format(kinDyn.getFloatingBase()))
-        for l in map(
-            lambda j: "{}: {}".format(jointNames[j], maxima[j]), range(len(maxima))
-        ):
+        print(f"maxima {kinDyn.getFloatingBase()}")
+        for l in map(lambda j: f"{jointNames[j]}: {maxima[j]}", range(len(maxima))):
             print(l)
     else:
-        print("minima {}".format(kinDyn.getFloatingBase()))
-        for l in map(
-            lambda j: "{}: {}".format(jointNames[j], minima[j]), range(len(minima))
-        ):
+        print(f"minima {kinDyn.getFloatingBase()}")
+        for l in map(lambda j: f"{jointNames[j]}: {minima[j]}", range(len(minima))):
             print(l)

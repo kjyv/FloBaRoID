@@ -1,18 +1,14 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """read data from different kinds of csv data files and save preprocessed as npz.
 Allows simulation of torques and correcting for sign and offset errors."""
 
-import sys
-import os
 import argparse
-import numpy as np
+import os
+import sys
 
-from idyntree import bindings as iDynTree
-
-import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 
 try:
     plt.style.use("seaborn-v0_8-muted")
@@ -59,7 +55,7 @@ def readCentauroCSV(path, config, plot):
 
     # read one file per joint
     for dof in urdf_jointOrder:
-        filepath = os.path.join(path, "CentAcESC_{}_log.txt".format(dof + 1))
+        filepath = os.path.join(path, f"CentAcESC_{dof + 1}_log.txt")
         f = np.loadtxt(filepath)
 
         if dof == 0:
@@ -80,9 +76,7 @@ def readCentauroCSV(path, config, plot):
         out["torques"][:, dof] = f[:, 12]  # torque sensors
 
         if plot:
-            ax1.plot(
-                out["times"][::4], out["positions"][::4, dof], label=jointNames[dof]
-            )
+            ax1.plot(out["times"][::4], out["positions"][::4, dof], label=jointNames[dof])
             ax2.plot(out["times"][::4], out["torques"][::4, dof], label=jointNames[dof])
 
     if plot:
@@ -90,7 +84,7 @@ def readCentauroCSV(path, config, plot):
         t = ["positions", "torques"]
         for i in range(0, 2):
             plt.subplot(211 + i)
-            eval("ax{}".format(1 + i)).legend(fancybox=True, fontsize=10, title="")
+            eval(f"ax{1 + i}").legend(fancybox=True, fontsize=10, title="")
             plt.title(t[i])
 
         fig.tight_layout()
@@ -300,18 +294,12 @@ def readWalkmanCSV(path, config, plot):
 
     ign = 0  # when link is ignored, count offset to skip column in csv
     skip = 4  # skip some values when plotting
-    for dof in range(
-        0, config["num_dofs"]
-    ):  # go though amount of links without ignored
+    for dof in range(0, config["num_dofs"]):  # go though amount of links without ignored
         while dof + ign in ignoreJoints:
             ign += 1
 
-        out["target_positions"][:, dof] = f[
-            :, csv_T_urdf_indices[dof + ign] + dofs_file * 0
-        ]  # position reference
-        out["positions"][:, dof] = f[
-            :, csv_T_urdf_indices[dof + ign] + dofs_file * 2
-        ]  # link encoders
+        out["target_positions"][:, dof] = f[:, csv_T_urdf_indices[dof + ign] + dofs_file * 0]  # position reference
+        out["positions"][:, dof] = f[:, csv_T_urdf_indices[dof + ign] + dofs_file * 2]  # link encoders
         f_len = f.shape[0]
         out["torques"][time_offset:, dof] = f[
             : f_len - time_offset, csv_T_urdf_indices[dof + ign] + dofs_file * 4
@@ -322,9 +310,7 @@ def readWalkmanCSV(path, config, plot):
                 out["positions"][::skip, dof],
                 label=jointNames[dof],
             )
-            ax2.plot(
-                out["times"][::skip], out["torques"][::skip, dof], label=jointNames[dof]
-            )
+            ax2.plot(out["times"][::skip], out["torques"][::skip, dof], label=jointNames[dof])
 
     # correct signs and offsets (until measurements are fixed)
     if not is_gazebo:
@@ -333,9 +319,7 @@ def readWalkmanCSV(path, config, plot):
     filepath = os.path.join(path, "feedbackData.csv")  # force torque and IMU
     f = np.loadtxt(filepath)
     out["FTleft"] = np.zeros((f.shape[0], 6))  # FT left foot, 3 force, 3 torque values
-    out["FTright"] = np.zeros(
-        (f.shape[0], 6)
-    )  # FT right foot, 3 force, 3 torque values
+    out["FTright"] = np.zeros((f.shape[0], 6))  # FT right foot, 3 force, 3 torque values
     out["IMUrpy"] = np.zeros((f.shape[0], 3))  # IMU orientation, r,p,y
     out["IMUlinAcc"] = np.zeros((f.shape[0], 3))  # IMU linear acceleration
     out["IMUlinAcc2"] = np.zeros((f.shape[0], 3))  # IMU linear acceleration 2nd IMU
@@ -406,12 +390,8 @@ def readWalkmanCSV(path, config, plot):
 
     if plot:
         for i in range(0, 3):
-            ax3.plot(
-                out["times"][::skip], out["IMUrpy"][::skip, i], label=rpy_labels[i]
-            )
-            ax4.plot(
-                out["times"][::skip], out["IMUlinAcc"][::skip, i], label=acc_labels[i]
-            )
+            ax3.plot(out["times"][::skip], out["IMUrpy"][::skip, i], label=rpy_labels[i])
+            ax4.plot(out["times"][::skip], out["IMUlinAcc"][::skip, i], label=acc_labels[i])
 
     if plot:
         ax5 = fig.add_subplot(3, 2, 5)
@@ -452,15 +432,13 @@ def readWalkmanCSV(path, config, plot):
     if plot:
         for i in range(0, 6):
             ax5.plot(out["times"][::skip], out["FTleft"][::skip, i], label=ft_labels[i])
-            ax6.plot(
-                out["times"][::skip], out["FTright"][::skip, i], label=ft_labels[i]
-            )
+            ax6.plot(out["times"][::skip], out["FTright"][::skip, i], label=ft_labels[i])
 
         # set titles and enable legends for each subplot
         t = ["positions", "torques", "IMU rpy", "IMU acc", "FT left", "FT right"]
         for i in range(0, 5):
             plt.subplot(321 + i)
-            eval("ax{}".format(1 + i)).legend(fancybox=True, fontsize=10, title="")
+            eval(f"ax{1 + i}").legend(fancybox=True, fontsize=10, title="")
             plt.title(t[i])
 
         fig.tight_layout()
@@ -471,30 +449,22 @@ def readWalkmanCSV(path, config, plot):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Load measurements from csv and write as npz."
-    )
-    parser.add_argument(
-        "--config", required=True, type=str, help="use options from given config file"
-    )
+    parser = argparse.ArgumentParser(description="Load measurements from csv and write as npz.")
+    parser.add_argument("--config", required=True, type=str, help="use options from given config file")
     parser.add_argument(
         "--measurements",
         required=True,
         type=str,
         help="the directory to load the measurements from",
     )
-    parser.add_argument(
-        "--model", required=True, type=str, help="the file to load the robot model from"
-    )
+    parser.add_argument("--model", required=True, type=str, help="the file to load the robot model from")
     parser.add_argument(
         "--regressor",
         required=False,
         type=str,
         help="the file to load the regressor structure from (only for simulation)",
     )
-    parser.add_argument(
-        "--outfile", type=str, help="the filename to save the measurements to"
-    )
+    parser.add_argument("--outfile", type=str, help="the filename to save the measurements to")
     parser.add_argument("--plot", help="whether to plot the data", action="store_true")
     parser.add_argument(
         "--robot",
@@ -507,7 +477,7 @@ if __name__ == "__main__":
 
     import yaml
 
-    with open(args.config, "r") as stream:
+    with open(args.config) as stream:
         try:
             config = yaml.load(stream, Loader=yaml.SafeLoader)
         except yaml.YAMLError as exc:
@@ -530,9 +500,7 @@ if __name__ == "__main__":
     # filter, diff, integrate
     if args.robot == "walkman":
         out["IMUlinVel"] = np.zeros((out["times"].shape[0], 3))  # IMU linear velocity
-        out["IMUrotAcc"] = np.zeros(
-            (out["times"].shape[0], 3)
-        )  # IMU rotational acceleration
+        out["IMUrotAcc"] = np.zeros((out["times"].shape[0], 3))  # IMU rotational acceleration
         data.preprocess(
             Q=out["positions"],
             V=out["velocities"],
@@ -576,9 +544,7 @@ if __name__ == "__main__":
 
         out["base_velocity"] = np.hstack((out["IMUlinVel"], out["IMUrotVel"]))
         out["base_acceleration"] = np.hstack((out["IMUlinAcc"], out["IMUrotAcc"]))
-        out["contacts"] = np.array(
-            {"l_leg_ft": out["FTleft"], "r_leg_ft": out["FTright"]}
-        )
+        out["contacts"] = np.array({"l_leg_ft": out["FTleft"], "r_leg_ft": out["FTright"]})
         out["base_rpy"] = out["IMUrpy"]
 
     else:
@@ -645,9 +611,5 @@ if __name__ == "__main__":
             frequency=out["frequency"],
         )
 
-    print("Saved csv data as {}".format(args.outfile))
-    print(
-        "Samples: {}, Time: {}s, Frequency: {} Hz".format(
-            out["times"].shape[0], out["times"][-1], out["frequency"]
-        )
-    )
+    print(f"Saved csv data as {args.outfile}")
+    print("Samples: {}, Time: {}s, Frequency: {} Hz".format(out["times"].shape[0], out["times"][-1], out["frequency"]))

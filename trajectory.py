@@ -1,47 +1,36 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
+import argparse
 import sys
 
 import numpy as np
+import yaml
 from idyntree import bindings as iDynTree
 
-from identify import Identification
-from identification.model import Model
+from excitation.postureOptimizer import PostureOptimizer
 from excitation.trajectoryGenerator import PulsedTrajectory
 from excitation.trajectoryOptimizer import TrajectoryOptimizer, simulateTrajectory
-from excitation.postureOptimizer import PostureOptimizer
+from identification.model import Model
+from identify import Identification
 
-import argparse
-
-parser = argparse.ArgumentParser(
-    description="Generate excitation trajectories, save to <filename>."
-)
+parser = argparse.ArgumentParser(description="Generate excitation trajectories, save to <filename>.")
 parser.add_argument(
     "--filename",
     type=str,
     help="the filename to save the trajectory to, otherwise <model>.trajectory.npz",
 )
-parser.add_argument(
-    "--config", required=True, type=str, help="use options from given config file"
-)
-parser.add_argument(
-    "--model", required=True, type=str, help="the file to load the robot model from"
-)
+parser.add_argument("--config", required=True, type=str, help="use options from given config file")
+parser.add_argument("--model", required=True, type=str, help="the file to load the robot model from")
 parser.add_argument(
     "--model_real",
     required=False,
     type=str,
     help='the file to load the "real" robot model from',
 )
-parser.add_argument(
-    "--world", required=False, type=str, help="the file to load world links from"
-)
+parser.add_argument("--world", required=False, type=str, help="the file to load world links from")
 args = parser.parse_args()
 
-import yaml
-
-with open(args.config, "r") as stream:
+with open(args.config) as stream:
     try:
         config = yaml.load(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
@@ -103,16 +92,14 @@ def main():
     else:
         # use some random params
         print("no optimized trajectory found, generating random one")
-        trajectory = PulsedTrajectory(
-            config["num_dofs"], use_deg=config["useDeg"]
-        ).initWithRandomParams()
-        print("a {}".format([t_a.tolist() for t_a in trajectory.a]))
-        print("b {}".format([t_b.tolist() for t_b in trajectory.b]))
-        print("q {}".format(trajectory.q.tolist()))
-        print("nf {}".format(trajectory.nf.tolist()))
-        print("wf {}".format(trajectory.w_f_global))
+        trajectory = PulsedTrajectory(config["num_dofs"], use_deg=config["useDeg"]).initWithRandomParams()
+        print(f"a {[t_a.tolist() for t_a in trajectory.a]}")
+        print(f"b {[t_b.tolist() for t_b in trajectory.b]}")
+        print(f"q {trajectory.q.tolist()}")
+        print(f"nf {trajectory.nf.tolist()}")
+        print(f"wf {trajectory.w_f_global}")
 
-    print("Saving found trajectory to {}".format(traj_file))
+    print(f"Saving found trajectory to {traj_file}")
 
     if config["useStaticTrajectories"]:
         # always saved with rad angles

@@ -1,22 +1,19 @@
-# -*- coding: utf-8 -*-
-
-from typing import Tuple
-
-import sys
 import os
+import sys
+
+import colorama
 import numpy as np
 import numpy.linalg as la
 import scipy.linalg as sla
-import colorama
 from colorama import Fore, Style
+from palettable.tableau import Tableau_10, Tableau_20
 
 from identification import helpers
 
 np.set_printoptions(linewidth=160)
 
 # redefine unicode for testing in python2/3
-if sys.version_info >= (3, 0):
-    unicode = str
+unicode = str
 
 # color triplets
 color_triplets_6 = [
@@ -29,7 +26,6 @@ color_triplets_6 = [
 ]
 
 # set some more colors for higher DOF
-from palettable.tableau import Tableau_10, Tableau_20
 
 colors = Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_colors
 
@@ -37,7 +33,7 @@ colors = Tableau_10.mpl_colors[0:6] + Tableau_20.mpl_colors + Tableau_20.mpl_col
 colors[2], colors[0] = colors[0], colors[2]
 
 
-class OutputConsole(object):
+class OutputConsole:
     def __init__(self, idf):
         self.idf = idf
 
@@ -84,17 +80,10 @@ class OutputConsole(object):
         description = idf.model.getDescriptionOfParameters()
         if idf.opt["identifyFriction"]:
             for i in range(0, idf.model.num_dofs):
-                description += (
-                    "Parameter {}: Constant friction / offset of joint {}\n".format(
-                        i + idf.model.num_model_params, idf.model.jointNames[i]
-                    )
-                )
+                description += f"Parameter {i + idf.model.num_model_params}: Constant friction / offset of joint {idf.model.jointNames[i]}\n"
 
             for i in range(0, idf.model.num_dofs * 2):
-                description += "Parameter {}: Velocity dep. friction joint {}\n".format(
-                    i + idf.model.num_dofs + idf.model.num_model_params,
-                    idf.model.jointNames[i % idf.model.num_dofs],
-                )
+                description += f"Parameter {i + idf.model.num_dofs + idf.model.num_model_params}: Velocity dep. friction joint {idf.model.jointNames[i % idf.model.num_dofs]}\n"
 
         idx_ep = 0  # count essential params
         lines = list()
@@ -110,7 +99,7 @@ class OutputConsole(object):
             if idf.opt["outputBarycentric"]:
                 d = d.replace(r"first moment", "center")
             # add symbol for each parameter
-            d = d.replace(r":", ": {} -".format(idf.model.param_syms[idx_p_full]))
+            d = d.replace(r":", f": {idf.model.param_syms[idx_p_full]} -")
 
             # print beginning of each link block in green
             if idx_p_full % 10 == 0 and idx_p_full < idf.model.num_model_params:
@@ -163,11 +152,7 @@ class OutputConsole(object):
                     diff_pc = (100 * diff) / 0.01
 
             # values for each line
-            if (
-                idf.opt["useEssentialParams"]
-                and idx_ep < idf.num_essential_params
-                and idx_p in idf.stdEssentialIdx
-            ):
+            if idf.opt["useEssentialParams"] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
                 sigma = idf.p_sigma_x[idx_ep]
             else:
                 sigma = 0.0
@@ -237,7 +222,7 @@ class OutputConsole(object):
             # print column header
             template = ""
             for w in range(0, len(column_widths)):
-                template += "|{{{}:{}}}".format(w, column_widths[w])
+                template += f"|{{{w}:{column_widths[w]}}}"
             if idf.urdf_file_real and idf.opt["constrainToConsistent"]:
                 print(
                     template.format(
@@ -266,32 +251,20 @@ class OutputConsole(object):
                     )
                 )
             elif idf.opt["constrainToConsistent"]:
-                print(
-                    template.format(
-                        "A priori", "Ident", "Change", "%e", "Constr", "Description"
-                    )
-                )
+                print(template.format("A priori", "Ident", "Change", "%e", "Constr", "Description"))
             elif idf.opt["useEssentialParams"]:
-                print(
-                    template.format(
-                        "A priori", "Ident", "Change", "%e", "%σ", "Description"
-                    )
-                )
+                print(template.format("A priori", "Ident", "Change", "%e", "%σ", "Description"))
             else:
-                print(
-                    template.format("A priori", "Ident", "Change", "%e", "Description")
-                )
+                print(template.format("A priori", "Ident", "Change", "%e", "Description"))
 
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
                 if type(lines[0][w]) in [str, unicode, list]:
                     # strings don't have precision
-                    template += "|{{{}:{}}}".format(w, column_widths[w])
+                    template += f"|{{{w}:{column_widths[w]}}}"
                 else:
-                    template += "|{{{}:{}.{}f}}".format(
-                        w, column_widths[w], precisions[w]
-                    )
+                    template += f"|{{{w}:{column_widths[w]}.{precisions[w]}f}}"
             idx_p = 0
             for l in lines:
                 t = template.format(*l)
@@ -307,11 +280,7 @@ class OutputConsole(object):
     def printBaseParams(self, summary_only=False):
         idf = self.idf
 
-        if (
-            not idf.opt["showBaseParams"]
-            or summary_only
-            or idf.opt["estimateWith"] in ["urdf", "std_direct"]
-        ):
+        if not idf.opt["showBaseParams"] or summary_only or idf.opt["estimateWith"] in ["urdf", "std_direct"]:
             return
 
         print("Base Parameters and Corresponding standard columns")
@@ -346,7 +315,7 @@ class OutputConsole(object):
 
             if idf.opt["showBaseEqns"]:
                 param_columns = " = "
-                param_columns += "{}".format(idf.model.base_deps[idx_p])
+                param_columns += f"{idf.model.base_deps[idx_p]}"
                 # for p in range(0, len(deps)):
                 #    param_columns += ' {:.4f}*|{}|'.format(dep_factors[p], idf.P[idf.num_base_params:][deps[p]])
             else:
@@ -379,7 +348,7 @@ class OutputConsole(object):
             # print column header
             template = ""
             for w in range(0, len(column_widths)):
-                template += "|{{{}:{}}}".format(w, column_widths[w])
+                template += f"|{{{w}:{column_widths[w]}}}"
             if idf.urdf_file_real:
                 print(
                     template.format(
@@ -394,22 +363,16 @@ class OutputConsole(object):
                     )
                 )
             else:
-                print(
-                    template.format(
-                        "#", "A priori", "Ident", "Change", "%σ", "Description"
-                    )
-                )
+                print(template.format("#", "A priori", "Ident", "Change", "%σ", "Description"))
 
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
                 if type(lines[0][w]) in [str, unicode]:
                     # strings don't have precision
-                    template += "|{{{}:{}}}".format(w, column_widths[w])
+                    template += f"|{{{w}:{column_widths[w]}}}"
                 else:
-                    template += "|{{{}:{}.{}f}}".format(
-                        w, column_widths[w], precisions[w]
-                    )
+                    template += f"|{{{w}:{column_widths[w]}.{precisions[w]}f}}"
             idx_p = 0
             for l in lines:
                 t = template.format(*l)
@@ -475,11 +438,7 @@ class OutputConsole(object):
             param = p.sub(r"{\1\2}", param)
             nonid = "*" if idx_p in idf.model.non_id else ""
             real = self.xStdReal if idf.urdf_file_real else self.xStdModel
-            print(
-                "        ${}$    & ${:.4f}$ & ${:.4f}${} \\\\".format(
-                    param, real[idx_p], self.xStd[idx_p], nonid
-                )
-            )
+            print(f"        ${param}$    & ${real[idx_p]:.4f}$ & ${self.xStd[idx_p]:.4f}${nonid} \\\\")
 
         print(footer)
         print(
@@ -495,74 +454,48 @@ class OutputConsole(object):
         if idf.opt["selectBlocksFromMeasurements"]:
             if len(idf.data.usedBlocks):
                 print(
-                    "used {} of {} blocks: {}".format(
-                        len(idf.data.usedBlocks),
-                        len(idf.data.usedBlocks) + len(idf.data.unusedBlocks),
-                        [b for (b, bs, cond, linkConds) in idf.data.usedBlocks],
-                    )
+                    f"used {len(idf.data.usedBlocks)} of {len(idf.data.usedBlocks) + len(idf.data.unusedBlocks)} blocks: {[b for (b, bs, cond, linkConds) in idf.data.usedBlocks]}"
                 )
             else:
-                print("\ncurrent block: {}".format(idf.data.block_pos))
+                print(f"\ncurrent block: {idf.data.block_pos}")
             # print "unused blocks: {}".format(idf.unusedBlocks)
-            print("condition number: {}".format(la.cond(idf.model.YBase)))
+            print(f"condition number: {la.cond(idf.model.YBase)}")
 
         if idf.opt["identifyGravityParamsOnly"]:
             fric = idf.model.num_dofs * idf.opt["identifyFriction"]
-            sum_id = np.sum(
-                idf.model.xStd[0 : idf.model.num_identified_params - fric : 4]
-            )
+            sum_id = np.sum(idf.model.xStd[0 : idf.model.num_identified_params - fric : 4])
         else:
             sum_id = np.sum(idf.model.xStd[0 : idf.model.num_model_params : 10])
 
         print(Style.BRIGHT + "Parameters" + Style.RESET_ALL)
         sum_apriori = np.sum(idf.model.xStdModel[0 : idf.model.num_model_params : 10])
         print(
-            "Estimated overall mass: {} kg vs. a priori {} kg".format(
-                sum_id, sum_apriori
-            ),
+            f"Estimated overall mass: {sum_id} kg vs. a priori {sum_apriori} kg",
             end="",
         )
         if idf.urdf_file_real:
-            print(
-                " vs. real {} kg".format(
-                    np.sum(self.xStdReal[0 : idf.model.num_model_params : 10])
-                )
-            )
+            print(f" vs. real {np.sum(self.xStdReal[0 : idf.model.num_model_params : 10])} kg")
         else:
             print()
 
         if idf.opt["showStandardParams"]:
             if idf.opt["showTriangleConsistency"]:
-                cons_apriori = idf.paramHelpers.checkPhysicalConsistency(
-                    idf.model.xStdModel, full=True
-                )
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStdModel, full=True)
                 cons_ident = idf.paramHelpers.checkPhysicalConsistency(idf.model.xStd)
                 print("Consistency (including triangle inequality):")
             else:
-                cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(
-                    idf.model.xStdModel, full=True
-                )
-                cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(
-                    idf.model.xStd
-                )
+                cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel, full=True)
+                cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
 
             if False in list(cons_apriori.values()):
-                print(
-                    Fore.RED
-                    + "A priori parameters are not physical consistent!"
-                    + Fore.RESET
-                )
-                print(
-                    "Per-link physical consistency (a priori): {}".format(cons_apriori)
-                )
+                print(Fore.RED + "A priori parameters are not physical consistent!" + Fore.RESET)
+                print(f"Per-link physical consistency (a priori): {cons_apriori}")
             else:
                 print("A priori parameters are physical consistent")
 
             if False in list(cons_ident.values()):
                 print("Identified parameters are not physical consistent,")
-                print(
-                    "per-link physical consistency (identified): {}".format(cons_ident)
-                )
+                print(f"per-link physical consistency (identified): {cons_ident}")
             else:
                 print("Identified parameters are physical consistent")
 
@@ -582,123 +515,59 @@ class OutputConsole(object):
                 #            format(sum_pc_delta_ess/len(idf.stdEssentialIdx)))
                 # print("Mean error delta (a priori error vs approx error) of all std params: {}%".\
                 #        format(sum_pc_delta_all/len(idf.model.xStd)))
-                sq_error_apriori = np.square(
-                    la.norm(self.xStdReal[p_idf] - idf.model.xStdModel[p_idf])
-                )
+                sq_error_apriori = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStdModel[p_idf]))
                 if idf.opt["identifyGravityParamsOnly"]:
                     xStd_full = idf.model.xStdModel.copy()
                     xStd_full[p_idf] = idf.model.xStd
-                    sq_error_idf = np.square(
-                        la.norm(self.xStdReal[p_idf] - xStd_full[p_idf])
-                    )
+                    sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - xStd_full[p_idf]))
                 else:
-                    sq_error_idf = np.square(
-                        la.norm(self.xStdReal[p_idf] - idf.model.xStd[p_idf])
-                    )
+                    sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStd[p_idf]))
                 print(
-                    "Squared distance of identifiable std parameter vectors (identified, a priori) to real: {} vs. {}".format(
-                        sq_error_idf, sq_error_apriori
-                    )
+                    f"Squared distance of identifiable std parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
                 # sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
                 # sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
                 # print( "Squared distance of std parameter vectors (identified, a priori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
-            if (
-                idf.opt["showBaseParams"]
-                and not summary_only
-                and idf.opt["estimateWith"] not in ["urdf", "std_direct"]
-            ):
+            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
                 # print("Mean error (a priori - approx) of all base params: {:.5f}".\
                 #        format(sum_error_all_base/len(idf.model.xBase)))
-                sq_error_apriori = np.square(
-                    la.norm(self.xBaseReal - idf.model.xBaseModel)
-                )
+                sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
                 sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
                 print(
-                    "Squared distance of base parameter vectors (identified, a priori) to real: {} vs. {}".format(
-                        sq_error_idf, sq_error_apriori
-                    )
+                    f"Squared distance of base parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
         else:
             if idf.opt["showStandardParams"] and not summary_only:
                 if idf.opt["identifyGravityParamsOnly"]:
                     xStd_full = idf.model.xStdModel.copy()
                     xStd_full[p_idf] = idf.model.xStd
-                    sq_error_apriori = np.square(
-                        la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf])
-                    )
+                    sq_error_apriori = np.square(la.norm(xStd_full[p_idf] - idf.model.xStdModel[p_idf]))
                 else:
-                    sq_error_apriori = np.square(
-                        la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf])
-                    )
-                print(
-                    "Squared distance of identifiable std parameter vectors to a priori: {}".format(
-                        sq_error_apriori
-                    )
-                )
-            if (
-                idf.opt["showBaseParams"]
-                and not summary_only
-                and idf.opt["estimateWith"] not in ["urdf", "std_direct"]
-            ):
-                sq_error_apriori = np.square(
-                    la.norm(idf.model.xBase - idf.model.xBaseModel)
-                )
-                print(
-                    "Squared distance of base parameter vectors (identified vs. a priori): {}".format(
-                        sq_error_apriori
-                    )
-                )
+                    sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
+                print(f"Squared distance of identifiable std parameter vectors to a priori: {sq_error_apriori}")
+            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
+                sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
+                print(f"Squared distance of base parameter vectors (identified vs. a priori): {sq_error_apriori}")
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
         # get percentual error (i.e. how big is the error relative to the measured magnitudes)
-        idf.estimateRegressorTorques(
-            estimateWith="urdf"
-        )  # estimate torques with CAD params
+        idf.estimateRegressorTorques(estimateWith="urdf")  # estimate torques with CAD params
         idf.estimateRegressorTorques()  # estimate torques again with identified parameters
-        idf.apriori_error = (
-            sla.norm(idf.tauAPriori - idf.model.tauMeasured)
-            * 100
-            / sla.norm(idf.model.tauMeasured)
-        )
-        idf.res_error = (
-            sla.norm(idf.tauEstimated - idf.model.tauMeasured)
-            * 100
-            / sla.norm(idf.model.tauMeasured)
-        )
-        print(
-            "Relative mean residual error: {}% vs. A priori: {}%".format(
-                idf.res_error, idf.apriori_error
-            )
-        )
+        idf.apriori_error = sla.norm(idf.tauAPriori - idf.model.tauMeasured) * 100 / sla.norm(idf.model.tauMeasured)
+        idf.res_error = sla.norm(idf.tauEstimated - idf.model.tauMeasured) * 100 / sla.norm(idf.model.tauMeasured)
+        print(f"Relative mean residual error: {idf.res_error}% vs. A priori: {idf.apriori_error}%")
 
-        idf.abs_apriori_error = np.mean(
-            sla.norm(idf.tauAPriori - idf.model.tauMeasured, axis=1)
-        )
-        idf.abs_res_error = (
-            idf.base_error
-        )  # np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
-        print(
-            "Absolute mean residual error: {} vs. A priori: {}".format(
-                idf.abs_res_error, idf.abs_apriori_error
-            )
-        )
+        idf.abs_apriori_error = np.mean(sla.norm(idf.tauAPriori - idf.model.tauMeasured, axis=1))
+        idf.abs_res_error = idf.base_error  # np.mean(sla.norm(idf.tauEstimated-idf.model.tauMeasured, axis=1))
+        print(f"Absolute mean residual error: {idf.abs_res_error} vs. A priori: {idf.abs_apriori_error}")
 
         torque_limits = []
         for joint in idf.model.jointNames:
             torque_limits.append(idf.model.limits[joint]["torque"])
-        idf.abs_apriori_error = helpers.getNRMSE(
-            idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits
-        )
-        idf.abs_res_error = helpers.getNRMSE(
-            idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits
-        )
-        print(
-            "NRMS of residual error: {}% vs. A priori: {}%".format(
-                idf.abs_res_error, idf.abs_apriori_error
-            )
-        )
+        idf.abs_apriori_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauAPriori, limits=torque_limits)
+        idf.abs_res_error = helpers.getNRMSE(idf.model.tauMeasured, idf.tauEstimated, limits=torque_limits)
+        print(f"NRMS of residual error: {idf.abs_res_error}% vs. A priori: {idf.abs_apriori_error}%")
 
     def render(self, summary_only=False):
         """Output results on the console, tables of identified parameters and some statistics"""
@@ -710,7 +579,7 @@ class OutputConsole(object):
         self.printStats(summary_only)
 
 
-class OutputMatplotlib(object):
+class OutputMatplotlib:
     def __init__(self, datasets, text=None):
         self.datasets = datasets
         self.text = text
@@ -718,22 +587,18 @@ class OutputMatplotlib(object):
     @staticmethod
     def _to_rgba(c, alpha=1.0):
         """Convert palette color (0..1 floats) to plotly rgba string"""
-        return "rgba({},{},{},{})".format(
-            int(c[0] * 255), int(c[1] * 255), int(c[2] * 255), alpha
-        )
+        return f"rgba({int(c[0] * 255)},{int(c[1] * 255)},{int(c[2] * 255)},{alpha})"
 
     def _build_plotly_figures(self, idf, skip=5):
         """Build list of plotly Figure objects from datasets"""
-        from plotly.subplots import make_subplots
         import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
 
         figures = []
         for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
             n_subplots = len(group["dataset"])
-            fig = make_subplots(
-                rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.02
-            )
+            fig = make_subplots(rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.02)
 
             for d_i in range(n_subplots):
                 d = group["dataset"][d_i]
@@ -758,9 +623,7 @@ class OutputMatplotlib(object):
                                     name=label,
                                     legendgroup=label,
                                     showlegend=(data_i == 0 and d_i == 0),
-                                    line=dict(
-                                        color=self._to_rgba(colors[i], alpha), dash=dash
-                                    ),
+                                    line=dict(color=self._to_rgba(colors[i], alpha), dash=dash),
                                     mode="lines",
                                 ),
                                 row=row,
@@ -816,9 +679,7 @@ class OutputMatplotlib(object):
         from jinja2 import Environment, FileSystemLoader
 
         figures = self._build_plotly_figures(idf)
-        html_fragments = [
-            fig.to_html(full_html=False, include_plotlyjs="cdn") for fig in figures
-        ]
+        html_fragments = [fig.to_html(full_html=False, include_plotlyjs="cdn") for fig in figures]
 
         path = os.path.dirname(os.path.abspath(__file__))
         template_environment = Environment(
@@ -831,11 +692,9 @@ class OutputMatplotlib(object):
         import codecs
 
         with codecs.open(outfile, "w", "utf-8") as f:
-            html = template_environment.get_template("templates/index.html").render(
-                context
-            )
+            html = template_environment.get_template("templates/index.html").render(context)
             f.write(html)
-        print("Saved output at file://{}".format(os.path.abspath(outfile)))
+        print(f"Saved output at file://{os.path.abspath(outfile)}")
 
     def _render_pdf(self, idf, filename):
         """Render datasets as PDF using plotly + kaleido"""
@@ -854,12 +713,10 @@ class OutputMatplotlib(object):
             )
         else:
             for i, fig in enumerate(figures):
-                outname = "{}_{}{}".format(base, i, ext)
-                fig.write_image(
-                    outname, format="pdf", width=1200, height=fig.layout.height or 800
-                )
+                outname = f"{base}_{i}{ext}"
+                fig.write_image(outname, format="pdf", width=1200, height=fig.layout.height or 800)
 
-        print("Saved PDF output at {}".format(os.path.abspath(filename)))
+        print(f"Saved PDF output at {os.path.abspath(filename)}")
 
     def _render_interactive(self, idf):
         """Show datasets interactively in browser using plotly"""
@@ -890,9 +747,7 @@ class OutputMatplotlib(object):
 
         for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
-            fig, axes = plt.subplots(
-                len(group["dataset"]), sharex=True, sharey=True, squeeze=False
-            )
+            fig, axes = plt.subplots(len(group["dataset"]), sharex=True, sharey=True, squeeze=False)
             axes = axes[:, 0]
 
             if group["unified_scaling"]:
@@ -912,11 +767,7 @@ class OutputMatplotlib(object):
                         for i in range(0, d["data"][data_i].shape[1]):
                             l = group["labels"][i] if data_i == 0 else ""
                             ls = "-"
-                            if (
-                                i < 6
-                                and "contains_base" in group
-                                and group["contains_base"]
-                            ):
+                            if i < 6 and "contains_base" in group and group["contains_base"]:
                                 ls = "dashed"
                             ax.plot(
                                 d["time"][::skip],
@@ -973,7 +824,8 @@ class OutputMatplotlib(object):
             print("No proper output method given. Not plotting.")
 
     def openURL(self):
-        import subprocess, time
+        import subprocess
+        import time
 
         time.sleep(1)
         print("Opening output...")
@@ -996,5 +848,5 @@ class OutputMatplotlib(object):
         Handler = http.server.SimpleHTTPRequestHandler
         httpd = socketserver.TCPServer(("", port), Handler)
         threading.Thread(target=self.openURL).start()
-        print("serving on port {}, press ctrl-c to stop".format(port))
+        print(f"serving on port {port}, press ctrl-c to stop")
         httpd.serve_forever()

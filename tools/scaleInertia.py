@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-import numpy as np
 import re
 
+import numpy as np
+
 if __name__ == "__main__":
-    line = (
-        '<inertia ixx="0.00232" ixy="0" ixz="0" iyy="0.00296" iyz="0" izz="0.00136"/>'
-    )
+    line = '<inertia ixx="0.00232" ixy="0" ixz="0" iyy="0.00296" iyz="0" izz="0.00136"/>'
 
     scaling = 1.95833333333333
     nums = np.array(re.findall(r"[-+]?\d*\.\d+|\d+", line)).astype(float)

@@ -22,7 +22,7 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 
 # kinematics, dynamics and URDF reading
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 # submodules
 from identification.model import Model
@@ -1015,7 +1015,7 @@ def main():
     import yaml
     with open(args.config, 'r') as stream:
         try:
-            config = yaml.load(stream)
+            config = yaml.load(stream, Loader=yaml.SafeLoader)
         except yaml.YAMLError as exc:
             print(exc)
 

@@ -38,22 +38,32 @@ Features:
 * plotting of measured and estimated joint state and torques (interactive, HTML, PDF or Tikz)
 * output of the identified parameters directly into URDF
 
-requirements for identification module:
+## Installation
 
-* python 2.7 or >= 3.3
-* python modules
-    * numpy (> 1.8), scipy, sympy (== 1.0), pyyaml, trimesh, cvxopt, pylmi-sdp, matplotlib (>= 1.4), colorama, palettable, humanize, tqdm
-    * iDynTree, e.g. from [iDynTree superbuild](https://github.com/robotology/idyntree-superbuild/) (with enabled python binding)
-    * when using Python 2.7: future
-    * when using Python < 3.5: typing
-* dsdp5 (command line executable)
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 
-optional:
+```bash
+uv sync --python 3.8
+```
 
-* pyglet, pyOpenGL (for visualizer)
+### System dependencies
+
+* **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
+* **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
+* **dsdp5** (command line executable)
+
+### Optional extras
+
+```bash
+uv sync --extra visualization   # pyglet, PyOpenGL
+uv sync --extra html-plots      # mpld3
+uv sync --extra tikz-plots      # matplotlib2tikz
+uv sync --extra parallel         # mpi4py
+```
+
+### Additional non-PyPI dependencies
+
 * symengine.py (to speedup SDP)
-* mpld3, jinja2 (for html plots)
-* matplotlib2tikz (for tikz plots)
 * rbdl (alternative for inverse dynamics)
 
 requirements for excitation module:
@@ -68,9 +78,6 @@ requirements for optimization module:
 * pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
 * [fcl 0.5.0](https://github.com/flexible-collision-library/fcl/releases) and python-fcl (from https://github.com/jf---/python-fcl) (possibly disable octomap if there are errors)
- 
-
-You can do `pip install -r requirements.txt` for most of them but you will need to check for the correct versions of each library. You might have to install some library dependencies if you get compile errors. If you're using on Ubuntu and also have ros installed, it is recommended to install with pip within a [virtualenv](https://virtualenv.pypa.io/en/stable/).
 
 Also see the [Tutorial](documentation/TUTORIAL.md).
 

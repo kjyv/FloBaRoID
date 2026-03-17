@@ -265,6 +265,11 @@ def dsdp5(objf, lmis, variables, primalstart=None, wide_bounds=False):
                                          ['-y0', 'primal.dat'],
                                          cwd = dir).decode('utf-8')
         state = 'optimal'
+    except FileNotFoundError:
+        print("dsdp5 not found, skipping")
+        import shutil
+        shutil.rmtree(dir)
+        return np.matrix(np.zeros((len(variables)+1, 1))), 'stopped'
     except subprocess.CalledProcessError as e:
         print("DSDP stopped early: {}".format(e.returncode))
         state = 'stopped'

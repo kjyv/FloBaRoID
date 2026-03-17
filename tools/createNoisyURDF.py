@@ -2,7 +2,7 @@
 
 from builtins import range
 import numpy as np
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 import identificationHelpers
 import argparse
 

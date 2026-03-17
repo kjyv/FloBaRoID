@@ -765,14 +765,17 @@ class SDP(object):
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=xStd, wide_bounds=True)
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            print("SDP found std solution with distance {} from CAD solution (compared to {})".format(u, old_dist))
-            idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
+            if state == 'optimal':
+                u = solution[0, 0]
+                print("SDP found std solution with distance {} from CAD solution (compared to {})".format(u, old_dist))
+                idf.model.xStd = np.squeeze(np.asarray(solution[1:]))
 
-            # prepend apriori values for 0'th link non-identifiable variables
-            for c in self.delete_cols:
-                idf.model.xStd = np.insert(idf.model.xStd, c, 0)
-            idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
+                # prepend apriori values for 0'th link non-identifiable variables
+                for c in self.delete_cols:
+                    idf.model.xStd = np.insert(idf.model.xStd, c, 0)
+                idf.model.xStd[self.delete_cols] = idf.model.xStdModel[self.delete_cols]
+            else:
+                print("Could not find closer-to-CAD solution (solver state: {}), keeping previous solution".format(state))
 
         if idf.opt['showTiming']:
             print("Constrained SDP optimization took %.03f sec." % (t.interval))

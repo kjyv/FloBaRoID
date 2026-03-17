@@ -16,7 +16,7 @@ import numpy.linalg as la
 import matplotlib.pyplot as plt
 
 # kinematics, dynamics and URDF reading
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 import argparse
 parser = argparse.ArgumentParser(description='Scale mass and inertia from <model>.')

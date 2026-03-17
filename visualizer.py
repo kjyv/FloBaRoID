@@ -836,14 +836,14 @@ if __name__ == '__main__':
     import yaml
     with open(args.config, 'r') as stream:
         try:
-            config = yaml.load(stream)
+            config = yaml.load(stream, Loader=yaml.SafeLoader)
         except yaml.YAMLError as exc:
             print(exc)
 
-    import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+    from idyntree import bindings as iDynTree
     dynComp = iDynTree.DynamicsComputations()
     dynComp.loadRobotModelFromFile(args.model)
-    world_gravity = iDynTree.SpatialAcc.fromList([0,0,-9.81,0,0,0])
+    world_gravity = iDynTree.SpatialAcc.FromPython([0,0,-9.81,0,0,0])
     n_dof = dynComp.getNrOfDegreesOfFreedom()
     config['num_dofs'] = n_dof
     config['urdf'] = args.model
@@ -917,8 +917,8 @@ if __name__ == '__main__':
                     idx = 0
                 q0 = data['positions'][idx, :]
 
-        q = iDynTree.VectorDynSize.fromList(q0)
-        dq = iDynTree.VectorDynSize.fromList([0.0]*n_dof)
+        q = iDynTree.VectorDynSize.FromPython(q0)
+        dq = iDynTree.VectorDynSize.FromPython([0.0]*n_dof)
         dynComp.setRobotState(q, dq, dq, world_gravity)
         v.addIDynTreeModel(dynComp, link_cuboid_hulls, linkNames, config['ignoreLinksForCollision'])
 

@@ -7,7 +7,7 @@ from builtins import range
 import sys
 
 import numpy as np
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 from identify import Identification
 from identification.model import Model
@@ -27,7 +27,7 @@ args = parser.parse_args()
 import yaml
 with open(args.config, 'r') as stream:
     try:
-        config = yaml.load(stream)
+        config = yaml.load(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
         print(exc)
 

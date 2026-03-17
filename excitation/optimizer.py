@@ -24,7 +24,7 @@ except:
     parallel = False
 
 from colorama import Fore
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 from identification.helpers import eulerAnglesToRotationMatrix
 
@@ -226,8 +226,8 @@ class Optimizer(object):
 
         # init some vars for link distance
         vel = [0.0]*self.num_dofs
-        self.dq_zero = iDynTree.VectorDynSize.fromList(vel)
-        self.world_gravity = iDynTree.SpatialAcc.fromList(self.model.gravity)
+        self.dq_zero = iDynTree.VectorDynSize.FromPython(vel)
+        self.world_gravity = iDynTree.SpatialAcc.FromPython(self.model.gravity)
 
 
     def testBounds(self, x):
@@ -245,7 +245,7 @@ class Optimizer(object):
         from fcl import fcl, collision_data, transform
 
         #get link rotation and position in world frame
-        q = iDynTree.VectorDynSize.fromList(joint_q)
+        q = iDynTree.VectorDynSize.FromPython(joint_q)
         self.model.dynComp.setRobotState(q, self.dq_zero, self.dq_zero, self.world_gravity)
 
         if l0_name in self.model.linkNames:    # if robot link
@@ -325,8 +325,8 @@ class Optimizer(object):
                     p_id = self.visualizer.display_index
                     q0 = self.visualizer.angles[p_id*self.num_dofs:(p_id+1)*self.num_dofs]
 
-                q = iDynTree.VectorDynSize.fromList(q0)
-                dq = iDynTree.VectorDynSize.fromList([0.0]*self.num_dofs)
+                q = iDynTree.VectorDynSize.FromPython(q0)
+                dq = iDynTree.VectorDynSize.FromPython([0.0]*self.num_dofs)
                 self.model.dynComp.setRobotState(q, dq, dq, self.world_gravity)
                 self.visualizer.addIDynTreeModel(self.model.dynComp, self.link_cuboid_hulls,
                         self.model.linkNames, self.config['ignoreLinksForCollision'])

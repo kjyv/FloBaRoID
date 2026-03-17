@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 from colorama import Fore
 from tqdm import tqdm
 
-import iDynTree
+from idyntree import bindings as iDynTree
 
 #define exception for python < 3
 import sys
@@ -98,11 +98,11 @@ class Progress(object):
 
 class Timer(object):
     def __enter__(self):
-        self.start = time.clock()
+        self.start = time.perf_counter()
         return self
 
     def __exit__(self, *args):
-        self.end = time.clock()
+        self.end = time.perf_counter()
         self.interval = self.end - self.start
 
 

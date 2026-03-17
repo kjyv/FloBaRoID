@@ -86,7 +86,7 @@ class OutputConsole(object):
                 print("Linear (relative to Frame) Standard Parameters")
 
         # collect values for parameters
-        description = idf.model.generator.getDescriptionOfParameters()
+        description = idf.model.getDescriptionOfParameters()
         if idf.opt['identifyFriction']:
             for i in range(0, idf.model.num_dofs):
                 description += "Parameter {}: Constant friction / offset of joint {}\n".format(
@@ -583,7 +583,8 @@ class OutputMatplotlib(object):
         figures = list()
         for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
-            fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True)
+            fig, axes = plt.subplots(len(group['dataset']), sharex=True, sharey=True, squeeze=False)
+            axes = axes[:, 0]  # flatten to 1D array
             # scale unified scaling figures to same ranges and add some margin
             if group['unified_scaling']:
                 ymin = 0

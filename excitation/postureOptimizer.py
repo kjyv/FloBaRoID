@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Callable, Any
 import numpy as np
 import matplotlib.pyplot as plt
 import pyOpt
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 from identification.helpers import URDFHelpers
 from excitation.trajectoryGenerator import FixedPositionTrajectory

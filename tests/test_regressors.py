@@ -5,7 +5,7 @@ import numpy as np
 import numpy.linalg as la
 
 # kinematics, dynamics and URDF reading
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 from IPython import embed
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -41,8 +41,8 @@ def test_regressors():
     generator.getModelParameters(xStdModel)
     xStdModel = xStdModel.toNumPy()
 
-    gravity_twist = iDynTree.Twist.fromList([0,0,-9.81,0,0,0])
-    gravity_acc = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
+    gravity_twist = iDynTree.Twist.FromPython([0,0,-9.81,0,0,0])
+    gravity_acc = iDynTree.SpatialAcc.FromPython([0, 0, -9.81, 0, 0, 0])
 
     dynComp = iDynTree.DynamicsComputations()
     dynComp.loadRobotModelFromFile(urdf_file)
@@ -52,9 +52,9 @@ def test_regressors():
     contactForceSum = np.zeros(shape=((n_dofs+6)*num_samples))
 
     for sample_index in range(0, num_samples):
-        q = iDynTree.VectorDynSize.fromList(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
-        dq = iDynTree.VectorDynSize.fromList(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
-        ddq = iDynTree.VectorDynSize.fromList(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
+        q = iDynTree.VectorDynSize.FromPython(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
+        dq = iDynTree.VectorDynSize.FromPython(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
+        ddq = iDynTree.VectorDynSize.FromPython(((np.random.ranf(n_dofs)*2-1)*np.pi).tolist())
         base_vel = np.pi*np.random.rand(6)
         base_acc = np.pi*np.random.rand(6)
 
@@ -71,9 +71,9 @@ def test_regressors():
         base_acc[0:3] = to_world.dot(base_acc[0:3])
         base_acc[3:] = to_world.dot(base_acc[3:])
 
-        base_velocity = iDynTree.Twist.fromList(base_vel)
-        base_acceleration = iDynTree.Twist.fromList(base_acc)
-        base_acceleration_acc = iDynTree.ClassicalAcc.fromList(base_acc)
+        base_velocity = iDynTree.Twist.FromPython(base_vel)
+        base_acceleration = iDynTree.Twist.FromPython(base_acc)
+        base_acceleration_acc = iDynTree.ClassicalAcc.FromPython(base_acc)
 
         # regressor
         generator.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, gravity_twist)

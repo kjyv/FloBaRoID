@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
+from idyntree import bindings as iDynTree
 
 from IPython import embed
 import re

@@ -247,7 +247,7 @@ requires-dist = [
     { name = "colorama", specifier = "==0.4.6" },
     { name = "cvxopt", specifier = "==1.3.3" },
     { name = "humanize", specifier = "==4.15.0" },
-    { name = "idyntree", specifier = "~=14.2.0" },
+    { name = "idyntree", git = "https://github.com/robotology/idyntree.git?tag=v15.0.0" },
     { name = "ipython", specifier = "==9.11.0" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "kaleido", specifier = "~=1.2.0" },
@@ -333,14 +333,10 @@ wheels = [
 
 [[package]]
 name = "idyntree"
-version = "14.2.0"
-source = { registry = "https://pypi.org/simple" }
+version = "15.0.0"
+source = { git = "https://github.com/robotology/idyntree.git?tag=v15.0.0#2388e5ea0d87a29fd395a560532fcdff0e68263b" }
 dependencies = [
     { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/3a/68a03dd3b75560f59467f49cbff289c53e8c1360d303d62f63e1ebf5ce56/idyntree-14.2.0.tar.gz", hash = "sha256:39a7414b73a47c3da173780330ad3a81f20355e05fa626c15d7a5a0b21627472", size = 1544975, upload-time = "2025-12-16T13:13:52.893Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/ea/b439849b7f1fa1a062ae3ff92c7a8569c34f3f76483ec88ec750cab61bf8/idyntree-14.2.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:5705a5e1d509c92464a2cb125b6de092fc66fde464f7fa7cbbb5bf05f05c6dff", size = 5490489, upload-time = "2025-12-16T13:13:49.248Z" },
 ]
 
 [[package]]

@@ -16,16 +16,16 @@ Features:
 * data preprocessing
     * derive velocity and acceleration values from position readings
     * data is zero-phase low-pass filtered from supplied measurements
-    * it is possible to only select a combination of data blocks to yield a better condition number (Venture, 2009)
+    * it is possible to only select a combination of data blocks to yield a better condition number \[Venture2009\]
 * validation with other measurement files
 * excitation of robots, using ROS/MoveIt! or Yarp
 * implemented estimation methods:
   * ordinary least squares, OLS
-  * weighted least squares (Zak, 1994)
-  * estimation of parameter error using previously known CAD values (Gautier, 2013)
-  * essential standard parameters (Pham, Gautier, 2013), estimating only those that are most certain for the measurement data and leaving the others unchanged
-  * identification problem formulation with constraints as linear convex SDP problem to get optimal physical consistent standard parameters (Sousa, 2014)
-  * non-linear optimization within consistent parameter space (Traversaro, 2016)
+  * weighted least squares \[Zak1994\]
+  * estimation of parameter error using previously known CAD values \[Gautier2013\]
+  * essential standard parameters \[Pham1991\]\[Gautier2013\], estimating only those that are most certain for the measurement data and leaving the others unchanged
+  * identification problem formulation with constraints as linear convex SDP problem to get optimal physical consistent standard parameters \[Sousa2014\]
+  * non-linear optimization within consistent parameter space \[Traversaro2016\]
 * visualization of trajectories
 * plotting of measured and estimated joint state and torques (interactive, HTML, PDF or Tikz)
 * output of the identified parameters directly into URDF
@@ -110,3 +110,19 @@ SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](
 
 Usage is licensed under the LGPL 3.0, see License.md. Please quote the following publication if you're using this software for any project:
 `S. Bethge, J. Malzahn, N. Tsagarakis, D. Caldwell: "FloBaRoID — A Software Package for the Identification of Robot Dynamics Parameters", 26th International Conference on Robotics in Alpe-Adria-Danube Region (RAAD), 2017`
+
+### References
+
+\[Venture2009\] G. Venture, K. Ayusawa, Y. Nakamura: "A numerical method for choosing motions with optimal excitation properties for identification of biped dynamics — An application to human," IEEE International Conference on Robotics and Automation (ICRA), pp. 1226–1231, 2009.
+
+\[Gautier1991\] M. Gautier: "Numerical calculation of the base inertial parameters of robots," Journal of Robotic Systems, vol. 8, no. 4, pp. 485–506, 1991.
+
+\[Pham1991\] C. M. Pham, M. Gautier: "Essential parameters of robots," Proceedings of the 30th IEEE Conference on Decision and Control, Brighton, England, pp. 2769–2774, 1991.
+
+\[Zak1994\] G. Zak, B. Benhabib, R. G. Fenton, I. Saban: "Application of the Weighted Least Squares Parameter Estimation Method to the Robot Calibration," Journal of Mechanical Design, vol. 116, no. 3, pp. 890–893, 1994.
+
+\[Gautier2013\] M. Gautier, G. Venture: "Identification of Standard Dynamic Parameters of Robots with Positive Definite Inertia Matrix," IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), Tokyo, Japan, pp. 5815–5820, 2013.
+
+\[Sousa2014\] C. D. Sousa, R. Cortesão: "Physical feasibility of robot base inertial parameter identification: A linear matrix inequality approach," The International Journal of Robotics Research, vol. 33, no. 6, pp. 931–944, 2014.
+
+\[Traversaro2016\] S. Traversaro, S. Brossette, A. Escande, F. Nori: "Identification of Fully Physical Consistent Inertial Parameters using Optimization on Manifolds," IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2016.

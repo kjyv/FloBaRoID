@@ -43,34 +43,33 @@ Features:
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 
 ```bash
-uv sync --python 3.8
+uv sync
 ```
 
 ### System dependencies
 
 * **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **dsdp5** (command line executable)
+* **ipopt** (for iDynTree build): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian)
+* **dsdp5** (command line executable, optional — used as fallback SDP solver)
 
 ### Optional extras
 
 ```bash
-uv sync --extra visualization   # pyglet, PyOpenGL
-uv sync --extra html-plots      # mpld3
 uv sync --extra tikz-plots      # matplotlib2tikz
 uv sync --extra parallel         # mpi4py
 ```
 
 ### Additional non-PyPI dependencies
 
-* symengine.py (to speedup SDP)
-* rbdl (alternative for inverse dynamics)
+* symengine.py (to speedup SDP, optional)
+* rbdl (alternative for inverse dynamics, optional)
 
 requirements for excitation module:
 
 * for ros, python modules: ros, moveit\_msg, moveit\_commander
 * for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
-* for other robots, new modules might have to be written
+* for other robots, new modules will have to be written
 
 requirements for optimization module:
 

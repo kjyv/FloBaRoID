@@ -431,13 +431,7 @@ class Model(object):
                         print("Error during numeric computation of regressor")
 
                     regressor = regressor.toNumPy()
-                    if self.opt['floatingBase']:
-                        # the base forces are expressed in the base frame for the regressor, so
-                        # rotate them to world frame (inverse dynamics use world frame)
-                        to_world = world_T_base.getRotation().toNumPy()
-                        regressor[0:3, :] = to_world.dot(regressor[0:3, :])
-                        regressor[3:6, :] = to_world.dot(regressor[3:6, :])
-                    else:
+                    if not self.opt['floatingBase']:
                         # for fixed base, regressor includes base wrench rows (first 6),
                         # keep only joint torque rows
                         regressor = regressor[6:, :]
@@ -697,12 +691,7 @@ class Model(object):
 
                 A = regressor.toNumPy()
 
-                if self.opt['floatingBase']:
-                    #the base forces are expressed in the base frame for the regressor, so rotate them
-                    to_world = world_T_base.getRotation().toNumPy()
-                    A[0:3, :] = to_world.dot(A[0:3, :])
-                    A[3:6, :] = to_world.dot(A[3:6, :])
-                else:
+                if not self.opt['floatingBase']:
                     # for fixed base, keep only joint torque rows (skip first 6 base wrench rows)
                     A = A[6:, :]
 

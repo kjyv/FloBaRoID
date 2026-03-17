@@ -88,13 +88,11 @@ class Identification(object):
 
         self.urdf_file_real = urdf_file_real
         if self.urdf_file_real:
-            dc = iDynTree.DynamicsRegressorGenerator()
-            if not dc.loadRobotAndSensorsModelFromFile(urdf_file_real):
+            loader_real = iDynTree.ModelLoader()
+            if not loader_real.loadModelFromFile(urdf_file_real):
                 sys.exit()
             tmp = iDynTree.VectorDynSize(self.model.num_model_params)
-            #set regressor, otherwise getModelParameters segfaults
-            dc.loadRegressorStructureFromString(self.model.regrXml)
-            dc.getModelParameters(tmp)
+            loader_real.model().getInertialParameters(tmp)
             self.xStdReal = tmp.toNumPy()
             #add some zeros for friction
             self.xStdReal = np.concatenate((self.xStdReal, np.zeros(self.model.num_all_params-self.model.num_model_params)))
@@ -200,7 +198,6 @@ class Identification(object):
         import os
 
         v_data = np.load(self.validation_file)
-        dynComp = iDynTree.DynamicsComputations()
 
         if self.opt['estimateWith'] == 'urdf':
             params = self.model.xStdModel
@@ -219,7 +216,10 @@ class Identification(object):
                                                   verbose=False)
             self.model.rbdlModel.gravity = np.array(self.model.gravity)
         else:
-            dynComp.loadRobotModelFromFile(outfile)
+            val_loader = iDynTree.ModelLoader()
+            val_loader.loadModelFromFile(outfile)
+            val_kinDyn = iDynTree.KinDynComputations()
+            val_kinDyn.loadRobotModel(val_loader.model())
         os.remove(outfile)
 
         old_skip = self.opt['skipSamples']
@@ -230,7 +230,7 @@ class Identification(object):
             if self.opt['useRBDL']:
                 torques = self.model.simulateDynamicsRBDL(v_data, m_idx, None, params)
             else:
-                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, dynComp, params)
+                torques = self.model.simulateDynamicsIDynTree(v_data, m_idx, val_kinDyn, params)
 
             if self.tauEstimatedValidation is None:
                 self.tauEstimatedValidation = torques

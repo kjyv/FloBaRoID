@@ -598,7 +598,24 @@ class URDFHelpers:
 
         if filename and os.path.exists(filename):
             mesh = trimesh.load_mesh(filename)
-            # TODO: get geometry origin attributes, rotate and shift mesh data
+
+            # get geometry origin from URDF <visual>/<collision> <origin> tag
+            tree = self.parseURDF(input_urdf)
+            mesh_pos = pos_0
+            mesh_rot = rot_0
+            for l in tree.findall("link"):
+                if l.attrib["name"] == link_name:
+                    origin = l.find("visual/origin")
+                    if origin is None:
+                        origin = l.find("collision/origin")
+                    if origin is not None:
+                        xyz = origin.attrib.get("xyz", "0 0 0")
+                        mesh_pos = [float(v) for v in xyz.split()]
+                        rpy = origin.attrib.get("rpy", "0 0 0")
+                        rpy_vals = [float(v) for v in rpy.split()]
+                        if any(v != 0 for v in rpy_vals):
+                            mesh_rot = eulerAnglesToRotationMatrix(rpy_vals)
+                    break
 
             # gazebo and urdf use 1m for 1 stl unit
             scale_x = float(self.mesh_scaling.split()[0])
@@ -615,7 +632,7 @@ class URDFHelpers:
                         bounding_box[0][s],
                     )
 
-            return bounding_box, pos_0, rot_0
+            return bounding_box, mesh_pos, mesh_rot
         else:
             # use <visual><box> or <collision><box> if specified
             box, pos, rot = self.getLinkGeometry(input_urdf, link_name)

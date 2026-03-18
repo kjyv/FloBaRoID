@@ -175,10 +175,10 @@ class TrajectoryOptimizer(Optimizer):
         # outside bounds to compute gradients for variables that sit at a bound.
         if np.any(np.isnan(x)) or (self.is_global and not self.testBounds(x)):
             if self.is_global:
-                print(f"call #{self.iter_cnt}/{self.iter_max} (invalid input, skipped)")
+                print(f"call #{self.iter_cnt} (invalid input, skipped)")
             return 1000.0, [10.0] * self.num_constraints, 1.0
 
-        print(f"call #{self.iter_cnt}/{self.iter_max}")
+        print(f"call #{self.iter_cnt}")
 
         wf, q, a, b = self.vecToParams(x)
 
@@ -213,7 +213,7 @@ class TrajectoryOptimizer(Optimizer):
         # parameter is slightly outside range), signal failure to the optimizer so it does not
         # use NaN values as gradient components, which would corrupt the gradient and cascade.
         if np.isnan(f):
-            print(f"call #{self.iter_cnt}/{self.iter_max} (simulation NaN, skipped)")
+            print(f"call #{self.iter_cnt} (simulation NaN, skipped)")
             return 1000.0, [10.0] * self.num_constraints, 1.0
 
         f1 = 0.0
@@ -303,7 +303,7 @@ class TrajectoryOptimizer(Optimizer):
         # Catch NaN in constraint values (e.g. NaN torques from iDynTree) before they
         # reach the optimizer as gradient components.
         if np.any(np.isnan(g)):
-            print(f"call #{self.iter_cnt}/{self.iter_max} (constraint NaN, skipped)")
+            print(f"call #{self.iter_cnt} (constraint NaN, skipped)")
             return 1000.0, [10.0] * self.num_constraints, 1.0
 
         # add min join torques as second objective

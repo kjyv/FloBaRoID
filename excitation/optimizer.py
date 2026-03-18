@@ -215,7 +215,7 @@ class Optimizer:
         self.iter_cnt = 0  # iteration counter
         self.last_g: list[float] | None = None  # last constraint values
         self.is_global = False
-        self.local_iter_max = "(unknown)"
+        self.local_iter_max = 0
 
         # attributes declared here for type checking; set by subclasses
         self.trajectory: Any = None
@@ -286,7 +286,7 @@ class Optimizer:
             s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
             b = np.array(self.link_cuboid_hulls[link_name][0]) * s
             p = np.array(self.link_cuboid_hulls[link_name][1])
-            center = 0.5 * (b[0] + b[1] + p)  # TODO: use pos and rot of boxes for vals from geometry tags
+            center = 0.5 * (b[0] + b[1]) + p  # TODO: use pos and rot of boxes for vals from geometry tags
             box = fcl.Box(*(b[1] - b[0]))
             self._box_cache[link_name] = (box, center)
         return self._box_cache[link_name]
@@ -573,8 +573,8 @@ class Optimizer:
             if self.config["localSolver"] == "SLSQP":
                 opt2 = SLSQP()  # sequential least squares
                 opt2.setOption("MAXIT", self.config["localOptIterations"])
-                if self.config["verbose"]:
-                    opt2.setOption("IPRINT", 0)
+                # IPRINT: -1=silent, 0=iter+final, 1=detailed
+                opt2.setOption("IPRINT", -1 if not self.config["verbose"] else 0)
             elif self.config["localSolver"] == "IPOPT":
                 opt2 = IPOPT()
                 opt2.setOption(
@@ -590,9 +590,7 @@ class Optimizer:
                 opt2.setOption("MIT", self.config["localOptIterations"])  # max iterations
                 # opt2.setOption('MFV', ??)  # max function evaluations
 
-            # approximate: each iteration computes FD gradient (n_vars+1 evaluations) + 1 step eval
-            n_vars = len(self.last_best_sol) if len(self.last_best_sol) > 0 else 0
-            self.iter_max = self.iter_cnt + self.config["localOptIterations"] * (n_vars + 2)
+            self.iter_max = 0  # not meaningful for local opt (most FD probes fail silently)
 
             # Create a fresh opt_prob so ALPSO's NaN state doesn't contaminate
             # the starting point. Pass the ALPSO best as initial values directly

@@ -494,7 +494,7 @@ class Optimizer:
             received_objs = self.comm.gather(send_obj, root=0)
 
             # receive solutions from other instances
-            if self.mpi_rank == 0:
+            if self.mpi_rank == 0 and received_objs is not None:
                 for proc in range(0, self.mpi_size):
                     other_best_f, other_best_sol, rank = received_objs[proc]
 
@@ -513,8 +513,6 @@ class Optimizer:
             sr = random.SystemRandom()
             if self.config["globalSolver"] == "NSGA2":
                 opt = NSGA2()  # genetic algorithm
-                if parallel:
-                    opt.setOption("parallelType", "POA")
                 if self.config["globalOptSize"] % 4:
                     raise OSError("globalOptSize needs to be a multiple of 4 for NSGA2")
                 opt.setOption("PopSize", self.config["globalOptSize"])  # Population Size (a Multiple of 4)
@@ -531,24 +529,26 @@ class Optimizer:
                 self.iter_max = self.config["globalOptSize"] * self.config["globalOptIterations"]
             elif self.config["globalSolver"] == "ALPSO":
                 opt = ALPSO()  # augmented lagrange particle swarm optimization
-                if parallel:
-                    opt.setOption("parallelType", "SPM")
                 opt.setOption("stopCriteria", 0)  # stop at max iters
                 opt.setOption("dynInnerIter", 1)  # dynamic inner iter number
-                opt.setOption("maxInnerIter", 5)
+                opt.setOption("maxInnerIter", 10)
                 opt.setOption("maxOuterIter", self.config["globalOptIterations"])
                 opt.setOption("printInnerIters", 1)
                 opt.setOption("printOuterIters", 1)
                 opt.setOption("SwarmSize", self.config["globalOptSize"])
                 opt.setOption("xinit", 1)
                 opt.setOption("seed", sr.randint(1, 2**31))
-                # opt.setOption('vcrazy', 1e-2)
+                # favor exploration over refinement (local solver handles convergence)
+                opt.setOption("vmax", 4.0)  # higher max velocity for bigger jumps (default 2.0)
+                opt.setOption("c1", 2.5)  # stronger cognitive pull toward own best (default 2.0)
+                opt.setOption("c2", 0.5)  # weaker social pull, less premature convergence (default 1.0)
+                opt.setOption("w1", 0.99)  # high initial inertia for exploration (default 0.99)
+                opt.setOption("w2", 0.4)  # lower final inertia to keep exploring longer (default 0.55)
                 # TODO: how to properly limit max number of function calls?
                 # no. func calls = (SwarmSize * inner) * outer + SwarmSize
                 self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
                     "maxOuterIter"
                 ) + opt.getOption("SwarmSize")
-                self.iter_max = self.iter_max // self.mpi_size
             else:
                 print("Solver {} not defined".format(self.config["globalSolver"]))
                 sys.exit(1)
@@ -581,7 +581,9 @@ class Optimizer:
                     opt2.setOption("IPRINT", 0)
             elif self.config["localSolver"] == "IPOPT":
                 opt2 = IPOPT()
-                opt2.setOption("linear_solver", "ma57")  # mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+                opt2.setOption(
+                    "linear_solver", "mumps"
+                )  # mumps (bundled) or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
                 opt2.setOption("max_iter", self.config["localOptIterations"])
                 if self.config["verbose"]:
                     opt2.setOption("print_level", 4)  # 0 none ... 5 max

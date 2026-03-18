@@ -167,6 +167,16 @@ class TrajectoryOptimizer(Optimizer):
 
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
+
+        # reject NaN or out-of-bounds inputs early (solver may pass NaN after
+        # an internal failure; returning a penalty keeps it from cascading)
+        if np.any(np.isnan(x)) or not self.testBounds(x):
+            print(f"call #{self.iter_cnt}/{self.iter_max} (invalid input, skipped)")
+            f = 1000.0
+            g = [10.0] * self.num_constraints
+            fail = 1.0
+            return f, g, fail
+
         print(f"call #{self.iter_cnt}/{self.iter_max}")
 
         wf, q, a, b = self.vecToParams(x)
@@ -176,20 +186,6 @@ class TrajectoryOptimizer(Optimizer):
             print(f"a {np.round(a, 5).tolist()}")
             print(f"b {np.round(b, 5).tolist()}")
             print(f"q {np.round(q, 5).tolist()}")
-
-        # input vars out of bounds, skip call
-        if not self.testBounds(x):
-            # give penalty obj value for out of bounds (because we shouldn't get here)
-            # TODO: for some algorithms (with augemented lagrangian added bounds) this should
-            # not be very high as it is added again anyway)
-            f = 1000.0
-            if self.config["minVelocityConstraint"]:
-                g = [10.0] * self.num_constraints
-            else:
-                g = [10.0] * self.num_constraints
-
-            fail = 1.0
-            return f, g, fail
 
         self.trajectory.initWithParams(a, b, q, self.nf, wf)
 

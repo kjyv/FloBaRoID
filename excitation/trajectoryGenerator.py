@@ -38,37 +38,75 @@ def simulateTrajectory(
     trajectory_data["times"] = []
 
     freq = config["excitationFrequency"]
-    for t in range(0, int(trajectory.getPeriodLength() * freq)):
-        trajectory.setTime(t / freq)
-        q = np.array([trajectory.getAngle(d) for d in range(config["num_dofs"])])
-        if config["useDeg"]:
-            q = np.deg2rad(q)
-        trajectory_data["target_positions"].append(q)
+    num_dofs = config["num_dofs"]
+    num_samples = int(trajectory.getPeriodLength() * freq)
+    use_deg = config["useDeg"]
 
-        qdot = np.array([trajectory.getVelocity(d) for d in range(config["num_dofs"])])
-        if config["useDeg"]:
-            qdot = np.deg2rad(qdot)
-        trajectory_data["target_velocities"].append(qdot)
+    # vectorized trajectory computation: compute all samples × dofs at once
+    # using numpy broadcasting instead of per-sample per-dof Python loops
+    if hasattr(trajectory, "oscillators") and trajectory.oscillators:
+        times = np.arange(num_samples) / freq
+        positions = np.empty((num_samples, num_dofs))
+        velocities = np.empty((num_samples, num_dofs))
+        accelerations = np.empty((num_samples, num_dofs))
 
-        qddot = np.array([trajectory.getAcceleration(d) for d in range(config["num_dofs"])])
-        if config["useDeg"]:
-            qddot = np.deg2rad(qddot)
-        trajectory_data["target_accelerations"].append(qddot)
+        for d in range(num_dofs):
+            osc = trajectory.oscillators[d]
+            # harmonic indices [1, 2, ..., nf] and precompute wf*l*t for all times and harmonics
+            l_arr = np.arange(1, osc.nf + 1)  # (nf,)
+            wlt = osc.w_f * np.outer(times, l_arr)  # (num_samples, nf)
+            sin_wlt = np.sin(wlt)
+            cos_wlt = np.cos(wlt)
 
-        trajectory_data["times"].append(t / freq)
-        trajectory_data["torques"].append(np.zeros(config["num_dofs"] + fb))
+            # coefficients: a/(wf*l) and b/(wf*l)
+            a_coeff = np.array(osc.a) / (osc.w_f * l_arr)  # (nf,)
+            b_coeff = np.array(osc.b) / (osc.w_f * l_arr)  # (nf,)
 
-    num_samples = len(trajectory_data["times"])
+            # position: sum of a/(wf*l)*sin(wf*l*t) - b/(wf*l)*cos(wf*l*t) + nf*q0
+            positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
 
-    # convert lists to numpy arrays
-    trajectory_data["target_positions"] = np.array(trajectory_data["target_positions"])
-    trajectory_data["positions"] = trajectory_data["target_positions"]
-    trajectory_data["target_velocities"] = np.array(trajectory_data["target_velocities"])
-    trajectory_data["velocities"] = trajectory_data["target_velocities"]
-    trajectory_data["target_accelerations"] = np.array(trajectory_data["target_accelerations"])
-    trajectory_data["accelerations"] = trajectory_data["target_accelerations"]
-    trajectory_data["torques"] = np.array(trajectory_data["torques"])
-    trajectory_data["times"] = np.array(trajectory_data["times"])
+            # velocity: sum of a*cos(wf*l*t) + b*sin(wf*l*t)
+            a_arr = np.array(osc.a)
+            b_arr = np.array(osc.b)
+            velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
+
+            # acceleration: sum of -a*wf*l*sin(wf*l*t) + b*wf*l*cos(wf*l*t)
+            wl = osc.w_f * l_arr  # (nf,)
+            accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
+
+        if use_deg:
+            positions = np.deg2rad(positions)
+            velocities = np.deg2rad(velocities)
+            accelerations = np.deg2rad(accelerations)
+    else:
+        # fallback for non-pulsed trajectories (FixedPositionTrajectory etc.)
+        positions = np.empty((num_samples, num_dofs))
+        velocities = np.empty((num_samples, num_dofs))
+        accelerations = np.empty((num_samples, num_dofs))
+        times = np.empty(num_samples)
+
+        for t in range(num_samples):
+            t_sec = t / freq
+            trajectory.setTime(t_sec)
+            times[t] = t_sec
+            for d in range(num_dofs):
+                positions[t, d] = trajectory.getAngle(d)
+                velocities[t, d] = trajectory.getVelocity(d)
+                accelerations[t, d] = trajectory.getAcceleration(d)
+
+        if use_deg:
+            positions = np.deg2rad(positions)
+            velocities = np.deg2rad(velocities)
+            accelerations = np.deg2rad(accelerations)
+
+    trajectory_data["target_positions"] = positions
+    trajectory_data["positions"] = positions
+    trajectory_data["target_velocities"] = velocities
+    trajectory_data["velocities"] = velocities
+    trajectory_data["target_accelerations"] = accelerations
+    trajectory_data["accelerations"] = accelerations
+    trajectory_data["torques"] = np.zeros((num_samples, num_dofs + fb))
+    trajectory_data["times"] = times
     trajectory_data["measured_frequency"] = freq
     trajectory_data["base_velocity"] = np.zeros((num_samples, 6))
     trajectory_data["base_acceleration"] = np.zeros((num_samples, 6))

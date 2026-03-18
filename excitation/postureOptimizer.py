@@ -215,7 +215,7 @@ class PostureOptimizer(Optimizer):
         funcs = {"f": f, "g": np.array(g)}
         return funcs, bool(fail)
 
-    def addVarsAndConstraints(self, opt_prob: Any) -> None:
+    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
         """Add variables, define bounds.
         variable type: 'c' - continuous, 'i' - integer, 'd' - discrete (choices)
         constraint types: 'i' - inequality, 'e' - equality

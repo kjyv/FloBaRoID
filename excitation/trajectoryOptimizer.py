@@ -102,10 +102,14 @@ class TrajectoryOptimizer(Optimizer):
             for l in nb_real:
                 if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
                     nb_pairs.append((link, l))
-        # only count ignore pairs where both links are actually in the model
+        # only count ignore pairs where both links are in the effective set
+        # (not already removed via ignoreLinksForCollision)
+        ignored = set(self.config["ignoreLinksForCollision"])
         all_links = set(self.model.linkNames + self.world_links)
         effective_ignore_pairs = [
-            p for p in self.config["ignoreLinkPairsForCollision"] if p[0] in all_links and p[1] in all_links
+            p
+            for p in self.config["ignoreLinkPairsForCollision"]
+            if p[0] in all_links and p[1] in all_links and p[0] not in ignored and p[1] not in ignored
         ]
         self.num_coll_constraints -= (
             len(nb_pairs)  # neighbors

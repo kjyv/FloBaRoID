@@ -242,7 +242,9 @@ class Optimizer:
             link_name = self.model.linkNames[i]
             box, pos, rot = idf.urdfHelpers.getBoundingBox(
                 input_urdf=self.model.urdf_file,
-                old_com=self.model.xStdModel[i * 10 + 1 : i * 10 + 4] / self.model.xStdModel[i * 10],
+                old_com=self.model.xStdModel[i * 10 + 1 : i * 10 + 4] / self.model.xStdModel[i * 10]
+                if self.model.xStdModel[i * 10] != 0
+                else [0.0, 0.0, 0.0],
                 link_name=link_name,
                 scaling=False,
             )

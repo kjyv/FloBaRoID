@@ -1,96 +1,97 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
 
-''' more or less specific to walk-man: get maximum inertia matrix values over the
-    whole motion range '''
-
-import sys
-import numpy as np
-import numpy.linalg as la
-from scipy import signal
-import scipy.linalg as sla
-import sympy
-from sympy import symbols
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-from IPython import embed
+"""more or less specific to walk-man: get maximum inertia matrix values over the
+whole motion range"""
 
 import os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+import sys
+
+import numpy as np
+import numpy.linalg as la
+from idyntree import bindings as iDynTree
+
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_dir = os.path.join(_script_dir, "..")
+sys.path.insert(1, _project_dir)
 from identification import helpers
 
-if __name__ == '__main__':
-    #urdf_file = '../model/centauro.urdf'
-    urdf_file = '../model/walkman_orig.urdf'
-    dynamics = iDynTree.DynamicsComputations()
-    dynamics.loadRobotModelFromFile(urdf_file)
-    dynamics.setFloatingBase('LFoot')
-    n_dofs = dynamics.getNrOfDegreesOfFreedom()
+if __name__ == "__main__":
+    # urdf_file = os.path.join(_project_dir, 'model/centauro.urdf')
+    urdf_file = os.path.join(_project_dir, "model/walkman.urdf")
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(urdf_file)
+    model = loader.model()
+
+    kinDyn = iDynTree.KinDynComputations()
+    kinDyn.loadRobotModel(loader.model())
+    kinDyn.setFloatingBase("LFoot")
+    n_dofs = kinDyn.getNrOfDegreesOfFreedom()
     jointNames = []
     for i in range(n_dofs):
-        jointNames.append(dynamics.getJointName(i))
+        jointNames.append(model.getJointName(i))
     limits = helpers.URDFHelpers.getJointLimits(urdf_file, use_deg=False)
 
-    #for each joint, sweep through all possible joint angles and get mass matrix
-    q = iDynTree.VectorDynSize(n_dofs)
-    q.zero()
-    dq = iDynTree.VectorDynSize(n_dofs)
-    #dq.fromList([1.0]*n_dofs)
-    dq.zero()
-    ddq = iDynTree.VectorDynSize(n_dofs)
-    ddq.zero()
-    world_gravity = iDynTree.SpatialAcc.fromList([0, 0, -9.81, 0, 0, 0])
+    # for each joint, sweep through all possible joint angles and get mass matrix
+    s = iDynTree.JointPosDoubleArray(n_dofs)
+    ds = iDynTree.JointDOFsDoubleArray(n_dofs)
+    for j in range(n_dofs):
+        s.setVal(j, 0.0)
+        ds.setVal(j, 0.0)
+
+    gravity_vec = iDynTree.Vector3()
+    gravity_vec.setVal(0, 0.0)
+    gravity_vec.setVal(1, 0.0)
+    gravity_vec.setVal(2, -9.81)
+
     base_velocity = iDynTree.Twist()
     base_velocity.zero()
-    base_acceleration = iDynTree.ClassicalAcc()
-    base_acceleration.zero()
     rot = iDynTree.Rotation.RPY(0, 0, 0)
     pos = iDynTree.Position.Zero()
     world_T_base = iDynTree.Transform(rot, pos)
-    torques = iDynTree.VectorDynSize(n_dofs)
-    baseReactionForce = iDynTree.Wrench()
 
-    m = iDynTree.MatrixDynSize(n_dofs, n_dofs)
-    maxima = [0]*n_dofs
-    minima = [99999]*n_dofs
+    m = iDynTree.MatrixDynSize(n_dofs + 6, n_dofs + 6)
+    maxima = [0] * n_dofs
+    minima = [99999] * n_dofs
     getMaxima = 1
 
     for i in range(n_dofs):
-        for pos in np.arange(limits[jointNames[i]]['lower'], limits[jointNames[i]]['upper'], 0.01):
-            q.zero()
+        for pos_val in np.arange(limits[jointNames[i]]["lower"], limits[jointNames[i]]["upper"], 0.01):
+            for j in range(n_dofs):
+                s.setVal(j, 0.0)
 
-            q[i] = pos
+            s.setVal(i, pos_val)
             if getMaxima:
                 # saggital = pitch, transversal = yaw, lateral = roll
-                if i == jointNames.index('LHipYaw'):
+                if i == jointNames.index("LHipYaw"):
                     # lift right leg up 90 deg
-                    q[jointNames.index('RHipYaw')] = np.deg2rad(-90)
-                    q[jointNames.index('RHipSag')] = np.deg2rad(-90)
+                    s.setVal(jointNames.index("RHipYaw"), np.deg2rad(-90))
+                    s.setVal(jointNames.index("RHipSag"), np.deg2rad(-90))
 
-                elif i == jointNames.index('RHipYaw'):
+                elif i == jointNames.index("RHipYaw"):
                     # lift left leg up 90 deg, turn outside
-                    q[jointNames.index('LHipYaw')] = np.deg2rad(90)
-                    q[jointNames.index('LHipSag')] = np.deg2rad(-90)
+                    s.setVal(jointNames.index("LHipYaw"), np.deg2rad(90))
+                    s.setVal(jointNames.index("LHipSag"), np.deg2rad(-90))
 
-                elif i == jointNames.index('WaistSag'):
+                elif i == jointNames.index("WaistSag"):
                     # lift both arms up
-                    q[jointNames.index('LShSag')] = np.deg2rad(-162)
-                    q[jointNames.index('LShLat')] = np.deg2rad(85)
+                    s.setVal(jointNames.index("LShSag"), np.deg2rad(-162))
+                    s.setVal(jointNames.index("LShLat"), np.deg2rad(85))
 
-                    q[jointNames.index('RShSag')] = np.deg2rad(-162)
-                    q[jointNames.index('RShLat')] = np.deg2rad(-85)
+                    s.setVal(jointNames.index("RShSag"), np.deg2rad(-162))
+                    s.setVal(jointNames.index("RShLat"), np.deg2rad(-85))
 
-                elif i == jointNames.index('WaistYaw'):
+                elif i == jointNames.index("WaistYaw"):
                     # lift arms up to 90 deg
-                    q[jointNames.index('LShSag')] = np.deg2rad(25)
-                    q[jointNames.index('LShLat')] = np.deg2rad(85)
+                    s.setVal(jointNames.index("LShSag"), np.deg2rad(25))
+                    s.setVal(jointNames.index("LShLat"), np.deg2rad(85))
 
-                    q[jointNames.index('RShSag')] = np.deg2rad(25)
-                    q[jointNames.index('RShLat')] = np.deg2rad(-85)
+                    s.setVal(jointNames.index("RShSag"), np.deg2rad(25))
+                    s.setVal(jointNames.index("RShLat"), np.deg2rad(-85))
 
                 #    print ("{} {}".format(i, jointNames[i]))
 
-            dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
-            dynamics.getFreeFloatingMassMatrix(m)
+            kinDyn.setRobotState(world_T_base, s, base_velocity, ds, gravity_vec)
+            kinDyn.getFreeFloatingMassMatrix(m)
             I = m.toNumPy()
 
             # subtract inertia that results from floating base link having zero acceleration (it
@@ -105,27 +106,37 @@ if __name__ == '__main__':
             maxima[i] = np.max((i_j[i], maxima[i]))
             minima[i] = np.min((i_j[i], minima[i]))
 
-            '''
+            """
             # get only gravity vector for q (qdot = qddot = 0)
-            dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
-            dynamics.inverseDynamics(torques, baseReactionForce)
-            gravity = torques.toNumPy()
+            kinDyn.setRobotState(world_T_base, s, base_velocity, ds, gravity_vec)
+            ext_wrenches = iDynTree.LinkWrenches(model)
+            ext_wrenches.zero()
+            gen_torques = iDynTree.FreeFloatingGeneralizedTorques(model)
+            base_acc_zero = iDynTree.Vector6()
+            for j in range(6):
+                base_acc_zero.setVal(j, 0.0)
+            ddq_zero = iDynTree.JointDOFsDoubleArray(n_dofs)
+            for j in range(n_dofs):
+                ddq_zero.setVal(j, 0.0)
+            kinDyn.inverseDynamics(base_acc_zero, ddq_zero, ext_wrenches, gen_torques)
+            gravity = gen_torques.jointTorques().toNumPy()
 
             # get mass matrix for q, qddot
-            ddq[i] = 1
-            dynamics.setRobotState(q, dq, ddq, world_T_base, base_velocity, base_acceleration, world_gravity)
-            dynamics.inverseDynamics(torques, baseReactionForce)
-            massVector = torques.toNumPy() - gravity
-            ddq.zero()
+            ddq_unit = iDynTree.JointDOFsDoubleArray(n_dofs)
+            for j in range(n_dofs):
+                ddq_unit.setVal(j, 0.0)
+            ddq_unit.setVal(i, 1.0)
+            kinDyn.inverseDynamics(base_acc_zero, ddq_unit, ext_wrenches, gen_torques)
+            massVector = gen_torques.jointTorques().toNumPy() - gravity
 
             maxima[i] = np.max((massVector[i], maxima[i]))
-            '''
+            """
 
     if getMaxima:
-        print("maxima {}".format(dynamics.getFloatingBase()))
-        for l in map(lambda j: "{}: {}".format(jointNames[j], maxima[j]), range(len(maxima))):
+        print(f"maxima {kinDyn.getFloatingBase()}")
+        for l in map(lambda j: f"{jointNames[j]}: {maxima[j]}", range(len(maxima))):
             print(l)
     else:
-        print("minima {}".format(dynamics.getFloatingBase()))
-        for l in map(lambda j: "{}: {}".format(jointNames[j], minima[j]), range(len(minima))):
+        print(f"minima {kinDyn.getFloatingBase()}")
+        for l in map(lambda j: f"{jointNames[j]}: {minima[j]}", range(len(minima))):
             print(l)

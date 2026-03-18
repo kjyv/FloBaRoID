@@ -367,7 +367,7 @@ class Optimizer:
             def draw_model():
                 if self.trajectory and self.visualizer.trajectory:
                     # get data of trajectory
-                    self.visualizer.trajectory.setTime(self.visualizer.display_index / self.visualizer.fps)
+                    self.visualizer.trajectory.setTime(self.visualizer.display_index / self.visualizer.playback_rate)
                     q0 = [self.visualizer.trajectory.getAngle(d) for d in range(self.num_dofs)]
                 else:
                     p_id = self.visualizer.display_index
@@ -404,8 +404,8 @@ class Optimizer:
         """show visualizer for joint trajectory t"""
         if self.config["showModelVisualization"] and self.mpi_rank == 0:  # and c:
             self.visualizer.setModelTrajectory(t)
-            self.config["excitationFrequency"]
-            self.visualizer.display_max = t.getPeriodLength() * self.visualizer.fps  # length of trajectory
+            self.visualizer.playback_rate = self.config["excitationFrequency"]
+            self.visualizer.display_max = t.getPeriodLength() * self.visualizer.playback_rate  # length of trajectory
             self.visualizer.trajectory = t
             self.visualizer.playable = True
             if self.visualizer.event_callback:

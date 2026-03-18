@@ -742,7 +742,7 @@ class Visualizer:
         # declared here; initialized by _initWindow / _initCamera
         self.window: pyglet.window.Window | None = None
         self.camera: FirstPersonCamera
-        self.fps: int = 50
+        self.playback_rate: int = 50
 
         self._initWindow()
         self._initCamera()
@@ -860,11 +860,11 @@ class Visualizer:
             pitch = -70.5
             yaw = -103.4
         self.camera = FirstPersonCamera(self.window, position=pos, pitch=pitch, yaw=yaw)
-        self.fps = 50  # trajectory playback rate
+        self.playback_rate = 50  # trajectory playback rate (Hz), updated to match data frequency
         self.render_fps = 120  # render loop cap
         pyglet.clock.unschedule(self.update)
         # Schedule at a high rate so the event loop doesn't sleep longer than one vsync
-        # interval. self.fps (50) is only used for the trajectory playback timer below.
+        # interval. playback_rate is only used for the trajectory playback timer below.
         pyglet.clock.schedule_interval(self.update, 1 / 120)
 
     def _compile_shader(self, vs_src: str, fs_src: str) -> int:
@@ -1008,7 +1008,7 @@ class Visualizer:
         if symbol == key.ENTER:
             if not self.playing_traj and self.playable:
                 self.playing_traj = True
-                pyglet.clock.schedule_interval(self.timer_callback, 1 / self.fps)
+                pyglet.clock.schedule_interval(self.timer_callback, 1 / self.playback_rate)
             else:
                 self.playing_traj = False
                 pyglet.clock.unschedule(self.timer_callback)
@@ -1347,7 +1347,7 @@ class Visualizer:
                 window.flip()
 
         if self.mode == "c":
-            pyglet.clock.schedule_once(self.stop, 1 / self.fps)
+            pyglet.clock.schedule_once(self.stop, 1 / self.playback_rate)
 
 
 if __name__ == "__main__":
@@ -1451,10 +1451,10 @@ if __name__ == "__main__":
             elif data_type == "trajectory":
                 # get data of trajectory
                 if v.trajectory is not None:
-                    v.trajectory.setTime(v.display_index / v.fps)
+                    v.trajectory.setTime(v.display_index / v.playback_rate)
                     q0 = [v.trajectory.getAngle(d) for d in range(config["num_dofs"])]
             elif data_type == "measurements":
-                idx = int(v.display_index * v.freq / v.fps)
+                idx = int(v.display_index * v.freq / v.playback_rate)
                 if idx > data["positions"].shape[0] - 1:
                     v.display_index = 0
                     idx = 0
@@ -1481,9 +1481,11 @@ if __name__ == "__main__":
             v.setModelTrajectory(trajectory)
 
             v.freq = config["excitationFrequency"]
-            v.display_max = trajectory.getPeriodLength() * v.fps  # length of trajectory
+            v.playback_rate = v.freq
+            v.display_max = trajectory.getPeriodLength() * v.playback_rate  # length of trajectory
         elif data_type == "measurements":
             v.freq = config["excitationFrequency"]
+            v.playback_rate = v.freq
             v.display_max = data["positions"].shape[0]
 
     v.event_callback = draw_model

@@ -64,9 +64,17 @@ class PostureOptimizer(Optimizer):
             for l in nb_real:
                 if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
                     nb_pairs.append((link, l))
+        # only count ignore pairs where both links are in the effective set
+        ignored = set(self.config["ignoreLinksForCollision"])
+        all_links = set(self.model.linkNames + self.world_links)
+        effective_ignore_pairs = [
+            p
+            for p in self.config["ignoreLinkPairsForCollision"]
+            if p[0] in all_links and p[1] in all_links and p[0] not in ignored and p[1] not in ignored
+        ]
         self.num_constraints -= self.num_postures * (
             len(nb_pairs)  # neighbors
-            + len(self.config["ignoreLinkPairsForCollision"])
+            + len(effective_ignore_pairs)
         )  # custom combinations
 
         # only generate output from main process

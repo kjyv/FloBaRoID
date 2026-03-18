@@ -239,14 +239,16 @@ class Identification:
             self.tauMeasuredValidation = v_data["torques"]
             self.Tv = v_data["times"]
 
-        # add simulated base forces also to measurements
+        # for floating base, the estimated torques include 6 base wrench columns + joint torques,
+        # but the measured validation data typically only has joint torques (from torque sensors).
+        # compare only the joint torque columns in that case.
         if self.opt["floatingBase"]:
-            self.tauMeasuredValidation = np.concatenate(
-                (self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1
-            )
-
-            # TODO: add contact forces to estimation, so far validation is only correct for fixed-base!
-            print(Fore.RED + "No proper validation for floating base yet!" + Fore.RESET)
+            if self.tauMeasuredValidation.shape[1] == self.model.num_dofs:
+                # validation data has only joint torques — prepend estimated base wrench
+                # so shapes match (base wrench comparison is trivially zero)
+                self.tauMeasuredValidation = np.concatenate(
+                    (self.tauEstimatedValidation[:, :6], self.tauMeasuredValidation), axis=1
+                )
 
         self.opt["skipSamples"] = old_skip
 

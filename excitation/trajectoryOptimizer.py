@@ -227,10 +227,12 @@ class TrajectoryOptimizer(Optimizer):
         torques = data.samples["torques"]
 
         # vectorized min/max across all samples for each joint
+        fb = 6 if self.config["floatingBase"] else 0
         pos_min = np.min(pos, axis=0)
         pos_max = np.max(pos, axis=0)
         vel_absmax = np.max(np.abs(vel), axis=0)
-        torque_absmax = np.nanmax(np.abs(torques), axis=0)
+        # skip base wrench columns (first 6) for floating-base torques
+        torque_absmax = np.nanmax(np.abs(torques[:, fb:]), axis=0)
 
         for n in range(self.num_dofs):
             # check for joint limits

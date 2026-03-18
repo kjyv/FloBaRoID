@@ -113,44 +113,11 @@ def simulateTrajectory(
 
     trajectory_data["base_rpy"] = np.zeros((num_samples, 3))
 
-    # add static contact force
-    contacts = 1
-    if config["floatingBase"] and contacts:
-        contactFrame = "contact_ft"
-        # get base acceleration that results from acceleration at contact frame
-        # contact_wrench =  np.zeros(6)
-        # contact_wrench[2] = 9.81 * 3.0 # -g * mass
-        contact_wrench = np.random.rand(6) * 10
-
-        trajectory_data["base_rpy"] = np.random.rand(3 * num_samples).reshape((num_samples, 3)) * 0.5
-
-        """
-        contact_wrench[2] = 9.81 # * 139.122814
-        len_contact = la.norm(contact_wrench[0:3])
-
-        # get vector from contact frame to robot center of mass
-        model_com = iDynTree.Position()
-        model_com = model.dynComp.getWorldTransform(contactFrame).inverse()*model.dynComp.getCenterOfMass()
-        model_com = model_com.toNumPy()
-
-        # rotate contact wrench to be in line with COM (so that base link is not rotationally accelerated)
-        contact_wrench[0:3] = (-model_com) / la.norm(model_com) * len_contact
-
-        # rotate base accordingly (ore rather the whole robot) so gravity is parallel to contact force
-        a_xz = np.array([0,9.81])      #xz of non-rotated contact force
-        b_xz = contact_wrench[[0,2]]     #rotated contact force vec projected to xz
-        pitch = np.arccos( (a_xz.dot(b_xz))/(la.norm(a_xz)*la.norm(b_xz)) )   #angle in xz layer
-        a_yz = np.array([0,9.81])        #yz of non-rotated contact force
-        b_yz = contact_wrench[[1,2]]     #rotated contact force vec projected to yz
-        roll = np.arccos( (a_yz.dot(b_yz))/(la.norm(a_yz)*la.norm(b_yz)) )   #angle in yz layer
-        yaw = 0
-
-        trajectory_data['base_rpy'][:] += np.array([roll, pitch, yaw])
-        """
-        trajectory_data["contacts"] = np.array({contactFrame: np.tile(contact_wrench, (num_samples, 1))})
-    else:
-        # TODO: add proper simulated contacts (from e.g. gazebo) for floating-base
-        trajectory_data["contacts"] = np.array({})
+    # for floating-base robots, the base is assumed stationary (fixed contact with
+    # the environment). The base wrench from inverse dynamics gives the reaction
+    # forces at the base link, which is what a force/torque sensor at the contact
+    # point would measure. No separate contact wrench needs to be specified.
+    trajectory_data["contacts"] = np.array({})
 
     if measurements:
         trajectory_data["positions"] = measurements["Q"]

@@ -374,7 +374,7 @@ class NLOPT(Optimizer):
 
         return result
 
-    def addVarsAndConstraints(self, opt):
+    def addVarsAndConstraints(self, opt, initial_values=None):
         """Add variables and constraints for the optimization problem."""
         if not self.idf.opt["identifyGravityParamsOnly"]:
             # only constrain triangle inequality if it holds true for starting point

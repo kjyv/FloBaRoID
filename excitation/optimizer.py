@@ -26,6 +26,7 @@ try:
 except:
     parallel = False
 
+import fcl
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
@@ -277,70 +278,59 @@ class Optimizer:
     def testConstraints(self, g: np.ndarray) -> bool:
         raise NotImplementedError
 
+    def _getLinkBoxGeometry(self, link_name: str) -> tuple[Any, np.ndarray]:
+        """Get or cache the FCL box and center offset for a link (geometry never changes)."""
+        if not hasattr(self, "_box_cache"):
+            self._box_cache: dict[str, tuple[Any, np.ndarray]] = {}
+        if link_name not in self._box_cache:
+            s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
+            b = np.array(self.link_cuboid_hulls[link_name][0]) * s
+            p = np.array(self.link_cuboid_hulls[link_name][1])
+            center = 0.5 * (b[0] + b[1] + p)  # TODO: use pos and rot of boxes for vals from geometry tags
+            box = fcl.Box(*(b[1] - b[0]))
+            self._box_cache[link_name] = (box, center)
+        return self._box_cache[link_name]
+
+    def _getLinkTransform(self, link_name: str) -> tuple[np.ndarray, np.ndarray]:
+        """Get rotation and position for a link. For robot links, uses current kinDyn state
+        (set via setCollisionRobotState). For world links, returns static transform.
+        Results are cached per sample via _transform_cache (cleared each sample)."""
+        if link_name in self._transform_cache:
+            return self._transform_cache[link_name]
+        if link_name in self.model.linkNames:
+            t = self.model.kinDyn.getWorldTransform(link_name)
+            rot = t.getRotation().toNumPy()
+            pos = t.getPosition().toNumPy()
+        else:
+            pos = self.link_cuboid_hulls[link_name][1]
+            rot = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[link_name][2])
+        self._transform_cache[link_name] = (rot, pos)
+        return rot, pos
+
+    def setCollisionRobotState(self, joint_q: np.ndarray) -> None:
+        """Set iDynTree robot state for collision checking (call once per sample, not per pair)."""
+        if not hasattr(self, "_coll_s"):
+            self._coll_s = iDynTree.JointPosDoubleArray(self.num_dofs)
+            self._coll_ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
+        for j in range(self.num_dofs):
+            self._coll_s.setVal(j, float(joint_q[j]))
+        self.model.kinDyn.setRobotState(self._coll_s, self._coll_ds, self.model.gravity_vec)
+        # clear transform cache for new configuration
+        self._transform_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
     def getLinkDistance(self, l0_name: str, l1_name: str, joint_q: np.ndarray) -> float:
         """get shortest distance from link with id l0 to link with id l1 for posture joint_q"""
 
-        import fcl
-
-        # get link rotation and position in world frame
-        s = iDynTree.JointPosDoubleArray(self.num_dofs)
-        ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
-        for j in range(self.num_dofs):
-            s.setVal(j, float(joint_q[j]))
-        self.model.kinDyn.setRobotState(s, ds, self.model.gravity_vec)
-
-        if l0_name in self.model.linkNames:  # if robot link
-            t0 = self.model.kinDyn.getWorldTransform(l0_name)
-            rot0 = t0.getRotation().toNumPy()
-            pos0 = t0.getPosition().toNumPy()
-            s0 = self.config["scaleCollisionHull"]
-        else:  # if world link
-            pos0 = self.link_cuboid_hulls[l0_name][1]
-            rot0 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l0_name][2])
-            s0 = 1
-
-        if l1_name in self.model.linkNames:  # if robot link
-            t1 = self.model.kinDyn.getWorldTransform(l1_name)
-            rot1 = t1.getRotation().toNumPy()
-            pos1 = t1.getPosition().toNumPy()
-            s1 = self.config["scaleCollisionHull"]
-        else:  # if world link
-            pos1 = self.link_cuboid_hulls[l1_name][1]
-            rot1 = eulerAnglesToRotationMatrix(self.link_cuboid_hulls[l1_name][2])
-            s1 = 1
-
-        # TODO: use pos and rot of boxes for vals from geometry tags
-        # self.link_cuboid_hulls[l0_name][1], [2]
-
-        b = np.array(self.link_cuboid_hulls[l0_name][0]) * s0
-        p = np.array(self.link_cuboid_hulls[l0_name][1])
-        b0_center = 0.5 * np.array(
-            [
-                b[1][0] + b[0][0] + p[0],
-                b[1][1] + b[0][1] + p[1],
-                b[1][2] + b[0][2] + p[2],
-            ]
-        )
-        b0 = fcl.Box(b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2])
-
-        b = np.array(self.link_cuboid_hulls[l1_name][0]) * s1
-        p = np.array(self.link_cuboid_hulls[l1_name][1])
-        b1_center = 0.5 * np.array(
-            [
-                b[1][0] + b[0][0] + p[0],
-                b[1][1] + b[0][1] + p[1],
-                b[1][2] + b[0][2] + p[2],
-            ]
-        )
-        b1 = fcl.Box(b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2])
+        rot0, pos0 = self._getLinkTransform(l0_name)
+        rot1, pos1 = self._getLinkTransform(l1_name)
+        box0, center0 = self._getLinkBoxGeometry(l0_name)
+        box1, center1 = self._getLinkBoxGeometry(l1_name)
 
         # move box to pos + box center pos (model has pos in link origin, box has zero at center)
-        o0 = fcl.CollisionObject(b0, fcl.Transform(rot0, pos0 + b0_center))
-        o1 = fcl.CollisionObject(b1, fcl.Transform(rot1, pos1 + b1_center))
+        o0 = fcl.CollisionObject(box0, fcl.Transform(rot0, pos0 + center0))
+        o1 = fcl.CollisionObject(box1, fcl.Transform(rot1, pos1 + center1))
 
-        d_request = fcl.DistanceRequest(True)
-        d_result = fcl.DistanceResult()
-        distance = fcl.distance(o0, o1, d_request, d_result)
+        distance = fcl.distance(o0, o1, fcl.DistanceRequest(True), fcl.DistanceResult())
 
         if distance < 0:
             if self.config["verbose"] > 1:
@@ -417,6 +407,14 @@ class Optimizer:
     def objectiveFunc(self, x: np.ndarray, test: bool = False) -> tuple[float, np.ndarray, bool]:
         """calculate objective function and return objective function value f, constraint values g
         and a fail flag"""
+        raise NotImplementedError
+
+    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
+        """Wrap objectiveFunc for pyOptSparse dict-based API."""
+        raise NotImplementedError
+
+    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
+        """Add variables and constraints to the optimization problem."""
         raise NotImplementedError
 
     def initGraph(self):
@@ -506,7 +504,7 @@ class Optimizer:
     def runOptimizer(self, opt_prob: Any) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
 
-        from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP
+        from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP, Optimization
 
         if self.config["useGlobalOptimization"]:
             ### global optimization
@@ -531,19 +529,17 @@ class Optimizer:
                 opt = ALPSO()  # augmented lagrange particle swarm optimization
                 opt.setOption("stopCriteria", 0)  # stop at max iters
                 opt.setOption("dynInnerIter", 1)  # dynamic inner iter number
-                opt.setOption("maxInnerIter", 10)
+                opt.setOption("maxInnerIter", 3)
                 opt.setOption("maxOuterIter", self.config["globalOptIterations"])
                 opt.setOption("printInnerIters", 1)
                 opt.setOption("printOuterIters", 1)
                 opt.setOption("SwarmSize", self.config["globalOptSize"])
                 opt.setOption("xinit", 1)
                 opt.setOption("seed", sr.randint(1, 2**31))
-                # favor exploration over refinement (local solver handles convergence)
-                opt.setOption("vmax", 4.0)  # higher max velocity for bigger jumps (default 2.0)
-                opt.setOption("c1", 2.5)  # stronger cognitive pull toward own best (default 2.0)
-                opt.setOption("c2", 0.5)  # weaker social pull, less premature convergence (default 1.0)
-                opt.setOption("w1", 0.99)  # high initial inertia for exploration (default 0.99)
-                opt.setOption("w2", 0.4)  # lower final inertia to keep exploring longer (default 0.55)
+                # slightly more explorative than defaults — local solver handles convergence
+                opt.setOption("vmax", 3.0)  # higher max velocity for broader search (default 2.0)
+                opt.setOption("c2", 0.7)  # weaker social pull, less premature convergence (default 1.0)
+                opt.setOption("w2", 0.65)  # higher final inertia to keep searching longer (default 0.55)
                 # TODO: how to properly limit max number of function calls?
                 # no. func calls = (SwarmSize * inner) * outer + SwarmSize
                 self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
@@ -594,33 +590,36 @@ class Optimizer:
                 opt2.setOption("MIT", self.config["localOptIterations"])  # max iterations
                 # opt2.setOption('MFV', ??)  # max function evaluations
 
-            self.iter_max = self.local_iter_max
+            # approximate: each iteration computes FD gradient (n_vars+1 evaluations) + 1 step eval
+            n_vars = len(self.last_best_sol) if len(self.last_best_sol) > 0 else 0
+            self.iter_max = self.iter_cnt + self.config["localOptIterations"] * (n_vars + 2)
 
-            # use best constrained solution from last run
-            if len(self.last_best_sol) > 0:
-                dvs = {name: self.last_best_sol[i] for i, name in enumerate(self._var_names)}
-                opt_prob.setDVs(dvs)
+            # Create a fresh opt_prob so ALPSO's NaN state doesn't contaminate
+            # the starting point. Pass the ALPSO best as initial values directly
+            # to addVar (setDVs is unreliable after ALPSO's NaN solution).
+            init_vals = np.array(self.last_best_sol) if len(self.last_best_sol) > 0 else None
+            opt_prob_local = Optimization("Trajectory optimization", self._objFuncWrapper)
+            opt_prob_local.addObj("f")
+            self.opt_prob = opt_prob_local
+            self.addVarsAndConstraints(opt_prob_local, initial_values=init_vals)
 
             if self.config["verbose"]:
                 print("Runing local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
-            sol = opt2(opt_prob, sens="FD", sensStep=0.1, storeHistory=False)
+            sol = opt2(opt_prob_local, sens="FD", sensStep=0.05, storeHistory=False)
 
             self.gather_solutions()
 
         if self.mpi_rank == 0:
-            print(sol)
-            # sol_vec = np.array([sol.getVar(x).value for x in range(0,len(sol.getVarSet()))])
-
             if len(self.last_best_sol) > 0:
-                print("using last best constrained solution instead of given solver solution.")
-
+                print("using best constrained solution found during optimization.")
                 print("testing final solution")
-                # self.iter_cnt = 0
                 self.objectiveFunc(self.last_best_sol, test=True)
                 print("\n")
                 return self.last_best_sol
             else:
+                # no feasible solution found at all — print raw solver output for debugging
+                print(sol)
                 print("No feasible solution found!")
                 sys.exit(-1)
         else:

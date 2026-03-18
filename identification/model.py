@@ -229,10 +229,14 @@ class Model:
         vel = samples["velocities"][sample_idx]
         acc = samples["accelerations"][sample_idx]
 
-        # system state for iDynTree
-        s = iDynTree.JointPosDoubleArray(self.num_dofs)
-        ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
-        ddq = iDynTree.JointDOFsDoubleArray(self.num_dofs)
+        # system state for iDynTree (reuse pre-allocated arrays)
+        if not hasattr(self, "_sim_s"):
+            self._sim_s = iDynTree.JointPosDoubleArray(self.num_dofs)
+            self._sim_ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
+            self._sim_ddq = iDynTree.JointDOFsDoubleArray(self.num_dofs)
+        s = self._sim_s
+        ds = self._sim_ds
+        ddq = self._sim_ddq
         for i in range(self.num_dofs):
             s.setVal(i, pos[i])
             ds.setVal(i, vel[i])
@@ -257,9 +261,16 @@ class Model:
             kinDyn.setRobotState(s, ds, self.gravity_vec)
             base_acceleration = iDynTree.Vector6()
 
-        # compute inverse dynamics
-        ext_wrenches = iDynTree.LinkWrenches(self.idyn_model)
-        gen_torques = iDynTree.FreeFloatingGeneralizedTorques(self.idyn_model)
+        # compute inverse dynamics (reuse pre-allocated objects when using default kinDyn)
+        if kinDyn is self.kinDyn:
+            if not hasattr(self, "_sim_ext_wrenches"):
+                self._sim_ext_wrenches = iDynTree.LinkWrenches(self.idyn_model)
+                self._sim_gen_torques = iDynTree.FreeFloatingGeneralizedTorques(self.idyn_model)
+            ext_wrenches = self._sim_ext_wrenches
+            gen_torques = self._sim_gen_torques
+        else:
+            ext_wrenches = iDynTree.LinkWrenches(self.idyn_model)
+            gen_torques = iDynTree.FreeFloatingGeneralizedTorques(self.idyn_model)
         kinDyn.inverseDynamics(base_acceleration, ddq, ext_wrenches, gen_torques)
         torques = gen_torques.jointTorques().toNumPy()
 

@@ -1421,7 +1421,7 @@ if __name__ == "__main__":
 
     if args.trajectory:
         # display trajectory
-        data = np.load(args.trajectory, encoding="latin1")
+        data = np.load(args.trajectory, encoding="latin1", allow_pickle=True)
         if "angles" in data:
             data_type = "static"
         elif "positions" in data:

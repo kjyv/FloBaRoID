@@ -66,6 +66,15 @@ Saves to `<model>.trajectory.npz` by default (e.g. `model/kuka_lwr4.urdf.traject
 uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
 ```
 
+* **simulator.py**: simulate realistic measurement data from a trajectory file (without a physical robot).
+  Computes inverse dynamics and adds configurable real-world effects (friction,
+  sensor noise, backlash, joint elasticity, cable forces, thermal drift, etc.).
+  Settings are controlled via the config file (`simulate*` options).
+
+```bash
+uv run simulator.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
+```
+
 * **identifier.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
 
 ```bash

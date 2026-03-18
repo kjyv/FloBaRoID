@@ -24,9 +24,13 @@ class TrajectoryOptimizer(Optimizer):
         self.trajectory = PulsedTrajectory(self.num_dofs, use_deg=config["useDeg"])
 
         ## bounds for parameters
-        # number of fourier partial sums (same for all joints atm)
-        # (needs to be larger for larger dofs? means a lot more variables)
-        self.nf = [4] * self.num_dofs
+        # number of fourier partial sums per joint (more harmonics = higher frequency content)
+        nf_config = self.config.get("trajectoryNf", None)
+        if nf_config and len(nf_config) == self.num_dofs:
+            self.nf = list(nf_config)
+        else:
+            self.nf = [4] * self.num_dofs
+        self.total_ab = sum(self.nf)  # total number of a (or b) coefficients across all joints
 
         # pulsation
         self.wf_min = self.config["trajectoryPulseMin"]
@@ -58,22 +62,21 @@ class TrajectoryOptimizer(Optimizer):
         # sin/cos coefficients
         self.amin = self.bmin = self.config["trajectoryCoeffMin"]
         self.amax = self.bmax = self.config["trajectoryCoeffMax"]
-        self.ainit = np.empty((self.num_dofs, self.nf[0]))
-        self.binit = np.empty((self.num_dofs, self.nf[0]))
-        for i in range(0, self.num_dofs):
-            for j in range(0, self.nf[0]):
-                # fade out and alternate sign
-                # self.ainit[j] = self.config['trajectoryCoeffInit']/ (j+1) * ((j%2)*2-1)
-                # self.binit[j] = self.config['trajectoryCoeffInit']/ (j+1) * ((1-j%2)*2-1)
-                # self.ainit[i,j] = self.binit[i,j] = self.config['trajectoryCoeffInit']+
-                #                  ((self.amax-self.config['trajectoryCoeffInit'])/(self.num_dofs-i))
-                self.ainit[i, j] = self.binit[i, j] = self.config["trajectoryCoeffInit"]
+        # per-joint init arrays (ragged — each joint may have different nf)
+        coeff_init = self.config["trajectoryCoeffInit"]
+        self.ainit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
+        self.binit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
 
         self.last_best_f_f1 = 0.0
 
         self.num_constraints = self.num_dofs * 4  # angle, velocity, torque limits
         if self.config["minVelocityConstraint"]:
             self.num_constraints += self.num_dofs
+
+        # hard constraint: each joint must reach at least minTorqueUtilization of its torque limit
+        # (default is conservative — distal joints of serial chains have very small achievable torques)
+        self.min_torque_utilization = self.config.get("minTorqueUtilization", 0.02)
+        self.num_constraints += self.num_dofs
 
         # collision constraints
 
@@ -120,22 +123,21 @@ class TrajectoryOptimizer(Optimizer):
         self.initVisualizer()
 
     def vecToParams(self, x):
-        # convert vector of all solution variables to separate parameter variables
+        """Convert flat solution vector to separate parameter variables.
+
+        Returns (wf, q, a, b) where a and b are lists of per-joint arrays (ragged).
+        """
         wf = x[0]
         q = x[1 : self.num_dofs + 1]
-        ab_len = self.num_dofs * self.nf[0]
-        a = np.array(
-            np.split(
-                np.array(x[self.num_dofs + 1 : self.num_dofs + 1 + ab_len]),
-                self.num_dofs,
-            )
-        )
-        b = np.array(
-            np.split(
-                np.array(x[self.num_dofs + 1 + ab_len : self.num_dofs + 1 + ab_len * 2]),
-                self.num_dofs,
-            )
-        )
+        offset = self.num_dofs + 1
+        a: list[np.ndarray] = []
+        for i in range(self.num_dofs):
+            a.append(np.array(x[offset : offset + self.nf[i]]))
+            offset += self.nf[i]
+        b: list[np.ndarray] = []
+        for i in range(self.num_dofs):
+            b.append(np.array(x[offset : offset + self.nf[i]]))
+            offset += self.nf[i]
         return wf, q, a, b
 
     def approx_jacobian(self, f, x, epsilon, *args):
@@ -253,11 +255,12 @@ class TrajectoryOptimizer(Optimizer):
                     self.limits[jn[n]]["velocity"] * self.config["minVelocityPercentage"] - vel_absmax[n]
                 )
 
-            # highest joint torque should at least be 10% of joint limit
-            # g[5*self.num_dofs+n] = self.limits[jn[n]]['torque']*0.1 - torque_absmax[n]
-            f_tmp = self.limits[jn[n]]["torque"] * 0.1 - torque_absmax[n]
-            if f_tmp > 0:
-                f1 += f_tmp
+            # hard constraint: each joint must reach min_torque_utilization of its torque limit
+            # (g <= 0 means feasible, so: required - actual <= 0 when actual >= required)
+            min_vel_offset = self.num_dofs if self.config["minVelocityConstraint"] else 0
+            g[4 * self.num_dofs + min_vel_offset + n] = (
+                self.limits[jn[n]]["torque"] * self.min_torque_utilization - torque_absmax[n]
+            )
 
         # check collision constraints
         # (for whole trajectory but only get closest distance as constraint value)
@@ -306,10 +309,16 @@ class TrajectoryOptimizer(Optimizer):
             print(f"call #{self.iter_cnt} (constraint NaN, skipped)")
             return 1000.0, [10.0] * self.num_constraints, 1.0
 
-        # add min join torques as second objective
-        if f1 > 0:
-            f += f1
-            print(f"added cost: {f1}")
+        # soft cost: penalize uneven torque utilization across joints
+        # (coefficient of variation of utilization ratios — high means imbalanced)
+        torque_limits_arr = np.array([self.limits[jn[n]]["torque"] for n in range(self.num_dofs)])
+        utilization = torque_absmax / torque_limits_arr
+        util_mean = np.mean(utilization)
+        if util_mean > 0:
+            f1 = np.std(utilization) / util_mean  # coefficient of variation (0 = perfectly balanced)
+            f += f1 * 10.0  # scale so it's comparable to condition number values
+            if f1 > 0.3:
+                print(f"torque balance penalty: {f1:.3f} (utilization: {np.round(utilization, 3).tolist()})")
 
         c = self.testConstraints(g)
         if c:
@@ -318,7 +327,7 @@ class TrajectoryOptimizer(Optimizer):
             print(Fore.YELLOW, end=" ")
 
         print(
-            f"objective function value: {f} (last best: {self.last_best_f - self.last_best_f_f1} + {self.last_best_f_f1})",
+            f"objective function value: {f} (cond: {f - f1 * 10.0:.1f} + balance: {f1 * 10.0:.1f}, last best: {self.last_best_f})",
             end=" ",
         )
         print(Fore.RESET)
@@ -359,8 +368,8 @@ class TrajectoryOptimizer(Optimizer):
         wf, q, a, b = self.vecToParams(x)
         wf_t = wf >= self.wf_min and wf <= self.wf_max
         q_t = np.all(q <= self.qmax) and np.all(q >= self.qmin)
-        a_t = np.all(a <= self.amax) and np.all(a >= self.amin)
-        b_t = np.all(b <= self.bmax) and np.all(b >= self.bmin)
+        a_t = all(np.all(a[i] <= self.amax) and np.all(a[i] >= self.amin) for i in range(len(a)))
+        b_t = all(np.all(b[i] <= self.bmax) and np.all(b[i] >= self.bmin) for i in range(len(b)))
         res = wf_t and q_t and a_t and b_t
 
         if not res:
@@ -400,12 +409,18 @@ class TrajectoryOptimizer(Optimizer):
                 ):
                     print("- min velocity limits")
 
+            # min torque utilization constraints
+            min_vel_offset = self.num_dofs if self.config["minVelocityConstraint"] else 0
+            min_torq_start = 4 * self.num_dofs + min_vel_offset
+            min_torq_end = min_torq_start + self.num_dofs
+            if True in np.isin(
+                list(range(min_torq_start, min_torq_end)),
+                np.where(g >= self.config["minTolConstr"]),
+            ):
+                print("- min torque utilization limits")
+
             if not res_c:
                 print("- collision constraints")
-
-            # if True in np.isin(range(5*self.num_dofs,6*self.num_dofs), np.where(g >= self.config['minTolConstr'])):
-            #    print "- min torque limits"
-            #    print g[range(5*self.num_dofs,6*self.num_dofs)]
         return res and res_c
 
     def testParams(self, **kwargs):
@@ -444,16 +459,16 @@ class TrajectoryOptimizer(Optimizer):
             q_val = float(initial_values[idx]) if initial_values is not None else self.qinit[i]
             opt_prob.addVar(name, value=q_val, lower=self.qmin[i], upper=self.qmax[i])
             idx += 1
-        # a, b - sin/cos params
+        # a, b - sin/cos params (per-joint nf, so each joint may have different count)
         for i in range(self.num_dofs):
-            for j in range(self.nf[0]):
+            for j in range(self.nf[i]):
                 name = f"a{i}_{j}"
                 self._var_names.append(name)
                 a_val = float(initial_values[idx]) if initial_values is not None else self.ainit[i][j]
                 opt_prob.addVar(name, value=a_val, lower=self.amin, upper=self.amax)
                 idx += 1
         for i in range(self.num_dofs):
-            for j in range(self.nf[0]):
+            for j in range(self.nf[i]):
                 name = f"b{i}_{j}"
                 self._var_names.append(name)
                 b_val = float(initial_values[idx]) if initial_values is not None else self.binit[i][j]

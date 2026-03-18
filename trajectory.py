@@ -110,12 +110,15 @@ def main():
         # TODO: remove degrees option
         if not isinstance(trajectory, PulsedTrajectory):
             raise RuntimeError("Expected PulsedTrajectory for non-static trajectories")
+        # a and b may be ragged (per-joint nf), so save as object arrays
+        a_arr = np.array(trajectory.a, dtype=object)
+        b_arr = np.array(trajectory.b, dtype=object)
         np.savez(
             traj_file,
             use_deg=trajectory.use_deg,
             static=False,
-            a=trajectory.a,
-            b=trajectory.b,
+            a=a_arr,
+            b=b_arr,
             q=trajectory.q,
             nf=trajectory.nf,
             wf=trajectory.w_f_global,

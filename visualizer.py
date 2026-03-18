@@ -1224,9 +1224,9 @@ class Visualizer:
             body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
             body["center"] = 0.5 * np.array(
                 [
-                    np.abs(b[1][0]) - np.abs(b[0][0]),
-                    np.abs(b[1][1]) - np.abs(b[0][1]),
-                    np.abs(b[1][2]) - np.abs(b[0][2]),
+                    b[1][0] + b[0][0],
+                    b[1][1] + b[0][1],
+                    b[1][2] + b[0][2],
                 ]
             )
             body["position"] = boxes[linkName][1]
@@ -1288,11 +1288,10 @@ class Visualizer:
                     body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
                     body["center"] = 0.5 * np.array(
                         [
-                            np.abs(b[1][0]) - np.abs(b[0][0]) + p[0],
-                            np.abs(b[1][1]) - np.abs(b[0][1]) + p[1],
-                            np.abs(b[1][2]) - np.abs(b[0][2]),
+                            b[1][0] + b[0][0] + p[0],
+                            b[1][1] + b[0][1] + p[1],
+                            b[1][2] + b[0][2] + p[2],
                         ]
-                        + p[2]
                     )
                 except KeyError:
                     print(f"using cube for {n_name}")

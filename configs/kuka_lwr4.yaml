@@ -9,7 +9,7 @@ globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algor
 globalOptIterations: 5           #Swarm iterations or Generations
 globalOptSize: 12                #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
+localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
@@ -26,9 +26,14 @@ ignoreLinkPairsForCollision:     #don't check collision between these pairs
 trajectoryPulseInit: 0.5         #determines length of one period of trajectory (smaller=longer)
 trajectoryPulseMin:  0.3
 trajectoryPulseMax:  1.0
-trajectoryCoeffInit: 0.3         #set this as high as possible without violating constraints at start (see output after start)
-trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
-trajectoryCoeffMax:  0.5
+trajectoryCoeffInit: 0.5         #set this as high as possible without violating constraints at start (see output after start)
+trajectoryCoeffMin: -1.0         #determines in which range the chosen params have to be (smaller=lower vel)
+trajectoryCoeffMax:  1.0
+# per-joint number of Fourier harmonics (more harmonics = higher frequency content = more inertial torque)
+# distal joints benefit from more harmonics since they can't rely on gravity for excitation
+# if empty, uses uniform default of 4 for all joints
+trajectoryNf: [3, 3, 4, 4, 5, 6, 6]
+
 trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
 trajectoryAngleMax:  25.0
 
@@ -51,6 +56,10 @@ ovrPosLimit:
 minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
+# minimum torque utilization per joint as fraction of torque limit (hard constraint)
+# (set conservatively — distal joints of serial chains have small achievable torques)
+minTorqueUtilization: 0.02
+
 # static posture optimization (for gravity term identification)
 useStaticTrajectories: 0         #generate simple 'trajectories' of static postures for identification of gravity terms
 numStaticPostures: 5             #how many postures to generate (must be >1)
@@ -69,6 +78,64 @@ exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
 ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                        #give angles in degrees (internal and data is always in rad)
+
+#### measurement simulation (simulator.py)
+# Simulate realistic measurement data from trajectories by computing inverse
+# dynamics and adding real-world effects (friction, noise, backlash, etc.)
+
+# append static postures to dynamic trajectory data for gravity term excitation
+simulateStaticPostures: 1
+simulateStaticSamplesPerPosture: 100
+staticPostures:
+    - [0, 1.57, 0, 0, 0, 0, 0]           # arm extended forward — loads joints 1,2
+    - [0, -1.57, 0, 0, 0, 0, 0]          # arm extended backward
+    - [0, 0.8, 0, -1.2, 0, 0, 0]         # elbow bent — loads joints 3,4
+    - [0, 1.0, 0, -0.5, 0, 0.8, 0]       # wrist loaded — loads joints 5,6
+    - [0, 1.2, 0, 0, 0, -0.8, 0]         # wrist other direction
+    - [0, 0.5, 0, -1.0, 0, 0.5, 0.5]     # combined — loads joint 6
+    - [0, 1.0, 0.5, -0.8, 0.3, 0.5, -0.5] # full arm — various gravity loading
+
+# number of sudden stop/restart segments to insert into trajectory
+simulateNumStops: 3
+
+# sensor and actuator properties
+# (values for KUKA LWR4+ based on DLR LWR III documentation:
+#  Albu-Schäffer et al., "The DLR Lightweight Robot", 2008.
+#  The LWR4+ is the KUKA-commercialized version of the DLR LWR III design.)
+simulateControlRate: 3000.0      # joint-level control loop rate in Hz (DLR: 3 kHz SERCOS bus)
+simulateTorqueSensorError: 0.0005 # torque sensor noise as fraction of torque limit
+                                  # (DLR spec: <0.5% is accuracy/linearity, not noise.
+                                  #  measured noise floor after 8 Hz filtering: ~0.03% of limit)
+simulateTorqueSensorFilter: 600  # torque sensor on-board low-pass cutoff in Hz (DLR: 600 Hz)
+simulatePositionFilter: 150      # position/velocity data low-pass cutoff in Hz (reasonable for 1 kHz SERCOS bus)
+
+# friction model constants
+# (Stribeck velocity: speed at which stiction effect decays. Lower = sharper transition.
+#  0.05 rad/s is typical for precision gearboxes; use higher for spur gears or worn joints.)
+#simulateStribeckVelocity: 0.05
+# (sign smoothing threshold: tanh(vel/threshold) approximates sign(vel).
+#  0.02 rad/s avoids numerical issues near zero without distorting the friction curve.)
+#simulateFrictionSignThreshold: 0.02
+
+# scenario-dependent effects (these depend on the specific use case / test setup)
+simulateThermalWarmupTime: 300   # seconds robot was running before trajectory (0 = cold start)
+simulateThermalReduction: 0.12   # max friction reduction when fully warm (fraction of viscous friction)
+simulateGravCompError: 0.0       # gravity comp residual (0: LWR4 uses joint torque sensors that measure actual
+                                 # torques directly, so controller model errors don't affect measurements.
+                                 # set >0 for robots where torques are derived from motor current)
+simulateCableStiffnessScale: 1.0 # multiplier for cable routing forces (0 = disabled)
+
+# toggle individual realistic effects
+simulateFriction: 1              # viscous + Coulomb + Stribeck stiction
+simulateThermalDrift: 1          # temperature-dependent friction change (see warmup time above)
+simulateCableForces: 1           # configuration-dependent cable/hose forces
+simulateGravityCompResidual: 0   # imperfect controller gravity compensation (off: LWR4 has joint torque sensors)
+simulateTorqueQuantization: 1    # motor PWM discretization
+simulateStructuralDeflection: 1  # load-dependent link deflection
+simulateBacklash: 1              # gear backlash dead zone
+simulateEncoderQuantization: 1   # finite encoder resolution
+simulateTimingJitter: 1          # non-uniform sampling timestamps
+simulateRandomSeed: 42           # random seed for reproducibility
 
 #### data preprocessing and selection
 

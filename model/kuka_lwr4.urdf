@@ -82,7 +82,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.11"/>
     <axis xyz="0 0 1"/>
     <limit effort="176" lower="-2.96705972839" upper="2.96705972839" velocity="1.91986217719"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="1.0" friction="0.5"/>
     <parent link="lwr_base_link"/>
     <child link="lwr_1_link"/>
   </joint>
@@ -124,7 +124,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.2005"/>
     <axis xyz="0 -1 0"/>
     <limit effort="176" lower="-2.09439510239" upper="2.09439510239" velocity="1.91986217719"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="1.2" friction="0.8"/>
     <parent link="lwr_1_link"/>
     <child link="lwr_2_link"/>
   </joint>
@@ -166,7 +166,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 0 1"/>
     <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="2.23402144255"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="0.9" friction="0.4"/>
     <parent link="lwr_2_link"/>
     <child link="lwr_3_link"/>
   </joint>
@@ -208,7 +208,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 1 0"/>
     <limit effort="100" lower="-2.09439510239" upper="2.09439510239" velocity="2.23402144255"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="0.8" friction="0.3"/>
     <parent link="lwr_3_link"/>
     <child link="lwr_4_link"/>
   </joint>
@@ -250,7 +250,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.20"/>
     <axis xyz="0 0 1"/>
     <limit effort="100" lower="-2.96705972839" upper="2.96705972839" velocity="3.56047167407"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="0.5" friction="0.2"/>
     <parent link="lwr_4_link"/>
     <child link="lwr_5_link"/>
   </joint>
@@ -292,7 +292,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.19"/>
     <axis xyz="0 -1 0"/>
     <limit effort="38" lower="-2.09439510239" upper="2.09439510239" velocity="3.21140582367"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="0.3" friction="0.1"/>
     <parent link="lwr_5_link"/>
     <child link="lwr_6_link"/>
   </joint>
@@ -321,7 +321,7 @@
     <origin rpy="0 0 0" xyz="0 0 0.078"/>
     <axis xyz="0 0 1"/>
     <limit effort="38" lower="-2.96705972839" upper="2.96705972839" velocity="3.21140582367"/>
-    <dynamics damping="1.0" friction="0.0"/>
+    <dynamics damping="0.2" friction="0.05"/>
     <parent link="lwr_6_link"/>
     <child link="lwr_7_link"/>
   </joint>
@@ -345,6 +345,15 @@
       </geometry>
     </collision>
   </link>
+  <!-- Transmissions: KUKA LWR4+ uses harmonic drive gears (RoboDrive ILM motors).
+       Values based on DLR LWR III documentation (Albu-Schäffer et al., 2008) as indication;
+       actual LWR 4+ values are not publicly available from KUKA.
+       DLR LWR III uses three motor sizes (ILM 85/70/50mm) with gear ratios:
+         Axes 1-2: 160:1, torque sensor range ±165 Nm (ILM 85mm)
+         Axes 3-4: 160:1, torque sensor range ±70 Nm  (ILM 70mm)
+         Axis 5:   100:1, torque sensor range ±70 Nm  (ILM 70mm)
+         Axes 6-7: 160:1, torque sensor range ±30 Nm  (ILM 50mm)
+       rotor_inertia values are estimates based on motor size class. -->
   <transmission name="lwr_0_trans">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="lwr_0_joint">
@@ -352,7 +361,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_0_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>3.5e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_1_trans">
@@ -362,7 +372,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_1_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>3.5e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_2_trans">
@@ -372,7 +383,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_2_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>2.0e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_3_trans">
@@ -382,7 +394,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_3_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>2.0e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_4_trans">
@@ -392,7 +405,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_4_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>100</mechanicalReduction>
+      <rotor_inertia>2.0e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_5_trans">
@@ -402,7 +416,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_5_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>0.5e-5</rotor_inertia>
     </actuator>
   </transmission>
   <transmission name="lwr_6_trans">
@@ -412,7 +427,8 @@
       <hardwareInterface>EffortJointInterface</hardwareInterface>
     </joint>
     <actuator name="lwr_6_motor">
-      <mechanicalReduction>1</mechanicalReduction>
+      <mechanicalReduction>160</mechanicalReduction>
+      <rotor_inertia>0.5e-5</rotor_inertia>
     </actuator>
   </transmission>
 </robot>

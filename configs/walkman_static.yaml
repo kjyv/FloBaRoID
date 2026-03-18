@@ -203,9 +203,6 @@ identifyGravityParamsOnly: 1
 # simulate torques from target values, don't use both
 simulateTorques: 0    #simulate torque for measured angles etc using idyntree (instead of reading from data)
 
-useRBDL: 0
-# use RBDL for simulation (forward kinematics) instead of iDynTree
-
 ## constrained SDP to solve OLS
 
 # constrain std params to physical consistent space to only achieve physical consistent parameters

@@ -1,0 +1,102 @@
+[project]
+name = "flobaroid"
+version = "0.9.0"
+description = "FLOating BAse RObot dynamical IDentification"
+readme = "README.md"
+license = "LGPL-3.0"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy==2.4.3",
+    "scipy==1.17.1",
+    # dynamics
+    "idyntree",
+    # sdp
+    "sympy==1.12.1",
+    "cvxopt==1.3.3",
+    "pylmi-sdp==1.1.1",
+    "ipython==9.11.0",
+    "pyyaml==6.0.3",
+    # visualization
+    "colorama==0.4.6",
+    "palettable==3.3.3",
+    "humanize==4.15.0",
+    "tqdm==4.67.3",
+    "jinja2==3.1.6",
+    "matplotlib~=3.10.8",
+    "trimesh==4.11.3",
+    "PyOpenGL==3.1.10",
+    "pyglet==2.1.13",
+    "plotly~=6.6.0",
+    "kaleido~=1.2.0",
+    "pyoptsparse==2.15.0",
+    "python-fcl~=0.7.0",
+    "mypy~=1.19.1",
+]
+
+[project.optional-dependencies]
+visualization = [
+]
+tikz-plots = [
+    "matplotlib",
+    "matplotlib2tikz",
+]
+parallel = [
+    "mpi4py",
+]
+
+[tool.uv]
+python-preference = "managed"
+
+[tool.uv.sources]
+pyoptsparse = { git = "https://github.com/mdolab/pyoptsparse.git", tag = "v2.15.0" }
+idyntree = { git = "https://github.com/robotology/idyntree.git", tag = "v15.0.0" }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.6",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "types-PyYAML",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E722",   # bare except (used in legacy code for broad error handling)
+    "E741",   # ambiguous variable name (common in math code: l, I, etc.)
+    "UP031",  # printf-style formatting (common in legacy code)
+]
+[tool.ruff.lint.per-file-ignores]
+"tools/*" = ["E402"]  # tools use sys.path.insert before local imports
+
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+show_error_codes = true
+warn_unused_configs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "."
+files = ["."]
+exclude = [
+    "excitation/robotCommunication/.*",  # ros/yarp modules, not testable without ROS
+]
+
+[[tool.mypy.overrides]]
+module = "excitation.robotCommunication.*"
+ignore_errors = true  # ros/yarp modules, not testable without ROS
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--timeout=60"

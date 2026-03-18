@@ -1,49 +1,34 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
-
-from __future__ import division
-from __future__ import print_function
-from builtins import range
-import sys
-import numpy as np
-import matplotlib.pyplot as plt
-
-import iDynTree; iDynTree.init_helpers(); iDynTree.init_numpy_helpers()
-
-from IPython import embed
-import re
 
 import argparse
-parser = argparse.ArgumentParser(description='Open a previously taken measurements.npz file and drop into ipython')
-parser.add_argument('--filename', required=True, type=str, help='the filename to load the measurements from')
-parser.add_argument('--model', required=False, type=str, help='the file to load the robot model from')
-parser.add_argument('--fb', required=False, type=bool, help='is the model floating base?')
-#parser.add_argument('--config', required=True, type=str, help="use options from given config file")
+import re
 
-#parser.add_argument('--plot', help='plot measured data', action='store_true')
-#parser.set_defaults(plot=False,)
+import numpy as np
+from idyntree import bindings as iDynTree
+from IPython import embed
+
+parser = argparse.ArgumentParser(description="Open a previously taken measurements.npz file and drop into ipython")
+parser.add_argument(
+    "--filename",
+    required=True,
+    type=str,
+    help="the filename to load the measurements from",
+)
+parser.add_argument("--model", required=False, type=str, help="the file to load the robot model from")
+parser.add_argument("--fb", required=False, type=bool, help="is the model floating base?")
+# parser.add_argument('--config', required=True, type=str, help="use options from given config file")
+
+# parser.add_argument('--plot', help='plot measured data', action='store_true')
+# parser.set_defaults(plot=False,)
 args = parser.parse_args()
 
+
 def mapToJointNames(matrix, row=None):
-    generator = iDynTree.DynamicsRegressorGenerator()
-    generator.loadRobotAndSensorsModelFromFile(args.model)
-    if args.fb:
-        regrXml = '''
-        <regressor>
-          <baseLinkDynamics/>
-          <jointTorqueDynamics>
-            <allJoints/>
-          </jointTorqueDynamics>
-        </regressor>'''
-    else:
-        regrXml = '''
-        <regressor>
-          <jointTorqueDynamics>
-            <allJoints/>
-          </jointTorqueDynamics>
-        </regressor>'''
-    generator.loadRegressorStructureFromString(regrXml)
-    jointNames = re.sub(r"DOF Index: \d+ Name: ", "", generator.getDescriptionOfDegreesOfFreedom()).split()
+    loader = iDynTree.ModelLoader()
+    loader.loadModelFromFile(args.model)
+    kinDyn = iDynTree.KinDynComputations()
+    kinDyn.loadRobotModel(loader.model())
+    jointNames = re.sub(r"DOF Index: \d+ Name: ", "", kinDyn.getDescriptionOfDegreesOfFreedom()).split()
 
     if args.fb:
         fb = 6
@@ -51,9 +36,10 @@ def mapToJointNames(matrix, row=None):
         fb = 0
 
     if row:
-        return {jointNames[j-fb]:matrix[row,j] for j in range(matrix.shape[1])}
+        return {jointNames[j - fb]: matrix[row, j] for j in range(matrix.shape[1])}
     else:
-        return {jointNames[j-fb]:matrix[:,j] for j in range(matrix.shape[1])}
+        return {jointNames[j - fb]: matrix[:, j] for j in range(matrix.shape[1])}
+
 
 def main():
     data = np.load(args.filename)
@@ -64,5 +50,6 @@ def main():
     print("")
     embed()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

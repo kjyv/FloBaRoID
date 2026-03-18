@@ -276,8 +276,8 @@ class Model:
 
         if self.opt["identifyFriction"]:
             # add friction torques
-            # constant
-            sign = 1  # np.sign(vel)
+            # Coulomb friction (sign-dependent: opposes direction of motion)
+            sign = np.sign(vel)
             p_constant = range(self.friction_params_start, self.friction_params_start + self.num_dofs)
             torques += sign * xStdModel[p_constant]
 
@@ -425,8 +425,9 @@ class Model:
                         regressor = np.delete(regressor, self.inertia_params, 1)
 
                     if self.opt["identifyFriction"]:
-                        # append unitary matrix to regressor for offsets/constant friction
-                        sign = 1  # np.sign(dq.toNumPy())   #TODO: dependent on direction or always constant?
+                        # append sign(velocity) diagonal to regressor for Coulomb friction
+                        # (sign-dependent: Fc opposes direction of motion)
+                        sign = np.sign(dq.toNumPy())
                         static_diag = np.identity(self.num_dofs) * sign
                         offset_regressor = np.vstack((np.zeros((fb, self.num_dofs)), static_diag))
                         regressor = np.concatenate((regressor, offset_regressor), axis=1)

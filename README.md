@@ -36,14 +36,19 @@ You'll need some or all of these depenencies installed in your system:
 
 * **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **ipopt** (for iDynTree build): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian)
+* **ipopt** (optional, for IPOPT solver in trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
+* **open-mpi** (optional, for parallel trajectory optimization): `brew install open-mpi` (macOS) or `apt install libopenmpi-dev` (Ubuntu/Debian)
 * **dsdp5** (command line executable, required for SDP-constrained identification)
 
 ## Installation
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then
 run e.g. `uv run identifier.py` to run the tools in uv virtual env. It will install necessary dependencies
-automatically. 
+automatically.
+
+Optional extras can be installed with:
+* `uv sync --extra ipopt` — IPOPT solver support (requires libipopt, see above)
+* `uv sync --extra parallel` — MPI-based parallel optimization (requires open-mpi, see above)
 
 ## Commands
 
@@ -90,9 +95,8 @@ requirements for excitation module:
 * for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
 * for other robots, new modules will have to be written
 
-requirements for trajectory optimization module:
+requirements for trajectory optimization:
 
-* optional (if you want to use ipopt): pyipopt from https://github.com/xuy/pyipopt (plus cmd line ipopt/libipopt with libhsl/coin-hsl)
 * mpi4py / mpirun (for parallel trajectory optimization)
 
 Also see the [Tutorial](documentation/TUTORIAL.md).

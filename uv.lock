@@ -135,6 +135,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cyipopt"
+version = "1.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/41/56b471f90635ca2fb8baad5a8933d88a6f7346a8ddb7038000fcf787ebfc/cyipopt-1.6.1.tar.gz", hash = "sha256:ae7e2d0a430687d8e89cd4e61cab9920c8941a167ed8bb442dde902570035c3f", size = 67956, upload-time = "2025-08-14T10:25:09.113Z" }
+
+[[package]]
 name = "cython"
 version = "3.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -226,6 +235,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+ipopt = [
+    { name = "cyipopt" },
+]
 parallel = [
     { name = "mpi4py" },
 ]
@@ -246,6 +258,7 @@ dev = [
 requires-dist = [
     { name = "colorama", specifier = "==0.4.6" },
     { name = "cvxopt", specifier = "==1.3.3" },
+    { name = "cyipopt", marker = "extra == 'ipopt'" },
     { name = "humanize", specifier = "==4.15.0" },
     { name = "idyntree", git = "https://github.com/robotology/idyntree.git?tag=v15.0.0" },
     { name = "ipython", specifier = "==9.11.0" },
@@ -270,7 +283,7 @@ requires-dist = [
     { name = "tqdm", specifier = "==4.67.3" },
     { name = "trimesh", specifier = "==4.11.3" },
 ]
-provides-extras = ["visualization", "tikz-plots", "parallel"]
+provides-extras = ["visualization", "tikz-plots", "ipopt", "parallel"]
 
 [package.metadata.requires-dev]
 dev = [

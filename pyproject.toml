@@ -40,6 +40,9 @@ tikz-plots = [
     "matplotlib",
     "matplotlib2tikz",
 ]
+ipopt = [
+    "cyipopt",
+]
 parallel = [
     "mpi4py",
 ]

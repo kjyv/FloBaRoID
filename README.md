@@ -112,8 +112,8 @@ Also see the [Tutorial](documentation/TUTORIAL.md).
 
 Known limitations:
 
-* trajectory optimization is limited to fixed-base robots at the moment (full
-  simulation, balance criterion etc. not implemented)
+* trajectory optimization for floating-base robots assumes a stationary base (robot mounted or standing).
+  Dynamic balance criteria (e.g., ZMP) are not yet implemented.
 * YARP excitation module is not very generic (ROS should be)
 * using position control over YARP is not realtime safe and can expose timing issues (especially with python to C bridge)
 * Since preparing SDP matrices uses sympy expressions, most of the time for solving the identification problem is spent in symbolic manipulations rather than the actual convex optimization solver. Possibly the time demands can be reduced.

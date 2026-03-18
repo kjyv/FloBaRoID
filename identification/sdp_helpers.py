@@ -219,8 +219,15 @@ def dsdp5(
         print(Fore.RED + error[0] + Fore.RESET)
     else:
         print(state)
-    outfile = open(os.path.join(dir, "dsdp5.out")).readlines()
-    sol = [float(v) for v in outfile[0].split()]
+
+    outpath = os.path.join(dir, "dsdp5.out")
+    if os.path.exists(outpath):
+        with open(outpath) as f:
+            sol = [float(v) for v in f.readline().split()]
+    else:
+        print(Fore.RED + "dsdp5 did not produce output file" + Fore.RESET)
+        state = "stopped"
+        sol = [0.0] * len(variables)
 
     # remove tmp dir again
     import shutil

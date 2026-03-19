@@ -16,8 +16,11 @@ showOptimizationGraph: 1         #display updating graph during trajectory optim
 showOptimizationTrajs: 1         #display the trajectory plot after each optimization step
 showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 
-ignoreLinksForCollision: []      #don't include these links for collision testing at all
-ignoreLinkPairsForCollision: []  #don't check collision between these pairs
+ignoreLinksForCollision: ['Waist', 'RFoot', 'LFoot', 'multisense/hokuyo_link', 'TorsoProtections']
+ignoreLinkPairsForCollision: []
+# only check collision between links within this kinematic distance (joints apart)
+# reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
+collisionMaxKinematicDistance: 4
 
 # initial values to start optimization from (if using global opt not really important)
 trajectoryPulseInit: 0.75        #determines length of one period of trajectory (smaller=longer)

@@ -291,6 +291,34 @@ def _traj_jac_single(
     return dq_row, ddq_row, dddq_row
 
 
+def _collision_fd_single_pair(
+    optimizer: TrajectoryOptimizer,
+    pair_idx: int,
+    q_star: np.ndarray,
+    nd: int,
+    epsilon: float,
+    inv_2eps: float,
+) -> np.ndarray:
+    """Compute d(distance)/dq for a single collision pair via central finite differences.
+
+    Used as fallback when capsule geometry is not available for a pair.
+    """
+    ddist = np.zeros(nd)
+    l0, l1 = optimizer._collision_pairs[pair_idx]
+    for j in range(nd):
+        q_p = q_star.copy()
+        q_p[j] += epsilon
+        optimizer.setCollisionRobotState(q_p)
+        d_plus = optimizer.getLinkDistance(l0, l1, q_p)
+
+        q_m = q_star.copy()
+        q_m[j] -= epsilon
+        optimizer.setCollisionRobotState(q_m)
+        d_minus = optimizer.getLinkDistance(l0, l1, q_m)
+        ddist[j] = (d_plus - d_minus) * inv_2eps
+    return ddist
+
+
 def compute_analytical_gradient(
     optimizer: TrajectoryOptimizer,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -830,6 +858,7 @@ def compute_analytical_gradient(
     # ---- Collision constraint gradients ----
     if optimizer.num_coll_constraints > 0 and hasattr(optimizer, "_ag_collision_cache"):
         coll_cache = optimizer._ag_collision_cache
+        use_capsule = config.get("useCapsuleCollision", False) and optimizer._capsules
 
         # Group pairs by their argmin sample for efficiency
         sample_pairs: dict[int, list[int]] = {}
@@ -839,34 +868,49 @@ def compute_analytical_gradient(
 
         for t_star, pair_indices in sample_pairs.items():
             q_star = positions[t_star].copy()
+            optimizer.setCollisionRobotState(q_star)
 
-            # Compute d(distance)/dq for all pairs at this sample via FD
-            ddist_dq: dict[int, np.ndarray] = {gi: np.zeros(nd) for gi in pair_indices}
-
-            for j in range(nd):
-                q_p = q_star.copy()
-                q_p[j] += epsilon
-                optimizer.setCollisionRobotState(q_p)
-                d_plus: dict[int, float] = {}
+            if use_capsule:
+                # Analytical capsule gradients — no FD needed
                 for gi in pair_indices:
                     l0, l1 = optimizer._collision_pairs[gi]
-                    d_plus[gi] = optimizer.getLinkDistance(l0, l1, q_p)
+                    if l0 in optimizer._capsules and l1 in optimizer._capsules:
+                        _, ddist_dq_vec = optimizer.getCapsuleDistanceAndGradient(l0, l1)
+                    else:
+                        # fallback to FD for pairs without capsules
+                        ddist_dq_vec = _collision_fd_single_pair(optimizer, gi, q_star, nd, epsilon, inv_2eps)
+                    c_idx = offset + gi
+                    for d_joint in range(nd):
+                        dq_row, _, _ = _get_traj_jac(d_joint, t_star)
+                        con_grad[c_idx, :] += ddist_dq_vec[d_joint] * dq_row
+            else:
+                # Compute d(distance)/dq for all pairs at this sample via FD
+                ddist_dq: dict[int, np.ndarray] = {gi: np.zeros(nd) for gi in pair_indices}
 
-                q_m = q_star.copy()
-                q_m[j] -= epsilon
-                optimizer.setCollisionRobotState(q_m)
+                for j in range(nd):
+                    q_p = q_star.copy()
+                    q_p[j] += epsilon
+                    optimizer.setCollisionRobotState(q_p)
+                    d_plus: dict[int, float] = {}
+                    for gi in pair_indices:
+                        l0, l1 = optimizer._collision_pairs[gi]
+                        d_plus[gi] = optimizer.getLinkDistance(l0, l1, q_p)
+
+                    q_m = q_star.copy()
+                    q_m[j] -= epsilon
+                    optimizer.setCollisionRobotState(q_m)
+                    for gi in pair_indices:
+                        l0, l1 = optimizer._collision_pairs[gi]
+                        d_minus = optimizer.getLinkDistance(l0, l1, q_m)
+                        ddist_dq[gi][j] = (d_plus[gi] - d_minus) * inv_2eps
+
+                # Chain with trajectory Jacobians: d(distance)/dalpha = ddist_dq @ dq/dalpha at t_star
                 for gi in pair_indices:
-                    l0, l1 = optimizer._collision_pairs[gi]
-                    d_minus = optimizer.getLinkDistance(l0, l1, q_m)
-                    ddist_dq[gi][j] = (d_plus[gi] - d_minus) * inv_2eps
-
-            # Chain with trajectory Jacobians: d(distance)/dalpha = ddist_dq @ dq/dalpha at t_star
-            for gi in pair_indices:
-                c_idx = offset + gi
-                # Sum over joints: ddist_dq[j] * dq_j/dalpha
-                for d_joint in range(nd):
-                    dq_row, _, _ = _get_traj_jac(d_joint, t_star)
-                    con_grad[c_idx, :] += ddist_dq[gi][d_joint] * dq_row
+                    c_idx = offset + gi
+                    # Sum over joints: ddist_dq[j] * dq_j/dalpha
+                    for d_joint in range(nd):
+                        dq_row, _, _ = _get_traj_jac(d_joint, t_star)
+                        con_grad[c_idx, :] += ddist_dq[gi][d_joint] * dq_row
 
     if config.get("verbose", 0):
         print(f"Analytical gradient computed (cond={cond_val:.1f}, |grad|={np.linalg.norm(obj_grad):.3e})")

@@ -1,0 +1,220 @@
+
+#### trajectory generation and excitation
+# Config for full walkman (29 DOF, floating base).
+# Robot assumed suspended from crane at torso. All joints move simultaneously.
+
+optimizeTrajectory: 1
+
+# trajectory optimization
+useGlobalOptimization: 0
+globalSolver: 'Optuna'
+globalOptIterations: 10
+globalOptSize: 20
+optunaSampler: 'TPE'
+# globalOptJobs: 6          # parallel worker processes (default: CPU cores - 2)
+useLocalOptimization: 1
+localSolver: 'IPOPT'
+localOptIterations: 50
+localOptSensStep: 0.02
+useAnalyticalGradients: 1        #use analytical gradients for local optimization
+analyticalGradientEpsilon: 1.0e-7
+minTolConstr: 0.1                # tolerance for feasibility (tanh rounding can cause tiny angle violations)
+showOptimizationGraph: 1
+showOptimizationTrajs: 0
+showModelVisualization: 0
+transparentLinks: []
+
+# the torso is the base (suspended from crane)
+# ignore base (suspended) and links without simple collision meshes
+ignoreLinksForCollision: ['Waist', 'RFoot', 'LFoot', 'multisense/hokuyo_link']
+ignoreLinkPairsForCollision: []
+# only check collision between links within this kinematic distance (joints apart)
+# reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
+collisionMaxKinematicDistance: 4
+
+# trajectory parameters — bounded mode essential for 29 DOF
+trajectoryBounded: 1
+trajectoryPulseInit: 0.4
+trajectoryPulseMin:  0.1         # 0.1 → ~63s, 0.4 → ~16s
+trajectoryPulseMax:  0.8
+trajectoryCoeffInit: 0.01
+trajectoryCoeffMin: -0.5
+trajectoryCoeffMax:  0.5
+trajectoryAngleMin: -15.0
+trajectoryAngleMax:  15.0
+
+# per-joint angle ranges for the oscillation CENTER offset (in degrees)
+# q0 shifts the tanh center: q_center = 0.5*(lo+hi) + q0
+# designed for a collision-free suspended (crane) pose: legs slightly bent,
+# arms abducted away from body, elbows bent
+trajectoryAngleRanges:
+    - [-5.0, 5.0]        #  0 WaistLat    — neutral, small lateral tilt
+    - [-5.0, 15.0]       #  1 LHipLat     — slight abduction (positive = out)
+    - [-15.0, 5.0]       #  2 RHipLat     — slight abduction (negative = out, mirrored)
+    - [-10.0, 10.0]      #  3 RHipYaw     — neutral rotation
+    - [-20.0, 0.0]       #  4 RHipSag     — slight forward flex from midpoint (-30°)
+    - [-40.0, -20.0]     #  5 RKneeSag    — shift center from 70° toward 30-50° (moderate bend)
+    - [0.0, 15.0]        #  6 RAnkSag     — shift center from -20° toward -10° (compensate knee)
+    - [-10.0, 10.0]      #  7 RAnkLat     — neutral
+    - [-10.0, 10.0]      #  8 LHipYaw     — neutral rotation
+    - [-20.0, 0.0]       #  9 LHipSag     — slight forward flex (mirrors right)
+    - [-40.0, -20.0]     # 10 LKneeSag    — moderate bend (mirrors right)
+    - [0.0, 15.0]        # 11 LAnkSag     — compensate knee (mirrors right)
+    - [-10.0, 10.0]      # 12 LAnkLat     — neutral
+    - [-30.0, -10.0]     # 13 WaistSag    — shift from mid 30° toward 0-20° (upright)
+    - [-15.0, 15.0]      # 14 WaistYaw    — small rotation range
+    - [-15.0, 15.0]      # 15 LShSag      — arm hanging, moderate forward/back
+    - [-15.0, 15.0]      # 16 RShSag      — arm hanging, moderate forward/back
+    - [0.0, 40.0]        # 17 RShLat      — shift from -114° toward -90° (arm away from body)
+    - [-30.0, 30.0]      # 18 RShYaw      — shoulder rotation
+    - [-30.0, 20.0]      # 19 RElbj       — centered near mid -68° (elbow bent)
+    - [-40.0, 40.0]      # 20 RForearmPlate — forearm rotation
+    - [-20.0, 20.0]      # 21 RWrj1       — wrist
+    - [-20.0, 20.0]      # 22 RWrj2       — wrist
+    - [-40.0, 0.0]       # 23 LShLat      — shift from 113° toward 90° (arm away from body)
+    - [-30.0, 30.0]      # 24 LShYaw      — shoulder rotation
+    - [-30.0, 20.0]      # 25 LElbj       — centered near mid -68° (elbow bent)
+    - [-40.0, 40.0]      # 26 LForearmPlate — forearm rotation
+    - [-20.0, 20.0]      # 27 LWrj1       — wrist
+    - [-20.0, 20.0]      # 28 LWrj2       — wrist
+# per-joint Fourier harmonics: fewer for large proximal joints (waist/hip),
+# more for distal joints (wrist/forearm) that need higher frequencies for excitation
+trajectoryNf: [2, 2, 2, 2, 3, 3, 2, 2, 2, 3, 3, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+
+ovrPosLimit: []
+
+trajectoryTargetTorqueUtil: 0.3
+minTorqueUtilization: 0.0
+minVelocityConstraint: 0
+minVelocityPercentage: 0.1
+
+# static posture optimization
+useStaticTrajectories: 0
+numStaticPostures: 5
+scaleCollisionHull: 0.3
+useCollisionMeshes: 1          # 0 = use bounding boxes (fast), 1 = use actual meshes (accurate)
+collisionCheckStep: 5          # check every Nth sample (higher = faster but may miss brief collisions)
+staticPostureTime: 0.02
+initialPostures: []
+
+# excitation
+excitationSimulate: 1
+exciteMethod: null
+ros_move_group: ''
+excitationFrequency: 200.0
+useDeg: 0
+
+#### measurement simulation
+simulateStaticPostures: 0
+simulateNumStops: 3
+simulateFriction: 1
+simulateThermalDrift: 1
+simulateCableForces: 1
+simulateGravityCompResidual: 0
+simulateTorqueQuantization: 1
+simulateStructuralDeflection: 1
+simulateBacklash: 1
+simulateEncoderQuantization: 1
+simulateTimingJitter: 1
+simulateRandomSeed: 42
+
+#### data preprocessing and selection
+
+filterMedianSize: 11
+filterLowPass1: [8.0, 5]
+filterLowPass2: [6.0, 5]
+filterLowPass3: [3.0, 4]
+
+startOffset: 0
+skipSamples: 0
+
+selectBlocksFromMeasurements: 0
+blockSize: 250
+selectBestPerenctage: 50
+
+removeNearZero: 0
+minVel: 0.01
+
+waitForZeroAcc: 1
+zeroAccThresh: 0.4
+
+#### identification
+
+useStructuralRegressor: 1
+randomSamples: 10000
+
+minTol: 0.005
+
+floatingBase: 1
+
+identifyFriction: 1
+identifySymmetricVelFriction: 1
+identifyGravityParamsOnly: 0
+simulateTorques: 0
+
+constrainToConsistent: 1
+checkAPrioriFeasibility: 0
+identifyClosestToCAD: 0
+
+constrainUsingNL: 0
+nlOptMaxIterations: 500
+nlOptSolver: 'IPOPT'
+
+noChange: 0
+noChangeThresh: 2200
+
+restrictCOMtoHull: 1
+hullScaling: 0.7
+meshBaseDir: 'meshes'
+cubeSize: 0.1
+
+limitCOMToApriori: 0
+limitCOMAprioriBoundary: 0.005
+
+limitOverallMass: 1
+limitMassVal: null
+limitMassRange: 0.2
+
+limitMassToApriori: 1
+limitMassAprioriBoundary: 0.05
+
+dontChangeParams: []
+dontConstrain: []
+
+useSymmetryConstraints: 0
+symmetryTolerance: 0.1
+symmetryConstraints: []
+
+useAPriori: 0
+useEssentialParams: 0
+useDependents: 0
+useWLS: 0
+filterRegressor: 0
+filterRegCutoff: 5
+
+## output and debugging
+
+createPlots: 1
+outputModule: 'matplotlib'
+outputAs: 'html'
+outputFilename: 'output_walkman_full.html'
+plotBaseDynamics: 1
+plotPerJoint: 1
+plotPrioriTorques: 1
+plotErrors: 0
+plotLegend: 1
+
+showRandomRegressor: 0
+showErrorHistogram: 0
+showMemUsage: 0
+showTiming: 0
+showEssentialSteps: 0
+outputBarycentric: 0
+showStandardParams: 1
+showBaseParams: 0
+showBaseEqns: 0
+outputLatex: 0
+showTriangleConsistency: 0
+verbose: 0
+
+estimateWith: 'std'

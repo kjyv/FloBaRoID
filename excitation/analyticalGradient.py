@@ -8,8 +8,10 @@ where x = (q, dq, ddq) are joint states, alpha are Fourier parameters,
 and ':' is the Frobenius inner product (tensor contraction).
 
 The condition number gradient uses the SVD decomposition from
-Ayusawa et al., "Generating Optimal Excitation Trajectories for
-Identification of Large Dimensional Systems", ICRA 2017.
+K. Ayusawa, A. Rioux, E. Yoshida, G. Venture, M. Gautier: "Generating
+Persistently Exciting Trajectory Based on Condition Number Optimization,"
+IEEE International Conference on Robotics and Automation (ICRA), Singapore,
+pp. 6518–6524, 2017.
 
 The overall gradient is split into two phases:
   Phase A (expensive): Loop over samples, compute d(cond)/d(state) via numerical FD
@@ -339,6 +341,7 @@ def compute_analytical_gradient(
     # ---- Phase A: Regressor sensitivities via FD (the expensive loop) ----
     epsilon = config.get("analyticalGradientEpsilon", 1e-7)
     inv_2eps = 1.0 / (2.0 * epsilon)
+    inv_eps = 1.0 / epsilon
 
     # Sensitivity arrays: d(cond)/d(state) at each sample
     sens_q = np.zeros((n_samples, nd))
@@ -361,18 +364,48 @@ def compute_analytical_gradient(
     reg_buf = iDynTree.MatrixDynSize()
     fb_identity = iDynTree.Transform.Identity() if fb else None
     fb_zero_twist = iDynTree.Twist.Zero() if fb else None
+    is_floating = model.opt["floatingBase"]
 
-    # Working buffers for perturbation (avoid allocating per-perturbation)
-    pos_buf = np.empty(nd)
-    vel_buf = np.empty(nd)
-    acc_buf = np.empty(nd)
+    # Split contraction vectors into inertial-only parts.
+    # Friction columns don't change for position/acceleration perturbations,
+    # so we only need the inertial part of w1/w2/params for those.
+    n_inertial = model.num_model_params
+    if model.opt.get("identifyGravityParamsOnly", False):
+        n_inertial -= len(model.inertia_params)
+    w1_iner = w1[:n_inertial]
+    w2_iner = w2[:n_inertial]
+    params_iner = params[:n_inertial]
+
+    # For velocity perturbations, the viscous friction contribution is analytical:
+    # d(friction_visc_col_d)/d(dq_d) = identity row at (fb+d, d)
+    # Contribution to Y@w = w[friction_visc_offset + d] at row fb+d only.
+    has_friction = model.opt.get("identifyFriction", False)
+    has_visc_friction = has_friction and not model.opt.get("identifyGravityParamsOnly", False)
+    if has_visc_friction:
+        # Offset of viscous friction columns in the identified parameter vector
+        if model.opt.get("identifySymmetricVelFriction", True):
+            visc_offset = n_inertial + nd  # after inertial + Coulomb columns
+        else:
+            visc_offset = n_inertial + nd  # same start, but 2*nd viscous columns
+        w1_visc = w1[visc_offset : visc_offset + nd]
+        w2_visc = w2[visc_offset : visc_offset + nd]
+        params_visc = params[visc_offset : visc_offset + nd]
+
+    # Row slice for fixed base (skip base wrench rows 0:6 from iDynTree output)
+    row_slice = slice(None) if is_floating else slice(6, None)
 
     subsample = config.get("analyticalGradientSubsample", 1)
 
     for t in range(0, n_samples, subsample):
-        np.copyto(pos_buf, positions[t])
-        np.copyto(vel_buf, velocities[t])
-        np.copyto(acc_buf, accelerations[t])
+        pos_t = positions[t]
+        vel_t = velocities[t]
+        acc_t = accelerations[t]
+
+        # Set all iDynTree buffers once per sample (the expensive 3×nd setVal loop)
+        for i in range(nd):
+            q_buf.setVal(i, float(pos_t[i]))
+            dq_buf.setVal(i, float(vel_t[i]))
+            ddq_buf.setVal(i, float(acc_t[i]))
 
         row_start = t * n_dofs_out
         u1_t = u1[row_start : row_start + n_dofs_out]
@@ -380,153 +413,143 @@ def compute_analytical_gradient(
         need_torque = t in torque_grad_samples
 
         # --- Position perturbations ---
+        # Only iDynTree inertial regressor changes (friction doesn't depend on q).
+        # Perturb q_buf[d] directly — only 1 setVal per perturbation instead of 3×nd.
         for d in range(nd):
-            orig = pos_buf[d]
-            pos_buf[d] = orig + epsilon
-            Y_plus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=True,
-                fb_identity=fb_identity,
-                fb_zero_twist=fb_zero_twist,
-            )
-            pos_buf[d] = orig - epsilon
-            Y_minus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=True,
-                fb_identity=fb_identity,
-                fb_zero_twist=fb_zero_twist,
-            )
-            pos_buf[d] = orig
+            orig = float(pos_t[d])
 
-            dY = Y_plus - Y_minus
-            dY_w1 = dY @ w1 * inv_2eps
-            dY_w2 = dY @ w2 * inv_2eps
-            sens_q[t, d] = c1 * np.dot(u1_t, dY_w1) + c2 * np.dot(u_last_t, dY_w2)
+            q_buf.setVal(d, orig + epsilon)
+            if is_floating:
+                model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+            else:
+                model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+            model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
+            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+
+            q_buf.setVal(d, orig - epsilon)
+            if is_floating:
+                model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+            else:
+                model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+            model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+            Yw1_minus = reg_buf.toNumPy()[row_slice] @ w1_iner
+            Yw2_minus = reg_buf.toNumPy()[row_slice] @ w2_iner
+
+            q_buf.setVal(d, orig)  # restore
+
+            dw1 = (Yw1_plus - Yw1_minus) * inv_2eps
+            dw2 = (Yw2_plus - Yw2_minus) * inv_2eps
+            sens_q[t, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
 
             if need_torque:
-                dtau = dY @ params * inv_2eps
+                dp = reg_buf.toNumPy()[row_slice] @ params_iner  # Y_minus @ params (still in buffer)
+                # recompute Y_plus @ params
+                q_buf.setVal(d, orig + epsilon)
+                if is_floating:
+                    model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+                else:
+                    model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+                model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - dp) * inv_2eps
+                q_buf.setVal(d, orig)
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
-                        dtau_dq[n, d] = dtau[fb + n]
+                        dtau_dq[n, d] = dp[fb + n]
 
         # --- Velocity perturbations ---
-        for d in range(nd):
-            orig = vel_buf[d]
-            vel_buf[d] = orig + epsilon
-            Y_plus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=True,
-                fb_identity=fb_identity,
-                fb_zero_twist=fb_zero_twist,
-            )
-            vel_buf[d] = orig - epsilon
-            Y_minus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=True,
-                fb_identity=fb_identity,
-                fb_zero_twist=fb_zero_twist,
-            )
-            vel_buf[d] = orig
+        # Inertial regressor changes via setRobotState with perturbed dq.
+        # Viscous friction contribution is analytical (Coulomb ≈ 0 for small eps).
+        # Restore q_buf to nominal before velocity perturbations
+        for i in range(nd):
+            q_buf.setVal(i, float(pos_t[i]))
 
-            dY = Y_plus - Y_minus
-            dY_w1 = dY @ w1 * inv_2eps
-            dY_w2 = dY @ w2 * inv_2eps
-            sens_dq[t, d] = c1 * np.dot(u1_t, dY_w1) + c2 * np.dot(u_last_t, dY_w2)
+        for d in range(nd):
+            orig = float(vel_t[d])
+
+            dq_buf.setVal(d, orig + epsilon)
+            if is_floating:
+                model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+            else:
+                model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+            model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
+            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+
+            dq_buf.setVal(d, orig - epsilon)
+            if is_floating:
+                model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+            else:
+                model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+            model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+            Yw1_minus = reg_buf.toNumPy()[row_slice] @ w1_iner
+            Yw2_minus = reg_buf.toNumPy()[row_slice] @ w2_iner
+
+            dq_buf.setVal(d, orig)  # restore
+
+            dw1 = (Yw1_plus - Yw1_minus) * inv_2eps
+            dw2 = (Yw2_plus - Yw2_minus) * inv_2eps
+
+            # Add analytical viscous friction contribution at row fb+d
+            if has_visc_friction:
+                dw1[fb + d] += w1_visc[d]
+                dw2[fb + d] += w2_visc[d]
+
+            sens_dq[t, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
 
             if need_torque:
-                dtau = dY @ params * inv_2eps
+                dp = reg_buf.toNumPy()[row_slice] @ params_iner
+                dq_buf.setVal(d, orig + epsilon)
+                if is_floating:
+                    model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+                else:
+                    model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+                model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - dp) * inv_2eps
+                if has_visc_friction:
+                    dp[fb + d] += params_visc[d]
+                dq_buf.setVal(d, orig)
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
-                        dtau_ddq_state[n, d] = dtau[fb + n]
+                        dtau_ddq_state[n, d] = dp[fb + n]
 
         # --- Acceleration perturbations ---
-        # Set state once at nominal (q, dq), then only perturb ddq
-        _compute_single_regressor(
-            model,
-            pos_buf,
-            vel_buf,
-            acc_buf,
-            q_buf,
-            dq_buf,
-            ddq_buf,
-            base_acc,
-            reg_buf,
-            set_state=True,
-            fb_identity=fb_identity,
-            fb_zero_twist=fb_zero_twist,
-        )
-        for d in range(nd):
-            orig = acc_buf[d]
-            acc_buf[d] = orig + epsilon
-            Y_plus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=False,
-            )
-            acc_buf[d] = orig - epsilon
-            Y_minus = _compute_single_regressor(
-                model,
-                pos_buf,
-                vel_buf,
-                acc_buf,
-                q_buf,
-                dq_buf,
-                ddq_buf,
-                base_acc,
-                reg_buf,
-                set_state=False,
-            )
-            acc_buf[d] = orig
+        # The regressor is linear in ddq (tau = M(q)*ddq + h(q,dq)), so forward
+        # differences give exact derivatives with a single perturbation per direction.
+        # Set state once at nominal (q, dq), compute baseline Y @ w.
+        for i in range(nd):
+            dq_buf.setVal(i, float(vel_t[i]))
+        if is_floating:
+            model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
+        else:
+            model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
+        model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+        Yw1_base = reg_buf.toNumPy()[row_slice] @ w1_iner
+        Yw2_base = reg_buf.toNumPy()[row_slice] @ w2_iner
+        if need_torque:
+            Yp_base = reg_buf.toNumPy()[row_slice] @ params_iner
 
-            dY = Y_plus - Y_minus
-            dY_w1 = dY @ w1 * inv_2eps
-            dY_w2 = dY @ w2 * inv_2eps
-            sens_ddq[t, d] = c1 * np.dot(u1_t, dY_w1) + c2 * np.dot(u_last_t, dY_w2)
+        for d in range(nd):
+            orig = float(acc_t[d])
+            ddq_buf.setVal(d, orig + epsilon)
+            model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
+            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+            ddq_buf.setVal(d, orig)  # restore
+
+            # Forward difference (exact for linear-in-ddq regressor)
+            dw1 = (Yw1_plus - Yw1_base) * inv_eps
+            dw2 = (Yw2_plus - Yw2_base) * inv_eps
+            sens_ddq[t, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
 
             if need_torque:
-                dtau = dY @ params * inv_2eps
+                ddq_buf.setVal(d, orig + epsilon)
+                model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
+                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - Yp_base) * inv_eps
+                ddq_buf.setVal(d, orig)
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
-                        dtau_dddq[n, d] = dtau[fb + n]
+                        dtau_dddq[n, d] = dp[fb + n]
 
     # If subsampling, scale sensitivities to account for missing samples
     if subsample > 1:

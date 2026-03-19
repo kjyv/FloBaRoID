@@ -224,6 +224,23 @@ class Optimizer:
         self.num_postures: int = 0
         self._var_names: list[str] = []
 
+        # trajectory optimizer attributes (set by TrajectoryOptimizer/PostureOptimizer)
+        self.wf_min: float = 0.0
+        self.wf_max: float = 1.0
+        self.wf_init: float = 0.5
+        self.qmin: list[float] | np.ndarray = []
+        self.qmax: list[float] | np.ndarray = []
+        self.qinit: list[float] | np.ndarray = []
+        self.nf: list[int] = []
+        self.amin: float = -1.0
+        self.amax: float = 1.0
+        self.bmin: float = -1.0
+        self.bmax: float = 1.0
+        self.ainit: list[np.ndarray] = []
+        self.binit: list[np.ndarray] = []
+        self.num_constraints: int = 0
+        self.num_coll_constraints: int = 0
+
         # init parallel runs
         self.parallel = parallel
         if parallel:
@@ -551,6 +568,96 @@ class Optimizer:
                         self.last_best_f = other_best_f
                         self.last_best_sol = other_best_sol
 
+    def _runOptuna(self) -> None:
+        """Run Optuna TPE or NSGA2 global optimization.
+
+        Optuna learns from previous evaluations which parameter regions are
+        promising, handles infeasible trials gracefully, and doesn't need
+        gradients. Much better than random swarm for constrained problems.
+        """
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        n_trials = self.config["globalOptSize"] * self.config["globalOptIterations"]
+        sampler_name = self.config.get("optunaSampler", "TPE")
+
+        # build variable bounds for optuna
+        var_info: list[tuple[str, float, float, float]] = []  # (name, lower, upper, init)
+        var_info.append(("wf", self.wf_min, self.wf_max, self.wf_init))
+        for i in range(self.num_dofs):
+            var_info.append((f"q_{i}", float(self.qmin[i]), float(self.qmax[i]), float(self.qinit[i])))
+        for i in range(self.num_dofs):
+            for j in range(self.nf[i]):
+                var_info.append((f"a{i}_{j}", self.amin, self.amax, float(self.ainit[i][j])))
+        for i in range(self.num_dofs):
+            for j in range(self.nf[i]):
+                var_info.append((f"b{i}_{j}", self.bmin, self.bmax, float(self.binit[i][j])))
+
+        # store constraint values from each trial for the constraints callback
+        trial_constraints: dict[int, list[float]] = {}
+        num_constraints = self.num_constraints
+        num_coll_constraints = self.num_coll_constraints
+
+        def objective(trial: optuna.Trial) -> float:
+            x = []
+            for name, lo, hi, init in var_info:
+                x.append(trial.suggest_float(name, lo, hi))
+            x_arr = np.array(x)
+            f, g, fail = self.objectiveFunc(x_arr)
+
+            # store constraint values for this trial (g <= 0 means feasible for
+            # joint/velocity/torque constraints, g > 0 means feasible for collision)
+            c_s = num_constraints - num_coll_constraints
+            # convert all to "violation <= 0 is feasible" convention for optuna
+            violations = []
+            for i in range(c_s):
+                violations.append(float(g[i]))  # already <= 0 for feasible
+            for i in range(c_s, num_constraints):
+                violations.append(float(-g[i]))  # collision: flip sign (g > 0 → -g < 0 = feasible)
+            trial_constraints[trial.number] = violations
+
+            return f
+
+        def constraints_func(trial: optuna.trial.FrozenTrial) -> list[float]:
+            """Return constraint values for a completed trial (<=0 means feasible)."""
+            return trial_constraints.get(trial.number, [10.0] * num_constraints)
+
+        # create sampler with constraint awareness
+        sampler: Any
+        if sampler_name == "NSGA2":
+            sampler = optuna.samplers.NSGAIISampler(seed=random.randint(0, 2**31), constraints_func=constraints_func)
+        else:
+            sampler = optuna.samplers.TPESampler(seed=random.randint(0, 2**31), constraints_func=constraints_func)
+
+        # enqueue the initial solution as the first trial
+        init_params = {info[0]: info[3] for info in var_info}
+        study = optuna.create_study(direction="minimize", sampler=sampler)
+        study.enqueue_trial(init_params)
+
+        n_jobs = self.config.get("globalOptJobs", 1)
+        print(f"Running Optuna ({sampler_name}) with {n_trials} trials ({n_jobs} jobs)...")
+        study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=True)
+
+        # extract best feasible solution
+        feasible_trials = [
+            t
+            for t in study.trials
+            if t.value is not None
+            and t.number in trial_constraints
+            and all(v <= 0.01 for v in trial_constraints[t.number])
+        ]
+        if feasible_trials:
+            best = min(feasible_trials, key=lambda t: t.value)  # type: ignore[arg-type,return-value]
+            best_x = np.array([best.params[info[0]] for info in var_info])
+            best_f = float(best.value)  # type: ignore[arg-type]
+            if best_f < self.last_best_f:
+                self.last_best_f = best_f
+                self.last_best_sol = best_x
+            print(f"Optuna best feasible: {best_f:.2f} ({len(feasible_trials)}/{len(study.trials)} feasible)")
+        else:
+            print(f"Optuna: no feasible solution found in {len(study.trials)} trials")
+
     def runOptimizer(self, opt_prob: Any) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
 
@@ -595,19 +702,23 @@ class Optimizer:
                 self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
                     "maxOuterIter"
                 ) + opt.getOption("SwarmSize")
+            elif self.config["globalSolver"] == "Optuna":
+                opt = None  # Optuna runs separately below
             else:
                 print("Solver {} not defined".format(self.config["globalSolver"]))
                 sys.exit(1)
 
             # run global optimization
-
             if self.config["verbose"]:
                 print("Running global optimization with {}".format(self.config["globalSolver"]))
             self.is_global = True
-            sol = opt(opt_prob, storeHistory=False)
 
-            if self.mpi_rank == 0:
-                print(sol)
+            if self.config["globalSolver"] == "Optuna":
+                self._runOptuna()
+            else:
+                sol = opt(opt_prob, storeHistory=False)
+                if self.mpi_rank == 0:
+                    print(sol)
 
             self.gather_solutions()
 

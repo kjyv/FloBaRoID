@@ -380,15 +380,10 @@ class TrajectoryOptimizer(Optimizer):
         )
         print(Fore.RESET)
 
-        if self.config["verbose"]:
-            if hasattr(self.opt_prob, "is_gradient") and self.opt_prob.is_gradient:
-                print("(Gradient evaluation)")
-
-        if (
-            self.mpi_rank == 0
-            and not getattr(self.opt_prob, "is_gradient", False)
-            and self.config["showOptimizationGraph"]
-        ):
+        is_gradient = getattr(getattr(self, "opt_prob", None), "is_gradient", False)
+        if self.config["verbose"] and is_gradient:
+            print("(Gradient evaluation)")
+        if self.mpi_rank == 0 and not is_gradient and self.config["showOptimizationGraph"]:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)

@@ -6,13 +6,14 @@
 optimizeTrajectory: 1
 
 # trajectory optimization
-useGlobalOptimization: 0
-globalSolver: 'ALPSO'
-globalOptIterations: 5
-globalOptSize: 16
-useLocalOptimization: 1
+useGlobalOptimization: 1
+globalSolver: 'Optuna'
+globalOptIterations: 25    # n_trials = globalOptSize * globalOptIterations
+globalOptSize: 20
+optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
+useLocalOptimization: 0
 localSolver: 'IPOPT'
-localOptIterations: 15
+localOptIterations: 5
 localOptSensStep: 0.02
 minTolConstr: 0.01
 showOptimizationGraph: 1

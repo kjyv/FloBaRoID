@@ -10,9 +10,19 @@
 ### Trajectory optimization
 - Added Optuna optimizer with multi-core support
 - Added analytical gradient computation for condition number optimization (Ayusawa et al., ICRA 2017), using SVD-based condition number sensitivities chained with analytical Fourier trajectory Jacobians
+- Added capsule-based collision detection with analytical distance gradients, eliminating finite-difference perturbations for collision constraints (~93x faster collision gradients on the full Walkman)
 - Added trajectory quality penalties
-- Added mesh-based collision detection (always uses convex hull for performance)
+- Added mesh-based collision detection with configurable convex hull (`useConvexHullCollision`)
 - Fixed playback rate in trajectory visualization
+- New config options: `useCapsuleCollision`, `scaleCapsuleRadius`, `useConvexHullCollision`, `collisionMaxKinematicDistance`
+
+### Visualizer
+- Added capsule collision geometry display (cycle with M key: visual → collision → capsules → boxes)
+- Collision checking now matches the selected geometry mode (capsule/mesh/visual)
+- Collision mesh rendering now shows convex hulls matching what the optimizer uses
+- Fixed inverted meshes for links with negative URDF scale (mirrored geometry)
+- Fixed rendering of links that were incorrectly hidden by the collision ignore list
+- Added collision checking toggle (C key) and moved render mode toggle to B key
 
 ### Identification
 - Fixed missing sign for Coulomb friction identification

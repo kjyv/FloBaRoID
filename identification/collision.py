@@ -26,27 +26,36 @@ class CollisionChecker:
         link_cuboid_hulls: dict[str, Any],
         link_names: list[str],
         scale_collision_hull: float = 1.0,
+        use_convex_hull: bool = False,
     ) -> None:
         self._urdf_helpers = urdf_helpers
         self._urdf_file = urdf_file
         self._link_cuboid_hulls = link_cuboid_hulls
         self._link_names = link_names
         self._scale = scale_collision_hull
-        self._geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
+        self._use_convex_hull = use_convex_hull
+        self._geom_cache: dict[tuple[str, bool], tuple[Any, np.ndarray]] = {}
 
-    def _get_geometry(self, link_name: str) -> tuple[Any, np.ndarray]:
+    def _get_geometry(self, link_name: str, use_visual_mesh: bool = False) -> tuple[Any, np.ndarray]:
         """Get or cache the FCL collision geometry and center offset for a link.
 
         Tries collision mesh first, then visual mesh (convex hull for large meshes),
-        then falls back to bounding box."""
-        if link_name in self._geom_cache:
-            return self._geom_cache[link_name]
+        then falls back to bounding box. When use_visual_mesh is True, always loads
+        the visual mesh with full triangle geometry (no convex hull simplification).
+        """
+        cache_key = (link_name, use_visual_mesh)
+        if cache_key in self._geom_cache:
+            return self._geom_cache[cache_key]
 
-        # try loading collision mesh, then visual mesh
-        mesh_path = self._urdf_helpers.getCollisionMeshPath(self._urdf_file, link_name)
-        is_collision_mesh = mesh_path is not None
-        if mesh_path is None:
+        if use_visual_mesh:
             mesh_path = self._urdf_helpers.getMeshPath(self._urdf_file, link_name)
+            is_collision_mesh = False
+        else:
+            # try loading collision mesh, then visual mesh
+            mesh_path = self._urdf_helpers.getCollisionMeshPath(self._urdf_file, link_name)
+            is_collision_mesh = mesh_path is not None
+            if mesh_path is None:
+                mesh_path = self._urdf_helpers.getMeshPath(self._urdf_file, link_name)
 
         if mesh_path is not None and os.path.exists(mesh_path):
             import trimesh
@@ -57,8 +66,12 @@ class CollisionChecker:
             verts = np.array(mesh.vertices) * scale
             faces = np.array(mesh.faces)
 
-            # compute convex hull for visual meshes (not collision meshes)
-            if not is_collision_mesh and len(faces) > 100:
+            # compute convex hull when enabled, or for visual meshes used as
+            # collision fallback (visual meshes can be very detailed)
+            use_hull = self._use_convex_hull and not use_visual_mesh
+            if not use_hull and not is_collision_mesh and not use_visual_mesh and len(faces) > 100:
+                use_hull = True  # always hull visual-mesh fallbacks
+            if use_hull:
                 hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
                 verts = np.array(hull.vertices)
                 faces = np.array(hull.faces)
@@ -72,7 +85,7 @@ class CollisionChecker:
             bvh.beginModel(len(faces), len(verts))
             bvh.addSubModel(verts, faces)
             bvh.endModel()
-            self._geom_cache[link_name] = (bvh, p)
+            self._geom_cache[cache_key] = (bvh, p)
         else:
             # fallback to bounding box
             s = self._scale if link_name in self._link_names else 1
@@ -80,15 +93,16 @@ class CollisionChecker:
             p = np.array(self._link_cuboid_hulls[link_name][1])
             center = 0.5 * (b[0] + b[1]) + p
             box = fcl.Box(*(b[1] - b[0]))
-            self._geom_cache[link_name] = (box, center)
+            self._geom_cache[cache_key] = (box, center)
 
-        return self._geom_cache[link_name]
+        return self._geom_cache[cache_key]
 
     def check_distance(
         self,
         l0_name: str,
         l1_name: str,
         transforms: dict[str, tuple[np.ndarray, np.ndarray]],
+        use_visual_mesh: bool = False,
     ) -> float:
         """Check distance between two links given their world transforms.
 
@@ -96,14 +110,15 @@ class CollisionChecker:
             l0_name: first link name
             l1_name: second link name
             transforms: dict mapping link name → (rotation_3x3, position_3)
+            use_visual_mesh: if True, use visual mesh geometry instead of collision
 
         Returns:
             positive distance if separated, negative penetration depth if colliding
         """
         rot0, pos0 = transforms[l0_name]
         rot1, pos1 = transforms[l1_name]
-        geom0, offset0 = self._get_geometry(l0_name)
-        geom1, offset1 = self._get_geometry(l1_name)
+        geom0, offset0 = self._get_geometry(l0_name, use_visual_mesh=use_visual_mesh)
+        geom1, offset1 = self._get_geometry(l1_name, use_visual_mesh=use_visual_mesh)
 
         o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + offset0))
         o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + offset1))
@@ -135,6 +150,7 @@ class CollisionChecker:
         ignore_pairs: list[list[str]],
         neighbors: dict[str, dict[str, list[Any]]] | None = None,
         max_kin_distance: int = 0,
+        use_visual_mesh: bool = False,
     ) -> set[str]:
         """Find all links that are currently colliding.
 
@@ -145,6 +161,7 @@ class CollisionChecker:
             ignore_pairs: link pairs to skip
             neighbors: optional neighbor dict to skip adjacent links
             max_kin_distance: if >0, only check pairs within this kinematic distance
+            use_visual_mesh: if True, use visual mesh geometry instead of collision
 
         Returns:
             set of link names involved in at least one collision
@@ -187,7 +204,7 @@ class CollisionChecker:
                         continue
                 if max_kin_distance > 0 and _kin_distance(l0, l1) > max_kin_distance:
                     continue
-                d = self.check_distance(l0, l1, transforms)
+                d = self.check_distance(l0, l1, transforms, use_visual_mesh=use_visual_mesh)
                 if d < 0:
                     colliding.add(l0)
                     colliding.add(l1)

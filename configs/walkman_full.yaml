@@ -32,9 +32,10 @@ ignoreLinksForCollision: ['Waist', 'RFoot', 'LFoot', 'multisense/hokuyo_link', '
 ignoreLinkPairsForCollision: []
 # only check collision between links within this kinematic distance (joints apart)
 # reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
-collisionMaxKinematicDistance: 4
-useCapsuleCollision: 1           # analytical capsule distance instead of FCL (faster gradients)
+collisionMaxKinematicDistance: 5
+useCapsuleCollision: 0           # analytical capsule distance instead of FCL (faster gradients)
 scaleCapsuleRadius: 0.8          # tighter capsules for compact humanoid (1.0 = full AABB)
+useConvexHullCollision: 1        # use convex hulls instead of raw collision meshes for FCL (faster but less tight)
 
 # trajectory parameters — bounded mode essential for 29 DOF
 trajectoryBounded: 1
@@ -95,7 +96,7 @@ minVelocityPercentage: 0.1
 # static posture optimization
 useStaticTrajectories: 0
 numStaticPostures: 5
-scaleCollisionHull: 0.3
+scaleCollisionHull: 0.8
 useCollisionMeshes: 1          # 0 = use bounding boxes (fast), 1 = use actual meshes (accurate)
 collisionCheckStep: 5          # check every Nth sample (higher = faster but may miss brief collisions)
 staticPostureTime: 0.02

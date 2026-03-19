@@ -341,6 +341,9 @@ class TrajectoryOptimizer(Optimizer):
                 print(f"Collision pairs: {len(self._collision_pairs)}")
 
         collision_step = self.config.get("collisionCheckStep", 3)
+        use_ag = self.config.get("useAnalyticalGradients", False)
+        if use_ag:
+            coll_argmin: dict[int, tuple[int, np.ndarray]] = {}
         for p in range(0, pos.shape[0], collision_step):
             if self.config["verbose"] > 1:
                 print(f"Sample {p}")
@@ -351,6 +354,10 @@ class TrajectoryOptimizer(Optimizer):
                 d = self.getLinkDistance(l0_name, l1_name, q)
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
+                    if use_ag:
+                        coll_argmin[g_cnt] = (p, q.copy())
+        if use_ag:
+            self._ag_collision_cache = coll_argmin
 
         self.last_g = g
 
@@ -423,6 +430,30 @@ class TrajectoryOptimizer(Optimizer):
             self.last_best_sol = x
 
         print("\n\n")
+
+        # Cache data for analytical gradient computation
+        if self.config.get("useAnalyticalGradients", False) and not self._eval_failed:
+            self._ag_cache = {
+                "YBase": self.model.YBase.copy(),
+                "positions": pos.copy(),
+                "velocities": vel.copy(),
+                "accelerations": trajectory_data["accelerations"].copy(),
+                "times": trajectory_data["times"].copy(),
+                "torques": torques.copy(),
+                "cond": cond,
+                "log_cond": log_cond,
+                "cond_scale": self._cond_scale,
+                "torque_absmax_idx": np.argmax(np.abs(torques[:, fb:]), axis=0),
+                "pos_min_idx": np.argmin(pos, axis=0),
+                "pos_max_idx": np.argmax(pos, axis=0),
+                "vel_absmax_idx": np.argmax(np.abs(vel), axis=0),
+                "utilization": utilization.copy(),
+                "util_mean": float(util_mean),
+                "util_std": float(np.std(utilization)),
+                "f1": float(f1),
+                "f3": float(f3),
+                "pos_range_available": pos_range_available.copy(),
+            }
 
         # IPOPT respects the fail flag (discards the evaluation), SLSQP doesn't
         # (it treats the returned values as real, so fail=1 corrupts its gradient)
@@ -499,6 +530,32 @@ class TrajectoryOptimizer(Optimizer):
         f, g, fail = self.objectiveFunc(x)
         funcs = {"f": f, "g": np.array(g)}
         return funcs, bool(fail)
+
+    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
+        """Compute analytical gradients for pyOptSparse.
+
+        Called by pyOptSparse when sens= is set to this method. Uses cached
+        data from the last objectiveFunc call to compute exact gradients via
+        the chain rule through the regressor SVD.
+        """
+        from excitation.analyticalGradient import compute_analytical_gradient
+
+        if not hasattr(self, "_ag_cache"):
+            print("Warning: no cached data for analytical gradient, returning zeros")
+            func_sens: dict = {"f": {}, "g": {}}
+            for name in self._var_names:
+                func_sens["f"][name] = np.array([0.0])
+                func_sens["g"][name] = np.zeros((self.num_constraints, 1))
+            return func_sens, False
+
+        obj_grad, con_grad = compute_analytical_gradient(self)
+
+        func_sens = {"f": {}, "g": {}}
+        for k, name in enumerate(self._var_names):
+            func_sens["f"][name] = np.array([obj_grad[k]])
+            func_sens["g"][name] = con_grad[:, k].reshape(-1, 1)
+
+        return func_sens, False
 
     def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
         """Add variables, define bounds.

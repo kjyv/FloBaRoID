@@ -9,12 +9,11 @@ globalSolver: 'Optuna'
 globalOptIterations: 20    # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 20
 optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
-# globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
-# globalOptIterations: 5           #Swarm iterations or Generations
-# globalOptSize: 12                #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver
 localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
+useAnalyticalGradients: 1        #use analytical gradients for local optimization (much faster than FD)
+analyticalGradientEpsilon: 1.0e-7  #FD step for numerical regressor Jacobian in analytical gradient
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
 showOptimizationTrajs: 0         #display the trajectory plot after each optimization step

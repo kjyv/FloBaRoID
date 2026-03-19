@@ -138,3 +138,5 @@ Usage is licensed under the LGPL 3.0, see License.md. Please quote the following
 \[Sousa2014\] C. D. Sousa, R. Cortesão: "Physical feasibility of robot base inertial parameter identification: A linear matrix inequality approach," The International Journal of Robotics Research, vol. 33, no. 6, pp. 931–944, 2014.
 
 \[Traversaro2016\] S. Traversaro, S. Brossette, A. Escande, F. Nori: "Identification of Fully Physical Consistent Inertial Parameters using Optimization on Manifolds," IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2016.
+
+\[Ayusawa2017\] K. Ayusawa, A. Rioux, E. Yoshida, G. Venture, M. Gautier: "Generating Persistently Exciting Trajectory Based on Condition Number Optimization," IEEE International Conference on Robotics and Automation (ICRA), Singapore, pp. 6518–6524, 2017.

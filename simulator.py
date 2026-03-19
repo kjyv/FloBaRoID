@@ -82,8 +82,8 @@ def load_trajectory(
         sin_wlt = np.sin(wlt)
         cos_wlt = np.cos(wlt)
 
-        a_arr = np.array(osc.a)
-        b_arr = np.array(osc.b)
+        a_arr = np.atleast_1d(np.asarray(osc.a, dtype=float))
+        b_arr = np.atleast_1d(np.asarray(osc.b, dtype=float))
 
         if hasattr(osc, "q_range"):  # BoundedOscillationGenerator
             # bounded mode: raw signal → tanh mapping → position within joint limits

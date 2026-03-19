@@ -301,6 +301,25 @@ class TrajectoryOptimizer(Optimizer):
             ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
                 (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
             }
+
+            # optionally limit collision checks to links within a maximum kinematic distance
+            # (dramatically reduces pairs for humanoids where e.g. left foot can't reach right hand)
+            max_kin_dist = self.config.get("collisionMaxKinematicDistance", 0)
+
+            def _kin_distance(start: str, target: str) -> int:
+                """BFS shortest path in the kinematic tree."""
+                visited = {start}
+                queue = [(start, 0)]
+                while queue:
+                    current, dist = queue.pop(0)
+                    if current == target:
+                        return dist
+                    for nb in self.neighbors.get(current, {}).get("links", []):
+                        if nb not in visited:
+                            visited.add(nb)
+                            queue.append((nb, dist + 1))
+                return 999
+
             self._collision_pairs: list[tuple[str, str]] = []
             for l0 in range(len(all_links)):
                 for l1 in range(l0 + 1, len(all_links)):
@@ -314,7 +333,12 @@ class TrajectoryOptimizer(Optimizer):
                     if l0 < self.model.num_links and l1 < self.model.num_links:
                         if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
                             continue
+                    # skip pairs too far apart in the kinematic tree
+                    if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
+                        continue
                     self._collision_pairs.append((l0_name, l1_name))
+            if self.config.get("verbose", 0):
+                print(f"Collision pairs: {len(self._collision_pairs)}")
 
         collision_step = self.config.get("collisionCheckStep", 3)
         for p in range(0, pos.shape[0], collision_step):
@@ -539,7 +563,7 @@ class TrajectoryOptimizer(Optimizer):
         sol_vec = self.runOptimizer(opt_prob)
 
         sol_wf, sol_q, sol_a, sol_b = self.vecToParams(sol_vec)
-        self.trajectory.initWithParams(sol_a, sol_b, sol_q, self.nf, sol_wf)
+        self.trajectory.initWithParams(sol_a, sol_b, sol_q, self.nf, sol_wf, joint_limits=self._joint_limits)
 
         if self.config["showOptimizationGraph"]:
             plt.ioff()

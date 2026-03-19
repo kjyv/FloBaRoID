@@ -610,7 +610,7 @@ class URDFHelpers:
 
         # prefer collision mesh (simplified geometry) over visual mesh for tighter bounds
         filename = self.getCollisionMeshPath(input_urdf, link_name)
-        if filename is None:
+        if filename is None or not os.path.exists(filename):
             filename = self.getMeshPath(input_urdf, link_name)
 
         # box around current COM in case no mesh is available

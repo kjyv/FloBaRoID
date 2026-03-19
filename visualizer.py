@@ -839,6 +839,8 @@ class Visualizer:
         # additional callbacks to be used with key handling
         self.event_callback: Callable | None = None
         self.timer_callback = self.next_frame
+        self._playback_start_time: float = 0.0
+        self._playback_start_index: int = 0
         self.info_label = None
 
         # shader programs and uniform caches
@@ -922,21 +924,25 @@ class Visualizer:
         # frame stepping while arrow keys are held
         if not hasattr(self, "_step_accum"):
             self._step_accum = 0.0
-        step_interval = 1.0 / 25.0  # frames per second when holding arrow keys
+        step_interval = 1.0 / 50.0  # frames per second when holding arrow keys
         pressed = self.camera.keys_pressed
         stepping = False
-        if pressed[key.RIGHT] and self.display_index < self.display_max - 1:
+        if pressed[key.RIGHT]:
             stepping = True
             self._step_accum += dt if dt else 0.0
             while self._step_accum >= step_interval:
                 self._step_accum -= step_interval
-                self.display_index = min(self.display_index + 1, self.display_max - 1)
-        elif pressed[key.LEFT] and self.display_index > 0:
+                self.display_index += 1
+                if self.display_index >= self.display_max:
+                    self.display_index = 0
+        elif pressed[key.LEFT]:
             stepping = True
             self._step_accum += dt if dt else 0.0
             while self._step_accum >= step_interval:
                 self._step_accum -= step_interval
-                self.display_index = max(self.display_index - 1, 0)
+                self.display_index -= 1
+                if self.display_index < 0:
+                    self.display_index = self.display_max - 1
         if not stepping:
             self._step_accum = 0.0
         elif self.event_callback:
@@ -1178,7 +1184,11 @@ class Visualizer:
         if symbol == key.ENTER:
             if not self.playing_traj and self.playable:
                 self.playing_traj = True
-                pyglet.clock.schedule_interval(self.timer_callback, 1 / self.playback_rate)
+                self._playback_start_time = time.perf_counter()
+                self._playback_start_index = self.display_index
+                # schedule at render rate; next_frame uses wall-clock time to
+                # compute the correct display_index regardless of timer frequency
+                pyglet.clock.schedule_interval(self.timer_callback, 1 / self.render_fps)
             else:
                 self.playing_traj = False
                 pyglet.clock.unschedule(self.timer_callback)
@@ -1444,9 +1454,15 @@ class Visualizer:
         self.trajectory = trajectory
 
     def next_frame(self, dt):
-        if self.display_index >= self.display_max:
-            self.display_index = 0
-        self.display_index += 1
+        # advance based on wall-clock time so playback matches real time
+        now = time.perf_counter()
+        elapsed = now - self._playback_start_time
+        new_index = self._playback_start_index + int(elapsed * self.playback_rate)
+        if new_index >= self.display_max:
+            new_index = 0
+            self._playback_start_time = now
+            self._playback_start_index = 0
+        self.display_index = new_index
         if self.event_callback is not None:
             self.event_callback()
 
@@ -1808,7 +1824,7 @@ if __name__ == "__main__":
 
             v.freq = config["excitationFrequency"]
             v.playback_rate = v.freq
-            v.display_max = trajectory.getPeriodLength() * v.playback_rate  # length of trajectory
+            v.display_max = int(trajectory.getPeriodLength() * v.playback_rate)  # length of trajectory
         elif data_type == "measurements":
             v.freq = config["excitationFrequency"]
             v.playback_rate = v.freq

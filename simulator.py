@@ -66,7 +66,8 @@ def load_trajectory(
     tf = np.load(traj_file, encoding="latin1", allow_pickle=True)
     use_deg = bool(tf["use_deg"])
     traj = PulsedTrajectory(num_dofs, use_deg=use_deg)
-    traj.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"])
+    jl = [tuple(row) for row in tf["joint_limits"]] if "joint_limits" in tf else None
+    traj.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"], joint_limits=jl)
 
     num_samples = int(traj.getPeriodLength() * freq)
     times = np.arange(num_samples) / freq
@@ -81,16 +82,32 @@ def load_trajectory(
         sin_wlt = np.sin(wlt)
         cos_wlt = np.cos(wlt)
 
-        a_coeff = np.array(osc.a) / (osc.w_f * l_arr)
-        b_coeff = np.array(osc.b) / (osc.w_f * l_arr)
-        positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
-
         a_arr = np.array(osc.a)
         b_arr = np.array(osc.b)
-        velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
 
-        wl = osc.w_f * l_arr
-        accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
+        if hasattr(osc, "q_range"):  # BoundedOscillationGenerator
+            # bounded mode: raw signal → tanh mapping → position within joint limits
+            q_center: float = osc.q_center  # type: ignore[union-attr]
+            q_range: float = osc.q_range  # type: ignore[union-attr]
+            raw = cos_wlt @ b_arr + sin_wlt @ a_arr
+            th = np.tanh(raw)
+            sech2 = 1.0 - th**2
+            positions[:, d] = q_center + q_range * th
+
+            wl = osc.w_f * l_arr
+            raw_dot = cos_wlt @ (a_arr * wl) - sin_wlt @ (b_arr * wl)
+            raw_ddot = -sin_wlt @ (a_arr * wl**2) - cos_wlt @ (b_arr * wl**2)
+            velocities[:, d] = q_range * sech2 * raw_dot
+            accelerations[:, d] = q_range * (sech2 * raw_ddot - 2.0 * th * sech2 * raw_dot**2)
+        else:
+            # classic Swevers mode
+            a_coeff = a_arr / (osc.w_f * l_arr)
+            b_coeff = b_arr / (osc.w_f * l_arr)
+            positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
+            velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
+
+            wl = osc.w_f * l_arr
+            accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
 
     if use_deg:
         positions = np.deg2rad(positions)

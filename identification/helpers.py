@@ -359,13 +359,26 @@ class URDFHelpers:
         try:
             return self.parsed_xml[input_urdf]
         except KeyError:
-            # preserve comments
+            # preserve comments inside the root element (skip top-level ones)
             class PCBuilder(ET.TreeBuilder):
+                _depth = 0
+
+                def start(self, tag, attrs):
+                    self._depth += 1
+                    return super().start(tag, attrs)
+
+                def end(self, tag):
+                    self._depth -= 1
+                    return super().end(tag)
+
                 def comment(self, data):
-                    comment_tag = cast(str, ET.Comment)  # ET.Comment is a callable used as a special tag sentinel
-                    self.start(comment_tag, {})
-                    self.data(data)
-                    self.end(comment_tag)
+                    # only preserve comments inside the root element; top-level comments
+                    # would create multiple root elements which is invalid
+                    if self._depth > 0:
+                        comment_tag = cast(str, ET.Comment)
+                        self.start(comment_tag, {})
+                        self.data(data)
+                        self.end(comment_tag)
 
             tree = ET.parse(input_urdf, parser=ET.XMLParser(target=PCBuilder()))
             self.parsed_xml[input_urdf] = tree
@@ -448,7 +461,29 @@ class URDFHelpers:
                 links.append(l.attrib["name"])
         return links
 
+    def hasVisualGeometry(self, input_urdf: str, link_name: str) -> bool:
+        """Check if a link has any visual geometry (mesh file or box) in the URDF.
+        Links without visual geometry are typically sensor or tool frames."""
+        mesh_path = self.getMeshPath(input_urdf, link_name)
+        has_mesh = mesh_path is not None and os.path.exists(mesh_path)
+        if has_mesh:
+            return True
+        box, _pos, _rot = self.getLinkGeometry(input_urdf, link_name)
+        return bool(np.any(np.array(box) != 0))
+
+    def getCollisionMeshPath(self, input_urdf: str, link_name: str) -> str | None:
+        """Get path to collision mesh for a link (from <collision>/<geometry>/<mesh>).
+
+        Returns None if no collision mesh is specified. These are typically
+        simplified meshes that give tighter bounding boxes than visual meshes.
+        """
+        return self._getMeshPathFromTag(input_urdf, link_name, "collision/geometry/mesh")
+
     def getMeshPath(self, input_urdf: str, link_name: str) -> str | None:
+        """Get path to visual mesh for a link (from <visual>/<geometry>/<mesh>)."""
+        return self._getMeshPathFromTag(input_urdf, link_name, "visual/geometry/mesh")
+
+    def _getMeshPathFromTag(self, input_urdf: str, link_name: str, tag_path: str) -> str | None:
 
         tree = self.parseURDF(input_urdf)
         link_found = False
@@ -456,7 +491,7 @@ class URDFHelpers:
         for l in tree.findall("link"):
             if l.attrib["name"] == link_name:
                 link_found = True
-                m = l.find("visual/geometry/mesh")
+                m = l.find(tag_path)
                 if m is not None:
                     filepath = m.attrib["filename"]
                     try:
@@ -573,9 +608,12 @@ class URDFHelpers:
 
         import trimesh
 
-        filename = self.getMeshPath(input_urdf, link_name)
+        # prefer collision mesh (simplified geometry) over visual mesh for tighter bounds
+        filename = self.getCollisionMeshPath(input_urdf, link_name)
+        if filename is None:
+            filename = self.getMeshPath(input_urdf, link_name)
 
-        # box around current COM in case no mesh is availabe
+        # box around current COM in case no mesh is available
         length = self.opt["cubeSize"]
         cube = [
             [
@@ -617,20 +655,16 @@ class URDFHelpers:
                             mesh_rot = eulerAnglesToRotationMatrix(rpy_vals)
                     break
 
-            # gazebo and urdf use 1m for 1 stl unit
-            scale_x = float(self.mesh_scaling.split()[0])
-            scale_y = float(self.mesh_scaling.split()[1])
-            scale_z = float(self.mesh_scaling.split()[2])
+            # apply per-axis scaling (STL files are often in mm, URDF in m)
+            scale_parts = self.mesh_scaling.split()
+            scale = np.array([float(scale_parts[0]), float(scale_parts[1]), float(scale_parts[2])])
 
-            bounding_box = mesh.bounding_box.bounds * scale_x * hullScale
+            bounding_box = mesh.bounding_box.bounds * scale * hullScale
 
-            # switch order of min/max if scaling is negative
-            for s in range(0, 3):
-                if [scale_x, scale_y, scale_z][s] < 0:
-                    bounding_box[0][s], bounding_box[1][s] = (
-                        bounding_box[1][s],
-                        bounding_box[0][s],
-                    )
+            # ensure min < max for each axis (negative scaling flips the order)
+            for s in range(3):
+                if bounding_box[0][s] > bounding_box[1][s]:
+                    bounding_box[0][s], bounding_box[1][s] = bounding_box[1][s], bounding_box[0][s]
 
             return bounding_box, mesh_pos, mesh_rot
         else:
@@ -693,6 +727,24 @@ class URDFHelpers:
                         limits[name]["upper"] = upper
                         limits[name]["velocity"] = velocity
         return limits
+
+    @staticmethod
+    def getJointAxes(input_urdf: str) -> dict[str, list[float]]:
+        """Return the joint axis direction for each revolute joint from a URDF."""
+        import xml.etree.ElementTree as ET
+
+        tree = ET.parse(input_urdf)
+        axes: dict[str, list[float]] = {}
+        for j in tree.findall("joint"):
+            if j.attrib["type"] == "revolute":
+                name = j.attrib["name"]
+                axis_elem = j.find("axis")
+                if axis_elem is not None:
+                    xyz_str = axis_elem.attrib.get("xyz", "0 0 1")
+                    axes[name] = [float(v) for v in xyz_str.split()]
+                else:
+                    axes[name] = [0.0, 0.0, 1.0]
+        return axes
 
     @staticmethod
     def getJointFriction(input_urdf: str) -> dict[str, dict[str, float]]:

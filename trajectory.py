@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from typing import Any
 
 import numpy as np
 import yaml
@@ -113,16 +114,19 @@ def main():
         # a and b may be ragged (per-joint nf), so save as object arrays
         a_arr = np.array(trajectory.a, dtype=object)
         b_arr = np.array(trajectory.b, dtype=object)
-        np.savez(
-            traj_file,
-            use_deg=trajectory.use_deg,
-            static=False,
-            a=a_arr,
-            b=b_arr,
-            q=trajectory.q,
-            nf=trajectory.nf,
-            wf=trajectory.w_f_global,
-        )
+        save_dict: dict[str, Any] = {
+            "use_deg": trajectory.use_deg,
+            "static": False,
+            "a": a_arr,
+            "b": b_arr,
+            "q": trajectory.q,
+            "nf": trajectory.nf,
+            "wf": trajectory.w_f_global,
+        }
+        # save joint limits if using bounded trajectory mode
+        if trajectory.joint_limits is not None:
+            save_dict["joint_limits"] = np.array(trajectory.joint_limits)
+        np.savez(traj_file, **save_dict)
 
 
 if __name__ == "__main__":

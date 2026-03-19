@@ -86,10 +86,6 @@ class PostureOptimizer(Optimizer):
             + len(effective_ignore_pairs)
         )  # custom combinations
 
-        # only generate output from main process
-        if self.mpi_rank > 0:
-            self.config["verbose"] = 0
-
         self.initVisualizer()
 
     def testConstraints(self, g):
@@ -97,10 +93,7 @@ class PostureOptimizer(Optimizer):
 
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
-        if self.mpi_size > 1:
-            print(f"process {self.mpi_rank}, iter #{self.iter_cnt}/{self.iter_max}")
-        else:
-            print(f"call #{self.iter_cnt}/{self.iter_max}")
+        print(f"call #{self.iter_cnt}/{self.iter_max}")
 
         # init vars
         fail = False
@@ -188,11 +181,7 @@ class PostureOptimizer(Optimizer):
         f = float(np.linalg.norm(param_error) ** 2)  # + np.std(param_error)
 
         c = self.testConstraints(g)
-        if (
-            self.config["showOptimizationGraph"]
-            and not getattr(self.opt_prob, "is_gradient", False)
-            and self.mpi_rank == 0
-        ):
+        if self.config["showOptimizationGraph"] and not getattr(self.opt_prob, "is_gradient", False):
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -299,13 +288,11 @@ class PostureOptimizer(Optimizer):
 
             num_vars = self.num_postures * self.num_dofs
             # num of gradient evals divided by parallel processes times iterations
-            self.local_iter_max = (num_vars * 2 // self.mpi_size) * self.config["localOptIterations"]
+            self.local_iter_max = (num_vars * 2) * self.config["localOptIterations"]
         else:
             # ipopt, not really correct
             num_vars = self.num_postures * self.num_dofs
-            self.local_iter_max = ((num_vars + self.num_constraints) // self.mpi_size) * self.config[
-                "localOptIterations"
-            ]
+            self.local_iter_max = (num_vars + self.num_constraints) * self.config["localOptIterations"]
 
         sol_vec = self.runOptimizer(self.opt_prob)
 

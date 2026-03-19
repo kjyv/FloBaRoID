@@ -513,12 +513,24 @@ class Mesh:
         self.mesh = trimesh.load_mesh(mesh_file)
         self.num_vertices = np.size(self.mesh.vertices)
 
-        self.normals = np.asarray(self.mesh.vertex_normals.reshape(-1), dtype=np.float32)
-        self.faces = np.asarray(self.mesh.faces.reshape(-1), dtype=np.uint16)
         self.vertices: np.ndarray = self.mesh.vertices.copy()
         self.vertices[:, 0] *= scaling[0]
         self.vertices[:, 1] *= scaling[1]
         self.vertices[:, 2] *= scaling[2]
+
+        normals = np.array(self.mesh.vertex_normals)
+        faces = np.array(self.mesh.faces)
+
+        # fix face winding and normals when scale has negative components (mirroring)
+        if np.prod(scaling) < 0:
+            faces = np.asarray(faces[:, ::-1])
+            # flip normals for mirrored axes
+            for ax in range(3):
+                if scaling[ax] < 0:
+                    normals[:, ax] *= -1
+
+        self.normals = np.asarray(normals.reshape(-1), dtype=np.float32)
+        self.faces = np.asarray(faces.reshape(-1), dtype=np.uint16)
         self.vertices = np.asarray(self.vertices.reshape(-1), dtype=np.float32)
 
     def getVerticeList(self) -> VAOMesh:
@@ -2020,7 +2032,7 @@ if __name__ == "__main__":
                 neighbors=neighbors,
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
             )
-        v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, config["ignoreLinksForCollision"])
+        v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, ignore_links=[])
 
         if args.world:
             v.addWorld(world_boxes)

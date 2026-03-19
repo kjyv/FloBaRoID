@@ -16,8 +16,7 @@ optionally supply a world urdf file that includes the ground and objects that
 the robot might collide with, e.g. a table. The optimization will simulate each
 trajectory and check for all constraints to be met while minimizing the
 condition number of the dynamics regressor. This might take a while depending on
-the degrees of freedom. You can prefix the call with `mpirun -n <n>` to
-parallelize this. An output file containing the found parameters of the
+the degrees of freedom. An output file containing the found parameters of the
 trajectory will be saved.
 `./trajectory.py --config configs/example.yaml --model model/example.urdf --world model/world.urdf`
 

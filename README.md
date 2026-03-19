@@ -37,7 +37,6 @@ You'll need some or all of these depenencies installed in your system:
 * **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
 * **ipopt** (optional, for IPOPT solver in trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
-* **open-mpi** (optional, for parallel trajectory optimization): `brew install open-mpi` (macOS) or `apt install libopenmpi-dev` (Ubuntu/Debian)
 * **dsdp5** (command line executable, required for SDP-constrained identification)
 
 ## Installation
@@ -48,7 +47,7 @@ automatically.
 
 Optional extras can be installed with:
 * `uv sync --extra ipopt` — IPOPT solver support (requires libipopt, see above)
-* `uv sync --extra parallel` — MPI-based parallel optimization (requires open-mpi, see above)
+
 
 ## Commands
 
@@ -91,7 +90,6 @@ uv run visualizer.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urd
 
 ```bash
 uv sync --extra tikz-plots      # matplotlib2tikz
-uv sync --extra parallel         # mpi4py
 ```
 
 ### Additional non-PyPI dependencies
@@ -103,10 +101,6 @@ requirements for excitation module:
 * for ros, python modules: ros, moveit\_msg, moveit\_commander
 * for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
 * for other robots, new modules will have to be written
-
-requirements for trajectory optimization:
-
-* mpi4py / mpirun (for parallel trajectory optimization)
 
 Also see the [Tutorial](documentation/TUTORIAL.md).
 

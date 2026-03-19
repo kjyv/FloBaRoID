@@ -426,23 +426,30 @@ class Optimizer:
                 if np.prod(scale) < 0:
                     faces = faces[:, ::-1]
 
-                # use convex hull for collision — GJK convex-convex is much faster
-                # than BVH triangle mesh distance, and convex hull is a conservative
-                # approximation (if convex hulls don't collide, meshes don't either)
-                hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
-                hull_verts = np.array(hull.vertices, dtype=np.float64)
-                hull_faces = np.array(hull.faces, dtype=np.int32)
-
-                # fcl.Convex expects flat face array with vertex count prefix per face
-                flat_faces = np.empty(len(hull_faces) * 4, dtype=np.int32)
-                for fi in range(len(hull_faces)):
-                    flat_faces[fi * 4] = 3  # triangle
-                    flat_faces[fi * 4 + 1 : fi * 4 + 4] = hull_faces[fi]
-
                 p = np.array(self.link_cuboid_hulls[link_name][1])
 
-                convex = fcl.Convex(hull_verts, len(hull_faces), flat_faces)
-                self._geom_cache[link_name] = (convex, p)
+                if self.config.get("useConvexHullCollision", False):
+                    # convex hull: GJK convex-convex is faster than BVH mesh distance,
+                    # and is a conservative approximation
+                    hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
+                    hull_verts = np.array(hull.vertices, dtype=np.float64)
+                    hull_faces = np.array(hull.faces, dtype=np.int32)
+
+                    # fcl.Convex expects flat face array with vertex count prefix per face
+                    flat_faces = np.empty(len(hull_faces) * 4, dtype=np.int32)
+                    for fi in range(len(hull_faces)):
+                        flat_faces[fi * 4] = 3  # triangle
+                        flat_faces[fi * 4 + 1 : fi * 4 + 4] = hull_faces[fi]
+
+                    convex = fcl.Convex(hull_verts, len(hull_faces), flat_faces)
+                    self._geom_cache[link_name] = (convex, p)
+                else:
+                    # use the mesh directly (BVH triangle mesh) — tighter fit
+                    bvh = fcl.BVHModel()
+                    bvh.beginModel(len(faces), len(verts))
+                    bvh.addSubModel(np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int32))
+                    bvh.endModel()
+                    self._geom_cache[link_name] = (bvh, p)
             else:
                 # fallback to bounding box
                 s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
@@ -526,7 +533,12 @@ class Optimizer:
             from visualizer import Visualizer
 
             self.visualizer = Visualizer(self.config)
-            self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, self.idf.urdfHelpers)
+            self.visualizer.loadMeshes(
+                self.model.urdf_file,
+                self.model.linkNames,
+                self.idf.urdfHelpers,
+                use_convex_hull=self.config.get("useConvexHullCollision", False),
+            )
             if self._capsules:
                 self.visualizer.loadCapsules(self._capsules)
 

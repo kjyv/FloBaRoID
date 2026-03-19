@@ -978,6 +978,7 @@ class Visualizer:
 
         # collision highlighting
         self.colliding_links: set[str] = set()
+        self.check_collisions = True  # toggled with C key
 
         # additional callbacks to be used with key handling
         self.event_callback: Callable | None = None
@@ -1012,24 +1013,11 @@ class Visualizer:
         move_keys = "ctrl, space"  # &#8679; &#x2423;
         enter_key = "enter"  # &#x2324;
         font_color = "color='#cccccc'" if self.dark_mode else ""
-        legend = f"""<font face="Helvetica,Arial" size=15 {font_color}>wasd, {move_keys} - move around <br/>
-        mouse drag - look / shift+drag - orbit <br/>
-        {enter_key} - play/stop trajectory <br/>
-        &#x2190; &#x2192; - prev/next frame <br/>
-        m - cycle visual/collision mesh/boxes <br/>
-        t - show joint torques (if available) <br/>
-        c - continous/blocking (for optimizer) <br/>
-        q - close <br/>
-        </font>"""
-        self.help_label = pyglet.text.HTMLLabel(
-            legend,
-            x=10,
-            y=-10,
-            width=300,
-            multiline=True,
-            anchor_x="left",
-            anchor_y="bottom",
-        )
+        self._help_font_color = font_color
+        self._help_move_keys = move_keys
+        self._help_enter_key = enter_key
+        self.help_label: pyglet.text.HTMLLabel | None = None
+        self._update_help_label()
         self.info_label = pyglet.text.Label(
             "",
             font_name="Helvetica",
@@ -1049,6 +1037,34 @@ class Visualizer:
 
     def updateLabels(self):
         self.info_label.text = f"Index: {self.display_index}"
+
+    def _update_help_label(self) -> None:
+        """Rebuild help label with current toggle states."""
+        fc = self._help_font_color
+        chk_coll = "[on]" if self.check_collisions else "[off]"
+        chk_torq = "[on]" if self.show_torque_rings else "[off]"
+        html = (
+            f'<font face="Helvetica,Arial" size=15 {fc}>'
+            f"wasd, {self._help_move_keys} - move around <br/>"
+            f"mouse drag - look / shift+drag - orbit <br/>"
+            f"{self._help_enter_key} - play/stop trajectory <br/>"
+            f"&#x2190; &#x2192; - prev/next frame <br/>"
+            f"m - cycle visual/collision/capsules/boxes <br/>"
+            f"c - collision checking {chk_coll} <br/>"
+            f"t - show joint torques {chk_torq} <br/>"
+            f"b - continuous/blocking (for optimizer) <br/>"
+            f"q - close <br/>"
+            f"</font>"
+        )
+        self.help_label = pyglet.text.HTMLLabel(
+            html,
+            x=10,
+            y=-10,
+            width=300,
+            multiline=True,
+            anchor_x="left",
+            anchor_y="bottom",
+        )
 
     def _update_fps_label(self) -> None:
         """Update FPS label using a 30-frame rolling average, throttled to 2x/sec."""
@@ -1270,7 +1286,7 @@ class Visualizer:
             self.on_close()
             return pyglet.event.EVENT_HANDLED
 
-        if symbol == key.C:
+        if symbol == key.B:
             if self.mode == "b":
                 print("switching to continuous render")
                 self.mode = "c"
@@ -1279,6 +1295,14 @@ class Visualizer:
             else:
                 print("switching to blocking render")
                 self.mode = "b"
+
+        if symbol == key.C:
+            self.check_collisions = not self.check_collisions
+            if not self.check_collisions:
+                self.colliding_links = set()
+            self._update_help_label()
+            if self.event_callback:
+                self.event_callback()
 
         if symbol == key.I:
             print(f"Camera pos:{self.camera.position} pitch:{self.camera.pitch} yaw:{self.camera.yaw}")
@@ -1325,6 +1349,7 @@ class Visualizer:
         if symbol == key.T:
             if self.has_torque_data:
                 self.show_torque_rings = not self.show_torque_rings
+                self._update_help_label()
                 if self.event_callback:
                     self.event_callback()
 
@@ -1477,7 +1502,8 @@ class Visualizer:
             self.window.projection = self._label_projection
             self.window.view = self._label_view
 
-        self.help_label.draw()
+        if self.help_label is not None:
+            self.help_label.draw()
         if self.info_label is not None:
             self.info_label.draw()
 
@@ -1656,8 +1682,15 @@ class Visualizer:
         """
         self._capsule_data = capsules
 
-    def loadMeshes(self, urdfpath, linkNames, urdfHelpers):
-        """Load visual and collision meshes for all links."""
+    def loadMeshes(self, urdfpath, linkNames, urdfHelpers, use_convex_hull: bool = False):
+        """Load visual and collision meshes for all links.
+
+        Collision meshes match what the optimizer uses: either the raw collision
+        mesh (when useConvexHullCollision is off) or its convex hull (when on).
+        Falls back to visual mesh (always convex-hulled) when no collision mesh exists.
+        """
+        import trimesh
+
         if not len(self.mesh_vaos):
             for i in range(0, len(linkNames)):
                 # visual meshes
@@ -1666,12 +1699,36 @@ class Visualizer:
                     scale_parts = urdfHelpers.mesh_scaling.split(" ")
                     scale = np.array([float(scale_parts[0]), float(scale_parts[1]), float(scale_parts[2])])
                     self.mesh_vaos[linkNames[i]] = Mesh(filename, scale).getVerticeList()
-                # collision meshes
+
+                # collision meshes: try collision mesh first, fall back to visual mesh
                 coll_filename = urdfHelpers.getCollisionMeshPath(urdfpath, linkNames[i])
+                is_collision_mesh = coll_filename is not None and os.path.exists(coll_filename)
+                if not is_collision_mesh:
+                    coll_filename = urdfHelpers.getMeshPath(urdfpath, linkNames[i])
                 if coll_filename and os.path.exists(coll_filename):
                     scale_parts = urdfHelpers.mesh_scaling.split(" ")
                     scale = np.array([float(scale_parts[0]), float(scale_parts[1]), float(scale_parts[2])])
-                    self.collision_mesh_vaos[linkNames[i]] = Mesh(coll_filename, scale).getVerticeList()
+                    mesh = trimesh.load_mesh(coll_filename)
+                    verts = np.array(mesh.vertices) * scale
+                    faces = np.array(mesh.faces)
+                    if np.prod(scale) < 0:
+                        faces = np.asarray(faces[:, ::-1])
+                    # convex hull when configured, or for visual mesh fallback
+                    if use_convex_hull or not is_collision_mesh:
+                        hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
+                        verts = np.array(hull.vertices)
+                        faces = np.array(hull.faces)
+                        normals = np.array(hull.vertex_normals)
+                    else:
+                        normals = np.array(mesh.vertex_normals)
+                        # apply same scale to normals for mirrored axes
+                        for ax in range(3):
+                            if scale[ax] < 0:
+                                normals[:, ax] *= -1
+                    render_verts = np.asarray(verts.reshape(-1), dtype=np.float32)
+                    render_normals = np.asarray(normals.reshape(-1), dtype=np.float32)
+                    render_faces = np.asarray(faces.reshape(-1), dtype=np.uint16)
+                    self.collision_mesh_vaos[linkNames[i]] = VAOMesh(render_verts, render_faces, render_normals)
             if len(self.mesh_vaos):
                 self.mesh_mode = "visual"
                 self.show_meshes = True
@@ -1932,12 +1989,18 @@ if __name__ == "__main__":
         link_cuboid_hulls=link_cuboid_hulls,
         link_names=linkNames,
         scale_collision_hull=config.get("scaleCollisionHull", 1.0),
+        use_convex_hull=config.get("useConvexHullCollision", False),
     )
     neighbors = URDFHelpers.getNeighbors(loader.model())
 
     v = Visualizer(config)
 
-    v.loadMeshes(args.model, linkNames, urdfHelpers)
+    v.loadMeshes(
+        args.model,
+        linkNames,
+        urdfHelpers,
+        use_convex_hull=config.get("useConvexHullCollision", False),
+    )
 
     # fit capsule collision primitives for visualization
     from excitation.capsule import fit_capsules_from_urdf
@@ -2011,7 +2074,9 @@ if __name__ == "__main__":
 
         # check collisions using the same code path the optimizer would use:
         # capsule distance when viewing capsules, FCL when viewing meshes/boxes
-        if v.mesh_mode == "capsules" and capsules:
+        if not v.check_collisions:
+            pass  # collision checking disabled (toggle with C key)
+        elif v.mesh_mode == "capsules" and capsules:
             from excitation.capsule import find_colliding_links_capsule
 
             v.colliding_links = find_colliding_links_capsule(
@@ -2031,6 +2096,7 @@ if __name__ == "__main__":
                 ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
                 neighbors=neighbors,
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
+                use_visual_mesh=(v.mesh_mode == "visual"),
             )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, ignore_links=[])
 

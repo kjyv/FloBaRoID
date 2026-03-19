@@ -34,6 +34,84 @@ from idyntree import bindings as iDynTree
 from identification.helpers import eulerAnglesToRotationMatrix
 
 
+def _optuna_worker(
+    study_name: str,
+    storage_url: str,
+    config: dict,
+    var_info: list[tuple[str, float, float, float]],
+    n_worker_trials: int,
+    sampler_name: str = "TPE",
+) -> None:
+    """Worker process for parallel Optuna optimization.
+
+    Each worker creates its own Model and optimizer instance to avoid
+    sharing non-picklable iDynTree objects across processes.
+    """
+    # prevent matplotlib from opening windows in worker processes
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    import optuna as _optuna
+
+    from excitation.trajectoryGenerator import simulateTrajectory
+    from excitation.trajectoryOptimizer import TrajectoryOptimizer
+    from identification.model import Model
+    from identifier import Identification
+
+    _optuna.logging.set_verbosity(_optuna.logging.WARNING)
+
+    from idyntree import bindings as iDynTree
+
+    config["jointNames"] = iDynTree.StringVector([])
+    iDynTree.dofsListFromURDF(config["urdf"], config["jointNames"])
+    config["num_dofs"] = len(config["jointNames"])
+    config["showOptimizationGraph"] = 0
+    config["showModelVisualization"] = 0
+    config["verbose"] = 0
+
+    model = Model(config, config["urdf"])
+    idf = Identification(config, config["urdf"], None, None, None, None)
+    worker_opt = TrajectoryOptimizer(config, idf, model, simulateTrajectory)
+    worker_opt.is_global = True
+
+    def worker_objective(trial: _optuna.Trial) -> float:
+        """Objective for a single Optuna trial in a worker process."""
+        x = [trial.suggest_float(name, lo, hi) for name, lo, hi, _ in var_info]
+        f, g, _fail = worker_opt.objectiveFunc(np.array(x))
+        # store constraints as trial user attributes for the constraints_func
+        c_s = worker_opt.num_constraints - worker_opt.num_coll_constraints
+        violations = [float(g[i]) for i in range(c_s)]
+        violations += [float(-g[i]) for i in range(c_s, worker_opt.num_constraints)]
+        trial.set_user_attr("constraints", violations)
+        return f
+
+    # create a constraint-aware sampler with constant_liar for cross-process coordination.
+    # constant_liar makes TPE assume running trials (from other workers) return a pessimistic
+    # value, so each worker explores different regions of the search space.
+    n_con = worker_opt.num_constraints
+
+    def worker_constraints_func(trial: _optuna.trial.FrozenTrial) -> list[float]:
+        return trial.user_attrs.get("constraints", [10.0] * n_con)
+
+    if sampler_name == "NSGA2":
+        worker_sampler: Any = _optuna.samplers.NSGAIISampler(constraints_func=worker_constraints_func)
+    else:
+        worker_sampler = _optuna.samplers.TPESampler(
+            constraints_func=worker_constraints_func,
+            constant_liar=True,
+        )
+
+    w_study = _optuna.load_study(study_name=study_name, storage=storage_url, sampler=worker_sampler)
+
+    # each worker keeps running until the study has enough total trials
+    def _stop_callback(study: _optuna.Study, trial: _optuna.trial.FrozenTrial) -> None:
+        if len(study.trials) >= n_worker_trials:
+            study.stop()
+
+    w_study.optimize(worker_objective, callbacks=[_stop_callback])
+
+
 def plotter(config: dict, data: dict | None = None, filename: str | None = None) -> None:
     fig = plt.figure(1)
     fig.clear()
@@ -493,31 +571,25 @@ class Optimizer:
         self.xar: list[int] = []  # x value, i.e. iteration count
         self.yar: list[float] = []  # y value, i.e. obj func value
         self.x_constr: list[bool] = []  # within constraints or not (feasible)
-        self.ax1.plot(self.xar, self.yar)
+        # create a single line object that we update (instead of adding new lines)
+        (self._graph_line,) = self.ax1.plot([], [], marker=".", markeredgecolor="g", markerfacecolor="g", color="0.75")
         self.ax1.set_xlabel("Function evaluation #")
         self.ax1.set_ylabel("Objective function value")
-
-        self.updateGraphEveryVals = 5
+        self._graph_shown = False
 
     def updateGraph(self):
         if self.mpi_rank > 0:
             return
-        # draw all optimization steps, mark the ones that are within constraints
-        # if (self.iter_cnt % self.updateGraphEveryVals) == 0:
-        color = "g"
-        line = self.ax1.plot(
-            self.xar,
-            self.yar,
-            marker=".",
-            markeredgecolor=color,
-            markerfacecolor=color,
-            color="0.75",
-        )
+        # update the single line with current data
+        self._graph_line.set_data(self.xar, self.yar)
         markers = np.where(self.x_constr)[0]
-        line[0].set_markevery(list(markers))
+        self._graph_line.set_markevery(list(markers))
+        self.ax1.relim()
+        self.ax1.autoscale_view()
 
-        if self.iter_cnt == 1:
+        if not self._graph_shown:
             plt.show(block=False)
+            self._graph_shown = True
 
         # update without stealing window focus (plt.pause steals focus on macOS)
         self.fig.canvas.draw_idle()
@@ -628,35 +700,134 @@ class Optimizer:
         if sampler_name == "NSGA2":
             sampler = optuna.samplers.NSGAIISampler(seed=random.randint(0, 2**31), constraints_func=constraints_func)
         else:
-            sampler = optuna.samplers.TPESampler(seed=random.randint(0, 2**31), constraints_func=constraints_func)
+            sampler = optuna.samplers.TPESampler(
+                seed=random.randint(0, 2**31),
+                constraints_func=constraints_func,
+                constant_liar=True,  # parallel: assume running trials return worst value
+            )
 
         # enqueue the initial solution as the first trial
         init_params = {info[0]: info[3] for info in var_info}
         study = optuna.create_study(direction="minimize", sampler=sampler)
         study.enqueue_trial(init_params)
 
-        n_jobs = self.config.get("globalOptJobs", 1)
+        cpu_count = os.cpu_count() or 1
+        default_jobs = max(1, cpu_count - 2)
+        n_jobs = self.config.get("globalOptJobs", default_jobs)
         print(f"Running Optuna ({sampler_name}) with {n_trials} trials ({n_jobs} jobs)...")
-        study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=True)
+
+        if n_jobs > 1:
+            # multiprocess: use SQLite storage so worker processes share the study.
+            # each worker creates its own Model/KinDyn/collision objects.
+            import multiprocessing
+            import tempfile
+
+            storage_path = tempfile.mktemp(suffix=".db")
+            storage = f"sqlite:///{storage_path}"
+            study = optuna.create_study(
+                study_name="trajectory_opt",
+                direction="minimize",
+                sampler=sampler,
+                storage=storage,
+            )
+            study.enqueue_trial(init_params)
+
+            # each worker runs until the study has enough total trials
+            # (workers check the shared DB and stop when n_trials is reached)
+            config_copy = {k: v for k, v in self.config.items() if k != "jointNames"}
+            processes = []
+            for i in range(n_jobs):
+                p = multiprocessing.Process(
+                    target=_optuna_worker,
+                    args=("trajectory_opt", storage, config_copy, var_info, n_trials, sampler_name),
+                    name=f"optuna_worker_{i}",
+                )
+                p.start()
+                print(f"  started worker {i} (pid={p.pid})")
+                processes.append(p)
+            # poll workers and update graph while they run
+            import time
+
+            if self.config["showOptimizationGraph"]:
+                plt.show(block=False)
+
+            while any(p.is_alive() for p in processes):
+                time.sleep(2)
+                if self.config["showOptimizationGraph"]:
+                    # read completed trials from shared storage and update graph
+                    tmp_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+                    self.xar = []
+                    self.yar = []
+                    self.x_constr = []
+                    for t in tmp_study.trials:
+                        if t.value is not None:
+                            self.xar.append(t.number)
+                            self.yar.append(t.value)
+                            constraints = t.user_attrs.get("constraints", None)
+                            feasible = constraints is not None and all(v <= 0.01 for v in constraints)
+                            self.x_constr.append(feasible)
+                    if self.xar:
+                        self.iter_cnt = max(self.xar)
+                        self.updateGraph()
+                n_done = sum(not p.is_alive() for p in processes)
+                n_trials_done = len(optuna.load_study(study_name="trajectory_opt", storage=storage).trials)
+                print(
+                    f"\r  {n_trials_done}/{n_trials} trials, {n_jobs - n_done}/{n_jobs} workers active",
+                    end="",
+                    flush=True,
+                )
+            print()
+
+            for p in processes:
+                p.join()
+                if p.exitcode != 0:
+                    print(f"  worker {p.name} exited with code {p.exitcode}")
+
+            # reload study results from shared storage
+            study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+            os.remove(storage_path)
+        else:
+            study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
         # extract best feasible solution
+        # constraints are stored either in local dict (single process) or trial user_attrs (multiprocess)
+        def _get_constraints(t: Any) -> list[float]:
+            if t.number in trial_constraints:
+                return trial_constraints[t.number]
+            return t.user_attrs.get("constraints", [10.0] * num_constraints)
+
         feasible_trials = [
-            t
-            for t in study.trials
-            if t.value is not None
-            and t.number in trial_constraints
-            and all(v <= 0.01 for v in trial_constraints[t.number])
+            t for t in study.trials if t.value is not None and all(v <= 0.01 for v in _get_constraints(t))
         ]
-        if feasible_trials:
-            best = min(feasible_trials, key=lambda t: t.value)  # type: ignore[arg-type,return-value]
-            best_x = np.array([best.params[info[0]] for info in var_info])
-            best_f = float(best.value)  # type: ignore[arg-type]
-            if best_f < self.last_best_f:
-                self.last_best_f = best_f
-                self.last_best_sol = best_x
-            print(f"Optuna best feasible: {best_f:.2f} ({len(feasible_trials)}/{len(study.trials)} feasible)")
-        else:
-            print(f"Optuna: no feasible solution found in {len(study.trials)} trials")
+        # sort by objective value (best first) and verify with dense collision check
+        feasible_trials.sort(key=lambda t: t.value)  # type: ignore[arg-type,return-value]
+
+        verified = False
+        for trial in feasible_trials:
+            candidate_x = np.array([trial.params[info[0]] for info in var_info])
+            # re-evaluate with dense collision checking (every sample instead of every Nth)
+            old_step = self.config.get("collisionCheckStep", 5)
+            self.config["collisionCheckStep"] = 1
+            f_verify, g_verify, _ = self.objectiveFunc(candidate_x)
+            self.config["collisionCheckStep"] = old_step
+
+            c_verify = self.testConstraints(g_verify)
+            if c_verify:
+                if f_verify < self.last_best_f:
+                    self.last_best_f = f_verify
+                    self.last_best_sol = candidate_x
+                print(
+                    f"Optuna best verified: {f_verify:.2f} ({len(feasible_trials)}/{len(study.trials)} passed sparse check)"
+                )
+                verified = True
+                break
+            else:
+                print(
+                    f"  candidate {trial.number} (obj={trial.value:.2f}) failed dense collision check, trying next..."
+                )
+
+        if not verified:
+            print(f"Optuna: no solution survived dense collision verification ({len(study.trials)} trials)")
 
     def runOptimizer(self, opt_prob: Any) -> np.ndarray:
         """call global followed by local optimizer, return solution"""

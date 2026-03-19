@@ -316,7 +316,8 @@ class TrajectoryOptimizer(Optimizer):
                             continue
                     self._collision_pairs.append((l0_name, l1_name))
 
-        for p in range(0, pos.shape[0], 10):
+        collision_step = self.config.get("collisionCheckStep", 3)
+        for p in range(0, pos.shape[0], collision_step):
             if self.config["verbose"] > 1:
                 print(f"Sample {p}")
             q = pos[p]

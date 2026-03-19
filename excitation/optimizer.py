@@ -109,7 +109,7 @@ def _optuna_worker(
         if len(study.trials) >= n_worker_trials:
             study.stop()
 
-    w_study.optimize(worker_objective, callbacks=[_stop_callback])
+    w_study.optimize(worker_objective, callbacks=[_stop_callback], catch=(ValueError,))
 
 
 def plotter(config: dict, data: dict | None = None, filename: str | None = None) -> None:
@@ -386,10 +386,13 @@ class Optimizer:
         if not hasattr(self, "_geom_cache"):
             self._geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
         if link_name not in self._geom_cache:
-            # try loading collision mesh
-            mesh_path = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
-            if mesh_path is None:
-                mesh_path = self.idf.urdfHelpers.getMeshPath(self.model.urdf_file, link_name)
+            # try loading collision mesh (unless config says to use bounding boxes)
+            use_meshes = self.config.get("useCollisionMeshes", 1)
+            mesh_path = None
+            if use_meshes:
+                mesh_path = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
+                if mesh_path is None or not os.path.exists(mesh_path):
+                    mesh_path = self.idf.urdfHelpers.getMeshPath(self.model.urdf_file, link_name)
 
             if mesh_path is not None and os.path.exists(mesh_path):
                 import trimesh
@@ -401,28 +404,27 @@ class Optimizer:
                 verts = np.array(mesh.vertices) * scale
                 faces = np.array(mesh.faces)
 
-                # if loading a full visual mesh (not a simple collision mesh),
-                # compute convex hull for faster and more robust collision checking
-                is_collision_mesh = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
-                if is_collision_mesh is None and len(faces) > 100:
-                    print(f"  computing convex hull for {link_name} ({len(faces)} → ", end="")
-                    hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
-                    verts = np.array(hull.vertices)
-                    faces = np.array(hull.faces)
-                    print(f"{len(faces)} faces)")
-
                 # fix face winding if any scale axis is negative (mirrored mesh)
                 if np.prod(scale) < 0:
                     faces = faces[:, ::-1]
 
-                # get mesh origin from URDF
+                # use convex hull for collision — GJK convex-convex is much faster
+                # than BVH triangle mesh distance, and convex hull is a conservative
+                # approximation (if convex hulls don't collide, meshes don't either)
+                hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
+                hull_verts = np.array(hull.vertices, dtype=np.float64)
+                hull_faces = np.array(hull.faces, dtype=np.int32)
+
+                # fcl.Convex expects flat face array with vertex count prefix per face
+                flat_faces = np.empty(len(hull_faces) * 4, dtype=np.int32)
+                for fi in range(len(hull_faces)):
+                    flat_faces[fi * 4] = 3  # triangle
+                    flat_faces[fi * 4 + 1 : fi * 4 + 4] = hull_faces[fi]
+
                 p = np.array(self.link_cuboid_hulls[link_name][1])
 
-                bvh = fcl.BVHModel()
-                bvh.beginModel(len(faces), len(verts))
-                bvh.addSubModel(verts, faces)
-                bvh.endModel()
-                self._geom_cache[link_name] = (bvh, p)
+                convex = fcl.Convex(hull_verts, len(hull_faces), flat_faces)
+                self._geom_cache[link_name] = (convex, p)
             else:
                 # fallback to bounding box
                 s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
@@ -472,23 +474,9 @@ class Optimizer:
         o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + offset0))
         o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + offset1))
 
+        # fcl.distance returns negative for penetration with Box and Convex geometry.
+        # (BVH would return 0, but we use Convex hulls instead.)
         distance = fcl.distance(o0, o1, fcl.DistanceRequest(True), fcl.DistanceResult())
-
-        # for BVH mesh geometry, fcl.distance() returns 0 (not negative) on overlap.
-        # always do an explicit collision check when distance is 0 or negative.
-        if distance <= 0:
-            cr = fcl.CollisionRequest()
-            cr.enable_contact = True
-            c_result = fcl.CollisionResult()
-            fcl.collide(o0, o1, cr, c_result)
-
-            if c_result.is_collision:
-                if self.config["verbose"] > 1:
-                    print(f"Collision of {l0_name} and {l1_name}")
-                if len(c_result.contacts):
-                    distance = -abs(c_result.contacts[0].penetration_depth)
-                else:
-                    distance = -0.01  # collision detected but no contact info
 
         return distance
 
@@ -944,8 +932,17 @@ class Optimizer:
         if self.mpi_rank == 0:
             if len(self.last_best_sol) > 0:
                 print("using best constrained solution found during optimization.")
-                print("testing final solution")
-                self.objectiveFunc(self.last_best_sol, test=True)
+                print("verifying final solution (dense collision check, every sample)...")
+                # verify with collision check on every sample
+                old_step = self.config.get("collisionCheckStep", 5)
+                self.config["collisionCheckStep"] = 1
+                f_final, g_final, _ = self.objectiveFunc(self.last_best_sol, test=True)
+                self.config["collisionCheckStep"] = old_step
+
+                if self.testConstraints(g_final):
+                    print("Final solution is feasible (dense check passed).")
+                else:
+                    print("WARNING: final solution has constraint violations in dense check!")
                 print("\n")
                 return self.last_best_sol
             else:

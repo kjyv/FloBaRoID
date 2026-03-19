@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.1
+
+### Trajectory generation
+- Added bounded trajectory generation to prevent running into joint angle limits
+- Added trajectory simulator for generated trajectories
+- Fixes for floating base trajectory generation
+
+### Trajectory optimization
+- Added Optuna optimizer with multi-core support
+- Added trajectory quality penalties
+- Added mesh-based collision detection (always uses convex hull for performance)
+- Fixed playback rate in trajectory visualization
+
+### Identification
+- Fixed missing sign for Coulomb friction identification
+- Fixed mid-point p offset calculation
+
 ## 0.9.0
 
 ### Build system

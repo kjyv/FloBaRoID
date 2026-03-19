@@ -311,15 +311,7 @@ class Optimizer:
         self.num_constraints: int = 0
         self.num_coll_constraints: int = 0
 
-        # init parallel runs
-        self.parallel = parallel
-        if parallel:
-            self.mpi_size = nprocs  # number of processes
-            self.mpi_rank = comm.Get_rank()  # current process
-            self.comm = comm
-        else:
-            self.mpi_size = 1
-            self.mpi_rank = 0
+        self.mpi_rank = 0  # legacy, kept for compatibility with subclasses
 
         # init plotting progress
         if self.config["showOptimizationGraph"]:
@@ -385,7 +377,7 @@ class Optimizer:
                     self.model.linkNames,
                     ignore_links=set(self.config.get("ignoreLinksForCollision", [])),
                     ignore_pairs=self.config.get("ignoreLinkPairsForCollision", []),
-                    neighbors=idf.urdfHelpers.getNeighbors(idf.model),
+                    neighbors=idf.urdfHelpers.getNeighbors(self.model.idyn_model),
                     max_kin_distance=self.config.get("collisionMaxKinematicDistance", 0),
                 )
                 if zero_colliding:
@@ -530,7 +522,7 @@ class Optimizer:
         )
 
     def initVisualizer(self):
-        if self.config["showModelVisualization"] and self.mpi_rank == 0:
+        if self.config["showModelVisualization"]:
             from visualizer import Visualizer
 
             self.visualizer = Visualizer(self.config)
@@ -568,7 +560,7 @@ class Optimizer:
 
     def showVisualizerAngles(self, x):
         """show visualizer for current joint angles x"""
-        if self.config["showModelVisualization"] and self.mpi_rank == 0:  # and c:
+        if self.config["showModelVisualization"]:  # and c:
             self.visualizer.display_max = self.num_postures
             self.visualizer.angles = x
             if self.visualizer.event_callback:
@@ -577,7 +569,7 @@ class Optimizer:
 
     def showVisualizerTrajectory(self, t):
         """show visualizer for joint trajectory t"""
-        if self.config["showModelVisualization"] and self.mpi_rank == 0:  # and c:
+        if self.config["showModelVisualization"]:  # and c:
             self.visualizer.setModelTrajectory(t)
             self.visualizer.playback_rate = self.config["excitationFrequency"]
             self.visualizer.display_max = t.getPeriodLength() * self.visualizer.playback_rate  # length of trajectory
@@ -605,8 +597,7 @@ class Optimizer:
         raise NotImplementedError
 
     def initGraph(self):
-        if self.mpi_rank > 0:
-            return
+
         # init graphing of objective function value
         self.fig = plt.figure(0)
         self.ax1 = self.fig.add_subplot(1, 1, 1)
@@ -621,8 +612,7 @@ class Optimizer:
         self._graph_shown = False
 
     def updateGraph(self):
-        if self.mpi_rank > 0:
-            return
+
         # update the single line with current data
         self._graph_line.set_data(self.xar, self.yar)
         markers = np.where(self.x_constr)[0]
@@ -665,23 +655,8 @@ class Optimizer:
             dx[i] = 0.0
         return jac.transpose()
 
-    def gather_solutions(self):
-        # send best solutions to node 0
-        if self.parallel:
-            if self.config["verbose"]:
-                print("Collecting best solutions from processes")
-            send_obj = [self.last_best_f, self.last_best_sol, self.mpi_rank]
-            received_objs = self.comm.gather(send_obj, root=0)
-
-            # receive solutions from other instances
-            if self.mpi_rank == 0 and received_objs is not None:
-                for proc in range(0, self.mpi_size):
-                    other_best_f, other_best_sol, rank = received_objs[proc]
-
-                    if other_best_f < self.last_best_f:
-                        print(f"received better solution from {rank}")
-                        self.last_best_f = other_best_f
-                        self.last_best_sol = other_best_sol
+    def gather_solutions(self) -> None:
+        """Placeholder for solution gathering (previously used MPI)."""
 
     def _runOptuna(self) -> None:
         """Run Optuna TPE or NSGA2 global optimization.
@@ -932,8 +907,7 @@ class Optimizer:
                     self._runOptuna()
                 else:
                     sol = opt(opt_prob, storeHistory=False)
-                    if self.mpi_rank == 0:
-                        print(sol)
+                    print(sol)
             except KeyboardInterrupt:
                 print("\n\nGlobal optimization interrupted by user.")
 
@@ -994,27 +968,23 @@ class Optimizer:
 
             self.gather_solutions()
 
-        if self.mpi_rank == 0:
-            if len(self.last_best_sol) > 0:
-                print("using best constrained solution found during optimization.")
-                print("verifying final solution (dense collision check, every sample)...")
-                # verify with collision check on every sample
-                old_step = self.config.get("collisionCheckStep", 5)
-                self.config["collisionCheckStep"] = 1
-                f_final, g_final, _ = self.objectiveFunc(self.last_best_sol, test=True)
-                self.config["collisionCheckStep"] = old_step
+        if len(self.last_best_sol) > 0:
+            print("using best constrained solution found during optimization.")
+            print("verifying final solution (dense collision check, every sample)...")
+            # verify with collision check on every sample
+            old_step = self.config.get("collisionCheckStep", 5)
+            self.config["collisionCheckStep"] = 1
+            f_final, g_final, _ = self.objectiveFunc(self.last_best_sol, test=True)
+            self.config["collisionCheckStep"] = old_step
 
-                if self.testConstraints(g_final):
-                    print("Final solution is feasible (dense check passed).")
-                else:
-                    print("WARNING: final solution has constraint violations in dense check!")
-                print("\n")
-                return self.last_best_sol
+            if self.testConstraints(g_final):
+                print("Final solution is feasible (dense check passed).")
             else:
-                # no feasible solution found at all — print raw solver output for debugging
-                print(sol)
-                print("No feasible solution found!")
-                sys.exit(-1)
+                print("WARNING: final solution has constraint violations in dense check!")
+            print("\n")
+            return self.last_best_sol
         else:
-            # parallel sub-processes, close
-            sys.exit(0)
+            # no feasible solution found at all — print raw solver output for debugging
+            print(sol)
+            print("No feasible solution found!")
+            sys.exit(-1)

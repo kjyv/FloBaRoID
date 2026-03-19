@@ -44,9 +44,6 @@ tikz-plots = [
 ipopt = [
     "cyipopt",
 ]
-parallel = [
-    "mpi4py",
-]
 
 [tool.uv]
 python-preference = "managed"

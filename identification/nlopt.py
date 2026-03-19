@@ -227,7 +227,7 @@ class NLOPT(Optimizer):
 
         c = self.testConstraints(cons)
 
-        if self.idf.opt["showOptimizationGraph"] and self.mpi_rank == 0:
+        if self.idf.opt["showOptimizationGraph"]:
             if c or not getattr(self.opt_prob, "is_gradient", False):
                 self.xar.append(self.inner_iter)
                 self.yar.append(float(u))
@@ -318,7 +318,7 @@ class NLOPT(Optimizer):
 
         c = self.testConstraints(cons)
 
-        if self.idf.opt["showOptimizationGraph"] and self.mpi_rank == 0:
+        if self.idf.opt["showOptimizationGraph"]:
             if c or not getattr(self.opt_prob, "is_gradient", False):
                 self.xar.append(self.inner_iter)
                 self.yar.append(float(u))

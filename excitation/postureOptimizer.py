@@ -45,8 +45,14 @@ class PostureOptimizer(Optimizer):
 
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
-        # amount of collision checks to be done
-        eff_links = self.model.num_links - len(self.config["ignoreLinksForCollision"]) + len(self.world_links)
+        # amount of collision checks to be done (exclude links without visual geometry)
+        self.no_geometry_links = set(self.model.linkNames) - set(self.link_cuboid_hulls.keys())
+        eff_links = (
+            self.model.num_links
+            - len(self.no_geometry_links)
+            - len(self.config["ignoreLinksForCollision"])
+            + len(self.world_links)
+        )
         self.num_constraints = self.num_postures * (eff_links * (eff_links - 1) // 2)
 
         # get neighbors
@@ -56,16 +62,19 @@ class PostureOptimizer(Optimizer):
                 continue
             if link not in self.model.linkNames:
                 continue
+            if link not in self.link_cuboid_hulls:
+                continue
             nb_real = (
                 set(self.neighbors[link]["links"])
                 .difference(self.config["ignoreLinksForCollision"])
+                .difference(self.no_geometry_links)
                 .intersection(self.model.linkNames)
             )
             for l in nb_real:
                 if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
                     nb_pairs.append((link, l))
         # only count ignore pairs where both links are in the effective set
-        ignored = set(self.config["ignoreLinksForCollision"])
+        ignored = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
         all_links = set(self.model.linkNames + self.world_links)
         effective_ignore_pairs = [
             p
@@ -121,6 +130,8 @@ class PostureOptimizer(Optimizer):
                     if (
                         l0_name in self.config["ignoreLinksForCollision"]
                         or l1_name in self.config["ignoreLinksForCollision"]
+                        or l0_name in self.no_geometry_links
+                        or l1_name in self.no_geometry_links
                     ):
                         continue
                     if [l0_name, l1_name] in self.config["ignoreLinkPairsForCollision"] or [

@@ -23,6 +23,15 @@ class TrajectoryOptimizer(Optimizer):
         self.limits = URDFHelpers.getJointLimits(config["urdf"], use_deg=False)  # will always be compared to rad
         self.trajectory = PulsedTrajectory(self.num_dofs, use_deg=config["useDeg"])
 
+        # bounded trajectory mode: positions are mapped through tanh to guarantee joint limits
+        jn = self.model.jointNames
+        if self.config.get("trajectoryBounded", False):
+            self._joint_limits: list[tuple[float, float]] | None = [
+                (self.limits[jn[i]]["lower"], self.limits[jn[i]]["upper"]) for i in range(self.num_dofs)
+            ]
+        else:
+            self._joint_limits = None
+
         ## bounds for parameters
         # number of fourier partial sums per joint (more harmonics = higher frequency content)
         nf_config = self.config.get("trajectoryNf", None)
@@ -85,8 +94,14 @@ class TrajectoryOptimizer(Optimizer):
         self.idyn_model = loader.model()
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
-        # amount of collision checks to be done
-        eff_links = self.model.num_links - len(self.config["ignoreLinksForCollision"]) + len(self.world_links)
+        # amount of collision checks to be done (exclude links without visual geometry)
+        self.no_geometry_links = set(self.model.linkNames) - set(self.link_cuboid_hulls.keys())
+        eff_links = (
+            self.model.num_links
+            - len(self.no_geometry_links)
+            - len(self.config["ignoreLinksForCollision"])
+            + len(self.world_links)
+        )
         self.num_samples = int(self.config["excitationFrequency"] * self.trajectory.getPeriodLength())
         self.num_coll_constraints = eff_links * (eff_links - 1) // 2
 
@@ -97,9 +112,12 @@ class TrajectoryOptimizer(Optimizer):
                 continue
             if link not in self.model.linkNames:
                 continue
+            if link not in self.link_cuboid_hulls:
+                continue
             nb_real = (
                 set(self.neighbors[link]["links"])
                 .difference(self.config["ignoreLinksForCollision"])
+                .difference(self.no_geometry_links)
                 .intersection(self.model.linkNames)
             )
             for l in nb_real:
@@ -107,7 +125,7 @@ class TrajectoryOptimizer(Optimizer):
                     nb_pairs.append((link, l))
         # only count ignore pairs where both links are in the effective set
         # (not already removed via ignoreLinksForCollision)
-        ignored = set(self.config["ignoreLinksForCollision"])
+        ignored = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
         all_links = set(self.model.linkNames + self.world_links)
         effective_ignore_pairs = [
             p
@@ -170,15 +188,15 @@ class TrajectoryOptimizer(Optimizer):
     def objectiveFunc(self, x, test=False):
         self.iter_cnt += 1
 
-        # reject NaN or out-of-bounds inputs early (solver may pass NaN after
-        # an internal failure; returning a penalty keeps it from cascading).
-        # During local gradient-based optimization, skip the bounds check: the local
-        # solver enforces bounds itself, and its FD probes legitimately step slightly
-        # outside bounds to compute gradients for variables that sit at a bound.
-        if np.any(np.isnan(x)) or (self.is_global and not self.testBounds(x)):
-            if self.is_global:
+        # for global optimization, reject clearly invalid inputs early
+        if self.is_global:
+            if np.any(np.isnan(x)) or not self.testBounds(x):
                 print(f"call #{self.iter_cnt} (invalid input, skipped)")
-            return 1000.0, [10.0] * self.num_constraints, 1.0
+                return 1000.0, [10.0] * self.num_constraints, 1.0
+
+        # for local optimization, replace NaN inputs with zeros (FD probe gone wrong)
+        if np.any(np.isnan(x)):
+            x = np.nan_to_num(x, nan=0.0)
 
         print(f"call #{self.iter_cnt}")
 
@@ -186,11 +204,11 @@ class TrajectoryOptimizer(Optimizer):
 
         if self.config["verbose"]:
             print(f"wf {wf}")
-            print(f"a {np.round(a, 5).tolist()}")
-            print(f"b {np.round(b, 5).tolist()}")
+            print(f"a {[np.round(ai, 5).tolist() for ai in a]}")
+            print(f"b {[np.round(bi, 5).tolist() for bi in b]}")
             print(f"q {np.round(q, 5).tolist()}")
 
-        self.trajectory.initWithParams(a, b, q, self.nf, wf)
+        self.trajectory.initWithParams(a, b, q, self.nf, wf, joint_limits=self._joint_limits)
 
         old_verbose = self.config["verbose"]
         self.config["verbose"] = 0
@@ -205,22 +223,28 @@ class TrajectoryOptimizer(Optimizer):
         if self.config["showOptimizationTrajs"]:
             plotter(self.config, data=trajectory_data)
 
-        f = np.linalg.cond(self.model.YBase)
-        # f = np.log(np.linalg.det(model.YBase.T.dot(model.YBase)))   #fisher information matrix
+        cond = np.linalg.cond(self.model.YBase)
+        # use log of condition number so the scale is manageable, then normalize
+        # so it's comparable to the other penalties (~5-15 range).
+        # on the first valid evaluation, record the baseline and use it for scaling.
+        # clamp to avoid inf (degenerate regressor from e.g. zero-frequency trajectory)
+        log_cond = min(np.log10(max(cond, 1.0)), 100.0)
+        if not hasattr(self, "_cond_scale"):
+            # target: condition number contribution ~10 for the initial trajectory
+            self._cond_scale = 10.0 / max(log_cond, 1.0)
+        f = log_cond * self._cond_scale
 
-        # xBaseModel = np.dot(model.Binv | K, model.xStdModel)
-        # f = np.linalg.cond(model.YBase.dot(np.diag(xBaseModel)))    #weighted with CAD params
-
-        # If the simulation produced NaN (e.g. iDynTree returns NaN torques when a trajectory
-        # parameter is slightly outside range), signal failure to the optimizer so it does not
-        # use NaN values as gradient components, which would corrupt the gradient and cascade.
-        if np.isnan(f):
-            print(f"call #{self.iter_cnt} (simulation NaN, skipped)")
-            return 1000.0, [10.0] * self.num_constraints, 1.0
+        # If the simulation produced NaN or inf, clamp to a high but finite value
+        self._eval_failed = False
+        if not np.isfinite(f):
+            f = 100.0
+            self._eval_failed = True
 
         f1 = 0.0
+        f2 = 0.0
+        f3 = 0.0
         # add constraints  (later tested for all: g(n) <= 0)
-        g = [1e10] * self.num_constraints
+        g = np.full(self.num_constraints, 1e10)
         jn = self.model.jointNames
         pos = trajectory_data["positions"]
         vel = trajectory_data["velocities"]
@@ -273,7 +297,7 @@ class TrajectoryOptimizer(Optimizer):
         # pre-compute the list of link pairs to check (only once, not per sample)
         if not hasattr(self, "_collision_pairs"):
             all_links = self.model.linkNames + self.world_links
-            ignore_links = set(self.config["ignoreLinksForCollision"])
+            ignore_links = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
             ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
                 (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
             }
@@ -305,22 +329,43 @@ class TrajectoryOptimizer(Optimizer):
 
         self.last_g = g
 
-        # Catch NaN in constraint values (e.g. NaN torques from iDynTree) before they
-        # reach the optimizer as gradient components.
+        # Replace NaN constraint values with large violations (rather than returning
+        # a penalty objective that corrupts the gradient)
         if np.any(np.isnan(g)):
-            print(f"call #{self.iter_cnt} (constraint NaN, skipped)")
-            return 1000.0, [10.0] * self.num_constraints, 1.0
+            np.nan_to_num(g, copy=False, nan=10.0)  # treat NaN as violated
 
-        # soft cost: penalize uneven torque utilization across joints
-        # (coefficient of variation of utilization ratios — high means imbalanced)
+        # soft costs for trajectory quality (all scaled to ~0-10 range)
         torque_limits_arr = np.array([self.limits[jn[n]]["torque"] for n in range(self.num_dofs)])
         utilization = torque_absmax / torque_limits_arr
+
+        # 1. torque balance: penalize uneven utilization across joints (CoV)
         util_mean = np.mean(utilization)
         if util_mean > 0:
             f1 = np.std(utilization) / util_mean  # coefficient of variation (0 = perfectly balanced)
-            f += f1 * 10.0  # scale so it's comparable to condition number values
-            if f1 > 0.3:
-                print(f"torque balance penalty: {f1:.3f} (utilization: {np.round(utilization, 3).tolist()})")
+        else:
+            f1 = 1.0
+        f += f1 * 10.0
+
+        # 2. torque magnitude: penalize low overall torque utilization
+        # (higher torques = better signal-to-noise for identification)
+        target_utilization = self.config.get("trajectoryTargetTorqueUtil", 0.25)
+        f3 = max(0.0, 1.0 - util_mean / target_utilization)  # 0 when mean >= target, up to 1 when no torque
+        f += f3 * 10.0
+
+        # 3. position range: penalize low joint range utilization
+        pos_range_used = pos_max - pos_min
+        pos_range_available = np.array(
+            [self.limits[jn[n]]["upper"] - self.limits[jn[n]]["lower"] for n in range(self.num_dofs)]
+        )
+        pos_utilization = pos_range_used / pos_range_available
+        pos_util_mean = np.mean(pos_utilization)
+        f2 = (1.0 - pos_util_mean) * 10.0  # 0 when using full range, 10 when no motion
+        f += f2
+
+        if self.config["verbose"] or f1 > 0.3:
+            print(
+                f"torque: {np.round(utilization, 3).tolist()} (bal={f1:.2f}, mag={util_mean:.2f}/{target_utilization})"
+            )
 
         c = self.testConstraints(g)
         if c:
@@ -328,8 +373,9 @@ class TrajectoryOptimizer(Optimizer):
         else:
             print(Fore.YELLOW, end=" ")
 
+        cond_part = log_cond * self._cond_scale
         print(
-            f"objective function value: {f} (cond: {f - f1 * 10.0:.1f} + balance: {f1 * 10.0:.1f}, last best: {self.last_best_f})",
+            f"obj: {f:.1f} (cond: {cond_part:.1f} + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
             end=" ",
         )
         print(Fore.RESET)
@@ -358,11 +404,9 @@ class TrajectoryOptimizer(Optimizer):
 
         print("\n\n")
 
-        fail = 0.0
-        # funcs = {}
-        # funcs['opt'] = f
-        # funcs['con'] = g
-        # return funcs, fail
+        # IPOPT respects the fail flag (discards the evaluation), SLSQP doesn't
+        # (it treats the returned values as real, so fail=1 corrupts its gradient)
+        fail = 1.0 if (self._eval_failed and self.config.get("localSolver") == "IPOPT") else 0.0
         return f, g, fail
 
     def testBounds(self, x):

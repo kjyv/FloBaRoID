@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 import sys
 from collections.abc import Callable
@@ -213,7 +214,7 @@ class Optimizer:
         self.last_best_sol = np.array([])
 
         self.iter_cnt = 0  # iteration counter
-        self.last_g: list[float] | None = None  # last constraint values
+        self.last_g: np.ndarray | list[float] | None = None  # last constraint values
         self.is_global = False
         self.local_iter_max = 0
 
@@ -241,6 +242,9 @@ class Optimizer:
         self.link_cuboid_hulls: dict[str, list] = {}
         for i in range(self.model.num_links):
             link_name = self.model.linkNames[i]
+            # skip links without any visual geometry (e.g. sensor frames)
+            if not idf.urdfHelpers.hasVisualGeometry(self.model.urdf_file, link_name):
+                continue
             box, pos, rot = idf.urdfHelpers.getBoundingBox(
                 input_urdf=self.model.urdf_file,
                 old_com=self.model.xStdModel[i * 10 + 1 : i * 10 + 4] / self.model.xStdModel[i * 10]
@@ -278,18 +282,61 @@ class Optimizer:
     def testConstraints(self, g: np.ndarray) -> bool:
         raise NotImplementedError
 
-    def _getLinkBoxGeometry(self, link_name: str) -> tuple[Any, np.ndarray]:
-        """Get or cache the FCL box and center offset for a link (geometry never changes)."""
-        if not hasattr(self, "_box_cache"):
-            self._box_cache: dict[str, tuple[Any, np.ndarray]] = {}
-        if link_name not in self._box_cache:
-            s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
-            b = np.array(self.link_cuboid_hulls[link_name][0]) * s
-            p = np.array(self.link_cuboid_hulls[link_name][1])
-            center = 0.5 * (b[0] + b[1]) + p  # TODO: use pos and rot of boxes for vals from geometry tags
-            box = fcl.Box(*(b[1] - b[0]))
-            self._box_cache[link_name] = (box, center)
-        return self._box_cache[link_name]
+    def _getLinkCollisionGeometry(self, link_name: str) -> tuple[Any, np.ndarray]:
+        """Get or cache the FCL collision geometry and center offset for a link.
+
+        Tries to load the collision mesh as a triangle BVH for accurate collision
+        checking. Falls back to an axis-aligned bounding box if no mesh is available.
+        """
+        if not hasattr(self, "_geom_cache"):
+            self._geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
+        if link_name not in self._geom_cache:
+            # try loading collision mesh
+            mesh_path = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
+            if mesh_path is None:
+                mesh_path = self.idf.urdfHelpers.getMeshPath(self.model.urdf_file, link_name)
+
+            if mesh_path is not None and os.path.exists(mesh_path):
+                import trimesh
+
+                mesh = trimesh.load_mesh(mesh_path)
+                # apply per-axis scaling from URDF
+                scale_parts = self.idf.urdfHelpers.mesh_scaling.split()
+                scale = np.array([float(s) for s in scale_parts])
+                verts = np.array(mesh.vertices) * scale
+                faces = np.array(mesh.faces)
+
+                # if loading a full visual mesh (not a simple collision mesh),
+                # compute convex hull for faster and more robust collision checking
+                is_collision_mesh = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
+                if is_collision_mesh is None and len(faces) > 100:
+                    print(f"  computing convex hull for {link_name} ({len(faces)} → ", end="")
+                    hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
+                    verts = np.array(hull.vertices)
+                    faces = np.array(hull.faces)
+                    print(f"{len(faces)} faces)")
+
+                # fix face winding if any scale axis is negative (mirrored mesh)
+                if np.prod(scale) < 0:
+                    faces = faces[:, ::-1]
+
+                # get mesh origin from URDF
+                p = np.array(self.link_cuboid_hulls[link_name][1])
+
+                bvh = fcl.BVHModel()
+                bvh.beginModel(len(faces), len(verts))
+                bvh.addSubModel(verts, faces)
+                bvh.endModel()
+                self._geom_cache[link_name] = (bvh, p)
+            else:
+                # fallback to bounding box
+                s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
+                b = np.array(self.link_cuboid_hulls[link_name][0]) * s
+                p = np.array(self.link_cuboid_hulls[link_name][1])
+                center = 0.5 * (b[0] + b[1]) + p
+                box = fcl.Box(*(b[1] - b[0]))
+                self._geom_cache[link_name] = (box, center)
+        return self._geom_cache[link_name]
 
     def _getLinkTransform(self, link_name: str) -> tuple[np.ndarray, np.ndarray]:
         """Get rotation and position for a link. For robot links, uses current kinDyn state
@@ -323,28 +370,30 @@ class Optimizer:
 
         rot0, pos0 = self._getLinkTransform(l0_name)
         rot1, pos1 = self._getLinkTransform(l1_name)
-        box0, center0 = self._getLinkBoxGeometry(l0_name)
-        box1, center1 = self._getLinkBoxGeometry(l1_name)
+        geom0, offset0 = self._getLinkCollisionGeometry(l0_name)
+        geom1, offset1 = self._getLinkCollisionGeometry(l1_name)
 
-        # move box to pos + box center pos (model has pos in link origin, box has zero at center)
-        o0 = fcl.CollisionObject(box0, fcl.Transform(rot0, pos0 + center0))
-        o1 = fcl.CollisionObject(box1, fcl.Transform(rot1, pos1 + center1))
+        # place geometry at link world position + mesh/box origin offset
+        o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + offset0))
+        o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + offset1))
 
         distance = fcl.distance(o0, o1, fcl.DistanceRequest(True), fcl.DistanceResult())
 
-        if distance < 0:
-            if self.config["verbose"] > 1:
-                print(f"Collision of {l0_name} and {l1_name}")
-
-            # get proper collision and depth since optimization should also know how much constraint is violated
+        # for BVH mesh geometry, fcl.distance() returns 0 (not negative) on overlap.
+        # always do an explicit collision check when distance is 0 or negative.
+        if distance <= 0:
             cr = fcl.CollisionRequest()
             cr.enable_contact = True
             c_result = fcl.CollisionResult()
             fcl.collide(o0, o1, cr, c_result)
 
-            # sometimes no contact is found even though distance is less than 0?
-            if len(c_result.contacts):
-                distance = c_result.contacts[0].penetration_depth
+            if c_result.is_collision:
+                if self.config["verbose"] > 1:
+                    print(f"Collision of {l0_name} and {l1_name}")
+                if len(c_result.contacts):
+                    distance = -abs(c_result.contacts[0].penetration_depth)
+                else:
+                    distance = -0.01  # collision detected but no contact info
 
         return distance
 
@@ -453,8 +502,9 @@ class Optimizer:
         if self.iter_cnt == 1:
             plt.show(block=False)
 
-        # allow some interaction
-        plt.pause(0.01)
+        # update without stealing window focus (plt.pause steals focus on macOS)
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
 
     def approx_jacobian(self, f, x, epsilon, *args):
         """Approximate the Jacobian matrix of callable function func
@@ -604,7 +654,8 @@ class Optimizer:
             if self.config["verbose"]:
                 print("Runing local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
-            sol = opt2(opt_prob_local, sens="FD", sensStep=0.05, storeHistory=False)
+            sens_step = self.config.get("localOptSensStep", 0.01)
+            sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
 
             self.gather_solutions()
 

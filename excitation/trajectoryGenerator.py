@@ -58,21 +58,34 @@ def simulateTrajectory(
             sin_wlt = np.sin(wlt)
             cos_wlt = np.cos(wlt)
 
-            # coefficients: a/(wf*l) and b/(wf*l)
-            a_coeff = np.array(osc.a) / (osc.w_f * l_arr)  # (nf,)
-            b_coeff = np.array(osc.b) / (osc.w_f * l_arr)  # (nf,)
-
-            # position: sum of a/(wf*l)*sin(wf*l*t) - b/(wf*l)*cos(wf*l*t) + nf*q0
-            positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
-
-            # velocity: sum of a*cos(wf*l*t) + b*sin(wf*l*t)
             a_arr = np.array(osc.a)
             b_arr = np.array(osc.b)
-            velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
 
-            # acceleration: sum of -a*wf*l*sin(wf*l*t) + b*wf*l*cos(wf*l*t)
-            wl = osc.w_f * l_arr  # (nf,)
-            accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
+            if isinstance(osc, BoundedOscillationGenerator):
+                # bounded mode: raw signal → tanh mapping → position within joint limits
+                raw = cos_wlt @ b_arr + sin_wlt @ a_arr
+                th = np.tanh(raw)
+                sech2 = 1.0 - th**2
+
+                positions[:, d] = osc.q_center + osc.q_range * th
+
+                # raw' and raw'' for chain rule
+                wl = osc.w_f * l_arr
+                raw_dot = cos_wlt @ (a_arr * wl) - sin_wlt @ (b_arr * wl)
+                raw_ddot = -sin_wlt @ (a_arr * wl**2) - cos_wlt @ (b_arr * wl**2)
+
+                velocities[:, d] = osc.q_range * sech2 * raw_dot
+                accelerations[:, d] = osc.q_range * (sech2 * raw_ddot - 2.0 * th * sech2 * raw_dot**2)
+            else:
+                # classic Swevers (1997) mode: integrate velocity harmonics
+                a_coeff = a_arr / (osc.w_f * l_arr)
+                b_coeff = b_arr / (osc.w_f * l_arr)
+
+                positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
+                velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
+
+                wl = osc.w_f * l_arr
+                accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
 
         if use_deg:
             positions = np.deg2rad(positions)
@@ -192,8 +205,9 @@ class PulsedTrajectory(Trajectory):
 
     def __init__(self, dofs: int, use_deg: bool = False) -> None:
         self.dofs = dofs
-        self.oscillators: list[OscillationGenerator] = list()
+        self.oscillators: list[OscillationGenerator | BoundedOscillationGenerator] = list()
         self.use_deg = use_deg
+        self.joint_limits: list[tuple[float, float]] | None = None
         self.w_f_global = 1.0
 
     def initWithRandomParams(self):
@@ -234,41 +248,62 @@ class PulsedTrajectory(Trajectory):
             )
         return self
 
-    def initWithParams(self, a: Any, b: Any, q: Any, nf: Any, wf: Any = None) -> PulsedTrajectory:
-        """init with given params
+    def initWithParams(
+        self,
+        a: Any,
+        b: Any,
+        q: Any,
+        nf: Any,
+        wf: Any = None,
+        joint_limits: list[tuple[float, float]] | None = None,
+    ) -> PulsedTrajectory:
+        """Init with given params.
+
         a - list of dof coefficients a
         b - list of dof coefficients b
         q - list of dof coefficients q_0
         nf - list of dof coefficients n_f
-        (also see docstring of OscillationGenerator)
+        joint_limits - optional list of (lower, upper) per joint in rad for bounded mode
+        (also see docstring of OscillationGenerator / BoundedOscillationGenerator)
         """
 
         if len(nf) != self.dofs or len(q) != self.dofs:
             raise Exception("Need DOFs many values for nf and q!")
 
-        # for i in nf:
-        #    if not ( len(a) == i and len(b) == i):
-        #        raise Exception("Need nf many values in each parameter array value!")
-
         self.a = a
         self.b = b
         self.q = q
         self.nf = nf
+        self.joint_limits = joint_limits
         if wf:
             self.w_f_global = wf
 
         self.oscillators = list()
         for i in range(0, self.dofs):
-            self.oscillators.append(
-                OscillationGenerator(
-                    w_f=self.w_f_global,
-                    a=np.array(a[i]),
-                    b=np.array(b[i]),
-                    q0=q[i],
-                    nf=nf[i],
-                    use_deg=self.use_deg,
+            if joint_limits is not None:
+                self.oscillators.append(
+                    BoundedOscillationGenerator(
+                        w_f=self.w_f_global,
+                        a=np.array(a[i]),
+                        b=np.array(b[i]),
+                        q0=q[i],
+                        nf=nf[i],
+                        use_deg=self.use_deg,
+                        q_lower=joint_limits[i][0],
+                        q_upper=joint_limits[i][1],
+                    )
                 )
-            )
+            else:
+                self.oscillators.append(
+                    OscillationGenerator(
+                        w_f=self.w_f_global,
+                        a=np.array(a[i]),
+                        b=np.array(b[i]),
+                        q0=q[i],
+                        nf=nf[i],
+                        use_deg=self.use_deg,
+                    )
+                )
         return self
 
     def getAngle(self, dof):
@@ -346,6 +381,103 @@ class OscillationGenerator:
             ddq += -self.a[l - 1] * self.w_f * l * np.sin(self.w_f * l * t) + self.b[l - 1] * self.w_f * l * np.cos(
                 self.w_f * l * t
             )
+        if self.use_deg:
+            ddq = np.rad2deg(ddq)
+        return ddq
+
+
+class BoundedOscillationGenerator:
+    """Generate joint-limit-bounded periodic oscillation using tanh mapping.
+
+    Instead of integrating Fourier velocity coefficients (which can produce
+    unbounded positions), this generator maps an unbounded Fourier signal
+    through tanh to guarantee positions stay within [q_lower, q_upper].
+
+    The internal signal is: raw(t) = sum(a[l]*sin(wf*l*t) + b[l]*cos(wf*l*t))
+    The output position is: q(t) = q_center + q_range * tanh(raw(t))
+
+    Velocity and acceleration are computed analytically via chain rule.
+    This eliminates position limit constraints from the optimizer entirely.
+    """
+
+    def __init__(
+        self,
+        w_f: float,
+        a: np.ndarray,
+        b: np.ndarray,
+        q0: float,
+        nf: int,
+        use_deg: bool,
+        q_lower: float,
+        q_upper: float,
+    ) -> None:
+        self.w_f = float(w_f)
+        self.a = a
+        self.b = b
+        self.nf = nf
+        self.use_deg = use_deg
+
+        # q0 is the center offset, convert to rad if needed
+        self.q0 = float(q0)
+        if use_deg:
+            self.q0 = np.deg2rad(self.q0)
+
+        # joint limits (always in rad)
+        self.q_lower = q_lower
+        self.q_upper = q_upper
+        self.q_center = 0.5 * (q_lower + q_upper) + self.q0
+        # range from center to limit (use the smaller side for safety)
+        half_range = 0.5 * (q_upper - q_lower)
+        # leave a small margin so tanh doesn't need to hit exactly ±1
+        self.q_range = half_range * 0.95
+
+    def _raw(self, t: float) -> float:
+        """Unbounded internal Fourier signal."""
+        s = 0.0
+        for l in range(1, self.nf + 1):
+            s += self.a[l - 1] * np.sin(self.w_f * l * t) + self.b[l - 1] * np.cos(self.w_f * l * t)
+        return s
+
+    def _raw_dot(self, t: float) -> float:
+        """Time derivative of the internal signal."""
+        s = 0.0
+        for l in range(1, self.nf + 1):
+            wl = self.w_f * l
+            s += self.a[l - 1] * wl * np.cos(wl * t) - self.b[l - 1] * wl * np.sin(wl * t)
+        return s
+
+    def _raw_ddot(self, t: float) -> float:
+        """Second time derivative of the internal signal."""
+        s = 0.0
+        for l in range(1, self.nf + 1):
+            wl = self.w_f * l
+            s += -self.a[l - 1] * wl**2 * np.sin(wl * t) - self.b[l - 1] * wl**2 * np.cos(wl * t)
+        return s
+
+    def getAngle(self, t: float) -> float:
+        """Position: q_center + q_range * tanh(raw(t))."""
+        q = self.q_center + self.q_range * np.tanh(self._raw(t))
+        if self.use_deg:
+            q = np.rad2deg(q)
+        return q
+
+    def getVelocity(self, t: float) -> float:
+        """Velocity via chain rule: q_range * sech²(raw) * raw'."""
+        raw = self._raw(t)
+        sech2 = 1.0 - np.tanh(raw) ** 2
+        dq = self.q_range * sech2 * self._raw_dot(t)
+        if self.use_deg:
+            dq = np.rad2deg(dq)
+        return dq
+
+    def getAcceleration(self, t: float) -> float:
+        """Acceleration via chain rule: q_range * (sech² * raw'' - 2*tanh*sech² * raw'²)."""
+        raw = self._raw(t)
+        th = np.tanh(raw)
+        sech2 = 1.0 - th**2
+        rd = self._raw_dot(t)
+        rdd = self._raw_ddot(t)
+        ddq = self.q_range * (sech2 * rdd - 2.0 * th * sech2 * rd**2)
         if self.use_deg:
             ddq = np.rad2deg(ddq)
         return ddq

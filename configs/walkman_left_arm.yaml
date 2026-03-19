@@ -1,0 +1,205 @@
+
+#### trajectory generation and excitation
+# Config for walkman left arm (7 DOF, floating base).
+# The arm is assumed to be suspended from a crane at the torso (Waist link).
+
+optimizeTrajectory: 1
+
+# trajectory optimization
+useGlobalOptimization: 0
+globalSolver: 'ALPSO'
+globalOptIterations: 5
+globalOptSize: 16
+useLocalOptimization: 1
+localSolver: 'IPOPT'
+localOptIterations: 15
+localOptSensStep: 0.02
+minTolConstr: 0.01
+showOptimizationGraph: 1
+showOptimizationTrajs: 0
+showModelVisualization: 0
+transparentLinks: []
+
+# the Waist link is the base (suspended from crane), won't collide
+ignoreLinksForCollision: ['Waist']
+ignoreLinkPairsForCollision: []
+
+# trajectory parameters
+trajectoryPulseInit: 0.5
+trajectoryPulseMin:  0.3
+trajectoryPulseMax:  1.0
+trajectoryCoeffInit: 0.01
+trajectoryCoeffMin: -0.5
+trajectoryCoeffMax:  0.5
+trajectoryTargetTorqueUtil: 0.5
+
+# per-joint angle ranges for the oscillation CENTER (in degrees)
+# must be well inside URDF limits to leave room for the Fourier oscillation amplitude
+trajectoryAngleRanges:
+    - [-15.0, 15.0]      # LShSag — shoulder forward/backward (URDF: -165 to +160)
+    - [50.0, 100.0]      # LShLat — shoulder abduction (URDF: +5 to +221, stay away from body)
+    - [-30.0, 30.0]      # LShYaw — shoulder rotation (URDF: -163 to +163)
+    - [-100.0, -40.0]    # LElbj — elbow bent (URDF: -170 to +34)
+    - [-40.0, 40.0]      # LForearmPlate — forearm rotation (URDF: -145 to +145)
+    - [-20.0, 20.0]      # LWrj1 — wrist (URDF: -85 to +85)
+    - [-20.0, 20.0]      # LWrj2 — wrist (URDF: -85 to +85)
+
+# per-joint Fourier harmonics (more for distal wrist joints)
+# use tanh-bounded trajectories (positions guaranteed within joint limits)
+trajectoryBounded: 1
+trajectoryNf: [3, 3, 3, 3, 3, 3, 3]
+
+# manual angle limits (null = use URDF limits)
+ovrPosLimit: []
+
+# torque utilization constraint
+minTorqueUtilization: 0.0
+minVelocityConstraint: 0
+minVelocityPercentage: 0.1
+
+# static posture optimization
+useStaticTrajectories: 0
+numStaticPostures: 5
+scaleCollisionHull: 0.8          # only used for box fallback when no collision mesh is available
+staticPostureTime: 0.02
+initialPostures: []
+
+# excitation
+excitationSimulate: 1
+exciteMethod: null
+ros_move_group: ''
+excitationFrequency: 200.0
+useDeg: 0
+
+#### measurement simulation
+simulateStaticPostures: 1
+simulateStaticSamplesPerPosture: 100
+staticPostures:
+    - [0, 90, 0, -90, 0, 0, 0]       # arm out to side, elbow bent
+    - [60, 45, 0, -45, 0, 0, 0]      # arm forward and out
+    - [-30, 90, 0, -120, 0, 30, 0]   # arm out, elbow fully bent, wrist turned
+    - [0, 60, 45, -60, 45, -30, 20]  # combined pose
+    - [30, 120, -30, -30, -45, 0, -20] # arm raised
+
+simulateNumStops: 3
+
+simulateFriction: 1
+simulateThermalDrift: 1
+simulateCableForces: 1
+simulateGravityCompResidual: 0
+simulateTorqueQuantization: 1
+simulateStructuralDeflection: 1
+simulateBacklash: 1
+simulateEncoderQuantization: 1
+simulateTimingJitter: 1
+simulateRandomSeed: 42
+
+# walkman uses EtherCAT at 1 kHz (typical for IIT robots)
+simulateControlRate: 1000.0
+simulateTorqueSensorError: 0.001
+simulateTorqueSensorFilter: 400
+simulatePositionFilter: 80
+simulateThermalWarmupTime: 300
+simulateThermalReduction: 0.12
+simulateGravCompError: 0.0
+simulateCableStiffnessScale: 1.0
+
+#### data preprocessing and selection
+
+filterMedianSize: 11
+filterLowPass1: [8.0, 5]
+filterLowPass2: [6.0, 5]
+filterLowPass3: [3.0, 4]
+
+startOffset: 0
+skipSamples: 0
+
+selectBlocksFromMeasurements: 0
+blockSize: 250
+selectBestPerenctage: 50
+
+removeNearZero: 0
+minVel: 0.01
+
+waitForZeroAcc: 1
+zeroAccThresh: 0.4
+
+#### identification
+
+useStructuralRegressor: 1
+randomSamples: 5000
+
+minTol: 0.0001
+
+floatingBase: 1
+
+identifyFriction: 1
+identifySymmetricVelFriction: 1
+identifyGravityParamsOnly: 0
+simulateTorques: 0
+
+constrainToConsistent: 1
+checkAPrioriFeasibility: 0
+identifyClosestToCAD: 1
+
+constrainUsingNL: 0
+nlOptMaxIterations: 500
+nlOptSolver: 'IPOPT'
+
+noChange: 0
+noChangeThresh: 400
+
+restrictCOMtoHull: 1
+hullScaling: 0.8
+meshBaseDir: 'meshes'
+cubeSize: 0.1   # fallback cube for collision when mesh files are not found
+
+limitCOMToApriori: 0
+limitCOMAprioriBoundary: 0.005
+
+limitOverallMass: 1
+limitMassVal: null  # use a priori mass sum
+limitMassRange: 0.3
+
+limitMassToApriori: 1
+limitMassAprioriBoundary: 0.5
+
+dontChangeParams: []
+dontConstrain: []
+useSymmetryConstraints: 0
+symmetryTolerance: 0.05
+symmetryConstraints: []
+
+useAPriori: 0
+useEssentialParams: 0
+useDependents: 0
+useWLS: 0
+filterRegressor: 0
+filterRegCutoff: 5
+
+## output and debugging
+
+createPlots: 1
+outputModule: 'matplotlib'
+outputAs: 'html'
+outputFilename: 'output_walkman_left_arm.html'
+plotBaseDynamics: 1
+plotPerJoint: 1
+plotPrioriTorques: 1
+plotErrors: 0
+plotLegend: 1
+
+showRandomRegressor: 0
+showErrorHistogram: 0
+showMemUsage: 0
+showTiming: 0
+showEssentialSteps: 0
+outputBarycentric: 0
+showStandardParams: 1
+showBaseParams: 0
+showBaseEqns: 0
+outputLatex: 0
+showTriangleConsistency: 0
+verbose: 1
+
+estimateWith: 'std'

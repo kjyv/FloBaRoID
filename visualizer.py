@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from excitation.trajectoryGenerator import Trajectory
 
+import platform
+import subprocess
+
 import numpy as np
 import pyglet
 from OpenGL import GL as gl
@@ -20,6 +23,40 @@ from pyglet.window import key
 
 from excitation.trajectoryGenerator import PulsedTrajectory
 from identification.model import Model
+
+
+def _is_dark_mode() -> bool:
+    """Detect if the OS is in dark mode (macOS, GNOME, KDE)."""
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout.strip().lower() == "dark"
+        elif system == "Linux":
+            # GNOME
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                capture_output=True,
+                text=True,
+            )
+            if "dark" in result.stdout.lower():
+                return True
+            # KDE
+            result = subprocess.run(
+                ["kreadconfig5", "--group", "General", "--key", "ColorScheme"],
+                capture_output=True,
+                text=True,
+            )
+            if "dark" in result.stdout.lower():
+                return True
+    except Exception:
+        pass
+    return False
+
 
 # ── Matrix utility functions (replace legacy fixed-function pipeline) ──────────
 
@@ -289,13 +326,47 @@ class Grid:
         return VAOMesh(self.vertices_flat, self.indices_flat)
 
 
-class GroundQuad:
-    """A large quad at z=0 used as a stencil mask for planar shadows."""
+class TorqueArc:
+    """A filled arc (annular sector) in the XY plane for visualizing joint torques.
+    The arc spans from angle 0 to `sweep` radians, with inner radius `r_inner`
+    and outer radius `r_outer`. The geometry is a triangle strip."""
 
-    def __init__(self, half_extent: float = 50.0) -> None:
+    def __init__(self, sweep: float, r_inner: float = 0.06, r_outer: float = 0.09, segments: int = 32) -> None:
+        if abs(sweep) < 1e-6:
+            # degenerate arc — create empty geometry
+            self.vertices = np.zeros(6, dtype=np.float32)
+            self.indices = np.array([0, 1, 0], dtype=np.uint16)
+            return
+        n = max(2, int(abs(sweep) / (2 * np.pi) * segments) + 1)
+        verts: list[float] = []
+        idxs: list[int] = []
+        for i in range(n + 1):
+            angle = sweep * i / n
+            c, s = float(np.cos(angle)), float(np.sin(angle))
+            # inner vertex
+            verts.extend([r_inner * c, r_inner * s, 0.0])
+            # outer vertex
+            verts.extend([r_outer * c, r_outer * s, 0.0])
+            if i < n:
+                base = i * 2
+                # two triangles forming a quad
+                idxs.extend([base, base + 1, base + 2])
+                idxs.extend([base + 1, base + 3, base + 2])
+        self.vertices = np.array(verts, dtype=np.float32)
+        self.indices = np.array(idxs, dtype=np.uint16)
+
+    def getVerticeList(self) -> VAOMesh:
+        """Return a VAOMesh for this arc."""
+        return VAOMesh(self.vertices, self.indices)
+
+
+class GroundQuad:
+    """A large quad used as a stencil mask for planar shadows."""
+
+    def __init__(self, half_extent: float = 50.0, z: float = 0.0) -> None:
         e = half_extent
         self.vertices = np.array(
-            [-e, -e, 0.0, e, -e, 0.0, e, e, 0.0, -e, e, 0.0],
+            [-e, -e, z, e, -e, z, e, e, z, -e, e, z],
             dtype=np.float32,
         )
         self.indices = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint16)
@@ -344,9 +415,9 @@ class FirstPersonCamera:
             self.dx = 0
             self.dy = 0
             self._window = window
-            # skip the first drag event after a press: pyglet may fire one
-            # spurious drag with a large delta from the cursor warp on lock
-            self._skip_next_drag = False
+            # skip drag events after a press: pyglet may fire spurious drags
+            # with large deltas from the cursor warp on exclusive mouse lock
+            self._skip_drag_count = 0
 
         def on_key_press(self, symbol, modifiers):
             self.pressed[symbol] = True
@@ -356,7 +427,7 @@ class FirstPersonCamera:
 
         def on_mouse_press(self, x, y, button, modifiers):
             if button == pyglet.window.mouse.LEFT:
-                self._skip_next_drag = True
+                self._skip_drag_count = 2
                 self._window.set_exclusive_mouse(True)
 
         def on_mouse_release(self, x, y, button, modifiers):
@@ -365,8 +436,12 @@ class FirstPersonCamera:
 
         def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
             if buttons & pyglet.window.mouse.LEFT:
-                if self._skip_next_drag:
-                    self._skip_next_drag = False
+                if self._skip_drag_count > 0:
+                    self._skip_drag_count -= 1
+                    return
+                # clamp to reject spurious large deltas from cursor warps
+                max_delta = 40
+                if abs(dx) > max_delta or abs(dy) > max_delta:
                     return
                 self.dx = dx
                 self.dy = dy
@@ -439,6 +514,11 @@ class FirstPersonCamera:
     def pitch(self, value: float) -> None:
         """Turn above y-axis"""
         self.__pitch += value * self.mouse_sensitivity * ((-1) if self.y_inv else 1)
+
+    @property
+    def keys_pressed(self) -> collections.defaultdict:
+        """Expose held-key state for use outside the camera (e.g. frame stepping)."""
+        return self.__input_handler.pressed
 
     def move_forward(self, distance):
         """Fly forward along the full 3D look direction (includes pitch)."""
@@ -694,6 +774,20 @@ MATERIALS: dict[str, dict[str, Any]] = {
         "shininess": 0.03 * 128.0,
         "emission": _f32([0.2, 0.2, 0.2, 1.0]),
     },
+    "dark world": {
+        "ambient": _f32([0.12, 0.12, 0.12, 1.0]),
+        "diffuse": _f32([0.15, 0.15, 0.15, 1.0]),
+        "specular": _f32([0.02, 0.02, 0.02, 1.0]),
+        "shininess": 0.03 * 128.0,
+        "emission": _f32([0.02, 0.02, 0.02, 1.0]),
+    },
+    "collision red": {
+        "ambient": _f32([0.3, 0.02, 0.02, 1.0]),
+        "diffuse": _f32([0.8, 0.1, 0.1, 1.0]),
+        "specular": _f32([0.3, 0.1, 0.1, 1.0]),
+        "shininess": 0.1 * 128.0,
+        "emission": _f32([0.3, 0.0, 0.0, 1.0]),
+    },
 }
 
 
@@ -702,6 +796,18 @@ MATERIALS: dict[str, dict[str, Any]] = {
 
 class Visualizer:
     def __init__(self, config: dict[str, Any]) -> None:
+        self.dark_mode = _is_dark_mode()
+
+        # theme colors
+        if self.dark_mode:
+            self.grid_color = (0.25, 0.25, 0.25, 1.0)
+            self.coord_color = (0.4, 0.4, 0.4, 1.0)
+            self.label_color = (200, 200, 200, 220)
+        else:
+            self.grid_color = (0.6, 0.6, 0.6, 1.0)
+            self.coord_color = (0.6, 0.6, 0.6, 1.0)
+            self.label_color = (0, 0, 0, 220)
+
         # some vars
         self.window_closed = False
         self.mode = "b"  # 'b' - blocking or 'c' - continous
@@ -712,13 +818,23 @@ class Visualizer:
         # keep a list of bodies
         self.bodies: list[dict[str, Any]] = []
 
-        self.show_meshes = False
+        # mesh display mode: "visual", "collision", or "boxes"
+        self.mesh_mode = "boxes"
+        self.show_meshes = False  # legacy compat, updated by mesh_mode
 
         self.angles: list[float] | None = None
         self.trajectory: Trajectory | None = None
         self.playing_traj = False  # currently playing or not
         self.playable = False  # can the trajectory be "played"
         self.freq = 1  # frequency in Hz of position / angle data
+
+        # torque visualization
+        self.torque_rings: list[dict[str, Any]] = []  # per-frame torque ring data
+        self.show_torque_rings = False
+        self.has_torque_data = False  # set to True when torque data is available
+
+        # collision highlighting
+        self.colliding_links: set[str] = set()
 
         # additional callbacks to be used with key handling
         self.event_callback: Callable | None = None
@@ -750,11 +866,13 @@ class Visualizer:
 
         move_keys = "ctrl, space"  # &#8679; &#x2423;
         enter_key = "enter"  # &#x2324;
-        legend = f"""<font face="Helvetica,Arial" size=15>wasd, {move_keys} - move around <br/>
+        font_color = "color='#cccccc'" if self.dark_mode else ""
+        legend = f"""<font face="Helvetica,Arial" size=15 {font_color}>wasd, {move_keys} - move around <br/>
         mouse drag - look / shift+drag - orbit <br/>
         {enter_key} - play/stop trajectory <br/>
         &#x2190; &#x2192; - prev/next frame <br/>
-        m - show mesh/bounding boxes <br/>
+        m - cycle visual/collision mesh/boxes <br/>
+        t - show joint torques (if available) <br/>
         c - continous/blocking (for optimizer) <br/>
         q - close <br/>
         </font>"""
@@ -775,7 +893,7 @@ class Visualizer:
             y=self.height - 10,
             anchor_x="left",
             anchor_y="top",
-            color=(0, 0, 0, 220),
+            color=self.label_color,
         )
         self._last_frame_time: float = 0.0
         self._frame_times: collections.deque[float] = collections.deque(maxlen=30)
@@ -800,6 +918,29 @@ class Visualizer:
 
     def update(self, dt=None):
         self.camera.update(dt)
+
+        # frame stepping while arrow keys are held
+        if not hasattr(self, "_step_accum"):
+            self._step_accum = 0.0
+        step_interval = 1.0 / 25.0  # frames per second when holding arrow keys
+        pressed = self.camera.keys_pressed
+        stepping = False
+        if pressed[key.RIGHT] and self.display_index < self.display_max - 1:
+            stepping = True
+            self._step_accum += dt if dt else 0.0
+            while self._step_accum >= step_interval:
+                self._step_accum -= step_interval
+                self.display_index = min(self.display_index + 1, self.display_max - 1)
+        elif pressed[key.LEFT] and self.display_index > 0:
+            stepping = True
+            self._step_accum += dt if dt else 0.0
+            while self._step_accum >= step_interval:
+                self._step_accum -= step_interval
+                self.display_index = max(self.display_index - 1, 0)
+        if not stepping:
+            self._step_accum = 0.0
+        elif self.event_callback:
+            self.event_callback()
 
     def _initWindow(self):
         x = 100
@@ -911,7 +1052,10 @@ class Visualizer:
         gl.glUniform1f(u["uMatShininess"], mat["shininess"])
 
     def _initGL(self):
-        gl.glClearColor(0.8, 0.8, 0.9, 0)
+        if self.dark_mode:
+            gl.glClearColor(0.12, 0.12, 0.14, 0)
+        else:
+            gl.glClearColor(0.8, 0.8, 0.9, 0)
         gl.glClearDepth(1.0)
         gl.glDepthFunc(gl.GL_LESS)
         gl.glEnable(gl.GL_DEPTH_TEST)
@@ -951,6 +1095,7 @@ class Visualizer:
 
         # fill later
         self.mesh_vaos: dict[str, VAOMesh] = {}
+        self.collision_mesh_vaos: dict[str, VAOMesh] = {}
 
     def init_perspective(self):
         """Compute perspective projection matrix."""
@@ -989,19 +1134,44 @@ class Visualizer:
             self._initCamera()
 
         if symbol == key.M:
-            self.show_meshes = not self.show_meshes
+            # cycle: visual → collision → boxes → visual ...
+            if self.mesh_mode == "visual":
+                if len(self.collision_mesh_vaos):
+                    self.mesh_mode = "collision"
+                    self.show_meshes = True
+                else:
+                    self.mesh_mode = "boxes"
+                    self.show_meshes = False
+            elif self.mesh_mode == "collision":
+                self.mesh_mode = "boxes"
+                self.show_meshes = False
+            else:
+                if len(self.mesh_vaos):
+                    self.mesh_mode = "visual"
+                    self.show_meshes = True
+                elif len(self.collision_mesh_vaos):
+                    self.mesh_mode = "collision"
+                    self.show_meshes = True
             if self.event_callback:
                 self.event_callback()
+
+        if symbol == key.T:
+            if self.has_torque_data:
+                self.show_torque_rings = not self.show_torque_rings
+                if self.event_callback:
+                    self.event_callback()
 
         if symbol == key.RIGHT:
             if self.display_index < self.display_max - 1:
                 self.display_index += 1
+                self._step_accum = 0.0  # reset so holding starts fresh
                 if self.event_callback:
                     self.event_callback()
 
         if symbol == key.LEFT:
             if self.display_index > 0:
                 self.display_index -= 1
+                self._step_accum = 0.0
                 if self.event_callback:
                     self.event_callback()
 
@@ -1042,14 +1212,14 @@ class Visualizer:
 
         # grid (model = identity, so MVP = VP)
         gl.glUniformMatrix4fv(u_unlit["uMVP"], 1, gl.GL_TRUE, vp)
-        gl.glUniform4f(u_unlit["uColor"], 0.6, 0.6, 0.6, 1.0)
+        gl.glUniform4f(u_unlit["uColor"], *self.grid_color)
         self.grid_vao.draw(gl.GL_LINES)
 
         # coordinate axes for each body
         for b in self.bodies:
             coord_mvp = vp @ b["base_model"]
             gl.glUniformMatrix4fv(u_unlit["uMVP"], 1, gl.GL_TRUE, coord_mvp)
-            gl.glUniform4f(u_unlit["uColor"], 0.6, 0.6, 0.6, 1.0)
+            gl.glUniform4f(u_unlit["uColor"], *self.coord_color)
             self.coord_vao.draw(gl.GL_LINES)
 
         # ── Lit pass: all body geometry (single glUseProgram) ─────────────────
@@ -1064,6 +1234,21 @@ class Visualizer:
 
         for b in self.bodies:
             self._draw_body_lit(b, view, proj, u_lit)
+
+        # ── Torque rings (unlit, blended, always on top) ────────────────────
+        if self.show_torque_rings and self.torque_rings:
+            gl.glUseProgram(self.unlit_shader)
+            gl.glEnable(gl.GL_BLEND)
+            gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+            gl.glDisable(gl.GL_DEPTH_TEST)
+            gl.glDisable(gl.GL_CULL_FACE)
+            for ring in self.torque_rings:
+                mvp = proj @ view @ ring["model"]
+                gl.glUniformMatrix4fv(u_unlit["uMVP"], 1, gl.GL_TRUE, mvp)
+                gl.glUniform4f(u_unlit["uColor"], *ring["color"])
+                ring["vao"].draw(gl.GL_TRIANGLES)
+            gl.glEnable(gl.GL_DEPTH_TEST)
+            gl.glDisable(gl.GL_BLEND)
 
         # ── Shadow pass: project body silhouettes onto z=0 ground plane ───────
         # Step 1: stamp the ground quad into the stencil buffer (stencil = 1
@@ -1085,11 +1270,14 @@ class Visualizer:
         gl.glStencilOp(gl.GL_KEEP, gl.GL_KEEP, gl.GL_ZERO)
         gl.glEnable(gl.GL_BLEND)
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-        # slight z-offset to avoid z-fighting with the grid
+        # z-offset to avoid z-fighting between shadows and ground geometry
         gl.glEnable(gl.GL_POLYGON_OFFSET_FILL)
-        gl.glPolygonOffset(-1.0, -1.0)
+        gl.glPolygonOffset(-2.0, -2.0)
         gl.glUniform4f(u_unlit["uColor"], 0.0, 0.0, 0.0, 0.3)
         for b in self.bodies:
+            # world objects (ground, etc.) don't cast shadows
+            if b.get("world", False):
+                continue
             if b["geometry"] == "box":
                 shadow_model = self.shadow_proj @ b["model"]
             else:
@@ -1098,8 +1286,10 @@ class Visualizer:
             gl.glUniformMatrix4fv(u_unlit["uMVP"], 1, gl.GL_TRUE, shadow_mvp)
             if b["geometry"] == "box":
                 self.cube_vao.draw(gl.GL_TRIANGLES)
-            elif b["geometry"] == "mesh" and b["name"] in self.mesh_vaos:
-                self.mesh_vaos[b["name"]].draw(gl.GL_TRIANGLES)
+            elif b["geometry"] == "mesh":
+                shadow_mesh_dict = self.collision_mesh_vaos if b.get("mesh_source") == "collision" else self.mesh_vaos
+                if b["name"] in shadow_mesh_dict:
+                    shadow_mesh_dict[b["name"]].draw(gl.GL_TRIANGLES)
 
         gl.glDisable(gl.GL_POLYGON_OFFSET_FILL)
         gl.glDisable(gl.GL_BLEND)
@@ -1202,7 +1392,8 @@ class Visualizer:
             gl.glUniformMatrix4fv(u["uMV"], 1, gl.GL_TRUE, mv)
             gl.glUniformMatrix3fv(u["uNormalMat"], 1, gl.GL_TRUE, np.ascontiguousarray(normal_mat))
             self._upload_material(body["material"])
-            self.mesh_vaos[body["name"]].draw(gl.GL_TRIANGLES)
+            mesh_dict = self.collision_mesh_vaos if body.get("mesh_source") == "collision" else self.mesh_vaos
+            mesh_dict[body["name"]].draw(gl.GL_TRIANGLES)
 
     def addBox(self, size, pos, rpy):
         body: dict[str, Any] = {}
@@ -1216,10 +1407,12 @@ class Visualizer:
         self.bodies.append(body)
 
     def addWorld(self, boxes: dict) -> None:
+        ground_z = 0.0
+        world_material = "dark world" if self.dark_mode else "white rubber"
         for linkName in boxes:
             body: dict[str, Any] = {}
             body["geometry"] = "box"
-            body["material"] = "white rubber"
+            body["material"] = world_material
             b = np.array(boxes[linkName][0])
             body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
             body["center"] = 0.5 * np.array(
@@ -1231,8 +1424,21 @@ class Visualizer:
             )
             body["position"] = boxes[linkName][1]
             body["rotation"] = boxes[linkName][2]
+            body["world"] = True
             self._precompute_body_model(body)
             self.bodies.append(body)
+            # track the top surface of the lowest ground-like box
+            top_z = float(body["position"][2]) + float(body["center"][2]) + 0.5 * float(body["size3"][2])
+            ground_z = min(ground_z, top_z)
+        self.setGroundHeight(ground_z)
+
+    def setGroundHeight(self, z: float) -> None:
+        """Update shadow ground plane and stencil quad to the given z height.
+        A small offset places shadows just below the ground surface to avoid z-fighting."""
+        shadow_z = z + 0.001
+        self.ground_plane = np.array([0.0, 0.0, 1.0, -shadow_z], dtype=np.float32)
+        self.shadow_proj = shadow_matrix(self.light_pos, self.ground_plane)
+        self.ground_quad_vao = GroundQuad(z=shadow_z).getVerticeList()
 
     def setModelTrajectory(self, trajectory):
         self.trajectory = trajectory
@@ -1245,16 +1451,23 @@ class Visualizer:
             self.event_callback()
 
     def loadMeshes(self, urdfpath, linkNames, urdfHelpers):
-        # load meshes
+        """Load visual and collision meshes for all links."""
         if not len(self.mesh_vaos):
             for i in range(0, len(linkNames)):
+                # visual meshes
                 filename = urdfHelpers.getMeshPath(urdfpath, linkNames[i])
                 if filename and os.path.exists(filename):
-                    # use last mesh scale (from getMeshPath)
                     scale_parts = urdfHelpers.mesh_scaling.split(" ")
                     scale = np.array([float(scale_parts[0]), float(scale_parts[1]), float(scale_parts[2])])
                     self.mesh_vaos[linkNames[i]] = Mesh(filename, scale).getVerticeList()
+                # collision meshes
+                coll_filename = urdfHelpers.getCollisionMeshPath(urdfpath, linkNames[i])
+                if coll_filename and os.path.exists(coll_filename):
+                    scale_parts = urdfHelpers.mesh_scaling.split(" ")
+                    scale = np.array([float(scale_parts[0]), float(scale_parts[1]), float(scale_parts[2])])
+                    self.collision_mesh_vaos[linkNames[i]] = Mesh(coll_filename, scale).getVerticeList()
             if len(self.mesh_vaos):
+                self.mesh_mode = "visual"
                 self.show_meshes = True
 
     def addIDynTreeModel(self, kinDyn, boxes, real_links, ignore_links):
@@ -1274,23 +1487,24 @@ class Visualizer:
                 continue
             body: dict[str, Any] = {}
             body["name"] = n_name
-            if self.show_meshes and n_name in self.mesh_vaos:
+            is_colliding = n_name in self.colliding_links
+            active_meshes = self.mesh_vaos if self.mesh_mode == "visual" else self.collision_mesh_vaos
+            if self.show_meshes and n_name in active_meshes:
                 body["geometry"] = "mesh"
+                body["mesh_source"] = self.mesh_mode
                 body["size3"] = [1.0, 1.0, 1.0]
                 body["center"] = [0.0, 0.0, 0.0]
-                body["material"] = "metal"
-            else:
+                body["material"] = "collision red" if is_colliding else "metal"
+            elif n_name in boxes:
                 body["geometry"] = "box"
-                body["material"] = "white rubber"
-                try:
-                    b = np.array(boxes[n_name][0]) * self.config["scaleCollisionHull"]
-                    p = np.array(boxes[n_name][1])
-                    body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
-                    body["center"] = 0.5 * (b[0] + b[1]) + p
-                except KeyError:
-                    print(f"using cube for {n_name}")
-                    body["size3"] = np.array([0.1, 0.1, 0.1])
-                    body["center"] = [0.0, 0.0, 0.0]
+                body["material"] = "collision red" if is_colliding else "white rubber"
+                b = np.array(boxes[n_name][0]) * self.config["scaleCollisionHull"]
+                p = np.array(boxes[n_name][1])
+                body["size3"] = np.array([b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]])
+                body["center"] = 0.5 * (b[0] + b[1]) + p
+            else:
+                # no mesh and no bounding box (e.g. sensor frames), skip this link
+                continue
 
             t = kinDyn.getWorldTransform(l)
             body["position"] = t.getPosition().toNumPy()
@@ -1302,6 +1516,70 @@ class Visualizer:
 
             self._precompute_body_model(body)
             self.bodies.append(body)
+
+    def setTorqueRings(
+        self,
+        kinDyn: Any,
+        torques: np.ndarray,
+        joint_names: list[str],
+        joint_axes: dict[str, list[float]],
+        torque_limits: dict[str, float],
+    ) -> None:
+        """Build torque ring data for the current frame.
+
+        For each joint, creates up to one arc: green filling clockwise for positive
+        torque, orange filling counter-clockwise for negative. A full circle corresponds
+        to the joint's maximum torque."""
+        self.torque_rings = []
+        for i, jname in enumerate(joint_names):
+            if jname not in torque_limits or torque_limits[jname] == 0:
+                continue
+            tau = float(torques[i])
+            tau_max = torque_limits[jname]
+            ratio = np.clip(tau / tau_max, -1.0, 1.0)
+            if abs(ratio) < 0.01:
+                continue
+
+            # sweep angle: positive torque → positive sweep (green),
+            # negative → negative sweep (orange)
+            sweep = float(ratio * 2 * np.pi)
+
+            arc_vao = TorqueArc(sweep).getVerticeList()
+
+            # get joint world transform (use child link frame)
+            j_idx = kinDyn.model().getJointIndex(jname)
+            j = kinDyn.model().getJoint(j_idx)
+            child_link = j.getSecondAttachedLink()
+            t = kinDyn.getWorldTransform(child_link)
+            pos = t.getPosition().toNumPy()
+            rot = t.getRotation().toNumPy()
+
+            # build rotation to align arc's Z axis with the joint axis (in local frame)
+            axis = np.array(joint_axes.get(jname, [0.0, 0.0, 1.0]), dtype=np.float64)
+            axis = axis / (np.linalg.norm(axis) + 1e-12)
+            # rotation from Z to axis: R such that R @ [0,0,1] = axis
+            z = np.array([0.0, 0.0, 1.0])
+            if np.allclose(axis, z):
+                axis_rot = np.eye(3)
+            elif np.allclose(axis, -z):
+                axis_rot = np.diag([1.0, -1.0, -1.0])
+            else:
+                v = np.cross(z, axis)
+                s = np.linalg.norm(v)
+                c = np.dot(z, axis)
+                vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+                axis_rot = np.eye(3) + vx + vx @ vx * (1 - c) / (s * s)
+
+            # combine: world rotation of link * local axis alignment
+            full_rot = rot @ axis_rot
+
+            # build model matrix (translation + rotation, no scale — arc is pre-sized)
+            model = np.eye(4, dtype=np.float32)
+            model[:3, :3] = full_rot
+            model[:3, 3] = pos
+
+            color = [0.0, 0.8, 0.1, 0.7] if tau > 0 else [1.0, 0.5, 0.0, 0.7]
+            self.torque_rings.append({"vao": arc_vao, "model": model, "color": color})
 
     def stop(self, dt):
         pyglet.app.exit()
@@ -1398,6 +1676,9 @@ if __name__ == "__main__":
     link_cuboid_hulls: dict[str, BBoxEntry] = {}
     for i in range(len(linkNames)):
         link_name = linkNames[i]
+        # skip links without any visual geometry (e.g. sensor frames)
+        if not urdfHelpers.hasVisualGeometry(args.model, link_name):
+            continue
         box, pos, rot = urdfHelpers.getBoundingBox(
             input_urdf=args.model, old_com=[0, 0, 0], link_name=link_name, scaling=False
         )
@@ -1415,9 +1696,27 @@ if __name__ == "__main__":
             )
             world_boxes[link_name] = (box, pos, rot)
 
+    # set up collision checker
+    from identification.collision import CollisionChecker
+
+    collision_checker = CollisionChecker(
+        urdf_helpers=urdfHelpers,
+        urdf_file=args.model,
+        link_cuboid_hulls=link_cuboid_hulls,
+        link_names=linkNames,
+        scale_collision_hull=config.get("scaleCollisionHull", 1.0),
+    )
+    neighbors = URDFHelpers.getNeighbors(loader.model())
+
     v = Visualizer(config)
 
     v.loadMeshes(args.model, linkNames, urdfHelpers)
+
+    # prepare torque visualization data
+    joint_axes = URDFHelpers.getJointAxes(args.model)
+    joint_names = g_model.jointNames
+    torque_limits = {jn: g_model.limits[jn]["torque"] for jn in joint_names if jn in g_model.limits}
+    torque_data: np.ndarray | None = None
 
     if args.trajectory:
         # display trajectory
@@ -1430,6 +1729,17 @@ if __name__ == "__main__":
         else:
             data_type = "trajectory"
             v.playable = True
+
+        # check if torque data is available
+        if "torques" in data:
+            torque_data = data["torques"]
+            # floating-base: first 6 columns are base wrench, skip them
+            if torque_data.shape[1] > n_dof:
+                torque_data = torque_data[:, torque_data.shape[1] - n_dof :]
+            v.has_torque_data = True
+            print("Torque data found")
+        else:
+            print("No torque data in file")
     else:
         # just diplay model
         data_type = "none"
@@ -1459,10 +1769,31 @@ if __name__ == "__main__":
         for _i in range(n_dof):
             s.setVal(_i, float(q0[_i]))
         kinDyn.setRobotState(s, ds, gravity)
+
+        # check collisions and highlight colliding links
+        v.colliding_links = collision_checker.find_colliding_links(
+            kinDyn,
+            linkNames,
+            ignore_links=set(config["ignoreLinksForCollision"]),
+            ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
+            neighbors=neighbors,
+        )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, config["ignoreLinksForCollision"])
 
         if args.world:
             v.addWorld(world_boxes)
+
+        # update torque rings if enabled and data is available
+        if v.show_torque_rings and torque_data is not None:
+            if data_type == "measurements":
+                idx = int(v.display_index * v.freq / v.playback_rate)
+                idx = min(idx, torque_data.shape[0] - 1)
+                tau = torque_data[idx, :]
+            else:
+                tau = np.zeros(n_dof)
+            v.setTorqueRings(kinDyn, tau, joint_names, joint_axes, torque_limits)
+        else:
+            v.torque_rings = []
 
         v.updateLabels()
 
@@ -1471,7 +1802,8 @@ if __name__ == "__main__":
             v.display_max = len(data["angles"])  # number of postures
         elif data_type == "trajectory":
             trajectory = PulsedTrajectory(n_dof, use_deg=data["use_deg"])
-            trajectory.initWithParams(data["a"], data["b"], data["q"], data["nf"], data["wf"])
+            jl = [tuple(row) for row in data["joint_limits"]] if "joint_limits" in data else None
+            trajectory.initWithParams(data["a"], data["b"], data["q"], data["nf"], data["wf"], joint_limits=jl)
             v.setModelTrajectory(trajectory)
 
             v.freq = config["excitationFrequency"]

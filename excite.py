@@ -72,7 +72,8 @@ def main():
         else:
             # proper trajectory
             trajectory = PulsedTrajectory(config["num_dofs"], use_deg=tf["use_deg"])
-            trajectory.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"])
+            jl = [tuple(row) for row in tf["joint_limits"]] if "joint_limits" in tf else None
+            trajectory.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"], joint_limits=jl)
             print(f"using trajectory from file {traj_file}")
     except OSError:
         print(f"No trajectory file found, can't excite ({traj_file})!")

@@ -350,8 +350,13 @@ class TrajectoryOptimizer(Optimizer):
             q = pos[p]
             # set robot state once per sample (not per link pair)
             self.setCollisionRobotState(q)
+            use_capsule = self.config.get("useCapsuleCollision", False) and self._capsules
             for g_cnt, (l0_name, l1_name) in enumerate(self._collision_pairs):
-                d = self.getLinkDistance(l0_name, l1_name, q)
+                # use capsule distance when both links have capsules, otherwise fall back to FCL
+                if use_capsule and l0_name in self._capsules and l1_name in self._capsules:
+                    d = self.getCapsuleDistance(l0_name, l1_name)
+                else:
+                    d = self.getLinkDistance(l0_name, l1_name, q)
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
                     if use_ag:
@@ -518,6 +523,16 @@ class TrajectoryOptimizer(Optimizer):
 
             if not res_c:
                 print("- collision constraints")
+        elif not res_c:
+            print("constraints violated:")
+            print("- collision constraints")
+            # show the worst collision violations
+            coll_g = g[c_s:]
+            worst = np.argsort(coll_g)[:5]
+            for idx in worst:
+                if coll_g[idx] <= 0:
+                    pair = self._collision_pairs[idx] if hasattr(self, "_collision_pairs") else f"pair {idx}"
+                    print(f"  {pair}: distance={coll_g[idx]:.4f}")
         return res and res_c
 
     def testParams(self, **kwargs):
@@ -608,8 +623,11 @@ class TrajectoryOptimizer(Optimizer):
         opt_prob.addConGroup("g", self.num_constraints, lower=lower, upper=upper)
 
     def optimizeTrajectory(self) -> "PulsedTrajectory":
-        # use non-linear optimization to find parameters for minimal
-        # condition number trajectory
+        """Find trajectory parameters by optimization.
+
+        Catches KeyboardInterrupt so that the best solution found so far
+        is returned even if the user aborts early with Ctrl-C.
+        """
 
         # Instanciate Optimization Problem
         opt_prob = Optimization("Trajectory optimization", self._objFuncWrapper)
@@ -617,7 +635,22 @@ class TrajectoryOptimizer(Optimizer):
         self.opt_prob = opt_prob
 
         self.addVarsAndConstraints(opt_prob)
-        sol_vec = self.runOptimizer(opt_prob)
+        try:
+            sol_vec = self.runOptimizer(opt_prob)
+        except KeyboardInterrupt:
+            print("\n\nTrajectory optimization interrupted by user.")
+            if len(self.last_best_sol) > 0:
+                print(f"Returning best feasible solution found (obj={self.last_best_f:.2f}).")
+                sol_vec = self.last_best_sol
+            else:
+                print("WARNING: no feasible solution found before interruption, using last evaluation.")
+                # Use whatever the last evaluated point was
+                sol_vec = np.array(
+                    [self.wf_init]
+                    + list(self.qinit)
+                    + [c for ai in self.ainit for c in ai]
+                    + [c for bi in self.binit for c in bi]
+                )
 
         sol_wf, sol_q, sol_a, sol_b = self.vecToParams(sol_vec)
         self.trajectory.initWithParams(sol_a, sol_b, sol_q, self.nf, sol_wf, joint_limits=self._joint_limits)

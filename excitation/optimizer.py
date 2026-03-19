@@ -18,19 +18,11 @@ try:
 except OSError:
     plt.style.use("seaborn-pastel")
 
-try:
-    from mpi4py import MPI
-
-    comm = MPI.COMM_WORLD
-    nprocs = comm.Get_size()
-    parallel = nprocs > 1
-except:
-    parallel = False
-
 import fcl
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
+from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
 from identification.helpers import eulerAnglesToRotationMatrix
 
 
@@ -371,6 +363,40 @@ class Optimizer:
 
         self.world_boxes = {link: self.link_cuboid_hulls[link] for link in self.world_links}
 
+        # fit capsule collision primitives (for collision optimization and/or visualization)
+        self._capsules: dict[str, Capsule] = {}
+        if self.config.get("useCapsuleCollision", False) or self.config.get("showModelVisualization", False):
+            self._capsules = fit_capsules_from_urdf(
+                self.model.urdf_file,
+                self.model.linkNames,
+                idf.urdfHelpers,
+                radius_scale=self.config.get("scaleCapsuleRadius", 1.0),
+            )
+            if self.config.get("verbose", 0) and self._capsules:
+                print(f"Capsule collision: fitted {len(self._capsules)} capsules")
+
+            # warn if capsules collide at zero pose for non-neighbor pairs
+            if self.config.get("useCapsuleCollision", False) and self._capsules:
+                from excitation.capsule import find_colliding_links_capsule
+
+                zero_colliding = find_colliding_links_capsule(
+                    self._capsules,
+                    self.model.kinDyn,
+                    self.model.linkNames,
+                    ignore_links=set(self.config.get("ignoreLinksForCollision", [])),
+                    ignore_pairs=self.config.get("ignoreLinkPairsForCollision", []),
+                    neighbors=idf.urdfHelpers.getNeighbors(idf.model),
+                    max_kin_distance=self.config.get("collisionMaxKinematicDistance", 0),
+                )
+                if zero_colliding:
+                    print(
+                        Fore.YELLOW
+                        + f"Warning: capsule collision infeasible at zero pose for: {zero_colliding}. "
+                        + "Capsule approximation may be too conservative for this robot. "
+                        + "Consider disabling useCapsuleCollision or increasing collisionMaxKinematicDistance."
+                        + Fore.RESET
+                    )
+
     def testBounds(self, x: np.ndarray) -> bool:
         raise NotImplementedError
 
@@ -480,12 +506,37 @@ class Optimizer:
 
         return distance
 
+    def getCapsuleDistance(self, l0_name: str, l1_name: str) -> float:
+        """Get capsule-based distance between two links (state must be set via setCollisionRobotState)."""
+        rot0, pos0 = self._getLinkTransform(l0_name)
+        rot1, pos1 = self._getLinkTransform(l1_name)
+        dist, _, _, _, _, _, _ = capsule_distance(
+            self._capsules[l0_name], self._capsules[l1_name], rot0, pos0, rot1, pos1
+        )
+        return dist
+
+    def getCapsuleDistanceAndGradient(self, l0_name: str, l1_name: str) -> tuple[float, np.ndarray]:
+        """Get capsule distance and analytical d(distance)/d(q) for two links.
+
+        Returns (distance, gradient) where gradient has shape (num_dofs,).
+        State must be set via setCollisionRobotState beforehand.
+        """
+        return capsule_distance_and_gradient(
+            self._capsules[l0_name],
+            self._capsules[l1_name],
+            self.model.kinDyn,
+            self.num_dofs,
+            is_floating=bool(self.config.get("floatingBase", False)),
+        )
+
     def initVisualizer(self):
         if self.config["showModelVisualization"] and self.mpi_rank == 0:
             from visualizer import Visualizer
 
             self.visualizer = Visualizer(self.config)
             self.visualizer.loadMeshes(self.model.urdf_file, self.model.linkNames, self.idf.urdfHelpers)
+            if self._capsules:
+                self.visualizer.loadCapsules(self._capsules)
 
             # set draw method for visualizer. This taps into local variables here, a bit unclean...
             def draw_model():
@@ -876,12 +927,15 @@ class Optimizer:
                 print("Running global optimization with {}".format(self.config["globalSolver"]))
             self.is_global = True
 
-            if self.config["globalSolver"] == "Optuna":
-                self._runOptuna()
-            else:
-                sol = opt(opt_prob, storeHistory=False)
-                if self.mpi_rank == 0:
-                    print(sol)
+            try:
+                if self.config["globalSolver"] == "Optuna":
+                    self._runOptuna()
+                else:
+                    sol = opt(opt_prob, storeHistory=False)
+                    if self.mpi_rank == 0:
+                        print(sol)
+            except KeyboardInterrupt:
+                print("\n\nGlobal optimization interrupted by user.")
 
             self.gather_solutions()
 
@@ -929,11 +983,14 @@ class Optimizer:
                 print("Runing local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
-            if self.config.get("useAnalyticalGradients", False):
-                print("Using analytical gradients for local optimization")
-                sol = opt2(opt_prob_local, sens=self._sensitivityWrapper, storeHistory=False)
-            else:
-                sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
+            try:
+                if self.config.get("useAnalyticalGradients", False):
+                    print("Using analytical gradients for local optimization")
+                    sol = opt2(opt_prob_local, sens=self._sensitivityWrapper, storeHistory=False)
+                else:
+                    sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
+            except KeyboardInterrupt:
+                print("\n\nOptimization interrupted by user.")
 
             self.gather_solutions()
 

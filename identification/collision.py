@@ -134,6 +134,7 @@ class CollisionChecker:
         ignore_links: set[str],
         ignore_pairs: list[list[str]],
         neighbors: dict[str, dict[str, list[Any]]] | None = None,
+        max_kin_distance: int = 0,
     ) -> set[str]:
         """Find all links that are currently colliding.
 
@@ -143,6 +144,7 @@ class CollisionChecker:
             ignore_links: links to skip
             ignore_pairs: link pairs to skip
             neighbors: optional neighbor dict to skip adjacent links
+            max_kin_distance: if >0, only check pairs within this kinematic distance
 
         Returns:
             set of link names involved in at least one collision
@@ -156,6 +158,22 @@ class CollisionChecker:
 
         ignore_pairs_set = {(a, b) for a, b in ignore_pairs} | {(b, a) for a, b in ignore_pairs}
 
+        def _kin_distance(start: str, target: str) -> int:
+            """BFS shortest path in the kinematic tree."""
+            if neighbors is None:
+                return 0
+            visited = {start}
+            queue = [(start, 0)]
+            while queue:
+                current, dist = queue.pop(0)
+                if current == target:
+                    return dist
+                for nb in neighbors.get(current, {}).get("links", []):
+                    if nb not in visited:
+                        visited.add(nb)
+                        queue.append((nb, dist + 1))
+            return 999
+
         colliding: set[str] = set()
         for i, l0 in enumerate(effective_links):
             for l1 in effective_links[i + 1 :]:
@@ -167,6 +185,8 @@ class CollisionChecker:
                         continue
                     if l1 in neighbors and l0 in neighbors[l1].get("links", []):
                         continue
+                if max_kin_distance > 0 and _kin_distance(l0, l1) > max_kin_distance:
+                    continue
                 d = self.check_distance(l0, l1, transforms)
                 if d < 0:
                     colliding.add(l0)

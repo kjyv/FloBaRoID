@@ -20,6 +20,7 @@ showOptimizationTrajs: 0         #display the trajectory plot after each optimiz
 showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 transparentLinks: []             #visualize with some see-through
 
+useCapsuleCollision: 1           #analytical capsule distance instead of FCL (faster gradients)
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['ground_link', 'lwr_base_link']

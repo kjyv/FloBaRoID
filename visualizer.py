@@ -283,6 +283,137 @@ class Cube:
         return VAOMesh(self.vertices, self.indices, self.normals)
 
 
+class CylinderGeom:
+    """Unit open-ended cylinder along Z from -0.5 to 0.5, radius 1.
+
+    Used as the shaft of a capsule. Hemisphere caps are rendered separately as
+    SphereGeom instances at each endpoint to avoid non-uniform scale distortion.
+    """
+
+    def __init__(self, n_segments: int = 16) -> None:
+        """Generate cylinder side vertices, normals, and triangle indices."""
+        verts: list[list[float]] = []
+        norms: list[list[float]] = []
+        idxs: list[int] = []
+
+        for z in [-0.5, 0.5]:
+            for i in range(n_segments + 1):
+                theta = 2.0 * np.pi * i / n_segments
+                x, y = np.cos(theta), np.sin(theta)
+                verts.append([x, y, z])
+                norms.append([x, y, 0.0])
+
+        for i in range(n_segments):
+            b = 0
+            t = n_segments + 1
+            idxs.extend([b + i, b + i + 1, t + i])
+            idxs.extend([b + i + 1, t + i + 1, t + i])
+
+        self.vertices = np.array(verts, dtype=np.float32).flatten()
+        self.normals = np.array(norms, dtype=np.float32).flatten()
+        self.indices = np.array(idxs, dtype=np.uint16)
+
+    def getVerticeList(self) -> VAOMesh:
+        """Create a VAOMesh for this cylinder geometry."""
+        return VAOMesh(self.vertices, self.indices, self.normals)
+
+
+class SphereGeom:
+    """Unit sphere of radius 1 centered at origin.
+
+    Used for hemisphere caps of capsule rendering.
+    """
+
+    def __init__(self, n_segments: int = 16, n_rings: int = 12) -> None:
+        """Generate sphere vertices, normals, and triangle indices."""
+        verts: list[list[float]] = []
+        norms: list[list[float]] = []
+        idxs: list[int] = []
+
+        # generate vertices ring by ring from bottom pole to top pole
+        for ring in range(n_rings + 1):
+            phi = np.pi * ring / n_rings  # 0 (top) to pi (bottom)
+            y = float(np.cos(phi))
+            r = float(np.sin(phi))
+            for seg in range(n_segments + 1):
+                theta = 2.0 * np.pi * seg / n_segments
+                x = float(r * np.cos(theta))
+                z = float(r * np.sin(theta))
+                verts.append([x, y, z])
+                norms.append([x, y, z])  # unit sphere: normal = position
+
+        # triangulate adjacent rings
+        for ring in range(n_rings):
+            for seg in range(n_segments):
+                r0 = ring * (n_segments + 1) + seg
+                r1 = r0 + n_segments + 1
+                idxs.extend([r0, r1, r0 + 1])
+                idxs.extend([r0 + 1, r1, r1 + 1])
+
+        self.vertices = np.array(verts, dtype=np.float32).flatten()
+        self.normals = np.array(norms, dtype=np.float32).flatten()
+        self.indices = np.array(idxs, dtype=np.uint16)
+
+    def getVerticeList(self) -> VAOMesh:
+        """Create a VAOMesh for this sphere geometry."""
+        return VAOMesh(self.vertices, self.indices, self.normals)
+
+
+def capsule_render_matrices(
+    p0_world: np.ndarray, p1_world: np.ndarray, radius: float
+) -> tuple[np.ndarray | None, np.ndarray, np.ndarray]:
+    """Compute model matrices for rendering a capsule as cylinder + two sphere caps.
+
+    Returns:
+        (cylinder_model, sphere0_model, sphere1_model) — three 4x4 matrices.
+        The cylinder is scaled by (radius, radius, length) along the capsule axis.
+        Each sphere is placed at an endpoint with uniform radius scaling.
+    """
+    mid = 0.5 * (p0_world + p1_world)
+    axis = p1_world - p0_world
+    length = float(np.linalg.norm(axis))
+
+    # sphere matrices: uniform scale at each endpoint
+    S_sphere = np.eye(4, dtype=np.float32)
+    S_sphere[0, 0] = S_sphere[1, 1] = S_sphere[2, 2] = radius
+    T0 = np.eye(4, dtype=np.float32)
+    T0[:3, 3] = p0_world
+    T1 = np.eye(4, dtype=np.float32)
+    T1[:3, 3] = p1_world
+    sphere0 = (T0 @ S_sphere).astype(np.float32)
+    sphere1 = (T1 @ S_sphere).astype(np.float32)
+
+    if length < 1e-10:
+        # degenerate: both spheres at same point, no cylinder needed
+        return None, sphere0, sphere1
+
+    # rotation that maps Z-hat to capsule axis direction
+    z_hat = axis / length
+    if abs(z_hat[2]) < 0.9:
+        up = np.array([0.0, 0.0, 1.0])
+    else:
+        up = np.array([1.0, 0.0, 0.0])
+    x_hat = np.cross(up, z_hat)
+    x_hat /= np.linalg.norm(x_hat)
+    y_hat = np.cross(z_hat, x_hat)
+
+    R = np.eye(4, dtype=np.float32)
+    R[:3, 0] = x_hat
+    R[:3, 1] = y_hat
+    R[:3, 2] = z_hat
+
+    T = np.eye(4, dtype=np.float32)
+    T[:3, 3] = mid
+
+    S = np.eye(4, dtype=np.float32)
+    S[0, 0] = radius
+    S[1, 1] = radius
+    S[2, 2] = length
+
+    cylinder = (T @ R @ S).astype(np.float32)
+    return cylinder, sphere0, sphere1
+
+
 class Coord:
     """vertices for 3-axis coordinate system arrows"""
 
@@ -1092,6 +1223,8 @@ class Visualizer:
 
         # create VAOs for geometry
         self.cube_vao = Cube().getVerticeList()
+        self.cylinder_vao = CylinderGeom().getVerticeList()
+        self.sphere_vao = SphereGeom().getVerticeList()
         self.coord_vao = Coord().getVerticeList()
         self.grid_vao = Grid().getVerticeList()
         self.ground_quad_vao = GroundQuad().getVerticeList()
@@ -1102,6 +1235,9 @@ class Visualizer:
         # fill later
         self.mesh_vaos: dict[str, VAOMesh] = {}
         self.collision_mesh_vaos: dict[str, VAOMesh] = {}
+
+        # capsule collision data (set via loadCapsules)
+        self._capsule_data: dict[str, Any] = {}  # link_name -> Capsule
 
     def init_perspective(self):
         """Compute perspective projection matrix."""
@@ -1140,15 +1276,25 @@ class Visualizer:
             self._initCamera()
 
         if symbol == key.M:
-            # cycle: visual → collision → boxes → visual ...
+            # cycle: visual → collision → capsules → boxes → visual ...
             if self.mesh_mode == "visual":
                 if len(self.collision_mesh_vaos):
                     self.mesh_mode = "collision"
                     self.show_meshes = True
+                elif self._capsule_data:
+                    self.mesh_mode = "capsules"
+                    self.show_meshes = False
                 else:
                     self.mesh_mode = "boxes"
                     self.show_meshes = False
             elif self.mesh_mode == "collision":
+                if self._capsule_data:
+                    self.mesh_mode = "capsules"
+                    self.show_meshes = False
+                else:
+                    self.mesh_mode = "boxes"
+                    self.show_meshes = False
+            elif self.mesh_mode == "capsules":
                 self.mesh_mode = "boxes"
                 self.show_meshes = False
             else:
@@ -1158,6 +1304,9 @@ class Visualizer:
                 elif len(self.collision_mesh_vaos):
                     self.mesh_mode = "collision"
                     self.show_meshes = True
+                elif self._capsule_data:
+                    self.mesh_mode = "capsules"
+                    self.show_meshes = False
             if self.event_callback:
                 self.event_callback()
 
@@ -1393,6 +1542,27 @@ class Visualizer:
             self.cube_vao.draw(gl.GL_TRIANGLES)
             if transparent:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+        elif body["geometry"] == "capsule":
+            self._upload_material(body["material"])
+            # draw cylinder shaft + two sphere caps as three draw calls
+            for m_key, vao in [
+                ("capsule_cylinder", self.cylinder_vao),
+                ("capsule_sphere0", self.sphere_vao),
+                ("capsule_sphere1", self.sphere_vao),
+            ]:
+                model = body[m_key]
+                if model is None:
+                    continue  # degenerate capsule (sphere only), skip cylinder
+                mv = view @ model
+                mvp = proj @ mv
+                # normal matrix from T*R*S: columns of R*S normalized = R * S^{-1}
+                rs = model[:3, :3]
+                scale_sq = np.sum(rs**2, axis=0)
+                normal_mat = view[:3, :3] @ (rs / scale_sq)
+                gl.glUniformMatrix4fv(u["uMVP"], 1, gl.GL_TRUE, mvp)
+                gl.glUniformMatrix4fv(u["uMV"], 1, gl.GL_TRUE, mv)
+                gl.glUniformMatrix3fv(u["uNormalMat"], 1, gl.GL_TRUE, np.ascontiguousarray(normal_mat))
+                vao.draw(gl.GL_TRIANGLES)
         elif body["geometry"] == "mesh":
             # meshes use base_model (already scaled at load time, no extra S)
             mv = view @ body["base_model"]
@@ -1466,6 +1636,14 @@ class Visualizer:
         if self.event_callback is not None:
             self.event_callback()
 
+    def loadCapsules(self, capsules: dict[str, Any]) -> None:
+        """Store capsule collision data for visualization.
+
+        Args:
+            capsules: Dictionary mapping link name to Capsule objects.
+        """
+        self._capsule_data = capsules
+
     def loadMeshes(self, urdfpath, linkNames, urdfHelpers):
         """Load visual and collision meshes for all links."""
         if not len(self.mesh_vaos):
@@ -1505,7 +1683,27 @@ class Visualizer:
             body["name"] = n_name
             is_colliding = n_name in self.colliding_links
             active_meshes = self.mesh_vaos if self.mesh_mode == "visual" else self.collision_mesh_vaos
-            if self.show_meshes and n_name in active_meshes:
+            if self.mesh_mode == "capsules" and n_name in self._capsule_data:
+                # capsule mode: render capsule primitives
+                cap = self._capsule_data[n_name]
+                t = kinDyn.getWorldTransform(l)
+                rot = t.getRotation().toNumPy()
+                pos = t.getPosition().toNumPy()
+                p0_world = rot @ cap.p0_local + pos
+                p1_world = rot @ cap.p1_local + pos
+                body["geometry"] = "capsule"
+                body["material"] = "collision red" if is_colliding else "white rubber"
+                cyl_m, sph0_m, sph1_m = capsule_render_matrices(p0_world, p1_world, cap.radius)
+                body["capsule_cylinder"] = cyl_m
+                body["capsule_sphere0"] = sph0_m
+                body["capsule_sphere1"] = sph1_m
+                # set dummy fields expected by _precompute_body_model
+                body["size3"] = [1.0, 1.0, 1.0]
+                body["center"] = [0.0, 0.0, 0.0]
+                body["position"] = pos
+                rpy = t.getRotation().asRPY()
+                body["rotation"] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
+            elif self.show_meshes and n_name in active_meshes:
                 body["geometry"] = "mesh"
                 body["mesh_source"] = self.mesh_mode
                 body["size3"] = [1.0, 1.0, 1.0]
@@ -1522,10 +1720,11 @@ class Visualizer:
                 # no mesh and no bounding box (e.g. sensor frames), skip this link
                 continue
 
-            t = kinDyn.getWorldTransform(l)
-            body["position"] = t.getPosition().toNumPy()
-            rpy = t.getRotation().asRPY()
-            body["rotation"] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
+            if "position" not in body:
+                t = kinDyn.getWorldTransform(l)
+                body["position"] = t.getPosition().toNumPy()
+                rpy = t.getRotation().asRPY()
+                body["rotation"] = [rpy.getVal(0), rpy.getVal(1), rpy.getVal(2)]
 
             if "transparentLinks" in self.config and n_name in self.config["transparentLinks"]:
                 body["transparent"] = True
@@ -1728,6 +1927,18 @@ if __name__ == "__main__":
 
     v.loadMeshes(args.model, linkNames, urdfHelpers)
 
+    # fit capsule collision primitives for visualization
+    from excitation.capsule import fit_capsules_from_urdf
+
+    capsules = fit_capsules_from_urdf(
+        args.model,
+        linkNames,
+        urdfHelpers,
+        radius_scale=config.get("scaleCapsuleRadius", 1.0),
+    )
+    if capsules:
+        v.loadCapsules(capsules)
+
     # prepare torque visualization data
     joint_axes = URDFHelpers.getJointAxes(args.model)
     joint_names = g_model.jointNames
@@ -1786,14 +1997,29 @@ if __name__ == "__main__":
             s.setVal(_i, float(q0[_i]))
         kinDyn.setRobotState(s, ds, gravity)
 
-        # check collisions and highlight colliding links
-        v.colliding_links = collision_checker.find_colliding_links(
-            kinDyn,
-            linkNames,
-            ignore_links=set(config["ignoreLinksForCollision"]),
-            ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
-            neighbors=neighbors,
-        )
+        # check collisions using the same code path the optimizer would use:
+        # capsule distance when viewing capsules, FCL when viewing meshes/boxes
+        if v.mesh_mode == "capsules" and capsules:
+            from excitation.capsule import find_colliding_links_capsule
+
+            v.colliding_links = find_colliding_links_capsule(
+                capsules,
+                kinDyn,
+                linkNames,
+                ignore_links=set(config["ignoreLinksForCollision"]),
+                ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
+                neighbors=neighbors,
+                max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
+            )
+        else:
+            v.colliding_links = collision_checker.find_colliding_links(
+                kinDyn,
+                linkNames,
+                ignore_links=set(config["ignoreLinksForCollision"]),
+                ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
+                neighbors=neighbors,
+                max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
+            )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, config["ignoreLinksForCollision"])
 
         if args.world:

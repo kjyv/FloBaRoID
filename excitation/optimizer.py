@@ -10,20 +10,38 @@ if TYPE_CHECKING:
     from identification.model import Model
     from identifier import Identification
 
+import fcl
 import matplotlib.pyplot as plt
 import numpy as np
-
-try:
-    plt.style.use("seaborn-v0_8-pastel")
-except OSError:
-    plt.style.use("seaborn-pastel")
-
-import fcl
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
-from identification.helpers import eulerAnglesToRotationMatrix
+from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
+
+_DARK_MODE = is_dark_mode()
+
+if _DARK_MODE:
+    try:
+        plt.style.use("seaborn-v0_8-dark")
+    except OSError:
+        plt.style.use("dark_background")
+    # ensure dark figure/axes backgrounds for interactive windows
+    plt.rcParams["figure.facecolor"] = "#1e1e1e"
+    plt.rcParams["axes.facecolor"] = "#2d2d2d"
+    plt.rcParams["axes.edgecolor"] = "#888888"
+    plt.rcParams["axes.labelcolor"] = "#cccccc"
+    plt.rcParams["text.color"] = "#cccccc"
+    plt.rcParams["xtick.color"] = "#aaaaaa"
+    plt.rcParams["ytick.color"] = "#aaaaaa"
+    plt.rcParams["grid.color"] = "#444444"
+    plt.rcParams["legend.facecolor"] = "#2d2d2d"
+    plt.rcParams["legend.edgecolor"] = "#555555"
+else:
+    try:
+        plt.style.use("seaborn-v0_8-pastel")
+    except OSError:
+        plt.style.use("seaborn-pastel")
 
 
 def _optuna_worker(
@@ -618,7 +636,11 @@ class Optimizer:
         self.yar: list[float] = []  # y value, i.e. obj func value
         self.x_constr: list[bool] = []  # within constraints or not (feasible)
         # create a single line object that we update (instead of adding new lines)
-        (self._graph_line,) = self.ax1.plot([], [], marker=".", markeredgecolor="g", markerfacecolor="g", color="0.75")
+        line_color = "0.45" if _DARK_MODE else "0.75"
+        marker_color = "#66ff66" if _DARK_MODE else "g"
+        (self._graph_line,) = self.ax1.plot(
+            [], [], marker=".", markeredgecolor=marker_color, markerfacecolor=marker_color, color=line_color
+        )
         self.ax1.set_xlabel("Function evaluation #")
         self.ax1.set_ylabel("Objective function value")
         self._graph_shown = False

@@ -12,9 +12,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from excitation.trajectoryGenerator import Trajectory
 
-import platform
-import subprocess
-
 import numpy as np
 import pyglet
 from OpenGL import GL as gl
@@ -22,41 +19,8 @@ from OpenGL.GL.shaders import compileShader
 from pyglet.window import key
 
 from excitation.trajectoryGenerator import PulsedTrajectory
+from identification.helpers import is_dark_mode as _is_dark_mode
 from identification.model import Model
-
-
-def _is_dark_mode() -> bool:
-    """Detect if the OS is in dark mode (macOS, GNOME, KDE)."""
-    system = platform.system()
-    try:
-        if system == "Darwin":
-            result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True,
-                text=True,
-            )
-            return result.stdout.strip().lower() == "dark"
-        elif system == "Linux":
-            # GNOME
-            result = subprocess.run(
-                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True,
-                text=True,
-            )
-            if "dark" in result.stdout.lower():
-                return True
-            # KDE
-            result = subprocess.run(
-                ["kreadconfig5", "--group", "General", "--key", "ColorScheme"],
-                capture_output=True,
-                text=True,
-            )
-            if "dark" in result.stdout.lower():
-                return True
-    except Exception:
-        pass
-    return False
-
 
 # ── Matrix utility functions (replace legacy fixed-function pipeline) ──────────
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import platform
 
 # define exception for python < 3
+import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -17,6 +19,39 @@ import numpy.linalg as la
 from colorama import Fore
 from idyntree import bindings as iDynTree
 from tqdm import tqdm
+
+
+def is_dark_mode() -> bool:
+    """Detect if the OS is in dark mode (macOS, GNOME, KDE)."""
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout.strip().lower() == "dark"
+        elif system == "Linux":
+            # GNOME
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                capture_output=True,
+                text=True,
+            )
+            if "dark" in result.stdout.lower():
+                return True
+            # KDE
+            result = subprocess.run(
+                ["kreadconfig5", "--group", "General", "--key", "ColorScheme"],
+                capture_output=True,
+                text=True,
+            )
+            if "dark" in result.stdout.lower():
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def getNRMSE(

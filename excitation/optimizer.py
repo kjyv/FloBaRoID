@@ -545,6 +545,10 @@ class Optimizer:
         """Wrap objectiveFunc for pyOptSparse dict-based API."""
         raise NotImplementedError
 
+    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
+        """Compute analytical gradients for pyOptSparse. Overridden in subclasses."""
+        raise NotImplementedError
+
     def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
         """Add variables and constraints to the optimization problem."""
         raise NotImplementedError
@@ -925,7 +929,11 @@ class Optimizer:
                 print("Runing local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
-            sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
+            if self.config.get("useAnalyticalGradients", False):
+                print("Using analytical gradients for local optimization")
+                sol = opt2(opt_prob_local, sens=self._sensitivityWrapper, storeHistory=False)
+            else:
+                sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
 
             self.gather_solutions()
 

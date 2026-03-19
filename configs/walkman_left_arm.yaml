@@ -6,23 +6,25 @@
 optimizeTrajectory: 1
 
 # trajectory optimization
-useGlobalOptimization: 1
+useGlobalOptimization: 0
 globalSolver: 'Optuna'
-globalOptIterations: 25    # n_trials = globalOptSize * globalOptIterations
+globalOptIterations: 20    # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 20
 optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
 # globalOptJobs: 4         # parallel worker processes (default: CPU cores - 2)
 useLocalOptimization: 1
 localSolver: 'IPOPT'
-localOptIterations: 3
+localOptIterations: 50
 localOptSensStep: 0.02
+useAnalyticalGradients: 1        #use analytical gradients for local optimization (much faster than FD)
+analyticalGradientEpsilon: 1.0e-7  #FD step for numerical regressor Jacobian in analytical gradient
 minTolConstr: 0.01
 showOptimizationGraph: 1
 showOptimizationTrajs: 0
 showModelVisualization: 0
 transparentLinks: []
 
-# the Waist link is the base (suspended from crane), won't collide
+# the Waist link is the base (propped up), won't collide
 ignoreLinksForCollision: ['Waist']
 ignoreLinkPairsForCollision: []
 

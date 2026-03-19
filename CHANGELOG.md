@@ -9,6 +9,7 @@
 
 ### Trajectory optimization
 - Added Optuna optimizer with multi-core support
+- Added analytical gradient computation for condition number optimization (Ayusawa et al., ICRA 2017), using SVD-based condition number sensitivities chained with analytical Fourier trajectory Jacobians
 - Added trajectory quality penalties
 - Added mesh-based collision detection (always uses convex hull for performance)
 - Fixed playback rate in trajectory visualization

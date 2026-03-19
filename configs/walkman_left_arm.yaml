@@ -11,9 +11,10 @@ globalSolver: 'Optuna'
 globalOptIterations: 25    # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 20
 optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
-useLocalOptimization: 0
+# globalOptJobs: 4         # parallel worker processes (default: CPU cores - 2)
+useLocalOptimization: 1
 localSolver: 'IPOPT'
-localOptIterations: 5
+localOptIterations: 3
 localOptSensStep: 0.02
 minTolConstr: 0.01
 showOptimizationGraph: 1
@@ -26,9 +27,9 @@ ignoreLinksForCollision: ['Waist']
 ignoreLinkPairsForCollision: []
 
 # trajectory parameters
-trajectoryPulseInit: 0.5
-trajectoryPulseMin:  0.3
-trajectoryPulseMax:  1.0
+trajectoryPulseInit: 0.3
+trajectoryPulseMin:  0.1         # 0.1 → ~63s period, 0.3 → ~21s
+trajectoryPulseMax:  0.8
 trajectoryCoeffInit: 0.01
 trajectoryCoeffMin: -0.5
 trajectoryCoeffMax:  0.5

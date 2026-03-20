@@ -16,9 +16,9 @@ useLocalOptimization: 1
 localSolver: 'IPOPT'
 localOptIterations: 50
 localOptSensStep: 0.02
-analyticalGradientJobs: 1        #parallel workers for gradient (0 = auto: CPU cores - 2, 1 = serial)
-analyticalGradientMethod: 'analytical'   #gradient method: 'analytical' (Featherstone RNEA derivatives) or 'FD' (finite differences)
-analyticalGradientEpsilon: 1.0e-7  #FD step for numerical regressor Jacobian in analytical gradient
+useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality
+analyticalGradientEpsilon: 1.0e-7
+analyticalGradientJobs: 1        #parallel workers for regressor FD in gradient (0 = auto, 1 = serial)
 minTolConstr: 0.01
 showOptimizationGraph: 1
 showOptimizationTrajs: 0

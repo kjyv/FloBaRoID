@@ -1202,6 +1202,33 @@ def main():
         args.validation,
     )
 
+    # Load unobservable parameter indices from trajectory file (if available)
+    # and merge with dontChangeParams to constrain them to a priori values
+    trajectory_file = args.model + ".trajectory.npz" if args.model else None
+    if trajectory_file:
+        try:
+            traj_data = np.load(trajectory_file, allow_pickle=True)
+            if "unobservable_params" in traj_data:
+                unobs_params = traj_data["unobservable_params"].tolist()
+                n_obs = int(traj_data.get("n_observable_base_params", 0))
+                obs_thresh = float(traj_data.get("observability_threshold", 1e-6))
+                if unobs_params:
+                    print(
+                        f"Trajectory observability: {n_obs} base params observable "
+                        f"(threshold={obs_thresh}), {len(unobs_params)} identified params unobservable"
+                    )
+                    # Merge with existing dontChangeParams (avoid duplicates)
+                    existing = set(idf.opt.get("dontChangeParams", []))
+                    new_params = [p for p in unobs_params if p not in existing]
+                    if new_params:
+                        idf.opt["dontChangeParams"] = list(existing) + new_params
+                        print(
+                            f"  → added {len(new_params)} unobservable params to dontChangeParams "
+                            f"(total: {len(idf.opt['dontChangeParams'])})"
+                        )
+        except (FileNotFoundError, KeyError):
+            pass  # no trajectory file or no observability data — proceed without
+
     if idf.opt["selectBlocksFromMeasurements"]:
         idf.opt["selectingBlocks"] = 1
         old_essential_option = idf.opt["useEssentialParams"]

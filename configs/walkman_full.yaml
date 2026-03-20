@@ -6,37 +6,51 @@
 optimizeTrajectory: 1
 
 # trajectory optimization
-useGlobalOptimization: 0
+useGlobalOptimization: 1
 globalSolver: 'Optuna'
 globalOptIterations: 10
 globalOptSize: 20
 optunaSampler: 'TPE'
 # globalOptJobs: 6          # parallel worker processes (default: CPU cores - 2)
 useLocalOptimization: 1
-localSolver: 'IPOPT'
-localOptIterations: 500
+localSolver: 'IPOPT'        # prefer IPOPT, SLSQP or PSQP don't really work well for large robots
+localOptIterations: 50
 localOptSensStep: 0.02
-useAnalyticalGradients: 1        #use analytical gradients for local optimization
+useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality (much faster than pyOptSparse FD)
 analyticalGradientEpsilon: 1.0e-7
-analyticalGradientJobs: 1        #parallel workers for gradient (0 = auto: CPU cores - 2, 1 = serial)
-analyticalGradientMethod: 'analytical'   #gradient method: 'analytical' (Featherstone RNEA derivatives) or 'FD' (finite differences)
-minTolConstr: 0.1                # tolerance for feasibility (tanh rounding can cause tiny angle violations)
+analyticalGradientJobs: 0        #parallel workers for regressor FD in gradient (0 = auto: CPU cores - 2)
+minTolConstr: 0.01               # tolerance for feasibility (tanh rounding can cause tiny angle violations)
 showOptimizationGraph: 1
 showOptimizationTrajs: 0
 showModelVisualization: 0
 transparentLinks: []
 
-# the torso is the base (suspended from crane)
-# ignore base (suspended), links without simple collision meshes,
-# and the torso protection shell (fixed cover that overlaps neighboring links)
-ignoreLinksForCollision: ['Waist', 'RFoot', 'LFoot', 'multisense/hokuyo_link', 'TorsoProtections']
-ignoreLinkPairsForCollision: []
-# only check collision between links within this kinematic distance (joints apart)
-# reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
-collisionMaxKinematicDistance: 2
-useCapsuleCollision: 0           # analytical capsule distance instead of FCL (faster gradients)
-scaleCapsuleRadius: 0.8          # tighter capsules for compact humanoid (1.0 = full AABB)
-useConvexHullCollision: 1        # use convex hulls instead of raw collision meshes for FCL (faster but less tight)
+# collision checking parameters
+# the Waist is the base (propped on mount)
+# ignore base, virtual frames, and head (barely moves, can't collide with limbs)
+ignoreLinksForCollision: ['Waist', 'multisense/hokuyo_link', 'NeckYaw', 'NeckPitch',
+    'multisense/head', 'multisense/head_imu_link', 'multisense/right_camera_frame',
+    'multisense/left_camera_frame', 'backpack']
+ignoreLinkPairsForCollision:
+    - ['RLowLeg', 'RFoot']         # overlap at ankle (RFootmot between them)
+    - ['LLowLeg', 'LFoot']         # overlap at ankle (LFootmot between them)
+# skip collision checks between two groups of links (cross-group pairs are ignored,
+# within-group pairs are still checked). Each entry is [groupA, groupB].
+ignoreCollisionBetweenGroups:
+    # lower legs and feet can't reach the upper body (arms, torso protection, upper torso)
+    - [['LLowLeg', 'LFootmot', 'LFoot', 'RLowLeg', 'RFootmot', 'RFoot'],
+       ['DWS', 'DWYTorso', 'TorsoProtections',
+        'LShp', 'LShr', 'LShy', 'LElb', 'LForearm', 'LWrMot2', 'LWrMot3', 'LSoftHandLink',
+        'RShp', 'RShr', 'RShy', 'RElb', 'RForearm', 'RWrMot2', 'RWrMot3', 'RSoftHandLink']]
+collisionMaxKinematicDistance: 0
+collisionCheckStep: 5          # check every Nth sample (higher = faster but may miss brief collisions)
+# collision geometry: 'box' (fast AABB), 'convex' (convex hull from mesh),
+#   'full' (BVH triangle mesh, most accurate), 'capsule' (analytical capsules)
+collisionMode: 'convex'
+scaleCapsuleRadius: 0.8          # capsule radius scale (only for capsule mode)
+# per-link override: use full triangle mesh (BVH) for these links (e.g., concave
+# structures where convex hull is too coarse). Uses visual mesh if no collision mesh.
+fullMeshLinks: ['TorsoProtections']
 
 # trajectory parameters — bounded mode essential for 29 DOF
 trajectoryBounded: 1
@@ -87,6 +101,8 @@ trajectoryAngleRanges:
 # more for distal joints (wrist/forearm) that need higher frequencies for excitation
 trajectoryNf: [2, 2, 2, 2, 3, 3, 2, 2, 2, 3, 3, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
 
+# manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
+# should be used (or leave completely empty to use all from URDF)
 ovrPosLimit: []
 
 trajectoryTargetTorqueUtil: 0.3
@@ -98,8 +114,7 @@ minVelocityPercentage: 0.1
 useStaticTrajectories: 0
 numStaticPostures: 5
 scaleCollisionHull: 0.8
-useCollisionMeshes: 1          # 0 = use bounding boxes (fast), 1 = use actual meshes (accurate)
-collisionCheckStep: 5          # check every Nth sample (higher = faster but may miss brief collisions)
+useCollisionMeshes: 1           # 0 = use bounding boxes (fast), 1 = use actual meshes (accurate)
 staticPostureTime: 0.02
 initialPostures: []
 
@@ -111,7 +126,11 @@ excitationFrequency: 200.0
 useDeg: 0
 
 #### measurement simulation
+
+# append static postures to dynamic trajectory data for gravity term excitation
 simulateStaticPostures: 0
+#staticPostures:
+#   - []
 simulateNumStops: 3
 simulateFriction: 1
 simulateThermalDrift: 1

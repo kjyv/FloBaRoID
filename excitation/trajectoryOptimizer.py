@@ -223,16 +223,28 @@ class TrajectoryOptimizer(Optimizer):
         if self.config["showOptimizationTrajs"]:
             plotter(self.config, data=trajectory_data)
 
-        cond = np.linalg.cond(self.model.YBase)
-        # use log of condition number so the scale is manageable, then normalize
-        # so it's comparable to the other penalties (~5-15 range).
-        # on the first valid evaluation, record the baseline and use it for scaling.
-        # clamp to avoid inf (degenerate regressor from e.g. zero-frequency trajectory)
-        log_cond = min(np.log10(max(cond, 1.0)), 100.0)
-        if not hasattr(self, "_cond_scale"):
-            # target: condition number contribution ~10 for the initial trajectory
-            self._cond_scale = 10.0 / max(log_cond, 1.0)
-        f = log_cond * self._cond_scale
+        # Regularized D-optimality: minimize -log(det(Y^T Y + δI))
+        # The regularization δ ensures the gradient is numerically stable even when
+        # the regressor is extremely ill-conditioned. It caps the effective condition
+        # number at (λ_max + δ)/δ, preventing the gradient from losing precision.
+        # δ is set relative to the largest eigenvalue so it's scale-invariant.
+        YtY = self.model.YBase.T @ self.model.YBase
+        eigvals = np.linalg.eigvalsh(YtY)
+        lambda_max = float(eigvals[-1])
+        # δ = fraction of λ_max; controls the conditioning of the gradient.
+        # 1e-4 caps effective cond at ~10000, giving ~12 digits of gradient precision.
+        dopt_regularization = self.config.get("doptRegularization", 1e-4)
+        delta = dopt_regularization * max(lambda_max, 1e-30)
+        eigvals_reg = eigvals + delta
+        neg_log_det = -np.sum(np.log(np.maximum(eigvals_reg, 1e-300)))
+
+        # Number of well-observable base parameters (eigenvalue above regularization threshold)
+        n_observable = int(np.sum(eigvals > delta))
+
+        if not hasattr(self, "_dopt_scale"):
+            # target: D-optimality contribution ~10 for the initial trajectory
+            self._dopt_scale = 10.0 / max(abs(neg_log_det), 1.0)
+        f = neg_log_det * self._dopt_scale
 
         # If the simulation produced NaN or inf, clamp to a high but finite value
         self._eval_failed = False
@@ -410,9 +422,9 @@ class TrajectoryOptimizer(Optimizer):
         else:
             print(Fore.YELLOW, end=" ")
 
-        cond_part = log_cond * self._cond_scale
+        dopt_part = neg_log_det * self._dopt_scale
         print(
-            f"obj: {f:.1f} (cond: {cond_part:.1f} + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
+            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
             end=" ",
         )
         print(Fore.RESET)
@@ -445,9 +457,8 @@ class TrajectoryOptimizer(Optimizer):
                 "accelerations": trajectory_data["accelerations"].copy(),
                 "times": trajectory_data["times"].copy(),
                 "torques": torques.copy(),
-                "cond": cond,
-                "log_cond": log_cond,
-                "cond_scale": self._cond_scale,
+                "n_observable": n_observable,
+                "dopt_scale": self._dopt_scale,
                 "torque_absmax_idx": np.argmax(np.abs(torques[:, fb:]), axis=0),
                 "pos_min_idx": np.argmin(pos, axis=0),
                 "pos_max_idx": np.argmax(pos, axis=0),

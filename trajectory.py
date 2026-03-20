@@ -107,7 +107,10 @@ def main():
         print(f"wf {trajectory.w_f_global}")
 
     # sample the optimized trajectory into position/velocity/acceleration arrays
-    trajectory_data, _ = computeTrajectoryDynamics(config, trajectory)
+    # reuse the model from optimization if available, otherwise create one
+    if "model" not in dir() or model is None:
+        model = Model(config, config["urdf"])
+    trajectory_data, _ = computeTrajectoryDynamics(config, trajectory, model=model)
     freq = config["excitationFrequency"]
     num_dofs = config["num_dofs"]
 
@@ -117,7 +120,21 @@ def main():
     accelerations = trajectory_data["target_accelerations"]
     times = trajectory_data["times"]
 
+    # insert sudden stops/restarts into the periodic part BEFORE adding transitions
+    # (stops reintegrate positions, which breaks periodicity — must happen before
+    # transitions so the ramp-in/out paths aren't corrupted by the drift)
+    num_stops = config.get("simulateNumStops", 0)
+    if num_stops > 0:
+        seed = config.get("simulateRandomSeed", 42)
+        rng = np.random.default_rng(seed)
+        positions, velocities, accelerations = add_sudden_stops(
+            times, positions, velocities, accelerations, freq, num_stops=num_stops, rng=rng
+        )
+
     # add smooth transition segments (ramp-in from zero, ramp-out to zero)
+    # Sudden stops are applied before this, so the periodic trajectory may have
+    # small position drift. The Fourier series itself is periodic (pos[0] ≈ pos[-1]),
+    # so both transitions follow nearly the same path.
     transition_duration = config.get("transitionDuration", 3.0)
     if transition_duration > 0:
         q_start = positions[0]
@@ -168,15 +185,6 @@ def main():
             velocities = np.concatenate([velocities] + [s[2] for s in segments])
             accelerations = np.concatenate([accelerations] + [s[3] for s in segments])
 
-    # insert sudden stops/restarts for non-smooth excitation
-    num_stops = config.get("simulateNumStops", 0)
-    if num_stops > 0:
-        seed = config.get("simulateRandomSeed", 42)
-        rng = np.random.default_rng(seed)
-        positions, velocities, accelerations = add_sudden_stops(
-            times, positions, velocities, accelerations, freq, num_stops=num_stops, rng=rng
-        )
-
     print(f"Saving trajectory to {traj_file}")
 
     if config["useStaticTrajectories"]:
@@ -209,6 +217,47 @@ def main():
     save_dict["accelerations"] = accelerations
     save_dict["times"] = times
     save_dict["frequency"] = np.float64(freq)
+
+    # observability analysis: identify which parameters can't be excited by this trajectory
+    if hasattr(model, "YBase") and model.YBase is not None and model.YBase.size > 0:
+        U_obs, S_obs, Vt_obs = np.linalg.svd(model.YBase, full_matrices=False)
+        obs_thresh = config.get("observabilityThreshold", 1e-6)
+        n_unobs = int(np.sum(S_obs < S_obs[0] * obs_thresh))
+        n_base = model.YBase.shape[1]
+        n_obs = n_base - n_unobs
+
+        if n_unobs > 0:
+            # map unobservable base-parameter directions to identified (standard) parameters
+            V_unobs = Vt_obs[-n_unobs:, :]  # unobservable right singular vectors
+            unobs_energy = np.sum(V_unobs**2, axis=0)  # energy per base param in unobservable subspace
+            proj = model.Pb if not model.opt.get("useBasisProjection", False) else model.B
+            unobs_per_param = proj @ unobs_energy  # map to identified param space
+
+            # parameters with >50% energy in the unobservable subspace
+            unobs_param_indices = np.where(unobs_per_param > 0.5)[0].tolist()
+
+            param_names = ["m", "hx", "hy", "hz", "Ixx", "Ixy", "Ixz", "Iyy", "Iyz", "Izz"]
+            print(f"\nObservability: {n_obs}/{n_base} base parameters observable (threshold={obs_thresh})")
+            print(f"Unobservable identified parameters ({len(unobs_param_indices)}):")
+            for idx in unobs_param_indices:
+                if idx < model.num_model_params:
+                    link_idx = idx // 10
+                    ptype = idx % 10
+                    name = f"{param_names[ptype]} of {model.linkNames[link_idx]}"
+                else:
+                    jidx = idx - model.num_model_params
+                    if jidx < num_dofs:
+                        name = f"Fc_{model.jointNames[jidx]}"
+                    else:
+                        name = f"Fv_{model.jointNames[jidx - num_dofs]}"
+                print(f"  [{idx}] {name} (score={unobs_per_param[idx]:.2f})")
+        else:
+            unobs_param_indices = []
+            print(f"\nObservability: all {n_base} base parameters are observable")
+
+        save_dict["unobservable_params"] = np.array(unobs_param_indices, dtype=np.int64)
+        save_dict["observability_threshold"] = obs_thresh
+        save_dict["n_observable_base_params"] = n_obs
 
     np.savez(traj_file, **save_dict)
 

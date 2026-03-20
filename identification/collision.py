@@ -103,6 +103,7 @@ class CollisionChecker:
         l1_name: str,
         transforms: dict[str, tuple[np.ndarray, np.ndarray]],
         use_visual_mesh: bool = False,
+        bvh_mesh_links: set[str] | None = None,
     ) -> float:
         """Check distance between two links given their world transforms.
 
@@ -111,14 +112,18 @@ class CollisionChecker:
             l1_name: second link name
             transforms: dict mapping link name → (rotation_3x3, position_3)
             use_visual_mesh: if True, use visual mesh geometry instead of collision
+            bvh_mesh_links: links that should always use mesh collision (BVH),
+                overrides use_visual_mesh=False for these specific links
 
         Returns:
             positive distance if separated, negative penetration depth if colliding
         """
         rot0, pos0 = transforms[l0_name]
         rot1, pos1 = transforms[l1_name]
-        geom0, offset0 = self._get_geometry(l0_name, use_visual_mesh=use_visual_mesh)
-        geom1, offset1 = self._get_geometry(l1_name, use_visual_mesh=use_visual_mesh)
+        vis0 = use_visual_mesh or (bvh_mesh_links is not None and l0_name in bvh_mesh_links)
+        vis1 = use_visual_mesh or (bvh_mesh_links is not None and l1_name in bvh_mesh_links)
+        geom0, offset0 = self._get_geometry(l0_name, use_visual_mesh=vis0)
+        geom1, offset1 = self._get_geometry(l1_name, use_visual_mesh=vis1)
 
         o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + offset0))
         o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + offset1))
@@ -151,6 +156,7 @@ class CollisionChecker:
         neighbors: dict[str, dict[str, list[Any]]] | None = None,
         max_kin_distance: int = 0,
         use_visual_mesh: bool = False,
+        bvh_mesh_links: set[str] | None = None,
     ) -> set[str]:
         """Find all links that are currently colliding.
 
@@ -162,6 +168,8 @@ class CollisionChecker:
             neighbors: optional neighbor dict to skip adjacent links
             max_kin_distance: if >0, only check pairs within this kinematic distance
             use_visual_mesh: if True, use visual mesh geometry instead of collision
+            bvh_mesh_links: links that should always use mesh collision (BVH),
+                even when use_visual_mesh is False (for cage/shell structures)
 
         Returns:
             set of link names involved in at least one collision
@@ -204,7 +212,13 @@ class CollisionChecker:
                         continue
                 if max_kin_distance > 0 and _kin_distance(l0, l1) > max_kin_distance:
                     continue
-                d = self.check_distance(l0, l1, transforms, use_visual_mesh=use_visual_mesh)
+                d = self.check_distance(
+                    l0,
+                    l1,
+                    transforms,
+                    use_visual_mesh=use_visual_mesh,
+                    bvh_mesh_links=bvh_mesh_links,
+                )
                 if d < 0:
                     colliding.add(l0)
                     colliding.add(l1)

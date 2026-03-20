@@ -114,7 +114,7 @@ minVelocityPercentage: 0.1
 useStaticTrajectories: 0
 numStaticPostures: 5
 scaleCollisionHull: 0.8
-useCollisionMeshes: 1           # 0 = use bounding boxes (fast), 1 = use actual meshes (accurate)
+# (collision geometry mode is set above via collisionMode)
 staticPostureTime: 0.02
 initialPostures: []
 

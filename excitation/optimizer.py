@@ -422,10 +422,31 @@ class Optimizer:
         if not hasattr(self, "_geom_cache"):
             self._geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
         if link_name not in self._geom_cache:
-            # try loading collision mesh (unless config says to use bounding boxes)
-            use_meshes = self.config.get("useCollisionMeshes", 1)
+            # collisionMode: 'box' (AABB only), 'convex' (convex hull from mesh),
+            #                'full' (BVH triangle mesh), 'capsule' (analytical capsules)
+            # Backwards compat: old useCollisionMeshes/useConvexHullCollision/useCapsuleCollision
+            mode = self.config.get("collisionMode", None)
+            if mode is None:
+                # infer from old options
+                if self.config.get("useCapsuleCollision", False):
+                    mode = "capsule"
+                elif not self.config.get("useCollisionMeshes", 1):
+                    mode = "box"
+                elif self.config.get("useConvexHullCollision", False):
+                    mode = "convex"
+                else:
+                    mode = "full"
+
+            # per-link override: fullMeshLinks forces 'full' mode for specific links
+            # (for concave shapes like cages where convex hull is too coarse)
+            if link_name in self.config.get("fullMeshLinks", self.config.get("bvhMeshLinks", [])):
+                link_mode = "full"
+            else:
+                link_mode = mode
+
             mesh_path = None
-            if use_meshes:
+            if link_mode in ("convex", "full"):
+                # try collision mesh first, fall back to visual mesh
                 mesh_path = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
                 if mesh_path is None or not os.path.exists(mesh_path):
                     mesh_path = self.idf.urdfHelpers.getMeshPath(self.model.urdf_file, link_name)
@@ -434,48 +455,38 @@ class Optimizer:
                 import trimesh
 
                 mesh = trimesh.load_mesh(mesh_path)
-                # apply per-axis scaling from URDF
                 scale_parts = self.idf.urdfHelpers.mesh_scaling.split()
                 scale = np.array([float(s) for s in scale_parts])
                 verts = np.array(mesh.vertices) * scale
                 faces = np.array(mesh.faces)
-
-                # fix face winding if any scale axis is negative (mirrored mesh)
                 if np.prod(scale) < 0:
                     faces = faces[:, ::-1]
 
                 p = np.array(self.link_cuboid_hulls[link_name][1])
 
-                if self.config.get("useConvexHullCollision", False):
-                    # convex hull: GJK convex-convex is faster than BVH mesh distance,
-                    # and is a conservative approximation
+                if link_mode == "convex":
                     hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
                     hull_verts = np.array(hull.vertices, dtype=np.float64)
                     hull_faces = np.array(hull.faces, dtype=np.int32)
-
-                    # fcl.Convex expects flat face array with vertex count prefix per face
                     flat_faces = np.empty(len(hull_faces) * 4, dtype=np.int32)
                     for fi in range(len(hull_faces)):
-                        flat_faces[fi * 4] = 3  # triangle
+                        flat_faces[fi * 4] = 3
                         flat_faces[fi * 4 + 1 : fi * 4 + 4] = hull_faces[fi]
-
-                    convex = fcl.Convex(hull_verts, len(hull_faces), flat_faces)
-                    self._geom_cache[link_name] = (convex, p)
+                    self._geom_cache[link_name] = (fcl.Convex(hull_verts, len(hull_faces), flat_faces), p)
                 else:
-                    # use the mesh directly (BVH triangle mesh) — tighter fit
+                    # full: BVH triangle mesh
                     bvh = fcl.BVHModel()
                     bvh.beginModel(len(faces), len(verts))
                     bvh.addSubModel(np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int32))
                     bvh.endModel()
                     self._geom_cache[link_name] = (bvh, p)
             else:
-                # fallback to bounding box
+                # box fallback (also used when collisionMode='box')
                 s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
                 b = np.array(self.link_cuboid_hulls[link_name][0]) * s
                 p = np.array(self.link_cuboid_hulls[link_name][1])
                 center = 0.5 * (b[0] + b[1]) + p
-                box = fcl.Box(*(b[1] - b[0]))
-                self._geom_cache[link_name] = (box, center)
+                self._geom_cache[link_name] = (fcl.Box(*(b[1] - b[0])), center)
         return self._geom_cache[link_name]
 
     def _getLinkTransform(self, link_name: str) -> tuple[np.ndarray, np.ndarray]:

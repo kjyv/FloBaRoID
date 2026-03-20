@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
+import fcl
 import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
@@ -12,6 +13,47 @@ from excitation.trajectoryGenerator import (
     PulsedTrajectory,
 )
 from identification.helpers import URDFHelpers
+
+
+def _collision_worker(
+    transforms_chunk: list[dict[str, tuple[np.ndarray, np.ndarray]]],
+    configs_chunk: list[tuple[int, np.ndarray]],
+    collision_pairs: list[tuple[str, str]],
+    geom_data: dict[str, tuple[str, np.ndarray, np.ndarray | None, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute FCL distances for a chunk of samples.
+
+    Each worker builds its own FCL geometry objects from the pre-extracted geometry data
+    (vertices, faces, offsets) to avoid pickling FCL objects.
+    """
+    n_pairs = len(collision_pairs)
+    min_dists = np.full(n_pairs, 1e10)
+    argmin_samples = np.full(n_pairs, -1, dtype=np.int64)
+
+    # Build FCL geometry objects (once per worker)
+    geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
+    for link_name, (gtype, data, faces, offset) in geom_data.items():
+        if gtype == "box":
+            geom_cache[link_name] = (fcl.Box(*data), offset)
+        elif gtype == "convex" and faces is not None:
+            convex = fcl.Convex(data, len(faces), faces)
+            geom_cache[link_name] = (convex, offset)
+
+    req = fcl.DistanceRequest(True)
+    for transforms, (sample_idx, _) in zip(transforms_chunk, configs_chunk):
+        for g_cnt, (l0, l1) in enumerate(collision_pairs):
+            rot0, pos0 = transforms[l0]
+            rot1, pos1 = transforms[l1]
+            geom0, off0 = geom_cache[l0]
+            geom1, off1 = geom_cache[l1]
+            o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + off0))
+            o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + off1))
+            d = fcl.distance(o0, o1, req, fcl.DistanceResult())
+            if d < min_dists[g_cnt]:
+                min_dists[g_cnt] = d
+                argmin_samples[g_cnt] = sample_idx
+
+    return min_dists, argmin_samples
 
 
 class TrajectoryOptimizer(Optimizer):
@@ -332,6 +374,15 @@ class TrajectoryOptimizer(Optimizer):
                             queue.append((nb, dist + 1))
                 return 999
 
+            # Build set of group-excluded pairs (links in different groups can't collide)
+            group_ignore: set[tuple[str, str]] = set()
+            for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
+                if len(group_pair) == 2:
+                    for a in group_pair[0]:
+                        for b in group_pair[1]:
+                            group_ignore.add((a, b))
+                            group_ignore.add((b, a))
+
             self._collision_pairs: list[tuple[str, str]] = []
             for l0 in range(len(all_links)):
                 for l1 in range(l0 + 1, len(all_links)):
@@ -340,6 +391,8 @@ class TrajectoryOptimizer(Optimizer):
                     if l0_name in ignore_links or l1_name in ignore_links:
                         continue
                     if (l0_name, l1_name) in ignore_pairs:
+                        continue
+                    if (l0_name, l1_name) in group_ignore:
                         continue
                     # neighbors can't collide with a proper joint range
                     if l0 < self.model.num_links and l1 < self.model.num_links:
@@ -356,23 +409,60 @@ class TrajectoryOptimizer(Optimizer):
         use_ag = self.config.get("useAnalyticalGradients", False)
         if use_ag:
             coll_argmin: dict[int, tuple[int, np.ndarray]] = {}
+
+        # Collect all configurations to check (main trajectory + transition)
+        collision_configs: list[tuple[int, np.ndarray]] = []
         for p in range(0, pos.shape[0], collision_step):
-            if self.config["verbose"] > 1:
-                print(f"Sample {p}")
-            q = pos[p]
-            # set robot state once per sample (not per link pair)
-            self.setCollisionRobotState(q)
-            use_capsule = self.config.get("useCapsuleCollision", False) and self._capsules
+            collision_configs.append((p, pos[p]))
+
+        # also check the minimum-jerk transitions from/to zero position
+        # (the trajectory is periodic so both paths are nearly identical,
+        # but check both since pos[0] and pos[-1] may differ slightly)
+        transition_duration = self.config.get("transitionDuration", 3.0)
+        if transition_duration > 0:
+            transition_samples = self.config.get("transitionCollisionSamples", 10)
+            zero_pos = np.zeros(self.num_dofs)
+            for q_boundary in [pos[0], pos[-1]]:
+                for ti in range(transition_samples):
+                    tau = (ti + 1) / (transition_samples + 1)
+                    s = 10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5
+                    q_trans = zero_pos + s * (q_boundary - zero_pos)
+                    collision_configs.append((-1 - ti, q_trans))  # negative index = transition sample
+
+        coll_mode = self.config.get(
+            "collisionMode", "capsule" if self.config.get("useCapsuleCollision", False) else "convex"
+        )
+        use_capsule = coll_mode == "capsule" and self._capsules
+        collision_link_names = sorted(set(l for pair in self._collision_pairs for l in pair))
+
+        # Precompute and cache FCL collision objects per link (reuse across samples)
+        # This avoids recreating CollisionObject wrappers every iteration.
+        if not hasattr(self, "_fcl_objects"):
+            self._fcl_objects: dict[str, tuple[Any, np.ndarray]] = {}
+            for link_name in collision_link_names:
+                geom, offset = self._getLinkCollisionGeometry(link_name)
+                self._fcl_objects[link_name] = (fcl.CollisionObject(geom), offset)
+        fcl_req = fcl.DistanceRequest(True)
+
+        for p_idx, q_check in collision_configs:
+            self.setCollisionRobotState(q_check)
             for g_cnt, (l0_name, l1_name) in enumerate(self._collision_pairs):
-                # use capsule distance when both links have capsules, otherwise fall back to FCL
                 if use_capsule and l0_name in self._capsules and l1_name in self._capsules:
                     d = self.getCapsuleDistance(l0_name, l1_name)
                 else:
-                    d = self.getLinkDistance(l0_name, l1_name, q)
+                    # Update transform on cached FCL objects (avoids recreating them)
+                    rot0, pos0 = self._getLinkTransform(l0_name)
+                    rot1, pos1 = self._getLinkTransform(l1_name)
+                    obj0, off0 = self._fcl_objects[l0_name]
+                    obj1, off1 = self._fcl_objects[l1_name]
+                    obj0.setTransform(fcl.Transform(rot0, pos0 + off0))
+                    obj1.setTransform(fcl.Transform(rot1, pos1 + off1))
+                    d = fcl.distance(obj0, obj1, fcl_req, fcl.DistanceResult())
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
-                    if use_ag:
-                        coll_argmin[g_cnt] = (p, q.copy())
+                    if use_ag and p_idx >= 0:
+                        coll_argmin[g_cnt] = (p_idx, q_check.copy())
+
         if use_ag:
             self._ag_collision_cache = coll_argmin
 

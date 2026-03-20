@@ -2048,6 +2048,14 @@ if __name__ == "__main__":
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
             )
         else:
+            bvh_links = set(config.get("bvhMeshLinks", []))
+            use_vis = v.mesh_mode == "visual"
+            # when not in visual mode, use visual mesh (BVH) for bvhMeshLinks
+            # to match what the optimizer does (convex hull of simplified mesh is too conservative)
+            effective_bvh = bvh_links if (bvh_links and not use_vis) else None
+            if effective_bvh and not hasattr(draw_model, "_logged_bvh"):
+                print(f"[collision] Using visual mesh (BVH) for: {sorted(effective_bvh)}")
+                draw_model._logged_bvh = True  # type: ignore[attr-defined]
             v.colliding_links = collision_checker.find_colliding_links(
                 kinDyn,
                 linkNames,
@@ -2055,7 +2063,8 @@ if __name__ == "__main__":
                 ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
                 neighbors=neighbors,
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
-                use_visual_mesh=(v.mesh_mode == "visual"),
+                use_visual_mesh=use_vis,
+                bvh_mesh_links=effective_bvh,
             )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, ignore_links=[])
 
@@ -2064,7 +2073,7 @@ if __name__ == "__main__":
 
         # update torque rings if enabled and data is available
         if v.show_torque_rings and torque_data is not None:
-            if data_type == "measurements":
+            if data_type == "positions":
                 idx = int(v.display_index * v.freq / v.playback_rate)
                 idx = min(idx, torque_data.shape[0] - 1)
                 tau = torque_data[idx, :]

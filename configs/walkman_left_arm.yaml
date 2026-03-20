@@ -26,7 +26,8 @@ showModelVisualization: 0
 transparentLinks: []
 
 # the Waist link is the base (propped up), won't collide
-useCapsuleCollision: 0           # analytical capsule distance instead of FCL (faster gradients)
+# collision geometry: 'box', 'convex', 'full', or 'capsule'
+collisionMode: 'convex'
 scaleCapsuleRadius: 0.8          # tighter capsules for compact humanoid (1.0 = full AABB)
 ignoreLinksForCollision: ['Waist']
 ignoreLinkPairsForCollision: []

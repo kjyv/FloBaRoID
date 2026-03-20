@@ -15,7 +15,8 @@ pp. 6518–6524, 2017.
 
 The overall gradient is split into two phases:
   Phase A (expensive): Loop over samples, compute d(cond)/d(state) via numerical FD
-    of the iDynTree regressor. Result: sensitivity arrays of shape (n_samples, n_dofs).
+    of the iDynTree regressor, or analytically using Featherstone RNEA derivatives
+    with 6×6 spatial inertia matrices. Result: sensitivity arrays of shape (n_samples, n_dofs).
   Phase B (cheap): Chain sensitivities with analytical trajectory Jacobians using
     vectorized numpy operations to get d(objective)/d(alpha).
 """
@@ -23,6 +24,7 @@ The overall gradient is split into two phases:
 from __future__ import annotations
 
 import multiprocessing
+import os
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -43,6 +45,602 @@ _gradient_pool: multiprocessing.pool.Pool | None = None
 _gradient_pool_size: int = 0
 
 
+def _expand_gravity_only_params(w_gravity: np.ndarray, n_links: int) -> np.ndarray:
+    """Expand a gravity-only parameter vector (4 per link) to full inertial (10 per link).
+
+    When identifyGravityParamsOnly is True, the regressor only has mass and first-moment
+    columns (4 per link). Expands to full 10-per-link by inserting zeros for inertia tensor.
+    """
+    w_full = np.zeros(n_links * 10)
+    for i in range(n_links):
+        w_full[10 * i : 10 * i + 4] = w_gravity[4 * i : 4 * (i + 1)]
+        # Indices 4-9 (inertia tensor) remain zero
+    return w_full
+
+
+# --- Analytical RNEA derivatives (spatial algebra, no Pinocchio) ---
+
+
+def _skew3(v: np.ndarray) -> np.ndarray:
+    """3x3 skew-symmetric matrix from 3-vector."""
+    return np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+
+
+def _batch_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Batch cross product: (n,3) x (n,3) -> (n,3). Broadcasts single vectors."""
+    return np.cross(a, b)
+
+
+def _motion_cross_matrix(v: np.ndarray) -> np.ndarray:
+    """6×6 spatial motion cross product matrix [v]× for constant v.
+
+    [v]× = [[ω×, 0], [v₀×, ω×]] where v = [ω; v₀].
+    Used for: v × u = [v]× @ u (spatial motion cross product).
+    """
+    wx, wy, wz = v[0], v[1], v[2]
+    vx, vy, vz = v[3], v[4], v[5]
+    return np.array(
+        [
+            [0, -wz, wy, 0, 0, 0],
+            [wz, 0, -wx, 0, 0, 0],
+            [-wy, wx, 0, 0, 0, 0],
+            [0, -vz, vy, 0, -wz, wy],
+            [vz, 0, -vx, wz, 0, -wx],
+            [-vy, vx, 0, -wy, wx, 0],
+        ]
+    )
+
+
+def _force_cross_matrix(v: np.ndarray) -> np.ndarray:
+    """6×6 spatial force cross product matrix [v]×* = -[v]×ᵀ for constant v.
+
+    Used for: v ×* f = [v]×* @ f (spatial force cross product).
+    """
+    return -_motion_cross_matrix(v).T
+
+
+def _spatial_inertia_from_dynamic_params(params: np.ndarray) -> np.ndarray:
+    """Build 6x6 spatial inertia from 10 inertial parameters (iDynTree ordering).
+
+    params: [m, hx, hy, hz, Ixx, Ixy, Ixz, Iyy, Iyz, Izz]
+    Returns [[I_origin, [h]×], [[h]×ᵀ, m·I₃]] which is valid for ANY parameter values.
+    """
+    m, hx, hy, hz = params[0], params[1], params[2], params[3]
+    I_origin = np.array(
+        [
+            [params[4], params[5], params[6]],
+            [params[5], params[7], params[8]],
+            [params[6], params[8], params[9]],
+        ]
+    )
+    hx_mat = np.array([[0, -hz, hy], [hz, 0, -hx], [-hy, hx, 0]])
+    I = np.empty((6, 6))
+    I[:3, :3] = I_origin
+    I[:3, 3:] = hx_mat
+    I[3:, :3] = hx_mat.T
+    I[3:, 3:] = m * np.eye(3)
+    return I
+
+
+def _rpy_to_rotation(rpy: np.ndarray) -> np.ndarray:
+    """Rotation matrix from roll-pitch-yaw (URDF convention: Rz·Ry·Rx)."""
+    cr, sr = np.cos(rpy[0]), np.sin(rpy[0])
+    cp, sp = np.cos(rpy[1]), np.sin(rpy[1])
+    cy, sy = np.cos(rpy[2]), np.sin(rpy[2])
+    return np.array(
+        [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr],
+        ]
+    )
+
+
+def _parse_kinematic_tree(urdf_file: str, joint_names: list[str], link_names: list[str]) -> dict:
+    """Parse URDF to extract kinematic tree structure for RNEA computation.
+
+    Returns dict with parent/child body indices, joint axes, origin transforms,
+    and the mapping from iDynTree link indices to kinematic tree body indices
+    (handling fixed-joint merging).
+    """
+    import xml.etree.ElementTree as ET
+
+    tree = ET.parse(urdf_file)
+    root = tree.getroot()
+
+    # Parse all URDF joints
+    urdf_joints: dict[str, dict] = {}
+    parent_of_link: dict[str, str] = {}
+    fixed_parent: dict[str, str] = {}
+
+    for j_elem in root.findall("joint"):
+        jname = j_elem.get("name", "")
+        jtype = j_elem.get("type", "fixed")
+        parent_elem = j_elem.find("parent")
+        child_elem = j_elem.find("child")
+        if parent_elem is None or child_elem is None:
+            continue
+        parent = parent_elem.get("link", "")
+        child = child_elem.get("link", "")
+
+        origin = j_elem.find("origin")
+        xyz = np.array([float(x) for x in (origin.get("xyz", "0 0 0") if origin is not None else "0 0 0").split()])
+        rpy = np.array([float(x) for x in (origin.get("rpy", "0 0 0") if origin is not None else "0 0 0").split()])
+        axis_elem = j_elem.find("axis")
+        axis = (
+            np.array([float(x) for x in axis_elem.get("xyz", "0 0 1").split()])
+            if axis_elem is not None
+            else np.array([0.0, 0.0, 1.0])
+        )
+        axis = axis / max(np.linalg.norm(axis), 1e-30)
+
+        urdf_joints[jname] = {"type": jtype, "parent": parent, "child": child, "xyz": xyz, "rpy": rpy, "axis": axis}
+        parent_of_link[child] = parent
+        if jtype == "fixed":
+            fixed_parent[child] = parent
+
+    # Body list: root (not a child of any movable joint) + children of movable joints in DOF order
+    movable_children = {urdf_joints[jn]["child"] for jn in joint_names}
+    root_link = next(ln for ln in link_names if ln not in movable_children)
+    body_links = [root_link] + [urdf_joints[jn]["child"] for jn in joint_names]
+    body_name_to_idx = {name: i for i, name in enumerate(body_links)}
+
+    # Per-DOF kinematic data
+    parent_body: list[int] = []
+    child_body: list[int] = []
+    joint_axes_list: list[np.ndarray] = []
+    joint_xyz_list: list[np.ndarray] = []
+    joint_rpy_list: list[np.ndarray] = []
+
+    for jn in joint_names:
+        info = urdf_joints[jn]
+        # Traverse up through fixed joints to find the body containing the parent link
+        p = info["parent"]
+        while p not in body_name_to_idx and p in parent_of_link:
+            p = parent_of_link[p]
+        parent_body.append(body_name_to_idx.get(p, 0))
+        child_body.append(body_name_to_idx[info["child"]])
+        joint_axes_list.append(info["axis"])
+        joint_xyz_list.append(info["xyz"])
+        joint_rpy_list.append(info["rpy"])
+
+    # Map iDynTree link index -> body index (for inertia merging of fixed-joint children)
+    link_to_body: dict[int, int] = {}
+    for i, lname in enumerate(link_names):
+        if lname in body_name_to_idx:
+            link_to_body[i] = body_name_to_idx[lname]
+        else:
+            p = lname
+            while p in fixed_parent:
+                p = fixed_parent[p]
+            link_to_body[i] = body_name_to_idx.get(p, 0)
+
+    return {
+        "parent_body": parent_body,
+        "child_body": child_body,
+        "joint_axes": np.array(joint_axes_list),
+        "joint_xyz": np.array(joint_xyz_list),
+        "joint_rpy": np.array(joint_rpy_list),
+        "n_bodies": len(body_links),
+        "link_to_body": link_to_body,
+    }
+
+
+def _build_body_spatial_inertias(w_iner: np.ndarray, n_links: int, tree_info: dict) -> list[np.ndarray]:
+    """Build per-body 6x6 spatial inertias from contraction vector, handling fixed-link merging."""
+    nb = tree_info["n_bodies"]
+    body_I = [np.zeros((6, 6)) for _ in range(nb)]
+    for link_idx in range(n_links):
+        body_idx = tree_info["link_to_body"][link_idx]
+        body_I[body_idx] += _spatial_inertia_from_dynamic_params(w_iner[10 * link_idx : 10 * (link_idx + 1)])
+    return body_I
+
+
+def _compute_rnea_derivatives_batch(
+    body_I: list[np.ndarray],
+    tree_info: dict,
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    accelerations: np.ndarray,
+    is_floating: bool,
+    fb: int,
+    n_dofs_out: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute dtau/dq, dtau/dv, dtau/da for all samples using analytical RNEA derivatives.
+
+    Uses Featherstone's spatial algebra with 6x6 inertia matrices directly,
+    which handles arbitrary (non-physical) parameter vectors without issues.
+
+    Returns:
+        dtau_dq: (n_samples, n_dofs_out, n_dofs) — position derivative
+        dtau_dv: (n_samples, n_dofs_out, n_dofs) — velocity derivative
+        M_out:   (n_samples, n_dofs_out, n_dofs) — mass matrix (= dtau/da)
+    """
+    nd = positions.shape[1]
+    ns = positions.shape[0]
+    nb = tree_info["n_bodies"]
+    n_out = n_dofs_out
+    parent_body = tree_info["parent_body"]
+    child_body = tree_info["child_body"]
+
+    # Joint motion subspaces S[d]: (6,) — [axis; 0] for revolute joints
+    S = [np.concatenate([tree_info["joint_axes"][d], np.zeros(3)]) for d in range(nd)]
+
+    # Precompute 6×6 cross-product matrices for each joint axis (constant, used in hot loops)
+    Sx = [_motion_cross_matrix(S[d]) for d in range(nd)]  # [S_d]×
+    Sfx = [_force_cross_matrix(S[d]) for d in range(nd)]  # [S_d]×*
+
+    # --- Precompute constant origin transforms (rotation part only) ---
+    R_origin = [_rpy_to_rotation(tree_info["joint_rpy"][d]) for d in range(nd)]
+
+    # --- Compute per-joint spatial transforms for all samples ---
+    # X[d]: (ns, 6, 6) — Plücker transform from parent body to child body
+    # Xf[d]: (ns, 6, 6) — transpose (force transform child→parent)
+    X: list[np.ndarray] = [np.empty(0)] * nd
+    Xf: list[np.ndarray] = [np.empty(0)] * nd
+
+    for d in range(nd):
+        axis = tree_info["joint_axes"][d]
+        p_origin = tree_info["joint_xyz"][d]
+        angles = positions[:, d]  # (ns,)
+
+        # Rodrigues: R_joint(q) = I + sin(q)*K + (1-cos(q))*K²
+        K = _skew3(axis)
+        K2 = K @ K
+        sin_q = np.sin(angles)[:, None, None]
+        cos_q = np.cos(angles)[:, None, None]
+        R_joint = np.eye(3) + sin_q * K + (1 - cos_q) * K2  # (ns, 3, 3)
+
+        # R_cp = (R_origin @ R_joint)^T — rotation from parent to child frame
+        R_pc = np.einsum("ij,njk->nik", R_origin[d], R_joint)  # (ns, 3, 3)
+        R_cp = np.swapaxes(R_pc, -2, -1)  # (ns, 3, 3)
+
+        # Plücker: ^child X_parent = [[E, 0], [-E·[p]×, E]]
+        # where E = R_cp (rotation parent→child), p = p_origin (child origin in parent frame)
+        # Ref: Featherstone (2008) Eq. 2.27
+        p_skew = _skew3(p_origin)  # (3, 3), constant for all samples
+
+        X_d = np.zeros((ns, 6, 6))
+        X_d[:, :3, :3] = R_cp
+        X_d[:, 3:, 3:] = R_cp
+        # Lower-left block: -R_cp @ [p_origin]×
+        X_d[:, 3:, :3] = -np.einsum("nij,jk->nik", R_cp, p_skew)
+
+        X[d] = X_d
+        Xf[d] = np.swapaxes(X_d, -2, -1)  # force transform = X^T
+
+    # --- Forward pass: body velocities and accelerations ---
+    v = [np.zeros((ns, 6)) for _ in range(nb)]
+    a = [np.zeros((ns, 6)) for _ in range(nb)]
+    vJ_arr = [np.zeros((ns, 6)) for _ in range(nd)]
+
+    # Root: v=0, a=-gravity
+    a_gravity = np.array([0.0, 0.0, 0.0, 0.0, 0.0, -9.81])
+    a[0] = np.tile(-a_gravity, (ns, 1))
+
+    for d in range(nd):
+        pi = parent_body[d]
+        ci = child_body[d]
+
+        # Joint velocity: vJ = S * dq
+        vJ_d = np.outer(velocities[:, d], S[d])  # (ns, 6)
+        vJ_arr[d] = vJ_d
+
+        # v_child = X @ v_parent + vJ
+        v_from_parent = np.einsum("nij,nj->ni", X[d], v[pi])
+        v[ci] = v_from_parent + vJ_d
+
+        # Coriolis: c = v × vJ (spatial motion cross product)
+        w_ci = v[ci][:, :3]
+        vo_ci = v[ci][:, 3:]
+        wJ = vJ_d[:, :3]
+        vJ_lin = vJ_d[:, 3:]
+        c = np.empty((ns, 6))
+        c[:, :3] = _batch_cross(w_ci, wJ)
+        c[:, 3:] = _batch_cross(vo_ci, wJ) + _batch_cross(w_ci, vJ_lin)
+
+        # a_child = X @ a_parent + S*ddq + c
+        a_from_parent = np.einsum("nij,nj->ni", X[d], a[pi])
+        a[ci] = a_from_parent + np.outer(accelerations[:, d], S[d]) + c
+
+    # --- Compute forces and precompute I@v ---
+    f = [np.zeros((ns, 6)) for _ in range(nb)]
+    Iv = [np.zeros((ns, 6)) for _ in range(nb)]
+
+    for i in range(nb):
+        I_i = body_I[i]  # (6, 6), symmetric
+        Iv[i] = v[i] @ I_i  # (ns, 6) — batch since I is symmetric
+        Ia = a[i] @ I_i  # (ns, 6)
+        # f = I@a + v ×* (I@v): force cross product
+        w_i = v[i][:, :3]
+        vo_i = v[i][:, 3:]
+        Iv_ang = Iv[i][:, :3]
+        Iv_lin = Iv[i][:, 3:]
+        fc = np.empty((ns, 6))
+        fc[:, :3] = _batch_cross(w_i, Iv_ang) + _batch_cross(vo_i, Iv_lin)
+        fc[:, 3:] = _batch_cross(w_i, Iv_lin)
+        f[i] = Ia + fc
+
+    # --- Backward pass: accumulate subtree forces ---
+    f_total = [fi.copy() for fi in f]
+    for d in range(nd - 1, -1, -1):
+        f_total[parent_body[d]] += np.einsum("nij,nj->ni", Xf[d], f_total[child_body[d]])
+
+    # --- Derivative computation ---
+    dtau_dq = np.zeros((ns, n_out, nd))
+    dtau_dv = np.zeros((ns, n_out, nd))
+    M_out = np.zeros((ns, n_out, nd))
+
+    def _propagate_perturbation(d_start: int, dv0: np.ndarray, da0: np.ndarray) -> list[np.ndarray]:
+        """Forward-propagate velocity/acceleration perturbation from joint d_start,
+        compute force perturbations, backward-accumulate, return per-body total df."""
+        body_df: list[np.ndarray | None] = [None] * nb
+
+        dv_cur = dv0
+        da_cur = da0
+        ci = child_body[d_start]
+
+        # Force perturbation at starting body
+        I_ci = body_I[ci]
+        Ida = da_cur @ I_ci
+        Idv = dv_cur @ I_ci
+        df = np.empty((ns, 6))
+        df[:, :3] = Ida[:, :3] + _batch_cross(dv_cur[:, :3], Iv[ci][:, :3]) + _batch_cross(dv_cur[:, 3:], Iv[ci][:, 3:])
+        df[:, :3] += _batch_cross(v[ci][:, :3], Idv[:, :3]) + _batch_cross(v[ci][:, 3:], Idv[:, 3:])
+        df[:, 3:] = Ida[:, 3:] + _batch_cross(dv_cur[:, :3], Iv[ci][:, 3:]) + _batch_cross(v[ci][:, :3], Idv[:, 3:])
+        body_df[ci] = df
+
+        # Propagate to descendants
+        for dd in range(d_start + 1, nd):
+            ci_dd = child_body[dd]
+            # Propagate through joint dd transform
+            dv_cur = np.einsum("nij,nj->ni", X[dd], dv_cur)
+            da_new = np.einsum("nij,nj->ni", X[dd], da_cur)
+            # da += dv × vJ
+            da_cross = np.empty((ns, 6))
+            da_cross[:, :3] = _batch_cross(dv_cur[:, :3], vJ_arr[dd][:, :3])
+            da_cross[:, 3:] = _batch_cross(dv_cur[:, 3:], vJ_arr[dd][:, :3]) + _batch_cross(
+                dv_cur[:, :3], vJ_arr[dd][:, 3:]
+            )
+            da_cur = da_new + da_cross
+
+            I_dd = body_I[ci_dd]
+            Ida = da_cur @ I_dd
+            Idv = dv_cur @ I_dd
+            df = np.empty((ns, 6))
+            df[:, :3] = (
+                Ida[:, :3]
+                + _batch_cross(dv_cur[:, :3], Iv[ci_dd][:, :3])
+                + _batch_cross(dv_cur[:, 3:], Iv[ci_dd][:, 3:])
+            )
+            df[:, :3] += _batch_cross(v[ci_dd][:, :3], Idv[:, :3]) + _batch_cross(v[ci_dd][:, 3:], Idv[:, 3:])
+            df[:, 3:] = (
+                Ida[:, 3:] + _batch_cross(dv_cur[:, :3], Iv[ci_dd][:, 3:]) + _batch_cross(v[ci_dd][:, :3], Idv[:, 3:])
+            )
+            body_df[ci_dd] = df
+
+        # Backward accumulation
+        df_acc: list[np.ndarray] = [bd.copy() if bd is not None else np.zeros((ns, 6)) for bd in body_df]
+        for dd in range(nd - 1, -1, -1):
+            df_acc[parent_body[dd]] += np.einsum("nij,nj->ni", Xf[dd], df_acc[child_body[dd]])
+        return df_acc
+
+    # --- dtau/dq: perturb each joint angle ---
+    for d in range(nd):
+        ci = child_body[d]
+        # Velocity perturbation at joint d: S × (v_child - vJ) = S × (X @ v_parent)
+        v_from_parent = v[ci] - vJ_arr[d]  # = X[d] @ v[parent_body[d]]
+        Sd = S[d]
+
+        # dv = -[S]× @ v_from_parent: use precomputed 6×6 matrix, single BLAS matmul
+        neg_Sx_d = -Sx[d]  # -[S_d]×
+        dv0 = v_from_parent @ neg_Sx_d.T  # (ns, 6)
+
+        # da = -[S]× @ a_from_parent + [dv]× @ vJ
+        # Recompute a_from_parent = X @ a_parent = a[ci] - S*ddq - c
+        w_ci = v[ci][:, :3]
+        vo_ci = v[ci][:, 3:]
+        wJ = vJ_arr[d][:, :3]
+        vJ_lin = vJ_arr[d][:, 3:]
+        c_d = np.empty((ns, 6))
+        c_d[:, :3] = np.cross(w_ci, wJ)
+        c_d[:, 3:] = np.cross(vo_ci, wJ) + np.cross(w_ci, vJ_lin)
+        a_from_parent = a[ci] - np.outer(accelerations[:, d], Sd) - c_d
+
+        da0 = a_from_parent @ neg_Sx_d.T  # -[S]× @ a_from_parent
+        # Add [dv]× @ vJ = -(vJ × dv) component-wise
+        da0[:, :3] += np.cross(dv0[:, :3], vJ_arr[d][:, :3])
+        da0[:, 3:] += np.cross(dv0[:, 3:], vJ_arr[d][:, :3]) + np.cross(dv0[:, :3], vJ_arr[d][:, 3:])
+
+        df_acc = _propagate_perturbation(d, dv0, da0)
+
+        # --- Transform perturbation correction (Featherstone Alg. 9.3) ---
+        # When q_d changes, the spatial transform X_d changes. This affects how the
+        # subtree force f_total[child_d] is propagated back to ancestor bodies.
+        # The extra force at parent_body[d] is: Xf[d] @ (S_d ×* f_total[child_d])
+        # where ×* is the spatial force cross product.
+        ci_d = child_body[d]
+        f_sub = f_total[ci_d]  # (ns, 6): subtree force at child body of joint d
+
+        # S ×* f using precomputed 6×6 force cross matrix
+        df_xform = f_sub @ Sfx[d].T  # (ns, 6)
+
+        # Negate to match our sign convention (dX/dq = -S × X → force term is -S ×* f)
+        # Actually: (dX/dq)^T @ f = X^T · [S]×* @ f, but dX/dq = -[S]× · X
+        # So: (-[S]× · X)^T @ f = -X^T · [S]×^T @ f = X^T · [S]×* @ f
+        # Transform to parent: Xf[d] @ df_xform
+        df_at_parent = np.einsum("nij,nj->ni", Xf[d], df_xform)
+
+        # Propagate backward from parent_body[d] through ancestor joints to root
+        # and add the torque correction at each ancestor joint j < d
+        df_ancestor = df_at_parent
+        for j in range(d - 1, -1, -1):
+            cj = child_body[j]
+            # Add torque correction at joint j
+            df_acc[cj] += df_ancestor
+            # Continue propagating to parent of j
+            df_ancestor = np.einsum("nij,nj->ni", Xf[j], df_ancestor)
+
+        # Add correction to root (for base wrench)
+        df_acc[0] += df_ancestor
+
+        # Extract torques
+        for j in range(nd):
+            dtau_dq[:, fb + j, d] = df_acc[child_body[j]] @ S[j]
+        if is_floating:
+            # Reorder base wrench: Featherstone [moment;force] → iDynTree [force;moment]
+            dtau_dq[:, :3, d] = df_acc[0][:, 3:]  # force (linear)
+            dtau_dq[:, 3:6, d] = df_acc[0][:, :3]  # moment (angular)
+
+    # --- dtau/dv: perturb each joint velocity ---
+    for d in range(nd):
+        ci = child_body[d]
+        Sd = S[d]
+
+        # dv = S (direct velocity perturbation)
+        dv0 = np.tile(Sd, (ns, 1))
+
+        # da = [v]× @ S: v varies per sample, S is constant.
+        # For revolute: S = [s_ω; 0], so [v]× @ S = [ω × s_ω; v₀ × s_ω].
+        # varying × const = varying @ skew(const)
+        s_w = Sd[:3]
+        sw_skew = _skew3(s_w)  # (3,3)
+        da0 = np.empty((ns, 6))
+        da0[:, :3] = v[ci][:, :3] @ sw_skew
+        da0[:, 3:] = v[ci][:, 3:] @ sw_skew
+
+        df_acc = _propagate_perturbation(d, dv0, da0)
+
+        for j in range(nd):
+            dtau_dv[:, fb + j, d] = df_acc[child_body[j]] @ S[j]
+        if is_floating:
+            dtau_dv[:, :3, d] = df_acc[0][:, 3:]
+            dtau_dv[:, 3:6, d] = df_acc[0][:, :3]
+
+    # --- dtau/da (mass matrix): perturb each joint acceleration ---
+    # Since a appears linearly, da = S at joint d, propagated as pure acceleration (no velocity perturbation)
+    for d in range(nd):
+        dv0 = np.zeros((ns, 6))
+        da0 = np.tile(S[d], (ns, 1))
+
+        df_acc = _propagate_perturbation(d, dv0, da0)
+
+        for j in range(nd):
+            M_out[:, fb + j, d] = df_acc[child_body[j]] @ S[j]
+        if is_floating:
+            M_out[:, :3, d] = df_acc[0][:, 3:]
+            M_out[:, 3:6, d] = df_acc[0][:, :3]
+
+    return dtau_dq, dtau_dv, M_out
+
+
+def _compute_sensitivities_analytical(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    accelerations: np.ndarray,
+    w1_iner: np.ndarray,
+    w2_iner: np.ndarray,
+    params_iner: np.ndarray,
+    u1: np.ndarray,
+    u_last: np.ndarray,
+    c1: float,
+    c2: float,
+    n_dofs_out: int,
+    n_dofs: int,
+    is_floating: bool,
+    has_visc_friction: bool,
+    w1_visc: np.ndarray,
+    w2_visc: np.ndarray,
+    params_visc: np.ndarray,
+    fb: int,
+    torque_absmax_idx: np.ndarray,
+    sample_indices: list[int],
+    n_samples: int,
+    n_links: int,
+    tree_info: dict,
+    gravity_only: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute Phase A sensitivities using analytical RNEA derivatives.
+
+    Uses Featherstone spatial algebra with 6x6 spatial inertia matrices directly.
+    This handles non-physical parameter vectors (from SVD contraction) without issues,
+    unlike Pinocchio's (mass, COM, I_com) decomposition which requires positive mass.
+    """
+    nd = n_dofs
+
+    if gravity_only:
+        w1_iner = _expand_gravity_only_params(w1_iner, n_links)
+        w2_iner = _expand_gravity_only_params(w2_iner, n_links)
+        params_iner = _expand_gravity_only_params(params_iner, n_links)
+
+    pos = positions[sample_indices]
+    vel = velocities[sample_indices]
+    acc = accelerations[sample_indices]
+
+    # Build spatial inertias for each contraction vector
+    body_I_w1 = _build_body_spatial_inertias(w1_iner, n_links, tree_info)
+    body_I_w2 = _build_body_spatial_inertias(w2_iner, n_links, tree_info)
+
+    # Compute RNEA derivatives for w1 and w2
+    dtau_dq_w1, dtau_dv_w1, M_w1 = _compute_rnea_derivatives_batch(
+        body_I_w1, tree_info, pos, vel, acc, is_floating, fb, n_dofs_out
+    )
+    dtau_dq_w2, dtau_dv_w2, M_w2 = _compute_rnea_derivatives_batch(
+        body_I_w2, tree_info, pos, vel, acc, is_floating, fb, n_dofs_out
+    )
+
+    # Contract: sens[t, d] = c1 * u1_t @ dtau_w1[t, :, d] + c2 * u_last_t @ dtau_w2[t, :, d]
+    sens_q = np.zeros((n_samples, nd))
+    sens_dq = np.zeros((n_samples, nd))
+    sens_ddq = np.zeros((n_samples, nd))
+
+    for idx, t in enumerate(sample_indices):
+        row_start = t * n_dofs_out
+        u1_t = u1[row_start : row_start + n_dofs_out]
+        u_last_t = u_last[row_start : row_start + n_dofs_out]
+
+        # Position sensitivities
+        sens_q[t, :] = c1 * (u1_t @ dtau_dq_w1[idx]) + c2 * (u_last_t @ dtau_dq_w2[idx])
+
+        # Velocity sensitivities (with viscous friction correction)
+        dv_w1 = dtau_dv_w1[idx].copy()
+        dv_w2 = dtau_dv_w2[idx].copy()
+        if has_visc_friction:
+            for d_joint in range(nd):
+                dv_w1[fb + d_joint, d_joint] += w1_visc[d_joint]
+                dv_w2[fb + d_joint, d_joint] += w2_visc[d_joint]
+        sens_dq[t, :] = c1 * (u1_t @ dv_w1) + c2 * (u_last_t @ dv_w2)
+
+        # Acceleration sensitivities
+        sens_ddq[t, :] = c1 * (u1_t @ M_w1[idx]) + c2 * (u_last_t @ M_w2[idx])
+
+    # Torque gradient at absmax samples
+    torque_grad_samples = set(int(idx) for idx in torque_absmax_idx)
+    dtau_dq_out = np.zeros((nd, nd))
+    dtau_ddq_state_out = np.zeros((nd, nd))
+    dtau_dddq_out = np.zeros((nd, nd))
+
+    # Check if any absmax samples are in our sample_indices
+    needed_samples = torque_grad_samples.intersection(sample_indices)
+    if needed_samples:
+        body_I_p = _build_body_spatial_inertias(params_iner, n_links, tree_info)
+        dtau_dq_p, dtau_dv_p, M_p = _compute_rnea_derivatives_batch(
+            body_I_p, tree_info, pos, vel, acc, is_floating, fb, n_dofs_out
+        )
+
+        for idx, t in enumerate(sample_indices):
+            if t in torque_grad_samples:
+                for n in range(nd):
+                    if torque_absmax_idx[n] == t:
+                        dtau_dq_out[n, :] = dtau_dq_p[idx, fb + n, :]
+                        dtau_ddq_state_out[n, :] = dtau_dv_p[idx, fb + n, :]
+                        if has_visc_friction:
+                            dtau_ddq_state_out[n, n] += params_visc[n]
+                        dtau_dddq_out[n, :] = M_p[idx, fb + n, :]
+
+    return sens_q, sens_dq, sens_ddq, dtau_dq_out, dtau_ddq_state_out, dtau_dddq_out
+
+
 def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
     """Initialize a worker process with its own iDynTree model.
 
@@ -59,7 +657,8 @@ def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
     iDynTree.dofsListFromURDF(urdf_file, config_dict["jointNames"])
     config_dict["num_dofs"] = len(config_dict["jointNames"])
 
-    _worker_state["model"] = Model(config_dict, urdf_file)
+    model = Model(config_dict, urdf_file)
+    _worker_state["model"] = model
 
 
 def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
@@ -590,7 +1189,7 @@ def compute_analytical_gradient(
     # ---- Phase 2: wf derivatives (numerical FD of trajectory) ----
     dq_dwf, ddq_dwf, dddq_dwf = _compute_wf_derivatives(optimizer, times)
 
-    # ---- Phase A: Regressor sensitivities via FD (the expensive loop) ----
+    # ---- Phase A: Regressor sensitivities ----
     epsilon = config.get("analyticalGradientEpsilon", 1e-7)
     inv_2eps = 1.0 / (2.0 * epsilon)  # used by collision gradient FD
     is_floating = model.opt["floatingBase"]
@@ -619,72 +1218,163 @@ def compute_analytical_gradient(
     subsample = config.get("analyticalGradientSubsample", 1)
     sample_indices = list(range(0, n_samples, subsample))
 
-    import os
-
     n_jobs = config.get("analyticalGradientJobs", 1)
     if n_jobs <= 0:
         n_jobs = max(1, (os.cpu_count() or 1) - 2)
 
-    # Common arguments packed for the worker function
-    worker_common = (
-        positions,
-        velocities,
-        accelerations,
-        w1_iner,
-        w2_iner,
-        params_iner,
-        u1,
-        u_last,
-        c1,
-        c2,
-        n_dofs_out,
-        epsilon,
-        is_floating,
-        0 if is_floating else 6,
-        has_visc_friction,
-        w1_visc_arr,
-        w2_visc_arr,
-        params_visc_arr,
-        fb,
-        torque_absmax_idx,
-    )
+    gradient_method = config.get("analyticalGradientMethod", "analytical")
 
-    if n_jobs > 1 and len(sample_indices) > n_jobs:
-        # --- Parallel path: split samples across worker processes ---
-        grad_pool: multiprocessing.pool.Pool = _get_gradient_pool(n_jobs, config["urdf"], config)
-        chunks = np.array_split(sample_indices, n_jobs)
-        work_items = [(list(chunk), *worker_common) for chunk in chunks]
-        results = grad_pool.map(_gradient_worker_func, work_items)
+    if gradient_method == "analytical":
+        # --- Analytical RNEA derivatives using spatial algebra ---
+        # Direct Featherstone-style computation with 6×6 spatial inertia matrices.
+        # Handles non-physical contraction vectors (zero/negative mass) without issues.
+        if "tree_info" not in _worker_state:
+            _worker_state["tree_info"] = _parse_kinematic_tree(config["urdf"], model.jointNames, model.linkNames)
+
+        tree_info = _worker_state["tree_info"]
+        gravity_only = model.opt.get("identifyGravityParamsOnly", False)
+
+        if n_jobs > 1 and len(sample_indices) > n_jobs:
+            # Parallel via joblib threads. Numpy batch operations release the GIL
+            # via BLAS, so threads can achieve speedup for large models / many samples.
+            # For small models, set analyticalGradientJobs: 1 to avoid overhead.
+            from joblib import Parallel, delayed
+
+            n_links = model.num_links
+            chunks = np.array_split(sample_indices, n_jobs)
+            anal_results = Parallel(n_jobs=n_jobs, prefer="threads")(
+                delayed(_compute_sensitivities_analytical)(
+                    positions,
+                    velocities,
+                    accelerations,
+                    w1_iner,
+                    w2_iner,
+                    params_iner,
+                    u1,
+                    u_last,
+                    c1,
+                    c2,
+                    n_dofs_out,
+                    nd,
+                    is_floating,
+                    has_visc_friction,
+                    w1_visc_arr,
+                    w2_visc_arr,
+                    params_visc_arr,
+                    fb,
+                    torque_absmax_idx,
+                    list(chunk),
+                    n_samples,
+                    n_links,
+                    tree_info,
+                    gravity_only,
+                )
+                for chunk in chunks
+            )
+
+            sens_q = np.zeros((n_samples, nd))
+            sens_dq = np.zeros((n_samples, nd))
+            sens_ddq = np.zeros((n_samples, nd))
+            dtau_dq = np.zeros((nd, nd))
+            dtau_ddq_state = np.zeros((nd, nd))
+            dtau_dddq = np.zeros((nd, nd))
+            for sq, sdq, sddq, dq_out, ddq_out, dddq_out in anal_results:
+                sens_q += sq
+                sens_dq += sdq
+                sens_ddq += sddq
+                dtau_dq += dq_out
+                dtau_ddq_state += ddq_out
+                dtau_dddq += dddq_out
+        else:
+            sens_q, sens_dq, sens_ddq, dtau_dq, dtau_ddq_state, dtau_dddq = _compute_sensitivities_analytical(
+                positions,
+                velocities,
+                accelerations,
+                w1_iner,
+                w2_iner,
+                params_iner,
+                u1,
+                u_last,
+                c1,
+                c2,
+                n_dofs_out,
+                nd,
+                is_floating,
+                has_visc_friction,
+                w1_visc_arr,
+                w2_visc_arr,
+                params_visc_arr,
+                fb,
+                torque_absmax_idx,
+                sample_indices,
+                n_samples,
+                model.num_links,
+                tree_info,
+                gravity_only,
+            )
+
     else:
-        # --- Serial path: use the main process model directly ---
-        if "model" not in _worker_state:
-            _worker_state["model"] = model
-        results = [_gradient_worker_func((sample_indices, *worker_common))]
-        chunks = [np.array(sample_indices)]
+        # --- FD path (default): numerical finite differences of iDynTree regressor ---
+        # Common arguments packed for the worker function
+        worker_common = (
+            positions,
+            velocities,
+            accelerations,
+            w1_iner,
+            w2_iner,
+            params_iner,
+            u1,
+            u_last,
+            c1,
+            c2,
+            n_dofs_out,
+            epsilon,
+            is_floating,
+            0 if is_floating else 6,
+            has_visc_friction,
+            w1_visc_arr,
+            w2_visc_arr,
+            params_visc_arr,
+            fb,
+            torque_absmax_idx,
+        )
 
-    # Aggregate results from all workers
-    sens_q = np.zeros((n_samples, nd))
-    sens_dq = np.zeros((n_samples, nd))
-    sens_ddq = np.zeros((n_samples, nd))
-    dtau_dq = np.zeros((nd, nd))
-    dtau_ddq_state = np.zeros((nd, nd))
-    dtau_dddq = np.zeros((nd, nd))
+        if n_jobs > 1 and len(sample_indices) > n_jobs:
+            # --- Parallel path: split samples across worker processes ---
+            grad_pool = _get_gradient_pool(n_jobs, config["urdf"], config)
+            chunks = np.array_split(sample_indices, n_jobs)
+            fd_work_items = [(list(chunk), *worker_common) for chunk in chunks]
+            results = grad_pool.map(_gradient_worker_func, fd_work_items)
+        else:
+            # --- Serial path: use the main process model directly ---
+            if "model" not in _worker_state:
+                _worker_state["model"] = model
+            results = [_gradient_worker_func((sample_indices, *worker_common))]
+            chunks = [np.array(sample_indices)]
 
-    for chunk_idx, (sq, sdq, sddq, torque_dict) in enumerate(results):
-        chunk = list(chunks[chunk_idx])
-        for ci, t in enumerate(chunk):
-            sens_q[t] = sq[ci]
-            sens_dq[t] = sdq[ci]
-            sens_ddq[t] = sddq[ci]
-        for key, val in torque_dict.items():
-            parts = key.split("_")
-            state_type, n_i, d_i = parts[0], int(parts[1]), int(parts[2])
-            if state_type == "dq":
-                dtau_dq[n_i, d_i] = val
-            elif state_type == "ddq":
-                dtau_ddq_state[n_i, d_i] = val
-            elif state_type == "dddq":
-                dtau_dddq[n_i, d_i] = val
+        # Aggregate results from all workers
+        sens_q = np.zeros((n_samples, nd))
+        sens_dq = np.zeros((n_samples, nd))
+        sens_ddq = np.zeros((n_samples, nd))
+        dtau_dq = np.zeros((nd, nd))
+        dtau_ddq_state = np.zeros((nd, nd))
+        dtau_dddq = np.zeros((nd, nd))
+
+        for chunk_idx, (sq, sdq, sddq, torque_dict) in enumerate(results):
+            chunk = list(chunks[chunk_idx])
+            for ci, t in enumerate(chunk):
+                sens_q[t] = sq[ci]
+                sens_dq[t] = sdq[ci]
+                sens_ddq[t] = sddq[ci]
+            for key, val in torque_dict.items():
+                parts = key.split("_")
+                state_type, n_i, d_i = parts[0], int(parts[1]), int(parts[2])
+                if state_type == "dq":
+                    dtau_dq[n_i, d_i] = val
+                elif state_type == "ddq":
+                    dtau_ddq_state[n_i, d_i] = val
+                elif state_type == "dddq":
+                    dtau_dddq[n_i, d_i] = val
 
     if subsample > 1:
         sens_q *= subsample

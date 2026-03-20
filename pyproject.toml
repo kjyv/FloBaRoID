@@ -9,7 +9,7 @@ dependencies = [
     "numpy==2.4.3",
     "scipy==1.17.1",
     # dynamics
-    "idyntree",
+    "idyntree==15.0.0",
     # sdp
     "sympy==1.12.1",
     "cvxopt==1.3.3",
@@ -32,17 +32,7 @@ dependencies = [
     "python-fcl~=0.7.0",
     "mypy~=1.19.1",
     "optuna>=4.8.0",
-]
-
-[project.optional-dependencies]
-visualization = [
-]
-tikz-plots = [
-    "matplotlib",
-    "matplotlib2tikz",
-]
-ipopt = [
-    "cyipopt",
+    "joblib>=1.5.3",
 ]
 
 [tool.uv]
@@ -58,6 +48,14 @@ dev = [
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
     "types-PyYAML",
+]
+visualization = [
+    "matplotlib",
+    "matplotlib2tikz",
+]
+optimization = [
+    # IPOPT; good local gradient solver, preferred over SLSQP
+    "cyipopt",
 ]
 
 [tool.ruff]

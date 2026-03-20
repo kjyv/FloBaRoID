@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import math
 import os
+import sys
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -18,7 +19,6 @@ from OpenGL import GL as gl
 from OpenGL.GL.shaders import compileShader
 from pyglet.window import key
 
-from excitation.trajectoryGenerator import PulsedTrajectory
 from identification.helpers import is_dark_mode as _is_dark_mode
 from identification.model import Model
 
@@ -405,12 +405,12 @@ class Grid:
 
         for x in np.arange(xmin, xmax + dx, dx):
             for y in np.arange(xmin, xmax + dx, dx):
-                self.vertices.append((x, xmin, 0.0))
-                self.vertices.append((x, xmax, 0.0))
+                self.vertices.append((float(x), xmin, 0.0))
+                self.vertices.append((float(x), xmax, 0.0))
                 self.indices.append((idx + 0, idx + 1))
                 idx += 2
-                self.vertices.append((xmin, y, 0.0))
-                self.vertices.append((xmax, y, 0.0))
+                self.vertices.append((xmin, float(y), 0.0))
+                self.vertices.append((xmax, float(y), 0.0))
                 self.indices.append((idx + 0, idx + 1))
                 idx += 2
 
@@ -1990,11 +1990,11 @@ if __name__ == "__main__":
         if "angles" in data:
             data_type = "static"
         elif "positions" in data:
-            data_type = "measurements"
+            data_type = "positions"
             v.playable = True
         else:
-            data_type = "trajectory"
-            v.playable = True
+            print(f"Error: {args.trajectory} has no saved positions. Regenerate with trajectory.py.")
+            sys.exit(1)
 
         # check if torque data is available
         if "torques" in data:
@@ -2018,12 +2018,7 @@ if __name__ == "__main__":
             # take angles from data
             if data_type == "static":
                 q0 = data["angles"][v.display_index]["angles"]
-            elif data_type == "trajectory":
-                # get data of trajectory
-                if v.trajectory is not None:
-                    v.trajectory.setTime(v.display_index / v.playback_rate)
-                    q0 = [v.trajectory.getAngle(d) for d in range(config["num_dofs"])]
-            elif data_type == "measurements":
+            elif data_type == "positions":
                 idx = int(v.display_index * v.freq / v.playback_rate)
                 if idx > data["positions"].shape[0] - 1:
                     v.display_index = 0
@@ -2084,16 +2079,7 @@ if __name__ == "__main__":
     if args.trajectory:
         if data_type == "static":
             v.display_max = len(data["angles"])  # number of postures
-        elif data_type == "trajectory":
-            trajectory = PulsedTrajectory(n_dof, use_deg=data["use_deg"])
-            jl = [tuple(row) for row in data["joint_limits"]] if "joint_limits" in data else None
-            trajectory.initWithParams(data["a"], data["b"], data["q"], data["nf"], data["wf"], joint_limits=jl)
-            v.setModelTrajectory(trajectory)
-
-            v.freq = config["excitationFrequency"]
-            v.playback_rate = v.freq
-            v.display_max = int(trajectory.getPeriodLength() * v.playback_rate)  # length of trajectory
-        elif data_type == "measurements":
+        elif data_type == "positions":
             v.freq = config["excitationFrequency"]
             v.playback_rate = v.freq
             v.display_max = data["positions"].shape[0]

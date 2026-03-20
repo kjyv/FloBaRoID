@@ -64,7 +64,7 @@ def _optuna_worker(
 
     import optuna as _optuna
 
-    from excitation.trajectoryGenerator import simulateTrajectory
+    from excitation.trajectoryGenerator import computeTrajectoryDynamics
     from excitation.trajectoryOptimizer import TrajectoryOptimizer
     from identification.model import Model
     from identifier import Identification
@@ -82,7 +82,7 @@ def _optuna_worker(
 
     model = Model(config, config["urdf"])
     idf = Identification(config, config["urdf"], None, None, None, None)
-    worker_opt = TrajectoryOptimizer(config, idf, model, simulateTrajectory)
+    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics)
     worker_opt.is_global = True
 
     def worker_objective(trial: _optuna.Trial) -> float:

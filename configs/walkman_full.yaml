@@ -19,6 +19,7 @@ localOptSensStep: 0.02
 useAnalyticalGradients: 1        #use analytical gradients for local optimization
 analyticalGradientEpsilon: 1.0e-7
 analyticalGradientJobs: 0        #parallel workers for gradient (0 = auto: CPU cores - 2, 1 = serial)
+analyticalGradientMethod: 'FD'   #gradient method: 'FD' (finite differences) or 'pinocchio' (analytical RNEA derivatives)
 minTolConstr: 0.1                # tolerance for feasibility (tanh rounding can cause tiny angle violations)
 showOptimizationGraph: 1
 showOptimizationTrajs: 0

@@ -69,7 +69,7 @@ initialPostures: []              #for static optimization, feasible postures to 
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
-exciteMethod: null #'yarp'       #currently 'yarp', 'ros' or null
+exciteMethod: null #'yarp'       #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: ''               #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)

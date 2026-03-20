@@ -5,15 +5,10 @@ import sys
 
 import numpy as np
 import yaml
-from colorama import Fore
 from idyntree import bindings as iDynTree
 
 from excitation.optimizer import plotter
-from excitation.trajectoryGenerator import (
-    FixedPositionTrajectory,
-    PulsedTrajectory,
-    simulateTrajectory,
-)
+from excitation.trajectoryGenerator import ArrayTrajectory, FixedPositionTrajectory, computeTrajectoryDynamics
 
 parser = argparse.ArgumentParser(description="Send an excitation trajectory and record measurements to <filename>.")
 parser.add_argument("--model", required=True, type=str, help="the file to load the robot model from")
@@ -59,48 +54,48 @@ def main():
     else:
         traj_file = config["urdf"] + ".trajectory.npz"
 
-    # load from file
+    # load trajectory from file
     try:
-        # replay optimized trajectory if found
         tf = np.load(traj_file, encoding="latin1", allow_pickle=True)
-        trajectory: FixedPositionTrajectory | PulsedTrajectory
+        trajectory: ArrayTrajectory | FixedPositionTrajectory
         if "static" in tf and tf["static"]:
-            # static posture file
             trajectory = FixedPositionTrajectory(config)
             trajectory.initWithAngles(tf["angles"])
             print(f"using static postures from file {traj_file}")
+        elif "positions" in tf:
+            trajectory = ArrayTrajectory(tf["times"], tf["positions"], tf["velocities"], tf["accelerations"])
+            print(f"using trajectory from file {traj_file} ({len(tf['times'])} samples)")
         else:
-            # proper trajectory
-            trajectory = PulsedTrajectory(config["num_dofs"], use_deg=tf["use_deg"])
-            jl = [tuple(row) for row in tf["joint_limits"]] if "joint_limits" in tf else None
-            trajectory.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"], joint_limits=jl)
-            print(f"using trajectory from file {traj_file}")
+            print(f"Error: {traj_file} has no saved positions. Regenerate with trajectory.py.")
+            sys.exit(1)
     except OSError:
         print(f"No trajectory file found, can't excite ({traj_file})!")
         sys.exit(1)
 
-    # generating simulation of trajectory in any case
-    traj_data, data = simulateTrajectory(config, trajectory)
-    if config["excitationSimulate"] and config["exciteMethod"]:
-        print(Fore.RED + "Using simulated torques!" + Fore.RESET)
-
     if args.dryrun:
         return
 
+    excite_method = config.get("exciteMethod")
+    if not excite_method:
+        print("Error: exciteMethod must be set to 'yarp' or 'ros'.")
+        print("For simulated measurements, use simulator.py instead.")
+        sys.exit(1)
+
+    # compute trajectory dynamics for reference torques
+    traj_data, data = computeTrajectoryDynamics(config, trajectory)
+
     # excite real robot
-    if config["exciteMethod"] == "yarp":
+    if excite_method == "yarp":
         from excitation.robotCommunication import yarp_gym
 
         yarp_gym.main(config, trajectory, traj_data)
-    elif config["exciteMethod"] == "ros":
+    elif excite_method == "ros":
         from excitation.robotCommunication import ros_moveit
 
         ros_moveit.main(config, trajectory, traj_data)
     else:
-        # or just use simulation data
-        print("No excitation method given! Only doing simulation")
-        saveMeasurements(args.filename, traj_data)
-        return
+        print(f"Error: unknown exciteMethod '{excite_method}'. Use 'yarp' or 'ros'.")
+        sys.exit(1)
 
     # adapt measured array sizes to input array sizes
     traj_data["Q"] = np.resize(traj_data["Q"], data.samples["positions"].shape)
@@ -115,22 +110,6 @@ def main():
     traj_data["Qraw"] = np.zeros_like(traj_data["Q"])
     traj_data["TauRaw"] = np.zeros_like(traj_data["Tau"])
 
-    # if simulating torques, prepare some arrays with proper length (needs to be same as input for
-    # simulation)
-    if config["excitationSimulate"]:
-        tau_len = traj_data["Tau"].shape[0]  # get length of measured (zero) taus
-        if tau_len < traj_data["torques"].shape[0]:
-            # less measured samples than input samples
-            traj_data["Tau"][:, :] = traj_data["torques"][0:tau_len, :]
-            if config["exciteMethod"] is None:
-                traj_data["V"][:, :] = traj_data["velocities"][0:tau_len, :]
-        else:
-            # less or equal input samples than measured samples
-            torques_len = traj_data["torques"].shape[0]
-            traj_data["Tau"][:torques_len, :] = traj_data["torques"][:, :]
-            if config["exciteMethod"] is None:
-                traj_data["V"] = traj_data["velocities"][:, :]
-
     # filter, differentiate, convert, etc.
     data.preprocess(
         Q=traj_data["Q"],
@@ -144,58 +123,30 @@ def main():
         Fs=traj_data["measured_frequency"],
     )
 
-    # use simulated torques as measured data (since e.g. Gazebo produces unusable torque values)
-    # (simulate again with measured/filtered data)
-    if config["excitationSimulate"]:
-        traj_data_sim, data = simulateTrajectory(config, trajectory, measurements=traj_data)
-        traj_data["Tau"] = data.samples["torques"]
-
     saveMeasurements(args.filename, traj_data)
 
 
 def saveMeasurements(filename, data):
-    # write sample arrays to data file
-    if config["exciteMethod"]:
-        np.savez(
-            filename,
-            positions=data["Q"],
-            positions_raw=data["Qraw"],
-            velocities=data["V"],
-            velocities_raw=data["Vraw"],
-            accelerations=data["Vdot"],
-            torques=data["Tau"],
-            torques_raw=data["TauRaw"],
-            target_positions=np.deg2rad(data["Qsent"]),
-            target_velocities=np.deg2rad(data["QdotSent"]),
-            target_accelerations=np.deg2rad(data["QddotSent"]),
-            base_velocity=data["base_velocity"],
-            base_acceleration=data["base_acceleration"],
-            base_rpy=data["base_rpy"],
-            contacts=data["contacts"],
-            times=data["T"],
-            frequency=data["measured_frequency"],
-        )
-    else:
-        np.savez(
-            filename,
-            positions=data["positions"],
-            positions_raw=data["positions"],
-            velocities=data["velocities"],
-            velocities_raw=data["velocities"],
-            accelerations=data["accelerations"],
-            torques=data["torques"],
-            torques_raw=data["torques"],
-            target_positions=np.deg2rad(data["target_positions"]),
-            target_velocities=np.deg2rad(data["target_velocities"]),
-            target_accelerations=np.deg2rad(data["target_accelerations"]),
-            base_velocity=data["base_velocity"],
-            base_acceleration=data["base_acceleration"],
-            base_rpy=data["base_rpy"],
-            contacts=data["contacts"],
-            times=data["times"],
-            frequency=data["measured_frequency"],
-        )
-
+    """Write measured sample arrays to data file."""
+    np.savez(
+        filename,
+        positions=data["Q"],
+        positions_raw=data["Qraw"],
+        velocities=data["V"],
+        velocities_raw=data["Vraw"],
+        accelerations=data["Vdot"],
+        torques=data["Tau"],
+        torques_raw=data["TauRaw"],
+        target_positions=np.deg2rad(data["Qsent"]),
+        target_velocities=np.deg2rad(data["QdotSent"]),
+        target_accelerations=np.deg2rad(data["QddotSent"]),
+        base_velocity=data["base_velocity"],
+        base_acceleration=data["base_acceleration"],
+        base_rpy=data["base_rpy"],
+        contacts=data["contacts"],
+        times=data["T"],
+        frequency=data["measured_frequency"],
+    )
     print(f"saved measurements to {args.filename}")
 
 

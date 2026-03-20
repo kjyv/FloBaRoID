@@ -13,12 +13,13 @@ Usage:
 """
 
 import argparse
+import os
 import sys
+from typing import Any
 
 import numpy as np
 import yaml
 from idyntree import bindings as iDynTree
-from scipy.signal import butter, sosfiltfilt  # used by generate_static_posture_data
 
 from excitation.simulationEffects import (
     JointProperties,
@@ -30,20 +31,20 @@ from excitation.simulationEffects import (
     add_joint_elasticity,
     add_sensor_noise,
     add_structural_deflection,
-    add_sudden_stops,
     add_temperature_friction_drift,
     add_timing_jitter,
     add_torque_quantization,
     add_torque_ripple,
     rpy_to_angular_velocity,
 )
-from excitation.trajectoryGenerator import PulsedTrajectory
+from identification.data import Data
+from identification.model import Model
 
 parser = argparse.ArgumentParser(description="Simulate realistic measurements from a trajectory file.")
 parser.add_argument("--config", required=True, type=str, help="use options from given config file")
 parser.add_argument("--model", required=True, type=str, help="the URDF model file")
 parser.add_argument("--trajectory", type=str, help="trajectory .npz file (default: <model>.trajectory.npz)")
-parser.add_argument("--filename", type=str, default="measurements.npz", help="output measurements file")
+parser.add_argument("--filename", type=str, help="output measurements file (default: trajectory file)")
 args = parser.parse_args()
 
 with open(args.config) as stream:
@@ -59,202 +60,31 @@ if not iDynTree.dofsListFromURDF(config["urdf"], config["jointNames"]):
 config["num_dofs"] = len(config["jointNames"])
 
 
-def load_trajectory(
-    traj_file: str, num_dofs: int, freq: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Load a PulsedTrajectory from .npz and compute position/velocity/acceleration arrays."""
-    tf = np.load(traj_file, encoding="latin1", allow_pickle=True)
-    use_deg = bool(tf["use_deg"])
-    traj = PulsedTrajectory(num_dofs, use_deg=use_deg)
-    jl = [tuple(row) for row in tf["joint_limits"]] if "joint_limits" in tf else None
-    traj.initWithParams(tf["a"], tf["b"], tf["q"], tf["nf"], tf["wf"], joint_limits=jl)
+def load_trajectory_data(traj_file: str) -> dict[str, np.ndarray]:
+    """Load trajectory kinematics saved by trajectory.py.
 
-    num_samples = int(traj.getPeriodLength() * freq)
-    times = np.arange(num_samples) / freq
-    positions = np.empty((num_samples, num_dofs))
-    velocities = np.empty((num_samples, num_dofs))
-    accelerations = np.empty((num_samples, num_dofs))
-
-    for d in range(num_dofs):
-        osc = traj.oscillators[d]
-        l_arr = np.arange(1, osc.nf + 1)
-        wlt = osc.w_f * np.outer(times, l_arr)
-        sin_wlt = np.sin(wlt)
-        cos_wlt = np.cos(wlt)
-
-        a_arr = np.atleast_1d(np.asarray(osc.a, dtype=float))
-        b_arr = np.atleast_1d(np.asarray(osc.b, dtype=float))
-
-        if hasattr(osc, "q_range"):  # BoundedOscillationGenerator
-            # bounded mode: raw signal → tanh mapping → position within joint limits
-            q_center: float = osc.q_center  # type: ignore[union-attr]
-            q_range: float = osc.q_range  # type: ignore[union-attr]
-            raw = cos_wlt @ b_arr + sin_wlt @ a_arr
-            th = np.tanh(raw)
-            sech2 = 1.0 - th**2
-            positions[:, d] = q_center + q_range * th
-
-            wl = osc.w_f * l_arr
-            raw_dot = cos_wlt @ (a_arr * wl) - sin_wlt @ (b_arr * wl)
-            raw_ddot = -sin_wlt @ (a_arr * wl**2) - cos_wlt @ (b_arr * wl**2)
-            velocities[:, d] = q_range * sech2 * raw_dot
-            accelerations[:, d] = q_range * (sech2 * raw_ddot - 2.0 * th * sech2 * raw_dot**2)
-        else:
-            # classic Swevers mode
-            a_coeff = a_arr / (osc.w_f * l_arr)
-            b_coeff = b_arr / (osc.w_f * l_arr)
-            positions[:, d] = sin_wlt @ a_coeff - cos_wlt @ b_coeff + osc.nf * osc.q0
-            velocities[:, d] = cos_wlt @ a_arr + sin_wlt @ b_arr
-
-            wl = osc.w_f * l_arr
-            accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
-
-    if use_deg:
-        positions = np.deg2rad(positions)
-        velocities = np.deg2rad(velocities)
-        accelerations = np.deg2rad(accelerations)
-
-    return times, positions, velocities, accelerations
-
-
-def compute_inverse_dynamics_fixed_base(
-    model: iDynTree.Model,
-    kinDyn: iDynTree.KinDynComputations,
-    num_dofs: int,
-    positions: np.ndarray,
-    velocities: np.ndarray,
-    accelerations: np.ndarray,
-) -> np.ndarray:
-    """Compute joint torques via fixed-base inverse dynamics."""
-    num_samples = positions.shape[0]
-    torques = np.zeros((num_samples, num_dofs))
-
-    gravity = iDynTree.Vector3()
-    gravity.setVal(0, 0.0)
-    gravity.setVal(1, 0.0)
-    gravity.setVal(2, -9.81)
-
-    s = iDynTree.JointPosDoubleArray(num_dofs)
-    ds = iDynTree.JointDOFsDoubleArray(num_dofs)
-
-    for t in range(num_samples):
-        for j in range(num_dofs):
-            s.setVal(j, positions[t, j])
-            ds.setVal(j, velocities[t, j])
-        kinDyn.setRobotState(s, ds, gravity)
-
-        ddq = iDynTree.JointDOFsDoubleArray(num_dofs)
-        for j in range(num_dofs):
-            ddq.setVal(j, accelerations[t, j])
-
-        ext_wrenches = iDynTree.LinkWrenches(model)
-        gen_torques = iDynTree.FreeFloatingGeneralizedTorques(model)
-        base_acc = iDynTree.Vector6()
-        kinDyn.inverseDynamics(base_acc, ddq, ext_wrenches, gen_torques)
-        torques[t, :] = gen_torques.jointTorques().toNumPy()
-
-    return torques
-
-
-def compute_inverse_dynamics_floating_base(
-    model: iDynTree.Model,
-    kinDyn: iDynTree.KinDynComputations,
-    num_dofs: int,
-    positions: np.ndarray,
-    velocities: np.ndarray,
-    accelerations: np.ndarray,
-    base_rpy: np.ndarray,
-    base_velocity: np.ndarray,
-    base_acceleration: np.ndarray,
-) -> np.ndarray:
-    """Compute torques (base wrench + joint torques) via floating-base inverse dynamics."""
-    num_samples = positions.shape[0]
-    torques = np.zeros((num_samples, num_dofs + 6))
-
-    gravity = iDynTree.Vector3()
-    gravity.setVal(0, 0.0)
-    gravity.setVal(1, 0.0)
-    gravity.setVal(2, -9.81)
-
-    for t in range(num_samples):
-        s = iDynTree.JointPosDoubleArray(num_dofs)
-        ds = iDynTree.JointDOFsDoubleArray(num_dofs)
-        ddq = iDynTree.JointDOFsDoubleArray(num_dofs)
-        for j in range(num_dofs):
-            s.setVal(j, positions[t, j])
-            ds.setVal(j, velocities[t, j])
-            ddq.setVal(j, accelerations[t, j])
-
-        rot = iDynTree.Rotation.RPY(base_rpy[t, 0], base_rpy[t, 1], base_rpy[t, 2])
-        pos_idt = iDynTree.Position.Zero()
-        # Convention: RPY describes base_R_world, invert to get world_T_base
-        # (must match identification/model.py line 249)
-        world_T_base = iDynTree.Transform(rot, pos_idt).inverse()
-
-        base_vel_twist = iDynTree.Twist()
-        for i in range(6):
-            base_vel_twist.setVal(i, base_velocity[t, i])
-
-        kinDyn.setRobotState(world_T_base, s, base_vel_twist, ds, gravity)
-
-        base_acc = iDynTree.Vector6()
-        for i in range(6):
-            base_acc.setVal(i, base_acceleration[t, i])
-
-        ext_wrenches = iDynTree.LinkWrenches(model)
-        gen_torques = iDynTree.FreeFloatingGeneralizedTorques(model)
-        kinDyn.inverseDynamics(base_acc, ddq, ext_wrenches, gen_torques)
-
-        torques[t, 0:6] = gen_torques.baseWrench().toNumPy()
-        torques[t, 6:] = gen_torques.jointTorques().toNumPy()
-
-    return torques
-
-
-def generate_static_posture_data(
-    model: iDynTree.Model,
-    kinDyn: iDynTree.KinDynComputations,
-    num_dofs: int,
-    postures: list[list[float]],
-    samples_per_posture: int,
-    freq: float,
-    rng: np.random.Generator,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generate static posture measurement data (gravity torques only).
-
-    Returns (times, positions, velocities, torques_clean, torques_noisy).
+    Returns a dict with keys: times, positions, velocities, accelerations.
     """
-    total_samples = len(postures) * samples_per_posture
+    tf = np.load(traj_file, encoding="latin1", allow_pickle=True)
+    required_keys = {"positions", "velocities", "accelerations", "times"}
+    missing = required_keys - set(tf.files)
+    if missing:
+        print(f"Error: {traj_file} is missing sampled trajectory data: {', '.join(sorted(missing))}")
+        print("Regenerate it with trajectory.py (which now saves sampled data).")
+        sys.exit(1)
 
-    positions = np.zeros((total_samples, num_dofs))
-    velocities = np.zeros((total_samples, num_dofs))
-    accelerations = np.zeros((total_samples, num_dofs))
-    times = np.arange(total_samples) / freq
-
-    for p_idx, posture in enumerate(postures):
-        start = p_idx * samples_per_posture
-        end = start + samples_per_posture
-        for j in range(num_dofs):
-            positions[start:end, j] = posture[j]
-
-    torques = compute_inverse_dynamics_fixed_base(model, kinDyn, num_dofs, positions, velocities, accelerations)
-
-    torque_noise = rng.normal(0, 0.02, torques.shape)
-    torques_noisy = torques + torque_noise
-    sos = butter(4, 40.0, btype="low", fs=freq, output="sos")
-    for j in range(torques.shape[1]):
-        torques_noisy[:, j] = sosfiltfilt(sos, torques_noisy[:, j])
-
-    pos_noise = rng.normal(0, 1e-4, positions.shape)
-    positions_noisy = positions + pos_noise
-
-    return times, positions_noisy, velocities, torques, torques_noisy
+    return {
+        "times": tf["times"],
+        "positions": tf["positions"],
+        "velocities": tf["velocities"],
+        "accelerations": tf["accelerations"],
+    }
 
 
 def main() -> None:
     """Simulate realistic measurements from a trajectory file."""
     traj_file = args.trajectory or (config["urdf"] + ".trajectory.npz")
-    output_file = args.filename
+    output_file = args.filename or traj_file
 
     num_dofs = config["num_dofs"]
     freq = config["excitationFrequency"]
@@ -262,33 +92,26 @@ def main() -> None:
     seed = config.get("simulateRandomSeed", 42)
     rng = np.random.default_rng(seed)
 
-    # Load model
-    loader = iDynTree.ModelLoader()
-    if not loader.loadModelFromFile(config["urdf"]):
-        print(f"Failed to load {config['urdf']}")
-        sys.exit(1)
-    model = loader.model()
-
-    kinDyn = iDynTree.KinDynComputations()
-    if not kinDyn.loadRobotModel(model):
-        print("Failed to load robot model into KinDynComputations")
-        sys.exit(1)
-
     print(f"Model: {config['urdf']}, DOFs: {num_dofs}, floating-base: {floating_base}")
 
-    # Load trajectory from file
+    # Load trajectory kinematics (sampled by trajectory.py, includes transitions/static postures/stops)
     print(f"Loading trajectory from {traj_file}")
     try:
-        times, positions, velocities, accelerations = load_trajectory(traj_file, num_dofs, freq)
+        traj_data = load_trajectory_data(traj_file)
     except (FileNotFoundError, OSError):
         print(f"Trajectory file not found: {traj_file}")
         print("Generate one first with: uv run trajectory.py --config <config> --model <model>")
         sys.exit(1)
+
+    times = traj_data["times"]
+    positions = traj_data["positions"]
+    velocities = traj_data["velocities"]
+    accelerations = traj_data["accelerations"]
     num_samples = len(times)
     dt = 1.0 / freq
     torque_col_offset = 6 if floating_base else 0
 
-    # Generate base motion for floating-base
+    # Generate synthetic base motion for floating-base simulation
     base_rpy: np.ndarray | None = None
     base_velocity: np.ndarray | None = None
     base_acceleration: np.ndarray | None = None
@@ -313,45 +136,30 @@ def main() -> None:
         base_acceleration[0, 3:6] = (base_velocity[1, 3:6] - base_velocity[0, 3:6]) / dt
         base_acceleration[-1, 3:6] = (base_velocity[-1, 3:6] - base_velocity[-2, 3:6]) / dt
 
-    # Insert sudden stops/restarts
-    num_stops = config.get("simulateNumStops", 0)
-    if num_stops > 0:
-        print(f"Inserting {num_stops} sudden stop/restart segments...")
-        positions, velocities, accelerations = add_sudden_stops(
-            times,
-            positions,
-            velocities,
-            accelerations,
-            freq,
-            num_stops=num_stops,
-            rng=rng,
-        )
-
-    # Compute clean torques via inverse dynamics
+    # Compute torques via regressor (same code path as optimizer/simulateTrajectory)
     print(f"Computing inverse dynamics for {num_samples} samples...")
-    if floating_base:
-        if base_rpy is None or base_velocity is None or base_acceleration is None:
-            raise RuntimeError("floating-base mode requires base_rpy, base_velocity, base_acceleration")
-        torques = compute_inverse_dynamics_floating_base(
-            model,
-            kinDyn,
-            num_dofs,
-            positions,
-            velocities,
-            accelerations,
-            base_rpy,
-            base_velocity,
-            base_acceleration,
-        )
-    else:
-        torques = compute_inverse_dynamics_fixed_base(
-            model,
-            kinDyn,
-            num_dofs,
-            positions,
-            velocities,
-            accelerations,
-        )
+    sim_data: dict[str, Any] = {
+        "positions": positions,
+        "velocities": velocities,
+        "accelerations": accelerations,
+        "torques": np.zeros((num_samples, num_dofs + (6 if floating_base else 0))),
+        "times": times,
+        "measured_frequency": freq,
+        "base_rpy": base_rpy if base_rpy is not None else np.zeros((num_samples, 3)),
+        "base_velocity": base_velocity if base_velocity is not None else np.zeros((num_samples, 6)),
+        "base_acceleration": base_acceleration if base_acceleration is not None else np.zeros((num_samples, 6)),
+        "contacts": np.array({}),
+    }
+    model = Model(config, config["urdf"])
+    data = Data(config)
+    old_skip, old_offset, old_sim = config["skipSamples"], config["startOffset"], config["simulateTorques"]
+    config["skipSamples"] = 0
+    config["startOffset"] = 0
+    config["simulateTorques"] = True
+    data.init_from_data(sim_data)
+    model.computeRegressors(data)
+    torques = data.samples["torques"].copy()
+    config["skipSamples"], config["startOffset"], config["simulateTorques"] = old_skip, old_offset, old_sim
 
     # Build joint properties from URDF, override from config
     joint_names = list(config["jointNames"])
@@ -442,40 +250,6 @@ def main() -> None:
         base_acceleration=base_acceleration,
     )
 
-    # Optionally append static posture data
-    if config.get("simulateStaticPostures", 0) and not floating_base:
-        postures_config = config.get("staticPostures", [])
-        # filter postures to match DOF count
-        valid_postures = [p[:num_dofs] for p in postures_config if len(p) >= num_dofs]
-        if valid_postures:
-            samples_per = config.get("simulateStaticSamplesPerPosture", 100)
-            print(f"Generating {len(valid_postures)} static postures ({samples_per} samples each)...")
-            s_times, s_pos, s_vel, s_torques, s_torques_noisy = generate_static_posture_data(
-                model,
-                kinDyn,
-                num_dofs,
-                valid_postures,
-                samples_per,
-                freq,
-                rng,
-            )
-            s_times += times[-1] + 1.0 / freq
-
-            times = np.concatenate([times, s_times])
-            positions = np.concatenate([positions, s_pos])
-            positions_noisy = np.concatenate([positions_noisy, s_pos])
-            velocities = np.concatenate([velocities, s_vel])
-            velocities_noisy = np.concatenate([velocities_noisy, s_vel])
-            accelerations = np.concatenate([accelerations, np.zeros_like(s_vel)])
-            torques = np.concatenate([torques, s_torques])
-            torques_noisy = np.concatenate([torques_noisy, s_torques_noisy])
-            num_samples = len(times)
-
-            print("  Static torque ranges per joint:")
-            for j in range(num_dofs):
-                tau_absmax = np.nanmax(np.abs(s_torques[:, torque_col_offset + j]))
-                print(f"    joint {j}: max |tau| = {tau_absmax:.3f} Nm")
-
     # Save in the format expected by identifier.py
     bv = np.zeros((num_samples, 6))
     ba = np.zeros((num_samples, 6))
@@ -487,8 +261,40 @@ def main() -> None:
         ba = base_acceleration_noisy
         br = base_rpy_noisy
 
-    np.savez(
-        output_file,
+    measurement_keys = {
+        "positions",
+        "positions_raw",
+        "velocities",
+        "velocities_raw",
+        "accelerations",
+        "torques",
+        "torques_raw",
+        "target_positions",
+        "target_velocities",
+        "target_accelerations",
+        "times",
+        "frequency",
+        "contacts",
+        "base_velocity",
+        "base_acceleration",
+        "base_rpy",
+    }
+
+    # preserve any existing data in the output file (e.g. trajectory parameters)
+    save_data: dict[str, Any] = {}
+    if os.path.exists(output_file):
+        existing = np.load(output_file, allow_pickle=True)
+        colliding_keys = set(existing.files) & measurement_keys
+        if colliding_keys:
+            print(f"Warning: {output_file} already contains: {', '.join(sorted(colliding_keys))}")
+            answer = input("Overwrite existing measurement data? [y/N] ").strip().lower()
+            if answer != "y":
+                print("Aborted.")
+                return
+        for k in existing.files:
+            save_data[k] = existing[k]
+
+    save_data.update(
         positions=positions_noisy,
         positions_raw=positions,
         velocities=velocities_noisy,
@@ -506,6 +312,7 @@ def main() -> None:
         base_acceleration=ba,
         base_rpy=br,
     )
+    np.savez(output_file, **save_data)
 
     # Print summary
     print(f"\nSaved {num_samples} samples to {output_file}")

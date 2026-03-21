@@ -37,22 +37,13 @@ trajectoryPulseMax:  1.0
 trajectoryCoeffInit: 0.4         #set this as high as possible without violating constraints (see output after start)
 trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
-trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax:  25.0
-
-# instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
-trajectoryAngleRanges: []
+trajectoryCenterFreedom: 25.0
+# trajectoryOscillationCenters: unlisted joints default to 0
 
 # manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
-# should be used (or leave completely empty to use all from URDF)
+# override position limits: {joint_name: [lower_deg, upper_deg]}, unlisted use URDF
 ovrPosLimit:
-    - null
-    - [-60.0, 60.0]
-    - null
-    - null
-    - null
-    - null
-    - null
+    lwr_1_joint: [-60.0, 60.0]
 
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
@@ -180,9 +171,6 @@ dontConstrain: []
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
-# tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
-# [p1, p2, sign]
-symmetryConstraints: []
 
 ## other forms of OLS
 

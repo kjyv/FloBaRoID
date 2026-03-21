@@ -1745,7 +1745,7 @@ def compute_analytical_gradient(
     # ---- Collision constraint gradients ----
     if optimizer.num_coll_constraints > 0 and hasattr(optimizer, "_ag_collision_cache"):
         coll_cache = optimizer._ag_collision_cache
-        use_capsule = config.get("useCapsuleCollision", False) and optimizer._capsules
+        use_capsule = config.get("collisionMode", "convex") == "capsule" and optimizer._capsules
 
         # Group pairs by their argmin sample for efficiency
         sample_pairs: dict[int, list[int]] = {}

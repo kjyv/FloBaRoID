@@ -261,9 +261,27 @@ class SDP:
                 print(Fore.RED + "COM parameters are not constrained,", end=" ")
                 print("might result in rank deficiency when solving SDP problem!" + Fore.RESET)
 
-            # symmetry constraints
-            if idf.opt["useSymmetryConstraints"] and idf.opt["symmetryConstraints"]:
-                for a, b, sign in idf.opt["symmetryConstraints"]:
+            # symmetry constraints: list of [linkA, linkB] or [linkA, linkB, signs] pairs
+            # auto-expands to all 10 params per link pair with standard L/R sign pattern
+            # [1,1,-1,1,1,-1,1,1,-1,1] (y-components flip sign across the symmetry plane)
+            sym_link_pairs = idf.opt.get("symmetryLinkPairs", [])
+            if idf.opt.get("useSymmetryConstraints", False) and sym_link_pairs:
+                lr_signs = [1, 1, -1, 1, 1, -1, 1, 1, -1, 1]  # m, hx, hy, hz, Ixx, Ixy, Ixz, Iyy, Iyz, Izz
+                link_to_idx = {name: i for i, name in enumerate(idf.model.linkNames)}
+                sym_constraints: list[tuple[int, int, int]] = []
+                for pair in sym_link_pairs:
+                    if len(pair) < 2:
+                        continue
+                    link_a, link_b = pair[0], pair[1]
+                    if link_a not in link_to_idx or link_b not in link_to_idx:
+                        print(f"Warning: symmetryLinkPairs refers to unknown link '{link_a}' or '{link_b}', skipping")
+                        continue
+                    signs = pair[2] if len(pair) > 2 else lr_signs
+                    idx_a = link_to_idx[link_a] * 10
+                    idx_b = link_to_idx[link_b] * 10
+                    for p in range(10):
+                        sym_constraints.append((idx_a + p, idx_b + p, signs[p] if p < len(signs) else 1))
+                for a, b, sign in sym_constraints:
                     if (
                         idf.opt["identifyGravityParamsOnly"]
                         and a not in idf.model.inertia_params

@@ -2048,9 +2048,9 @@ if __name__ == "__main__":
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
             )
         else:
-            bvh_links = set(config.get("bvhMeshLinks", []))
+            bvh_links = set(config.get("fullMeshLinks", []))
             use_vis = v.mesh_mode == "visual"
-            # when not in visual mode, use visual mesh (BVH) for bvhMeshLinks
+            # when not in visual mode, use full mesh (BVH) for fullMeshLinks
             # to match what the optimizer does (convex hull of simplified mesh is too conservative)
             effective_bvh = bvh_links if (bvh_links and not use_vis) else None
             if effective_bvh and not hasattr(draw_model, "_logged_bvh"):

@@ -77,10 +77,16 @@ class TrajectoryOptimizer(Optimizer):
         ## bounds for parameters
         # number of fourier partial sums per joint (more harmonics = higher frequency content)
         nf_config = self.config.get("trajectoryNf", None)
-        if nf_config and len(nf_config) == self.num_dofs:
-            self.nf = list(nf_config)
-        else:
+        if isinstance(nf_config, dict):
+            # {joint_name: nf} — all joints must be specified
+            missing = [name for name in self.model.jointNames if name not in nf_config]
+            if missing:
+                raise ValueError(f"trajectoryNf missing joints: {missing}")
+            self.nf = [int(nf_config[name]) for name in self.model.jointNames]
+        elif nf_config is None:
             self.nf = [4] * self.num_dofs
+        else:
+            raise ValueError("trajectoryNf must be a dict {joint_name: nf} with all joints listed")
         self.total_ab = sum(self.nf)  # total number of a (or b) coefficients across all joints
 
         # pulsation
@@ -88,23 +94,17 @@ class TrajectoryOptimizer(Optimizer):
         self.wf_max = self.config["trajectoryPulseMax"]
         self.wf_init = self.config["trajectoryPulseInit"]
 
-        # angle offsets
-        if self.config["trajectoryAngleRanges"] and self.config["trajectoryAngleRanges"][0] is not None:
-            self.qmin: list[float] | np.ndarray = []
-            self.qmax: list[float] | np.ndarray = []
-            self.qinit: list[float] | np.ndarray = []
-            for i in range(0, self.num_dofs):
-                low = self.config["trajectoryAngleRanges"][i][0]
-                high = self.config["trajectoryAngleRanges"][i][1]
-                self.qmin.append(low)
-                self.qmax.append(high)
-                self.qinit.append((high + low) * 0.5)  # set init to middle of range
-        else:
-            self.qmin = [self.config["trajectoryAngleMin"]] * self.num_dofs
-            self.qmax = [self.config["trajectoryAngleMax"]] * self.num_dofs
-            self.qinit = [
-                0.5 * self.config["trajectoryAngleMin"] + 0.5 * self.config["trajectoryAngleMax"]
-            ] * self.num_dofs
+        # oscillation center offsets (degrees, added to URDF joint midpoint)
+        # The bounded trajectory code clamps positions to URDF limits regardless of offset,
+        # so these just control the preferred operating point for each joint.
+        center_freedom = self.config.get("trajectoryCenterFreedom", 15.0)
+        osc_centers = self.config.get("trajectoryOscillationCenters", {})
+        if not isinstance(osc_centers, dict):
+            raise ValueError("trajectoryOscillationCenters must be a dict {joint_name: center_deg}")
+        # unlisted joints default to 0 (URDF midpoint)
+        self.qinit: list[float] | np.ndarray = [float(osc_centers.get(name, 0.0)) for name in self.model.jointNames]
+        self.qmin: list[float] | np.ndarray = [c - center_freedom for c in self.qinit]
+        self.qmax: list[float] | np.ndarray = [c + center_freedom for c in self.qinit]
 
         if not self.config["useDeg"]:
             self.qmin = np.deg2rad(self.qmin)
@@ -315,13 +315,16 @@ class TrajectoryOptimizer(Optimizer):
         for n in range(self.num_dofs):
             # check for joint limits
             # joint pos lower
-            if len(self.config["ovrPosLimit"]) > n and self.config["ovrPosLimit"][n]:
-                g[n] = np.deg2rad(self.config["ovrPosLimit"][n][0]) - pos_min[n]
+            ovr = self.config.get("ovrPosLimit", {})
+            # {joint_name: [lower_deg, upper_deg]}, unlisted joints use URDF limits
+            ovr_pair = ovr.get(jn[n]) if isinstance(ovr, dict) else None
+            if ovr_pair:
+                g[n] = np.deg2rad(ovr_pair[0]) - pos_min[n]
             else:
                 g[n] = self.limits[jn[n]]["lower"] - pos_min[n]
             # joint pos upper
-            if len(self.config["ovrPosLimit"]) > n and self.config["ovrPosLimit"][n]:
-                g[self.num_dofs + n] = pos_max[n] - np.deg2rad(self.config["ovrPosLimit"][n][1])
+            if ovr_pair:
+                g[self.num_dofs + n] = pos_max[n] - np.deg2rad(ovr_pair[1])
             else:
                 g[self.num_dofs + n] = pos_max[n] - self.limits[jn[n]]["upper"]
             # max joint vel
@@ -429,10 +432,7 @@ class TrajectoryOptimizer(Optimizer):
                     q_trans = zero_pos + s * (q_boundary - zero_pos)
                     collision_configs.append((-1 - ti, q_trans))  # negative index = transition sample
 
-        coll_mode = self.config.get(
-            "collisionMode", "capsule" if self.config.get("useCapsuleCollision", False) else "convex"
-        )
-        use_capsule = coll_mode == "capsule" and self._capsules
+        use_capsule = self.config.get("collisionMode", "convex") == "capsule" and self._capsules
         collision_link_names = sorted(set(l for pair in self._collision_pairs for l in pair))
 
         # Precompute and cache FCL collision objects per link (reuse across samples)

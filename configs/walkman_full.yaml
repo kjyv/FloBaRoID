@@ -8,7 +8,7 @@ optimizeTrajectory: 1
 # trajectory optimization
 useGlobalOptimization: 1
 globalSolver: 'Optuna'
-globalOptIterations: 10
+globalOptIterations: 5
 globalOptSize: 20
 optunaSampler: 'TPE'
 # globalOptJobs: 6          # parallel worker processes (default: CPU cores - 2)
@@ -54,56 +54,69 @@ fullMeshLinks: ['TorsoProtections']
 
 # trajectory parameters — bounded mode essential for 29 DOF
 trajectoryBounded: 1
-trajectoryPulseInit: 0.4
-trajectoryPulseMin:  0.1         # 0.1 → ~63s, 0.4 → ~16s
-trajectoryPulseMax:  0.8
+trajectoryPulseInit: 0.15
+trajectoryPulseMin:  0.07        # 0.07 → ~90s
+trajectoryPulseMax:  0.21        # 0.21 → ~30s
 trajectoryCoeffInit: 0.01
 trajectoryCoeffMin: -0.5
 trajectoryCoeffMax:  0.5
-trajectoryAngleMin: -15.0
-trajectoryAngleMax:  15.0
-
-# per-joint angle ranges for the oscillation CENTER offset (in degrees)
-# q0 shifts the tanh center: q_center = 0.5*(lo+hi) + q0
+# preferred oscillation center offsets (degrees, from URDF joint midpoint)
+# the optimizer varies these ±trajectoryCenterFreedom around the preferred value.
+# positions are always clamped to URDF limits regardless of offset.
 # designed for a collision-free suspended (crane) pose: legs slightly bent,
 # arms abducted away from body, elbows bent
-trajectoryAngleRanges:
-    - [-5.0, 5.0]        #  0 WaistLat    — neutral, small lateral tilt
-    - [-5.0, 15.0]       #  1 LHipLat     — slight abduction (positive = out)
-    - [-15.0, 5.0]       #  2 RHipLat     — slight abduction (negative = out, mirrored)
-    - [-10.0, 10.0]      #  3 RHipYaw     — neutral rotation
-    - [-20.0, 0.0]       #  4 RHipSag     — slight forward flex from midpoint (-30°)
-    - [-40.0, -20.0]     #  5 RKneeSag    — shift center from 70° toward 30-50° (moderate bend)
-    - [0.0, 15.0]        #  6 RAnkSag     — shift center from -20° toward -10° (compensate knee)
-    - [-10.0, 10.0]      #  7 RAnkLat     — neutral
-    - [-10.0, 10.0]      #  8 LHipYaw     — neutral rotation
-    - [-20.0, 0.0]       #  9 LHipSag     — slight forward flex (mirrors right)
-    - [-40.0, -20.0]     # 10 LKneeSag    — moderate bend (mirrors right)
-    - [0.0, 15.0]        # 11 LAnkSag     — compensate knee (mirrors right)
-    - [-10.0, 10.0]      # 12 LAnkLat     — neutral
-    - [-30.0, -10.0]     # 13 WaistSag    — shift from mid 30° toward 0-20° (upright)
-    - [-15.0, 15.0]      # 14 WaistYaw    — small rotation range
-    - [-15.0, 15.0]      # 15 LShSag      — arm hanging, moderate forward/back
-    - [-15.0, 15.0]      # 16 RShSag      — arm hanging, moderate forward/back
-    - [0.0, 40.0]        # 17 RShLat      — shift from -114° toward -90° (arm away from body)
-    - [-30.0, 30.0]      # 18 RShYaw      — shoulder rotation
-    - [-30.0, 20.0]      # 19 RElbj       — centered near mid -68° (elbow bent)
-    - [-40.0, 40.0]      # 20 RForearmPlate — forearm rotation
-    - [-20.0, 20.0]      # 21 RWrj1       — wrist
-    - [-20.0, 20.0]      # 22 RWrj2       — wrist
-    - [-40.0, 0.0]       # 23 LShLat      — shift from 113° toward 90° (arm away from body)
-    - [-30.0, 30.0]      # 24 LShYaw      — shoulder rotation
-    - [-30.0, 20.0]      # 25 LElbj       — centered near mid -68° (elbow bent)
-    - [-40.0, 40.0]      # 26 LForearmPlate — forearm rotation
-    - [-20.0, 20.0]      # 27 LWrj1       — wrist
-    - [-20.0, 20.0]      # 28 LWrj2       — wrist
-# per-joint Fourier harmonics: fewer for large proximal joints (waist/hip),
-# more for distal joints (wrist/forearm) that need higher frequencies for excitation
-trajectoryNf: [2, 2, 2, 2, 3, 3, 2, 2, 2, 3, 3, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+trajectoryCenterFreedom: 15.0    # optimizer can shift centers ±15° from preferred
+trajectoryOscillationCenters:
+    RHipSag:       -10    # slight forward flex
+    LHipSag:       -10    # mirrors right
+    RKneeSag:      -30    # moderate bend (shift from 70° midpoint)
+    LKneeSag:      -30    # mirrors right
+    RAnkSag:         8    # compensate knee bend
+    LAnkSag:         8    # mirrors right
+    LHipLat:         5    # slight abduction
+    RHipLat:        -5    # mirrored
+    WaistSag:      -20    # upright (shift from 30° midpoint)
+    RShLat:         20    # arm away from body
+    LShLat:        -20    # mirrored
+    RElbj:          -5    # elbow slightly bent
+    LElbj:          -5    # mirrors right
+    # unlisted joints default to 0 (URDF midpoint)
+# per-joint Fourier harmonics (all joints must be listed):
+# fewer for large proximal joints (waist/hip), more for distal joints (wrist/forearm)
+trajectoryNf:
+    WaistLat: 2
+    LHipLat: 2
+    RHipLat: 2
+    RHipYaw: 2
+    RHipSag: 3
+    RKneeSag: 3
+    RAnkSag: 2
+    RAnkLat: 2
+    LHipYaw: 2
+    LHipSag: 3
+    LKneeSag: 3
+    LAnkSag: 2
+    LAnkLat: 2
+    WaistSag: 2
+    WaistYaw: 2
+    LShSag: 3
+    RShSag: 3
+    RShLat: 3
+    RShYaw: 3
+    RElbj: 3
+    RForearmPlate: 3
+    RWrj1: 3
+    RWrj2: 3
+    LShLat: 3
+    LShYaw: 3
+    LElbj: 3
+    LForearmPlate: 3
+    LWrj1: 3
+    LWrj2: 3
 
-# manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
-# should be used (or leave completely empty to use all from URDF)
-ovrPosLimit: []
+# override position limits (degrees): {joint_name: [lower, upper]}
+# only list joints that need different limits than URDF, unlisted use URDF
+ovrPosLimit: {}
 
 trajectoryTargetTorqueUtil: 0.3
 minTorqueUtilization: 0.0
@@ -208,149 +221,24 @@ dontConstrain: []
 
 useSymmetryConstraints: 0
 symmetryTolerance: 0.1
-# left/right symmetry pairs: [param_id_left, param_id_right, sign]
-# sign=-1 for parameters that flip sign across the symmetry plane (e.g. COM y-offset)
-symmetryConstraints:
-    - [10, 70, 1]   #L/RHipMot
-    - [11, 71, 1]
-    - [12, 72, -1]
-    - [13, 73, 1]
-    - [14, 74, 1]
-    - [15, 75, -1]
-    - [16, 76, 1]
-    - [17, 77, 1]
-    - [18, 78, -1]
-    - [19, 79, 1]
-    - [20, 80, 1]   #L/RThighUpLeg
-    - [21, 81, 1]
-    - [22, 82, -1]
-    - [23, 83, 1]
-    - [24, 84, 1]
-    - [25, 85, -1]
-    - [26, 86, 1]
-    - [27, 87, 1]
-    - [28, 88, -1]
-    - [29, 89, 1]
-    - [30, 90, 1]   #L/RThighLowLeg
-    - [31, 91, 1]
-    - [32, 92, -1]
-    - [33, 93, 1]
-    - [34, 94, 1]
-    - [35, 95, -1]
-    - [36, 96, 1]
-    - [37, 97, 1]
-    - [38, 98, -1]
-    - [39, 99, 1]
-    - [40, 100, 1]   #L/RLowLeg
-    - [41, 101, 1]
-    - [42, 102, -1]
-    - [43, 103, 1]
-    - [44, 104, 1]
-    - [45, 105, -1]
-    - [46, 106, 1]
-    - [47, 107, 1]
-    - [48, 108, -1]
-    - [49, 109, 1]
-    - [50, 110, 1]   #L/RFootMot
-    - [51, 111, 1]
-    - [52, 112, -1]
-    - [53, 113, 1]
-    - [54, 114, 1]
-    - [55, 115, -1]
-    - [56, 116, 1]
-    - [57, 117, 1]
-    - [58, 118, -1]
-    - [59, 119, 1]
-    - [60, 120, 1]  #L/RFoot
-    - [61, 121, 1]
-    - [62, 122, -1]
-    - [63, 123, 1]
-    - [64, 124, 1]
-    - [65, 125, -1]
-    - [66, 126, 1]
-    - [67, 127, 1]
-    - [68, 128, -1]
-    - [69, 129, 1]
-    - [160,280, 1]  #L/RShp
-    - [161,281, 1]
-    - [162,282, -1]
-    - [163,283, 1]
-    - [164,284, 1]
-    - [165,285, -1]
-    - [166,286, 1]
-    - [167,287, 1]
-    - [168,288, -1]
-    - [169,289, 1]
-    - [170,290, 1]  #L/RShr
-    - [171,291, 1]
-    - [172,292, -1]
-    - [173,293, 1]
-    - [174,294, 1]
-    - [175,295, -1]
-    - [176,296, 1]
-    - [177,297, 1]
-    - [178,298, -1]
-    - [179,299, 1]
-    - [180,300, 1]  #L/RShy
-    - [181,301, 1]
-    - [182,302, -1]
-    - [183,303, 1]
-    - [184,304, 1]
-    - [185,305, -1]
-    - [186,306, 1]
-    - [187,307, 1]
-    - [188,308, -1]
-    - [189,309, 1]
-    - [190,310, 1]  #L/RElb
-    - [191,311, 1]
-    - [192,312, -1]
-    - [193,313, 1]
-    - [194,314, 1]
-    - [195,315, -1]
-    - [196,316, 1]
-    - [197,317, 1]
-    - [198,318, -1]
-    - [199,319, 1]
-    - [200,320, 1]  #L/RForearm
-    - [201,321, 1]
-    - [202,322, -1]
-    - [203,323, 1]
-    - [204,324, 1]
-    - [205,325, -1]
-    - [206,326, 1]
-    - [207,327, 1]
-    - [208,328, -1]
-    - [209,329, 1]
-    - [210,330, 1]  #L/RWrMot2
-    - [211,331, 1]
-    - [212,332, -1]
-    - [213,333, 1]
-    - [214,334, 1]
-    - [215,335, -1]
-    - [216,336, 1]
-    - [217,337, 1]
-    - [218,338, -1]
-    - [219,339, 1]
-    - [220,340, 1]  #L/RWrMot3
-    - [221,341, 1]
-    - [222,342, -1]
-    - [223,343, 1]
-    - [224,344, 1]
-    - [225,345, -1]
-    - [226,346, 1]
-    - [227,347, 1]
-    - [228,348, -1]
-    - [229,349, 1]
-    - [230,350, 1] #L/RSoftHandLink
-    - [231,351, 1]
-    - [232,352, 1]
-    - [233,353, 1]
-    - [234,354, 1]
-    - [235,355, 1]
-    - [236,356, 1]
-    - [237,357, 1]
-    - [238,358, 1]
-    - [239,359, 1]
+# left/right symmetry link pairs: [leftLink, rightLink]
+# auto-expands to all 10 params per link with standard L/R sign pattern
+# (y-components flip sign: m=+, hx=+, hy=-, hz=+, Ixx=+, Ixy=-, Ixz=+, Iyy=+, Iyz=-, Izz=+)
+symmetryLinkPairs:
+    - [LHipMot, RHipMot]
+    - [LThighUpLeg, RThighUpLeg]
+    - [LThighLowLeg, RThighLowLeg]
+    - [LLowLeg, RLowLeg]
+    - [LFootmot, RFootmot]
+    - [LFoot, RFoot]
+    - [LShp, RShp]
+    - [LShr, RShr]
+    - [LShy, RShy]
+    - [LElb, RElb]
+    - [LForearm, RForearm]
+    - [LWrMot2, RWrMot2]
+    - [LWrMot3, RWrMot3]
+    - [LSoftHandLink, RSoftHandLink, [1,1,1,1,1,1,1,1,1,1]]  # all positive (no L/R flip)
 
 useAPriori: 0
 useEssentialParams: 0

@@ -375,7 +375,7 @@ class Optimizer:
 
         # fit capsule collision primitives (for collision optimization and/or visualization)
         self._capsules: dict[str, Capsule] = {}
-        if self.config.get("useCapsuleCollision", False) or self.config.get("showModelVisualization", False):
+        if self.config.get("collisionMode", "convex") == "capsule" or self.config.get("showModelVisualization", False):
             self._capsules = fit_capsules_from_urdf(
                 self.model.urdf_file,
                 self.model.linkNames,
@@ -386,7 +386,7 @@ class Optimizer:
                 print(f"Capsule collision: fitted {len(self._capsules)} capsules")
 
             # warn if capsules collide at zero pose for non-neighbor pairs
-            if self.config.get("useCapsuleCollision", False) and self._capsules:
+            if self.config.get("collisionMode", "convex") == "capsule" and self._capsules:
                 from excitation.capsule import find_colliding_links_capsule
 
                 zero_colliding = find_colliding_links_capsule(
@@ -403,7 +403,7 @@ class Optimizer:
                         Fore.YELLOW
                         + f"Warning: capsule collision infeasible at zero pose for: {zero_colliding}. "
                         + "Capsule approximation may be too conservative for this robot. "
-                        + "Consider disabling useCapsuleCollision or increasing collisionMaxKinematicDistance."
+                        + "Consider changing collisionMode or increasing collisionMaxKinematicDistance."
                         + Fore.RESET
                     )
 
@@ -424,22 +424,11 @@ class Optimizer:
         if link_name not in self._geom_cache:
             # collisionMode: 'box' (AABB only), 'convex' (convex hull from mesh),
             #                'full' (BVH triangle mesh), 'capsule' (analytical capsules)
-            # Backwards compat: old useCollisionMeshes/useConvexHullCollision/useCapsuleCollision
-            mode = self.config.get("collisionMode", None)
-            if mode is None:
-                # infer from old options
-                if self.config.get("useCapsuleCollision", False):
-                    mode = "capsule"
-                elif not self.config.get("useCollisionMeshes", 1):
-                    mode = "box"
-                elif self.config.get("useConvexHullCollision", False):
-                    mode = "convex"
-                else:
-                    mode = "full"
+            mode = self.config.get("collisionMode", "convex")
 
             # per-link override: fullMeshLinks forces 'full' mode for specific links
             # (for concave shapes like cages where convex hull is too coarse)
-            if link_name in self.config.get("fullMeshLinks", self.config.get("bvhMeshLinks", [])):
+            if link_name in self.config.get("fullMeshLinks", []):
                 link_mode = "full"
             else:
                 link_mode = mode
@@ -566,7 +555,7 @@ class Optimizer:
                 self.model.urdf_file,
                 self.model.linkNames,
                 self.idf.urdfHelpers,
-                use_convex_hull=self.config.get("useConvexHullCollision", False),
+                use_convex_hull=self.config.get("collisionMode", "convex") == "convex",
             )
             if self._capsules:
                 self.visualizer.loadCapsules(self._capsules)

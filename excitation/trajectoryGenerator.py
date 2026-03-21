@@ -502,11 +502,12 @@ class BoundedOscillationGenerator:
         # joint limits (always in rad)
         self.q_lower = q_lower
         self.q_upper = q_upper
-        self.q_center = 0.5 * (q_lower + q_upper) + self.q0
-        # range from center to limit (use the smaller side for safety)
-        half_range = 0.5 * (q_upper - q_lower)
-        # leave a small margin so tanh doesn't need to hit exactly ±1
-        self.q_range = half_range * 0.95
+        # clamp the center so there's always room to oscillate within limits
+        midpoint = 0.5 * (q_lower + q_upper)
+        self.q_center = np.clip(midpoint + self.q0, q_lower, q_upper)
+        # range = distance from center to the nearest limit (guarantees staying within bounds)
+        # with a small margin so tanh doesn't need to hit exactly ±1
+        self.q_range = min(self.q_center - q_lower, q_upper - self.q_center) * 0.95
 
     def _raw(self, t: float) -> float:
         """Unbounded internal Fourier signal."""

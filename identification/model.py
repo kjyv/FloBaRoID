@@ -297,7 +297,7 @@ class Model:
 
     def computeRegressors(self, data: Data, only_simulate: bool = False) -> None:
         """compute regressors from measurements for each time step of the measurement data
-        and stack them vertically. also stack measured torques and get simulation data.
+        and stack them vertically. Also stack measured torques and get simulation data.
         for floating base, get estimated base forces (6D wrench) and add to torque measure stack
         """
 
@@ -358,8 +358,8 @@ class Model:
                     dq.setVal(_di, vel[_di])
                     ddq.setVal(_di, acc[_di])
 
-                # in case that we simulate the torque measurements, need torque estimation for a priori parameters
-                # or that we need to simulate the base reaction forces for floating base
+                # in case that we simulate the torque measurements, we need torque estimation for a priori
+                # parameters or that we need to simulate the base reaction forces for floating base
                 if self.opt["simulateTorques"] or self.opt["useAPriori"] or self.opt["floatingBase"]:
                     sim_torques = self.simulateDynamicsIDynTree(data.samples, m_idx)
 
@@ -371,14 +371,11 @@ class Model:
                         if self.opt["simulateTorques"]:
                             torq = np.nan_to_num(sim_torques)
                         else:
-                            # write estimated base forces to measured torq vector from file (usually
-                            # can't be measured so they are simulated from the measured base motion,
-                            # contacts are added further down)
-                            if self.opt["floatingBase"]:
-                                if len(torq) < (self.num_dofs + fb):
-                                    torq = np.concatenate((np.nan_to_num(sim_torques[0:6]), torq))
-                                else:
-                                    torq[0:6] = np.nan_to_num(sim_torques[0:6])
+                            # for floating base, prepend simulated base wrench only if the
+                            # measurements don't already contain it (e.g. from an F/T sensor
+                            # or from the simulator). Don't overwrite existing base wrench data.
+                            if self.opt["floatingBase"] and len(torq) < (self.num_dofs + fb):
+                                torq = np.concatenate((np.nan_to_num(sim_torques[0:6]), torq))
 
             simulate_time += t.interval
 
@@ -464,14 +461,10 @@ class Model:
                         if self.opt["simulateTorques"]:
                             torq = torques
                         else:
-                            # write estimated base forces to measured torq vector from file (usually
-                            # can't be measured so they are simulated from the measured base motion,
-                            # contacts are added further down)
-                            if self.opt["floatingBase"]:
-                                if len(torq) < (self.num_dofs + fb):
-                                    torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
-                                else:
-                                    torq[0:6] = np.nan_to_num(torques[0:6])
+                            # for floating base, prepend simulated base wrench only if the
+                            # measurements don't already contain it
+                            if self.opt["floatingBase"] and len(torq) < (self.num_dofs + fb):
+                                torq = np.concatenate((np.nan_to_num(torques[0:6]), torq))
                         np.nan_to_num(torques)
 
                     # stack on previous regressors

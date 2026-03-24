@@ -35,7 +35,6 @@ from excitation.simulationEffects import (
     add_timing_jitter,
     add_torque_quantization,
     add_torque_ripple,
-    rpy_to_angular_velocity,
 )
 from identification.data import Data
 from identification.model import Model
@@ -108,33 +107,12 @@ def main() -> None:
     velocities = traj_data["velocities"]
     accelerations = traj_data["accelerations"]
     num_samples = len(times)
-    dt = 1.0 / freq
     torque_col_offset = 6 if floating_base else 0
 
-    # Generate synthetic base motion for floating-base simulation
-    base_rpy: np.ndarray | None = None
-    base_velocity: np.ndarray | None = None
-    base_acceleration: np.ndarray | None = None
-
-    if floating_base:
-        rpy_freqs = [0.15, 0.2, 0.1]
-        rpy_amps = [0.3, 0.25, 0.2]
-        base_rpy = np.zeros((num_samples, 3))
-        base_rpy_dot = np.zeros((num_samples, 3))
-        for i in range(3):
-            w = 2.0 * np.pi * rpy_freqs[i]
-            base_rpy[:, i] = rpy_amps[i] * np.sin(w * times)
-            base_rpy_dot[:, i] = rpy_amps[i] * w * np.cos(w * times)
-
-        base_velocity = np.zeros((num_samples, 6))
-        base_acceleration = np.zeros((num_samples, 6))
-        for t in range(num_samples):
-            omega = rpy_to_angular_velocity(base_rpy[t], base_rpy_dot[t])
-            base_velocity[t, 3:6] = omega
-        for t in range(1, num_samples - 1):
-            base_acceleration[t, 3:6] = (base_velocity[t + 1, 3:6] - base_velocity[t - 1, 3:6]) / (2 * dt)
-        base_acceleration[0, 3:6] = (base_velocity[1, 3:6] - base_velocity[0, 3:6]) / dt
-        base_acceleration[-1, 3:6] = (base_velocity[-1, 3:6] - base_velocity[-2, 3:6]) / dt
+    # Use base motion from trajectory file if available, otherwise zeros.
+    base_rpy = traj_data.get("base_rpy", np.zeros((num_samples, 3)))
+    base_velocity = traj_data.get("base_velocity", np.zeros((num_samples, 6)))
+    base_acceleration = traj_data.get("base_acceleration", np.zeros((num_samples, 6)))
 
     # Compute torques via regressor (same code path as optimizer/simulateTrajectory)
     print(f"Computing inverse dynamics for {num_samples} samples...")
@@ -145,9 +123,9 @@ def main() -> None:
         "torques": np.zeros((num_samples, num_dofs + (6 if floating_base else 0))),
         "times": times,
         "measured_frequency": freq,
-        "base_rpy": base_rpy if base_rpy is not None else np.zeros((num_samples, 3)),
-        "base_velocity": base_velocity if base_velocity is not None else np.zeros((num_samples, 6)),
-        "base_acceleration": base_acceleration if base_acceleration is not None else np.zeros((num_samples, 6)),
+        "base_rpy": base_rpy,
+        "base_velocity": base_velocity,
+        "base_acceleration": base_acceleration,
         "contacts": np.array({}),
     }
     model = Model(config, config["urdf"])

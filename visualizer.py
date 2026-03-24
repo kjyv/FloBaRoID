@@ -2027,7 +2027,9 @@ if __name__ == "__main__":
 
         s = iDynTree.JointPosDoubleArray(n_dof)
         ds = iDynTree.JointDOFsDoubleArray(n_dof)
-        for _i in range(n_dof):
+        # handle old data files that may have fewer joints than the current model
+        n_available = min(n_dof, len(q0))
+        for _i in range(n_available):
             s.setVal(_i, float(q0[_i]))
         kinDyn.setRobotState(s, ds, gravity)
 

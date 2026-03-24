@@ -1,9 +1,11 @@
 import os
+import shutil
 import sys
 
 import colorama
 import numpy as np
 import numpy.linalg as la
+import plotly
 import scipy.linalg as sla
 from colorama import Fore, Style
 from palettable.tableau import Tableau_10, Tableau_20
@@ -679,7 +681,17 @@ class OutputMatplotlib:
         from jinja2 import Environment, FileSystemLoader
 
         figures = self._build_plotly_figures(idf)
-        html_fragments = [fig.to_html(full_html=False, include_plotlyjs="cdn") for fig in figures]
+        # Use local plotly.js so the page works offline
+        html_fragments = [fig.to_html(full_html=False, include_plotlyjs=False) for fig in figures]
+
+        # Ensure local plotly.js exists (copy from installed package if missing)
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "output")
+        plotly_local = os.path.join(output_dir, "js", "plotly.min.js")
+        if not os.path.exists(plotly_local):
+            plotly_src = os.path.join(os.path.dirname(plotly.__file__), "package_data", "plotly.min.js")
+            if os.path.exists(plotly_src):
+                os.makedirs(os.path.dirname(plotly_local), exist_ok=True)
+                shutil.copy2(plotly_src, plotly_local)
 
         path = os.path.dirname(os.path.abspath(__file__))
         template_environment = Environment(

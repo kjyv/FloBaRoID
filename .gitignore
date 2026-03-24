@@ -72,3 +72,4 @@ identification/sdpa_dat
 .swn
 data
 .mypy_cache
+output/js/plotly.min.js

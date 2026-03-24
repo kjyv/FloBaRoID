@@ -137,7 +137,10 @@ class SDP:
                     )
 
                     Di = BlockMatrix([[L, S(l).T], [S(l), I(3) * m]])
-                    D_inertia_blocks.append(Di.as_mutable())
+                    Di_mut = Di.as_mutable()
+                    # Ensure exact symbolic symmetry (BlockMatrix expansion can lose it)
+                    Di_mut = (Di_mut + Di_mut.T) / 2
+                    D_inertia_blocks.append(Di_mut)
 
             params_to_skip = []
 
@@ -238,9 +241,14 @@ class SDP:
                 for i in range(start_link, idf.model.num_links):
                     if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         link_name = idf.model.linkNames[i]
+                        link_mass = idf.model.xStdModel[i * 10]
+                        if abs(link_mass) > 1e-10:
+                            old_com = idf.model.xStdModel[i * 10 + 1 : i * 10 + 4] / link_mass
+                        else:
+                            old_com = np.zeros(3)
                         box, pos, rot = idf.urdfHelpers.getBoundingBox(
                             input_urdf=idf.model.urdf_file,
-                            old_com=idf.model.xStdModel[i * 10 + 1 : i * 10 + 4] / idf.model.xStdModel[i * 10],
+                            old_com=old_com,
                             link_name=link_name,
                         )
                         link_cuboid_hulls[link_name] = (box, pos, rot)
@@ -447,14 +455,13 @@ class SDP:
             if idf.opt["checkAPrioriFeasibility"]:
                 self.checkFeasibility(idf.model.xStdModel)
 
-            idf.opt["onlyUseDSDP"] = 0
-            if not idf.opt["onlyUseDSDP"]:
+            if not idf.opt.get("onlyUseDSDP", False):
                 if idf.opt["verbose"]:
                     print("Solving with cvxopt...", end=" ")
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
-            if idf.opt["onlyUseDSDP"] or state != "optimal":
+            if idf.opt.get("onlyUseDSDP", False) or state != "optimal":
                 if idf.opt["verbose"]:
                     print("Solving with dsdp5...", end=" ")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
@@ -537,7 +544,11 @@ class SDP:
                 print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
+            # (must subtract contactForcesSum consistently with e_rho1 for Schur complement)
+            rho2_norm_sqr = (
+                la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))
+                ** 2
+            )
 
             # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             u = Symbol("u")
@@ -686,7 +697,11 @@ class SDP:
 
             e_rho1 = Matrix(rho1) - (R1 * beta_symbs)
 
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
+            # must subtract contactForcesSum consistently with e_rho1 for Schur complement
+            rho2_norm_sqr = (
+                la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))
+                ** 2
+            )
             u = Symbol("u")
             U_rho = BlockMatrix(
                 [

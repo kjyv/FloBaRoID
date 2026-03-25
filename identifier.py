@@ -1202,12 +1202,12 @@ def main():
         args.validation,
     )
 
-    # Load unobservable parameter indices from trajectory file (if available)
+    # Load unobservable parameter indices from measurement/trajectory file (if available)
     # and merge with dontChangeParams to constrain them to a priori values
-    trajectory_file = args.model + ".trajectory.npz" if args.model else None
-    if trajectory_file:
+    measurement_files = args.measurements[0] if args.measurements else []
+    for meas_file in measurement_files:
         try:
-            traj_data = np.load(trajectory_file, allow_pickle=True)
+            traj_data = np.load(meas_file, allow_pickle=True)
             if "unobservable_params" in traj_data:
                 unobs_params = traj_data["unobservable_params"].tolist()
                 n_obs = int(traj_data.get("n_observable_base_params", 0))
@@ -1226,8 +1226,9 @@ def main():
                             f"  → added {len(new_params)} unobservable params to dontChangeParams "
                             f"(total: {len(idf.opt['dontChangeParams'])})"
                         )
+            break  # found observability data, no need to check other files
         except (FileNotFoundError, KeyError):
-            pass  # no trajectory file or no observability data — proceed without
+            pass  # no observability data in this file — try next
 
     if idf.opt["selectBlocksFromMeasurements"]:
         idf.opt["selectingBlocks"] = 1

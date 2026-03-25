@@ -525,11 +525,11 @@ class OutputConsole:
                 else:
                     sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStd[p_idf]))
                 print(
-                    f"Squared distance of identifiable std parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
+                    f"Squared distance of identifiable std parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
                 # sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
                 # sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                # print( "Squared distance of std parameter vectors (identified, a priori) to real: {} vs. {}".\
+                # print( "Squared distance of std parameter vectors (identified vs. a priori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
             if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
                 # print("Mean error (a priori - approx) of all base params: {:.5f}".\
@@ -537,7 +537,7 @@ class OutputConsole:
                 sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
                 sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
                 print(
-                    f"Squared distance of base parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
+                    f"Squared distance of base parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
         else:
             if idf.opt["showStandardParams"] and not summary_only:

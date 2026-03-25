@@ -114,9 +114,15 @@ class TrajectoryOptimizer(Optimizer):
         self.amin = self.bmin = self.config["trajectoryCoeffMin"]
         self.amax = self.bmax = self.config["trajectoryCoeffMax"]
         # per-joint init arrays (ragged — each joint may have different nf)
+        # scale as coeff_init/k for harmonic k: low harmonics drive position/torque,
+        # high harmonics taper off to avoid velocity limit violations
         coeff_init = self.config["trajectoryCoeffInit"]
-        self.ainit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
-        self.binit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
+        self.ainit: list[np.ndarray] = [
+            np.array([coeff_init / (j + 1) for j in range(self.nf[i])]) for i in range(self.num_dofs)
+        ]
+        self.binit: list[np.ndarray] = [
+            np.array([coeff_init / (j + 1) for j in range(self.nf[i])]) for i in range(self.num_dofs)
+        ]
 
         self.last_best_f_f1 = 0.0
 

@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.9.2
+
+### Trajectory optimization
+- Replaced condition number objective with regularized D-optimality (`-log(det(Y^T Y + δI))`)
+  - Numerically stable at any condition number (condition number gradient was broken for cond > 1e8)
+  - Regularization `δ = ε·λ_max` ensures analytical gradient accuracy to 3-4 significant digits
+  - Works for structurally rank-deficient regressors (full humanoids with unobservable parameters)
+- Analytical gradient passed directly to IPOPT, eliminating 182 FD objective evaluations per iteration
+  (~15-28x fewer calls per iteration)
+- Added observability analysis: SVD identifies unobservable parameters, saved to trajectory file,
+  automatically constrains them to a priori values during identification
+- Collision checking ~10x faster: reuse FCL objects across samples, exclude impossible pairs
+- `ignoreCollisionBetweenGroups` config option for excluding cross-body collision pairs
+- Bounded trajectory now guarantees positions stay within URDF limits regardless of center offset
+
+### Configuration
+- `collisionMode`: single option replacing `useCollisionMeshes`/`useConvexHullCollision`/`useCapsuleCollision`
+  (values: `box`, `convex`, `full`, `capsule`)
+- `fullMeshLinks`: replaces `bvhMeshLinks` — per-link override for full triangle mesh collision
+- `trajectoryOscillationCenters`: named dict of preferred joint centers (replaces `trajectoryAngleRanges`)
+- `trajectoryCenterFreedom`: how far optimizer can shift centers from preferred values
+- `trajectoryNf`: named dict format (`{joint_name: nf}`) with validation
+- `symmetryLinkPairs`: named link pairs replacing raw parameter index triples
+- `ovrPosLimit`: named dict format (`{joint_name: [lo, hi]}`)
+- `doptRegularization`: controls D-optimality gradient conditioning (default 1e-4)
+
+### Identification
+- Fixed SDP crash on zero-mass links (division by zero in COM computation)
+- Unobservable parameters from trajectory file automatically added to `dontChangeParams`
+- Loads observability data from measurement files passed via `--measurements`
+
+### Visualizer
+- Handles old measurement files with fewer joints than current model
+- Plotly.js served locally for offline HTML output
+
 ## 0.9.1
 
 ### Trajectory generation

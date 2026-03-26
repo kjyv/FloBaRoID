@@ -73,3 +73,4 @@ identification/sdpa_dat
 data
 .mypy_cache
 output/js/plotly.min.js
+.gui_state.json

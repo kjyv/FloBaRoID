@@ -33,6 +33,7 @@ dependencies = [
     "mypy~=1.19.1",
     "optuna>=4.8.0",
     "joblib>=1.5.3",
+    "customtkinter>=5.2.2",
 ]
 
 [tool.uv]

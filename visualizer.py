@@ -19,7 +19,13 @@ from OpenGL import GL as gl
 from OpenGL.GL.shaders import compileShader
 from pyglet.window import key
 
-from identification.helpers import is_dark_mode as _is_dark_mode
+from identification.helpers import (
+    eulerAnglesToRotationMatrix,
+    rotationMatrixToEulerAngles,
+)
+from identification.helpers import (
+    is_dark_mode as _is_dark_mode,
+)
 from identification.model import Model
 
 # ── Matrix utility functions (replace legacy fixed-function pipeline) ──────────
@@ -1935,14 +1941,29 @@ if __name__ == "__main__":
     world_boxes: dict[str, BBoxEntry] = {}
     if args.world:
         world_links = urdfHelpers.getLinkNames(args.world)
+        # get joint-chain transforms so world links are placed correctly
+        world_transforms = urdfHelpers.getLinkWorldTransforms(args.world)
         for link_name in world_links:
-            box, pos, rot = urdfHelpers.getBoundingBox(
+            box, vis_pos, vis_rot = urdfHelpers.getBoundingBox(
                 input_urdf=args.world,
                 old_com=[0, 0, 0],
                 link_name=link_name,
                 scaling=False,
             )
-            world_boxes[link_name] = (box, pos, rot)
+            # compose joint-chain transform with visual origin
+            if link_name in world_transforms:
+                link_pos, link_rot = world_transforms[link_name]
+                vis_pos_arr = np.array(vis_pos, dtype=float)
+                if isinstance(vis_rot, list):
+                    vis_rot_mat = eulerAnglesToRotationMatrix(vis_rot)
+                else:
+                    vis_rot_mat = np.asarray(vis_rot, dtype=float)
+                final_pos = link_pos + link_rot @ vis_pos_arr
+                final_rot = link_rot @ vis_rot_mat
+                final_rpy = rotationMatrixToEulerAngles(final_rot).tolist()
+                world_boxes[link_name] = (box, final_pos.tolist(), final_rpy)
+            else:
+                world_boxes[link_name] = (box, vis_pos, vis_rot)
 
     # set up collision checker
     from identification.collision import CollisionChecker
@@ -2031,7 +2052,24 @@ if __name__ == "__main__":
         n_available = min(n_dof, len(q0))
         for _i in range(n_available):
             s.setVal(_i, float(q0[_i]))
-        kinDyn.setRobotState(s, ds, gravity)
+
+        # use floating-base state if base RPY data is available (e.g. from suspended dynamics)
+        if "base_rpy" in data and data_type == "positions":
+            idx = int(v.display_index * v.freq / v.playback_rate)
+            if idx > data["base_rpy"].shape[0] - 1:
+                idx = 0
+            rpy = data["base_rpy"][idx]
+            rot = iDynTree.Rotation.RPY(float(rpy[0]), float(rpy[1]), float(rpy[2]))
+            pos_idt = iDynTree.Position.Zero()
+            # use base position if available (suspended base translates as it swings)
+            if "base_position" in data:
+                bp = data["base_position"][idx]
+                pos_idt = iDynTree.Position(float(bp[0]), float(bp[1]), float(bp[2]))
+            world_T_base = iDynTree.Transform(rot, pos_idt).inverse()
+            base_vel = iDynTree.Twist()
+            kinDyn.setRobotState(world_T_base, s, base_vel, ds, gravity)
+        else:
+            kinDyn.setRobotState(s, ds, gravity)
 
         # check collisions using the same code path the optimizer would use:
         # capsule distance when viewing capsules, FCL when viewing meshes/boxes

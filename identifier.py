@@ -1202,6 +1202,22 @@ def main():
         args.validation,
     )
 
+    # Expand dontChangeLinks (link names) to parameter indices and merge into dontChangeParams
+    dont_change_links = idf.opt.get("dontChangeLinks", [])
+    if dont_change_links:
+        link_params: list[int] = []
+        for link_name in dont_change_links:
+            if link_name in idf.model.linkNames:
+                link_idx = idf.model.linkNames.index(link_name)
+                link_params.extend(range(link_idx * 10, link_idx * 10 + 10))
+            else:
+                print(f"Warning: dontChangeLinks: link '{link_name}' not found in model, skipping")
+        existing = set(idf.opt.get("dontChangeParams", []))
+        new_params = [p for p in link_params if p not in existing]
+        if new_params:
+            idf.opt["dontChangeParams"] = list(existing) + new_params
+            print(f"dontChangeLinks: pinned {len(dont_change_links)} links ({len(new_params)} params) to a priori")
+
     # Load unobservable parameter indices from measurement/trajectory file (if available)
     # and merge with dontChangeParams to constrain them to a priori values
     measurement_files = args.measurements[0] if args.measurements else []

@@ -205,6 +205,15 @@ def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
     _worker_state["model"] = model
 
 
+def kill_gradient_pool() -> None:
+    """Terminate the persistent gradient worker pool (e.g. on Ctrl-C)."""
+    global _gradient_pool
+    if _gradient_pool is not None:
+        _gradient_pool.terminate()
+        _gradient_pool.join()
+        _gradient_pool = None
+
+
 def _get_gradient_pool(n_jobs: int, urdf: str, config: dict) -> multiprocessing.pool.Pool:
     """Get or create the worker pool for parallel gradient computation."""
     global _gradient_pool, _gradient_pool_size

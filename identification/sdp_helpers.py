@@ -9,6 +9,10 @@ from lmi_sdp import lmi_to_coeffs
 
 epsilon_sdptol = 1e-6
 
+# cvxopt feasibility tolerance — larger values help with thin feasible regions.
+# default cvxopt is 1e-7; set via config sdpFeasTol or directly.
+_solver_feastol = 1e-5
+
 
 def to_cvxopt(objective_func, lmis, variables, objective_type="minimize", split_blocks=True):
     """Prepare objective and LMI to be used with cvxopt SDP solver.
@@ -105,17 +109,30 @@ def cvxopt_conelp(
     c, Gs, hs = to_cvxopt(objf, lmis, variables)
     cvxopt.solvers.options["maxiters"] = 100
     cvxopt.solvers.options["show_progress"] = False
-    # cvxopt.solvers.options['feastol'] = 1e-5
+    # relax feasibility tolerance to help with thin feasible regions on large robots.
+    # default cvxopt feastol is 1e-7; larger values (1e-5, 1e-4) accept slight constraint
+    # violations, making it easier for the interior-point method to find a starting point.
+    cvxopt.solvers.options["feastol"] = _solver_feastol
 
     sdpout = cvxopt.solvers.sdp(c, Gs=Gs, hs=hs)
     state = sdpout["status"]
     if sdpout["status"] == "optimal":
-        # print("(does not necessarily mean feasible)")
         pass
-    elif primalstart is not None:
-        # return primalstart if no solution was found
-        print(Fore.RED + "{}".format(sdpout["status"]) + Fore.RESET)
-        sdpout["x"] = np.reshape(np.concatenate(([0], primalstart)), (len(primalstart) + 1, 1))
+    else:
+        iters = sdpout.get("iterations", "?")
+        gap = sdpout.get("gap", None)
+        pfeas = sdpout.get("primal infeasibility", None)
+        dfeas = sdpout.get("dual infeasibility", None)
+        detail = f"status={sdpout['status']}, iterations={iters}"
+        if gap is not None:
+            detail += f", gap={gap:.2e}"
+        if pfeas is not None:
+            detail += f", primal_infeas={pfeas:.2e}"
+        if dfeas is not None:
+            detail += f", dual_infeas={dfeas:.2e}"
+        print(Fore.RED + f"cvxopt: {detail}" + Fore.RESET)
+        if primalstart is not None:
+            sdpout["x"] = np.reshape(np.concatenate(([0], primalstart)), (len(primalstart) + 1, 1))
     return np.asarray(sdpout["x"]), state
 
 

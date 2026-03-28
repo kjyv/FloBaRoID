@@ -2059,13 +2059,18 @@ if __name__ == "__main__":
             if idx > data["base_rpy"].shape[0] - 1:
                 idx = 0
             rpy = data["base_rpy"][idx]
+            # base_rpy is stored in model.py convention: RPY encodes a rotation R such that
+            # Transform(R, Zero()).inverse() gives world_T_base (for rotation only).
+            # R = R_world_base^{-1}, so R^{-1} = R_world_base (the actual world-to-base rotation).
             rot = iDynTree.Rotation.RPY(float(rpy[0]), float(rpy[1]), float(rpy[2]))
+            rot_world_base = rot.inverse()  # actual rotation of base in world
+            # base_position is the Waist position in world frame
             pos_idt = iDynTree.Position.Zero()
-            # use base position if available (suspended base translates as it swings)
             if "base_position" in data:
                 bp = data["base_position"][idx]
                 pos_idt = iDynTree.Position(float(bp[0]), float(bp[1]), float(bp[2]))
-            world_T_base = iDynTree.Transform(rot, pos_idt).inverse()
+            # construct world_T_base directly (rotation + position in world frame)
+            world_T_base = iDynTree.Transform(rot_world_base, pos_idt)
             base_vel = iDynTree.Twist()
             kinDyn.setRobotState(world_T_base, s, base_vel, ds, gravity)
         else:

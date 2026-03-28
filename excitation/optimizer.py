@@ -16,6 +16,7 @@ import numpy as np
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
+from excitation.analyticalGradient import kill_gradient_pool as _kill_gradient_pool
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
 from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
 
@@ -354,7 +355,9 @@ class Optimizer:
 
         self.world = world
         self.world_links: list[str] = []
-        if world:
+        # include world links for collision only when the base is fixed (prop-mounted).
+        # for suspended dynamics, the robot swings freely and world geometry is approximate.
+        if world and self.config.get("floatingBaseAttachment") != "suspended":
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
                 print(f"World links: {self.world_links}")
@@ -766,6 +769,8 @@ class Optimizer:
         cpu_count = os.cpu_count() or 1
         default_jobs = max(1, cpu_count - 2)
         n_jobs = self.config.get("globalOptJobs", default_jobs)
+        if n_jobs <= 0:
+            n_jobs = default_jobs
         print(f"Running Optuna ({sampler_name}) with {n_trials} trials ({n_jobs} jobs)...")
 
         if n_jobs > 1:
@@ -803,36 +808,43 @@ class Optimizer:
             if self.config["showOptimizationGraph"]:
                 plt.show(block=False)
 
-            while any(p.is_alive() for p in processes):
-                time.sleep(2)
-                if self.config["showOptimizationGraph"]:
-                    # read completed trials from shared storage and update graph
-                    tmp_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
-                    self.xar = []
-                    self.yar = []
-                    self.x_constr = []
-                    for t in tmp_study.trials:
-                        if t.value is not None:
-                            self.xar.append(t.number)
-                            self.yar.append(t.value)
-                            constraints = t.user_attrs.get("constraints", None)
-                            feasible = constraints is not None and all(v <= 0.01 for v in constraints)
-                            self.x_constr.append(feasible)
-                    if self.xar:
-                        self.iter_cnt = max(self.xar)
-                        self.updateGraph()
-                n_done = sum(not p.is_alive() for p in processes)
-                n_trials_done = len(optuna.load_study(study_name="trajectory_opt", storage=storage).trials)
-                print(
-                    f"\r  {n_trials_done}/{n_trials} trials, {n_jobs - n_done}/{n_jobs} workers active",
-                    end="",
-                    flush=True,
-                )
+            try:
+                while any(p.is_alive() for p in processes):
+                    time.sleep(2)
+                    if self.config["showOptimizationGraph"]:
+                        # read completed trials from shared storage and update graph
+                        tmp_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+                        self.xar = []
+                        self.yar = []
+                        self.x_constr = []
+                        for t in tmp_study.trials:
+                            if t.value is not None:
+                                self.xar.append(t.number)
+                                self.yar.append(t.value)
+                                constraints = t.user_attrs.get("constraints", None)
+                                feasible = constraints is not None and all(v <= 0.01 for v in constraints)
+                                self.x_constr.append(feasible)
+                        if self.xar:
+                            self.iter_cnt = max(self.xar)
+                            self.updateGraph()
+                    n_done = sum(not p.is_alive() for p in processes)
+                    n_trials_done = len(optuna.load_study(study_name="trajectory_opt", storage=storage).trials)
+                    print(
+                        f"\r  {n_trials_done}/{n_trials} trials, {n_jobs - n_done}/{n_jobs} workers active",
+                        end="",
+                        flush=True,
+                    )
+            except KeyboardInterrupt:
+                print("\n  Ctrl-C: terminating worker processes...")
+                for p in processes:
+                    p.terminate()
             print()
 
             for p in processes:
-                p.join()
-                if p.exitcode != 0:
+                p.join(timeout=5)
+                if p.is_alive():
+                    p.kill()
+                elif p.exitcode and p.exitcode > 0:
                     print(f"  worker {p.name} exited with code {p.exitcode}")
 
             # reload study results from shared storage
@@ -944,6 +956,7 @@ class Optimizer:
                     print(sol)
             except KeyboardInterrupt:
                 print("\n\nGlobal optimization interrupted by user.")
+                _kill_gradient_pool()
 
             self.gather_solutions()
 
@@ -982,13 +995,17 @@ class Optimizer:
             # the starting point. Pass the ALPSO best as initial values directly
             # to addVar (setDVs is unreliable after ALPSO's NaN solution).
             init_vals = np.array(self.last_best_sol) if len(self.last_best_sol) > 0 else None
+            if init_vals is not None:
+                print(f"Starting local optimization from global best (obj={self.last_best_f:.2f})")
+            else:
+                print("Starting local optimization from default initial trajectory (no feasible global solution found)")
             opt_prob_local = Optimization("Trajectory optimization", self._objFuncWrapper)
             opt_prob_local.addObj("f")
             self.opt_prob = opt_prob_local
             self.addVarsAndConstraints(opt_prob_local, initial_values=init_vals)
 
             if self.config["verbose"]:
-                print("Runing local optimization with {}".format(self.config["localSolver"]))
+                print("Running local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
             try:
@@ -999,6 +1016,7 @@ class Optimizer:
                     sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
             except KeyboardInterrupt:
                 print("\n\nOptimization interrupted by user.")
+                _kill_gradient_pool()
 
             self.gather_solutions()
 

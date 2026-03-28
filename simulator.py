@@ -83,7 +83,7 @@ def load_trajectory_data(traj_file: str) -> dict[str, np.ndarray]:
 def main() -> None:
     """Simulate realistic measurements from a trajectory file."""
     traj_file = args.trajectory or (config["urdf"] + ".trajectory.npz")
-    output_file = args.filename or traj_file
+    output_file = args.filename or (config["urdf"] + ".measurements.npz")
 
     num_dofs = config["num_dofs"]
     freq = config["excitationFrequency"]
@@ -113,6 +113,22 @@ def main() -> None:
     base_rpy = traj_data.get("base_rpy", np.zeros((num_samples, 3)))
     base_velocity = traj_data.get("base_velocity", np.zeros((num_samples, 6)))
     base_acceleration = traj_data.get("base_acceleration", np.zeros((num_samples, 6)))
+    base_position: np.ndarray | None = None
+
+    # For suspended floating base, compute the base motion from the ball joint dynamics
+    if floating_base and config.get("floatingBaseAttachment") == "suspended":
+        from excitation.suspendedDynamics import simulate_suspended_base_motion
+
+        print("Simulating suspended base dynamics...")
+        base_rpy, base_velocity, base_acceleration, base_position = simulate_suspended_base_motion(
+            config["urdf"],
+            positions,
+            velocities,
+            accelerations,
+            times,
+            attachment_frame=config.get("floatingBaseAttachmentFrame", "crane_ft"),
+            damping=config.get("suspendedDamping", 2000.0),
+        )
 
     # Compute torques via regressor (same code path as optimizer/simulateTrajectory)
     print(f"Computing inverse dynamics for {num_samples} samples...")
@@ -166,8 +182,8 @@ def main() -> None:
     cable_scale = config.get("simulateCableStiffnessScale", jp.cable_stiffness_scale)
     jp.cable_stiffness = jp.cable_stiffness * cable_scale
 
-    # Add realistic effects (all configurable via config file)
-    print("Adding realistic effects...")
+    # Add effects (all configurable via config file)
+    print("Adding simulated effects...")
 
     # always-on effects (part of physics)
     elastic = add_joint_elasticity(torques, accelerations, freq, jp, torque_col_offset)
@@ -232,12 +248,15 @@ def main() -> None:
     bv = np.zeros((num_samples, 6))
     ba = np.zeros((num_samples, 6))
     br = np.zeros((num_samples, 3))
+    bp = np.zeros((num_samples, 3))
     if floating_base:
         if base_rpy_noisy is None or base_velocity_noisy is None or base_acceleration_noisy is None:
             raise RuntimeError("floating-base mode requires base sensor data")
         bv = base_velocity_noisy
         ba = base_acceleration_noisy
         br = base_rpy_noisy
+        if base_position is not None:
+            bp = base_position
 
     measurement_keys = {
         "positions",
@@ -256,6 +275,7 @@ def main() -> None:
         "base_velocity",
         "base_acceleration",
         "base_rpy",
+        "base_position",
     }
 
     # preserve any existing data in the output file (e.g. trajectory parameters)
@@ -289,6 +309,7 @@ def main() -> None:
         base_velocity=bv,
         base_acceleration=ba,
         base_rpy=br,
+        base_position=bp,
     )
     np.savez(output_file, **save_data)
 

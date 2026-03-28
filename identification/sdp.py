@@ -25,6 +25,9 @@ class SDP:
     def __init__(self, idf: Identification) -> None:
         self.idf = idf
 
+        # set solver tolerances from config
+        sdp_helpers._solver_feastol = float(idf.opt.get("sdpFeasTol", 1e-5))
+
         # collect constraint flags for display
         self.constr_per_param: dict[int, list[str]] = {}
         for i in self.idf.model.identified_params:
@@ -49,14 +52,16 @@ class SDP:
         feasible = True
         for l in self.LMIs:
             const_inst = l.subs(replace).rhs
-            if const_inst.shape[0] > 1:
-                if not np.all(la.eig(np.asarray(const_inst).astype(float))[0] > 0):
+            # after substitution, scalar constraints (e.g. dontChangeParams) can evaluate to
+            # a SymPy Zero/Number with no .shape; only matrices need eigenvalue checks
+            if hasattr(const_inst, "shape") and const_inst.shape[0] > 1:
+                if not np.all(la.eigvalsh(np.asarray(const_inst).astype(float)) > 0):
                     # matrix needs to be positive definite
                     print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
             else:
-                if not l.subs(replace).rhs[0] > 0:
-                    # single values > 0
+                val = float(const_inst) if not hasattr(const_inst, "__getitem__") else float(const_inst[0])
+                if not val >= 0:
                     print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
         return feasible
@@ -326,7 +331,11 @@ class SDP:
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
             self.LMIs = list(map(LMI_PD, self.D_blocks))
-            self.epsilon_safemargin = 1e-6
+            # shift the PSD constraint from D_i >= 0 to D_i >= epsilon * I
+            # (all eigenvalues need to be at least epsilon_safemargin).
+            # smaller values make the feasible region larger (easier for the solver)
+            # but allow near-singular inertia matrices. Sousa's original: 1e-30.
+            self.epsilon_safemargin = float(idf.opt.get("sdpSafeMargin", 1e-6))
             self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in self.D_blocks])
 
         if idf.opt["showTiming"]:

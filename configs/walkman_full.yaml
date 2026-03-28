@@ -3,18 +3,17 @@
 # Config for full walkman (29 DOF, floating base).
 # Robot assumed suspended from crane at torso. All joints move simultaneously.
 
-optimizeTrajectory: 1
-
 # trajectory optimization
+optimizeTrajectory: 1
 useGlobalOptimization: 1
 globalSolver: 'Optuna'
-globalOptIterations: 5
-globalOptSize: 20
+globalOptIterations: 2
+globalOptSize: 25
 optunaSampler: 'TPE'
-# globalOptJobs: 6          # parallel worker processes (default: CPU cores - 2)
+globalOptJobs: 0                 # parallel worker processes (0 = auto: CPU cores - 2)
 useLocalOptimization: 1
-localSolver: 'IPOPT'        # prefer IPOPT, SLSQP or PSQP don't really work well for large robots
-localOptIterations: 50
+localSolver: 'IPOPT'             # prefer IPOPT, SLSQP or PSQP don't really work well for large robots
+localOptIterations: 25
 localOptSensStep: 0.02
 useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality (much faster than pyOptSparse FD)
 analyticalGradientEpsilon: 1.0e-7
@@ -34,6 +33,8 @@ ignoreLinksForCollision: ['Waist', 'multisense/hokuyo_link', 'NeckYaw', 'NeckPit
 ignoreLinkPairsForCollision:
     - ['RLowLeg', 'RFoot']         # overlap at ankle (RFootmot between them)
     - ['LLowLeg', 'LFoot']         # overlap at ankle (LFootmot between them)
+    - ['TorsoProtections', 'RShp'] # shoulder pitch housing mounted inside cage, can't collide
+    - ['TorsoProtections', 'LShp']
 # skip collision checks between two groups of links (cross-group pairs are ignored,
 # within-group pairs are still checked). Each entry is [groupA, groupB].
 ignoreCollisionBetweenGroups:
@@ -184,6 +185,15 @@ randomSamples: 10000
 minTol: 0.005
 
 floatingBase: 1
+# how the floating base is attached to the world:
+#   'fixed' - rigidly mounted (base wrench simulated from a priori, no base motion)
+#   'suspended' - hanging from ball joint at floatingBaseAttachmentFrame
+#   'free' - truly free-floating, connected to world only through contacts (e.g. feet).
+#            base motion and contact wrenches must come from real measurements or
+#            a contact dynamics simulator (not yet implemented for trajectory generation)
+floatingBaseAttachment: 'suspended'
+floatingBaseAttachmentFrame: 'crane_ft'
+suspendedDamping: 500.0               # viscous damping at ball joint (Nm·s/rad)
 
 identifyFriction: 1
 identifySymmetricVelFriction: 1
@@ -191,8 +201,10 @@ identifyGravityParamsOnly: 0
 simulateTorques: 0
 
 constrainToConsistent: 1
-checkAPrioriFeasibility: 0
-identifyClosestToCAD: 0
+checkAPrioriFeasibility: 1
+identifyClosestToCAD: 1
+sdpSafeMargin: 1.0e-6            # eigenvalue lower bound for physical consistency (smaller = easier for solver)
+sdpFeasTol: 1.0e-5               # cvxopt feasibility tolerance (larger = accept slight constraint violations)
 
 constrainUsingNL: 0
 nlOptMaxIterations: 500
@@ -217,6 +229,11 @@ limitMassToApriori: 1
 limitMassAprioriBoundary: 0.05
 
 dontChangeParams: []
+# pin all parameters of these links to a priori (virtual frames, sensor links, fixed-joint
+# links with tiny mass that can't be independently identified)
+dontChangeLinks: ['imu_link', 'imu_link2', 'r_sole', 'l_sole', 'crane_ft',
+    'multisense/head_imu_link', 'multisense/right_camera_frame',
+    'multisense/left_camera_frame', 'RSoftHand', 'LSoftHand']
 dontConstrain: []
 
 useSymmetryConstraints: 0

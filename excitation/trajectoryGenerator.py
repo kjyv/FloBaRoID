@@ -157,16 +157,34 @@ def computeTrajectoryDynamics(
     trajectory_data["torques"] = np.zeros((num_samples, num_dofs + fb))
     trajectory_data["times"] = times
     trajectory_data["measured_frequency"] = freq
+
+    # for floating-base robots that are not suspended, the base is assumed
+    # stationary (fixed contact with the environment). The base wrench from
+    # inverse dynamics gives the reaction forces at the base link, which is what
+    # a force/torque sensor at the contact point would measure. No separate
+    # contact wrench needs to be specified.
     trajectory_data["base_velocity"] = np.zeros((num_samples, 6))
     trajectory_data["base_acceleration"] = np.zeros((num_samples, 6))
-
     trajectory_data["base_rpy"] = np.zeros((num_samples, 3))
-
-    # for floating-base robots, the base is assumed stationary (fixed contact with
-    # the environment). The base wrench from inverse dynamics gives the reaction
-    # forces at the base link, which is what a force/torque sensor at the contact
-    # point would measure. No separate contact wrench needs to be specified.
     trajectory_data["contacts"] = np.array({})
+
+    # for suspended floating base, compute base motion from ball joint dynamics
+    if config.get("floatingBase") and config.get("floatingBaseAttachment") == "suspended":
+        from excitation.suspendedDynamics import simulate_suspended_base_motion
+
+        base_rpy, base_vel, base_acc, base_pos = simulate_suspended_base_motion(
+            config["urdf"],
+            positions,
+            velocities,
+            accelerations,
+            times,
+            attachment_frame=config.get("floatingBaseAttachmentFrame", "crane_ft"),
+            damping=config.get("suspendedDamping", 2000.0),
+        )
+        trajectory_data["base_rpy"] = base_rpy
+        trajectory_data["base_velocity"] = base_vel
+        trajectory_data["base_acceleration"] = base_acc
+        trajectory_data["base_position"] = base_pos
 
     if measurements:
         trajectory_data["positions"] = measurements["Q"]
@@ -181,28 +199,6 @@ def computeTrajectoryDynamics(
     data.init_from_data(trajectory_data)
     model.computeRegressors(data)
     trajectory_data["torques"][:, :] = data.samples["torques"][:, :]
-
-    """
-    if config['floatingBase']:
-        # add force of contact to keep robot fixed in space (always accelerate exactly against gravity)
-        # floating base orientation has to be rotated so that accelerations resulting from hanging
-        # are zero, i.e. the vector COM - contact point is parallel to gravity.
-        if contacts:
-            # get jacobian of contact frame at current posture
-            dim = model.num_dofs+fb
-            jacobian = iDynTree.MatrixDynSize(6, dim)
-            model.dynComp.getFrameJacobian(contactFrame, jacobian)
-            jacobian = jacobian.toNumPy()
-
-            # get base link vel and acc and torques that result from contact force / acceleration
-            contacts_torq = np.zeros(dim)
-            contacts_torq = jacobian.T.dot(contact_wrench)
-            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / 139.122
-            data.samples['base_acceleration'][:,:] = trajectory_data['base_acceleration'][:,:]
-            # simulate again with proper base acceleration
-            model.computeRegressors(data, only_simulate=True)
-            trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
-    """
 
     config["skipSamples"] = old_skip
     config["startOffset"] = old_offset

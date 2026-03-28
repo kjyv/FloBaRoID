@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from identification.model import Model
 
+
 import numpy as np
 import numpy.linalg as la
 from colorama import Fore
@@ -496,6 +497,61 @@ class URDFHelpers:
                 links.append(l.attrib["name"])
         return links
 
+    @staticmethod
+    def getLinkWorldTransforms(input_urdf: str) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Compute world-frame position and rotation for each link in a static URDF.
+
+        Traverses the joint chain (assumes all fixed joints) and accumulates
+        transforms from the root. Returns {link_name: (position_3, rotation_3x3)}.
+        """
+
+        tree = ET.parse(input_urdf)
+        root = tree.getroot()
+
+        # build parent map: child_link -> (parent_link, joint_xyz, joint_rpy)
+        parent_map: dict[str, tuple[str, np.ndarray, np.ndarray]] = {}
+        for joint in root.findall("joint"):
+            parent = joint.find("parent")
+            child = joint.find("child")
+            if parent is None or child is None:
+                continue
+            origin = joint.find("origin")
+            xyz = np.zeros(3)
+            rpy = np.zeros(3)
+            if origin is not None:
+                xyz_s = origin.attrib.get("xyz", "0 0 0")
+                xyz = np.array([float(v) for v in xyz_s.split()])
+                rpy_s = origin.attrib.get("rpy", "0 0 0")
+                rpy = np.array([float(v) for v in rpy_s.split()])
+            parent_map[child.attrib["link"]] = (parent.attrib["link"], xyz, rpy)
+
+        # compute world transforms by walking from each link to the root
+        transforms: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
+        def get_transform(link_name: str) -> tuple[np.ndarray, np.ndarray]:
+            if link_name in transforms:
+                return transforms[link_name]
+            if link_name not in parent_map:
+                # root link
+                transforms[link_name] = (np.zeros(3), np.eye(3))
+                return transforms[link_name]
+
+            parent_name, joint_xyz, joint_rpy = parent_map[link_name]
+            parent_pos, parent_rot = get_transform(parent_name)
+
+            # joint transform: rotation then translation in parent frame
+            joint_rot = eulerAnglesToRotationMatrix(joint_rpy)
+            world_rot = parent_rot @ joint_rot
+            world_pos = parent_pos + parent_rot @ joint_xyz
+
+            transforms[link_name] = (world_pos, world_rot)
+            return transforms[link_name]
+
+        for link in root.findall("link"):
+            get_transform(link.attrib["name"])
+
+        return transforms
+
     def hasVisualGeometry(self, input_urdf: str, link_name: str) -> bool:
         """Check if a link has any visual geometry (mesh file or box) in the URDF.
         Links without visual geometry are typically sensor or tool frames."""
@@ -557,40 +613,59 @@ class URDFHelpers:
 
         return filepath
 
-    def getLinkGeometry(
-        self, input_urdf: str, link_name: str
-    ) -> tuple[list[float], list[float], list[float] | np.ndarray]:
+    def getLinkGeometry(self, input_urdf: str, link_name: str) -> tuple[list[float], list[float], list[float]]:
+        """Return bounding box size, position, and RPY for a link's visual geometry.
 
+        Handles box, cylinder, and sphere primitives. Cylinders and spheres are
+        converted to their axis-aligned bounding boxes.
+        """
         tree = self.parseURDF(input_urdf)
 
-        def getBoxAttribs(m, l):
-            box_size = m.attrib["size"]
-            m = l.find("visual/origin")
-            if m is not None:
-                try:
-                    box_pos = m.attrib["xyz"]
-                except:
-                    box_pos = "0 0 0"
-
-                try:
-                    box_rpy = m.attrib["rpy"]
-                except:
-                    box_rpy = "0 0 0"
+        def getOriginAttribs(link_el: Any) -> tuple[str, str]:
+            """Extract position and RPY strings from the visual origin element."""
+            origin = link_el.find("visual/origin")
+            if origin is not None:
+                pos_s = origin.attrib.get("xyz", "0 0 0")
+                rpy_s = origin.attrib.get("rpy", "0 0 0")
             else:
-                box_pos = box_rpy = "0 0 0"
-            return box_size, box_pos, box_rpy
+                pos_s = rpy_s = "0 0 0"
+            return pos_s, rpy_s
 
-        box_size_s = box_pos_s = box_rpy_s = "0 0 0"
+        box_size_s = "0 0 0"
+        box_pos_s = "0 0 0"
+        box_rpy_s = "0 0 0"
+
         for l in tree.findall("link"):
-            if l.attrib["name"] == link_name:
-                m = l.find("visual/geometry/box")
+            if l.attrib["name"] != link_name:
+                continue
+
+            # try visual geometry first, then collision
+            for geom_prefix in ["visual/geometry", "collision/geometry"]:
+                # box: <box size="x y z">
+                m = l.find(f"{geom_prefix}/box")
                 if m is not None:
-                    box_size_s, box_pos_s, box_rpy_s = getBoxAttribs(m, l)
-                else:
-                    m = l.find("visual/collision/box")
-                    if m is not None:
-                        box_size_s, box_pos_s, box_rpy_s = getBoxAttribs(m, l)
-                break
+                    box_size_s = m.attrib["size"]
+                    box_pos_s, box_rpy_s = getOriginAttribs(l)
+                    break
+
+                # cylinder: <cylinder radius="r" length="l"> → bounding box 2r × 2r × l
+                m = l.find(f"{geom_prefix}/cylinder")
+                if m is not None:
+                    r = float(m.attrib["radius"])
+                    length = float(m.attrib["length"])
+                    box_size_s = f"{2 * r} {2 * r} {length}"
+                    box_pos_s, box_rpy_s = getOriginAttribs(l)
+                    break
+
+                # sphere: <sphere radius="r"> → bounding box 2r × 2r × 2r
+                m = l.find(f"{geom_prefix}/sphere")
+                if m is not None:
+                    r = float(m.attrib["radius"])
+                    box_size_s = f"{2 * r} {2 * r} {2 * r}"
+                    box_pos_s, box_rpy_s = getOriginAttribs(l)
+                    break
+            break
+
         box_size = [float(i) for i in box_size_s.split()]
         box_pos = [float(i) for i in box_pos_s.split()]
         box_rpy = [float(i) for i in box_rpy_s.split()]
@@ -733,8 +808,6 @@ class URDFHelpers:
 
     @staticmethod
     def getJointLimits(input_urdf: str, use_deg: bool = False) -> dict[str, dict[str, float]]:
-        import xml.etree.ElementTree as ET
-
         tree = ET.parse(input_urdf)
         limits: dict[str, dict[str, float]] = {}
         for j in tree.findall("joint"):

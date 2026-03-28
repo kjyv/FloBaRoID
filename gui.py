@@ -680,6 +680,7 @@ class FloBaRoIDApp(customtkinter.CTk):
     def _run_script(self, script: str, extra_args: list[str] | None = None) -> None:
         """Run a single script as a subprocess."""
         self._pipeline_runner = None
+        self._last_script = script
         cmd = self._build_command(script, extra_args)
         self._status_label.configure(text=f"Status: Running {script}...")
         self._output_panel.append_text(f"$ {' '.join(cmd)}\n")
@@ -796,6 +797,20 @@ class FloBaRoIDApp(customtkinter.CTk):
             self._output_panel.append_text(f"\n[Process exited with code {return_code}]\n")
         else:
             self._output_panel.append_text(f"\n[Process FAILED with code {return_code}]\n")
+
+        # after successful runs, auto-fill output fields if they were empty
+        last = getattr(self, "_last_script", None)
+        if return_code == 0 and last == "trajectory.py" and not self._trajectory_row.get_value():
+            default_traj = self._model_row.get_value() + ".trajectory.npz"
+            if (PROJECT_ROOT / default_traj).exists():
+                self._trajectory_row.set_value(default_traj)
+                self._output_panel.append_text(f"[Trajectory field set to {default_traj}]\n")
+
+        if return_code == 0 and last == "simulator.py" and not self._measurements_row.get_value():
+            default_meas = self._model_row.get_value() + ".measurements.npz"
+            if (PROJECT_ROOT / default_meas).exists():
+                self._measurements_row.set_value(default_meas)
+                self._output_panel.append_text(f"[Measurements field set to {default_meas}]\n")
 
         # if we're in a pipeline, advance to the next step
         if self._pipeline_runner:

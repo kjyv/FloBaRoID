@@ -180,6 +180,11 @@ class SDP:
                 params_to_skip.append(p)
 
             for p in set(params_to_skip):
+                # skip params already removed from the optimization (delete_cols) —
+                # they're pinned by exclusion and adding constraints for them would
+                # reference symbols not in the solver's variable list
+                if p in self.delete_cols:
+                    continue
                 if (idf.opt["identifyGravityParamsOnly"] and p not in idf.model.inertia_params) or not idf.opt[
                     "identifyGravityParamsOnly"
                 ]:

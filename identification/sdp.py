@@ -479,10 +479,14 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found std solution with {u} squared residual error")
-            idf.model.xStd = np.asarray(solution[1:]).flatten()
+                idf.model.xStd = np.asarray(solution[1:]).flatten()
+            else:
+                # both solvers failed — fall back to a priori parameters
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori parameters" + Fore.RESET)
+                idf.model.xStd = idf.model.xStdModel.copy()
 
             # prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -600,10 +604,13 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found std solution with {u} squared residual error")
-            idf.model.xStd = np.asarray(solution[1:]).flatten()
+                idf.model.xStd = np.asarray(solution[1:]).flatten()
+            else:
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori parameters" + Fore.RESET)
+                idf.model.xStd = idf.model.xStdModel.copy()
 
             # prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -749,10 +756,12 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found base solution with {u} error increase from OLS solution")
-            idf.model.xBase = np.asarray(solution[1 : 1 + idf.model.num_base_params]).flatten()
+                idf.model.xBase = np.asarray(solution[1 : 1 + idf.model.num_base_params]).flatten()
+            else:
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori base parameters" + Fore.RESET)
 
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
@@ -850,9 +859,10 @@ class SDP:
         prime = idf.model.xStdModel[idable_params]
         solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u = solution[0, 0]
-        if u:
+        if state == "optimal":
+            u = solution[0, 0]
             print(f"SDP found std solution with {u} error increase from previous solution")
-        xStd = np.asarray(solution[1:]).flatten()
-
-        return xStd
+            return np.asarray(solution[1:]).flatten()
+        else:
+            print(Fore.YELLOW + "SDP solver failed in findFeasibleStdFromStd, returning input" + Fore.RESET)
+            return xStd

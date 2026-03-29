@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.4
+
+### Identification (SDP)
+- **Replaced SDP solver pipeline**: removed sympy/lmi_sdp/cvxopt/dsdp5, replaced with
+  cvxpy. Supports CLARABEL (default, bundled), SCS (bundled), MOSEK (optional), and others.
+  CLARABEL solves the full 29-DOF WALKMAN in cases where cvxopt failed. 
+- Removed dependencies: `cvxopt`, `pylmi-sdp`. Added: `cvxpy`.
+- Constraints built numerically (numpy) instead of symbolically (sympy) — faster and much simpler
+- `sdpSolver` config option selects solver (replaces `sdpBackend`/`onlyUseDSDP`)
+- `sdpSolverOptions` passes solver-specific options
+- Pinned links (`dontChangeLinks`) excluded from PSD, hull, and mass constraints —
+  prevents infeasible contradictions from zero-mass virtual links
+- Closest-to-CAD refinement step skipped when first solve fails
+
 ## 0.9.3
 
 ### Suspended base dynamics
@@ -33,7 +47,6 @@
 - `dontChangeLinks`: pin all parameters of named links to a priori (replaces manual
   parameter index lists)
 - `sdpSafeMargin`: configurable eigenvalue lower bound for physical consistency constraints
-- `sdpFeasTol`: configurable cvxopt feasibility tolerance for thin feasible regions
 - Improved cvxopt error reporting (iterations, gap, primal/dual infeasibility)
 
 ### Trajectory optimization

@@ -73,6 +73,22 @@ class Identification:
         # load model description and initialize
         self.model = Model(self.opt, urdf_file, regressor_file)
 
+        # expand dontChangeLinks (link names) to parameter indices
+        dont_change_links = self.opt.get("dontChangeLinks", [])
+        if dont_change_links:
+            link_params: list[int] = []
+            for link_name in dont_change_links:
+                if link_name in self.model.linkNames:
+                    link_idx = self.model.linkNames.index(link_name)
+                    link_params.extend(range(link_idx * 10, link_idx * 10 + 10))
+                else:
+                    print(f"Warning: dontChangeLinks: link '{link_name}' not found in model, skipping")
+            existing = set(self.opt.get("dontChangeParams", []))
+            new_params = [p for p in link_params if p not in existing]
+            if new_params:
+                self.opt["dontChangeParams"] = list(existing) + new_params
+                print(f"dontChangeLinks: pinned {len(dont_change_links)} links ({len(new_params)} params) to a priori")
+
         # load measurements
         self.data = Data(self.opt)
         if measurements_files:
@@ -778,18 +794,20 @@ class Identification:
                     self.sdp.initSDP_LMIs(self)
                     self.sdp.identifyFeasibleStandardParameters(self)
 
-                    # get feasible base solution by projection
-                    if self.opt["useBasisProjection"]:
-                        self.model.xBase = self.model.Binv.dot(self.model.xStd)
-                    else:
-                        self.model.xBase = self.model.K.dot(self.model.xStd)
+                    # only refine if the first step found a solution (not just a priori fallback)
+                    if not np.allclose(self.model.xStd, self.model.xStdModel):
+                        # get feasible base solution by projection
+                        if self.opt["useBasisProjection"]:
+                            self.model.xBase = self.model.Binv.dot(self.model.xStd)
+                        else:
+                            self.model.xBase = self.model.K.dot(self.model.xStd)
 
-                    print("Trying to find equal solution closer to a priori values")
+                        print("Trying to find equal solution closer to a priori values")
 
-                    if self.opt["constrainUsingNL"]:
-                        self.nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
-                    else:
-                        self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
+                        if self.opt["constrainUsingNL"]:
+                            self.nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
+                        else:
+                            self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
@@ -894,8 +912,9 @@ class Identification:
                             }
                         )
 
-            # add plots for each joint
-            for i in range(fb, self.model.num_dofs):
+            # add plots for each joint; skip base columns if they were plotted above
+            joint_start = 6 if (self.opt["floatingBase"] and self.opt["plotBaseDynamics"]) else 0
+            for i in range(joint_start, tauMeasured.shape[1]):
                 datasets.append(
                     {
                         "unified_scaling": False,
@@ -1201,22 +1220,6 @@ def main():
         args.regressor,
         args.validation,
     )
-
-    # Expand dontChangeLinks (link names) to parameter indices and merge into dontChangeParams
-    dont_change_links = idf.opt.get("dontChangeLinks", [])
-    if dont_change_links:
-        link_params: list[int] = []
-        for link_name in dont_change_links:
-            if link_name in idf.model.linkNames:
-                link_idx = idf.model.linkNames.index(link_name)
-                link_params.extend(range(link_idx * 10, link_idx * 10 + 10))
-            else:
-                print(f"Warning: dontChangeLinks: link '{link_name}' not found in model, skipping")
-        existing = set(idf.opt.get("dontChangeParams", []))
-        new_params = [p for p in link_params if p not in existing]
-        if new_params:
-            idf.opt["dontChangeParams"] = list(existing) + new_params
-            print(f"dontChangeLinks: pinned {len(dont_change_links)} links ({len(new_params)} params) to a priori")
 
     # Load unobservable parameter indices from measurement/trajectory file (if available)
     # and merge with dontChangeParams to constrain them to a priori values

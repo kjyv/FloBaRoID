@@ -203,8 +203,10 @@ simulateTorques: 0
 constrainToConsistent: 1
 checkAPrioriFeasibility: 1
 identifyClosestToCAD: 1
+sdpSolver: 'clarabel'            # cvxpy solver: clarabel, scs, mosek, copt, cvxopt
+sdpSolverOptions: {}             # solver-specific options
 sdpSafeMargin: 1.0e-6            # eigenvalue lower bound for physical consistency (smaller = easier for solver)
-sdpFeasTol: 1.0e-5               # cvxopt feasibility tolerance (larger = accept slight constraint violations)
+sdpBaseParamTol: 1.0e-3          # tolerance for base param equality in closest-to-CAD step
 
 constrainUsingNL: 0
 nlOptMaxIterations: 500
@@ -232,8 +234,10 @@ dontChangeParams: []
 # pin all parameters of these links to a priori (virtual frames, sensor links, fixed-joint
 # links with tiny mass that can't be independently identified)
 dontChangeLinks: ['imu_link', 'imu_link2', 'r_sole', 'l_sole', 'crane_ft',
-    'multisense/head_imu_link', 'multisense/right_camera_frame',
-    'multisense/left_camera_frame', 'RSoftHand', 'LSoftHand']
+    'NeckYaw', 'NeckPitch', 'backpack', 'TorsoProtections',
+    'multisense/head', 'multisense/head_imu_link', 'multisense/right_camera_frame',
+    'multisense/left_camera_frame', 'multisense/hokuyo_link',
+    'RSoftHandLink', 'RSoftHand', 'LSoftHandLink', 'LSoftHand']
 dontConstrain: []
 
 useSymmetryConstraints: 0

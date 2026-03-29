@@ -206,6 +206,8 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
 
+sdpSolver: 'clarabel'            # cvxpy solver: clarabel, scs, mosek, copt, cvxopt
+
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500

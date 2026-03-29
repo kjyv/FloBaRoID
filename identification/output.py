@@ -600,7 +600,10 @@ class OutputMatplotlib:
         for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
             n_subplots = len(group["dataset"])
-            fig = make_subplots(rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.02)
+            subplot_titles = [group["dataset"][i]["title"] for i in range(n_subplots)]
+            fig = make_subplots(
+                rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=subplot_titles
+            )
 
             for d_i in range(n_subplots):
                 d = group["dataset"][d_i]
@@ -648,17 +651,6 @@ class OutputMatplotlib:
                         )
 
                 fig.update_yaxes(title_text=group.get("y_label", ""), row=row, col=1)
-                # subplot title as annotation
-                fig.add_annotation(
-                    text=d["title"],
-                    xref="x domain",
-                    yref="y domain",
-                    x=0.5,
-                    y=1.05,
-                    showarrow=False,
-                    row=row,
-                    col=1,
-                )
 
             # unified scaling
             if group["unified_scaling"]:
@@ -671,7 +663,13 @@ class OutputMatplotlib:
                     fig.update_yaxes(range=[ymin, ymax], row=r, col=1)
 
             fig.update_xaxes(title_text="Time (s)", row=n_subplots, col=1)
-            fig.update_layout(height=300 * n_subplots, legend=dict(orientation="h"))
+            fig.update_layout(
+                height=300 * n_subplots + 40,
+                margin=dict(b=60),
+                legend=dict(orientation="h", yanchor="bottom", y=0, xanchor="center", x=0.5, yref="container"),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
             figures.append(fig)
 
         return figures

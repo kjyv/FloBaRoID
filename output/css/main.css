@@ -67,6 +67,18 @@ div#console {
     font-family: monospace;
 }
 
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    html {
+        color: #ddd;
+        background-color: #1a1a1a;
+    }
+
+    div#console {
+        color: #ccc;
+    }
+}
+
 g.mpld3-baseaxes text.mpld3-text:first-of-type {
     font-size: 15px;
 }

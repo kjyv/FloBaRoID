@@ -18,6 +18,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog
@@ -408,6 +409,19 @@ class OutputPanel(customtkinter.CTkFrame):
         self._textbox.configure(state="disabled")
 
 
+ICON_PATH = PROJECT_ROOT / "icon.png"
+
+
+def _load_app_icon() -> tk.PhotoImage | None:
+    """Load the application icon from output/icon.png.
+
+    Regenerate with: uv run tools/generate_icon.py
+    """
+    if ICON_PATH.exists():
+        return tk.PhotoImage(file=str(ICON_PATH))
+    return None
+
+
 class FloBaRoIDApp(customtkinter.CTk):
     """Main application window for the FloBaRoID GUI launcher."""
 
@@ -415,6 +429,9 @@ class FloBaRoIDApp(customtkinter.CTk):
         super().__init__()
 
         self.title("FloBaRoID - Robot Identification Toolbox")
+        self._icon = _load_app_icon()
+        if self._icon:
+            self.wm_iconphoto(True, self._icon)
         self.minsize(900, 650)
         self.geometry("950x750")
         self.grid_columnconfigure(0, weight=1)

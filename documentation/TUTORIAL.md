@@ -35,18 +35,20 @@ container format (you'll need to customize it for the columns in your csv file
 etc.).
 `uv run excite.py --model model/example.urdf --config configs/example.yaml --plot`
 
-   Alternatively, use **simulator.py** to simulate realistic measurements from
-   the trajectory without a physical robot. This adds configurable effects
-   (friction, sensor noise, backlash, cable forces, thermal drift, etc.):
+Alternatively, use **simulator.py** to simulate realistic measurements from
+the trajectory without a physical robot. This adds configurable effects
+(friction, sensor noise, backlash, cable forces, thermal drift, etc.):
 `uv run simulator.py --config configs/example.yaml --model model/example.urdf`
 
 4. Finally, run identifier.py with the measurements file and again the kinematic
-   model in a .urdf file with the a priori parameters. These parameters don't
-   have to be physical consistent but it's recommended (they should be when they
-   come from a CAD system). Optionally you can supply an output .urdf file path
-   to which the input urdf with exchanged identified parameters is written.
-   Another measurements file can be supplied for validation. A separate
-   `--model_real` URDF can be provided as ground truth for comparison.
+model in a .urdf file with the a priori parameters. These parameters don't
+have to be physical consistent but it's recommended (they should be when they
+come from a CAD system). Optionally you can supply an output .urdf file path
+to which the input urdf with exchanged identified parameters is written.
+Another measurements file can be supplied for validation. A separate
+`--model_real` URDF can be provided as ground truth for comparison.
+This can be the model that was used for simulation while the identification
+starts at a slightly different model. 
 `uv run identifier.py --config configs/example.yaml --model model/example.urdf \`
 `--measurements model/example.urdf.measurements.npz --output model/example_identified.urdf`
 
@@ -179,4 +181,117 @@ The absolute mean error normalized with the norm of the measured data vectors.
 Normalized root mean square (NRMS) error:
 The square root of the mean over the joints of the squared error, normalized by the possible torque range of each joint (as given in the URDF).
 
-An assessment of the quality of the result should be made through the combination of torque prediction accuracy, validation accuracy (ideally multiple different validation trajcetories) and also the estimated torque curve shapes compared to the measured torques.
+An assessment of the quality of the result should be made through the combination of torque prediction accuracy, validation accuracy (ideally multiple different validation trajectories) and also the estimated torque curve shapes compared to the measured torques.
+
+When a ground truth model is given (`--model_real`), the output also shows the
+distance of base parameters to real. Base parameters (linear combinations of standard
+parameters) are what the data actually determines — standard parameters are non-unique
+(many sets produce the same base parameters and torques). A standard parameter distance
+that increases while base parameters improve is expected and not a problem.
+
+
+## Important configuration settings
+
+### Total robot mass
+
+Set `limitMassVal` to the actual total robot mass (from weighing). This
+constraint allows the identifier to distribute mass based only on torque
+fitting, which can lead to the wrong total mass and a constant offset in base
+force predictions. Set `limitMassRange` to a small tolerance (e.g. 0.5 kg):
+
+```yaml
+limitOverallMass: 1
+limitMassVal: 16.0        # total mass in kg (from weighing the robot)
+limitMassRange: 0.5       # allowed deviation (kg)
+```
+
+Per-link mass bounds (`limitMassToApriori`, `limitMassAprioriBoundary`) should allow
+enough room for each link to adjust. A boundary of 10-20% is typical:
+
+```yaml
+limitMassToApriori: 1
+limitMassAprioriBoundary: 0.15   # ±15% from a priori per link
+```
+
+### Pinning non-identifiable links
+
+Links connected via fixed joints (sensor frames, end-effectors, protective covers)
+cannot be independently identified from torque data. Pin them to their a priori values
+using `dontChangeLinks` to prevent the solver from assigning them arbitrary values:
+
+```yaml
+dontChangeLinks: ['imu_link', 'camera_frame', 'end_effector', ...]
+```
+
+This also prevents infeasible SDP constraints from zero-mass virtual links.
+
+### SDP solver
+
+The default solver is CLARABEL (bundled with cvxpy). For large robots, a warm start
+from a priori parameters helps the solver. If CLARABEL fails, try SCS (`sdpSolver: 'scs'`)
+which is more robust but slower and less precise. MOSEK (`sdpSolver: 'mosek'`) is
+also a good option but requires a [license](https://www.mosek.com/license/request/trial/).
+
+```yaml
+sdpSolver: 'clarabel'
+sdpSafeMargin: 1.0e-6     # eigenvalue lower bound for physical consistency
+```
+
+
+## Floating-base robots
+
+For floating-base robots (humanoids, mobile manipulators), additional configuration
+is needed.
+
+### Base attachment type
+
+The `floatingBaseAttachment` option defines how the robot's base is connected to
+the world during the identification experiment:
+
+```yaml
+floatingBase: 1
+floatingBaseAttachment: 'suspended'     # 'fixed', 'suspended', or 'free'
+floatingBaseAttachmentFrame: 'crane_ft' # URDF frame where the chain/crane attaches
+suspendedDamping: 500.0                 # ball joint damping (Nm·s/rad)
+```
+
+- **`fixed`**: Base is rigidly mounted (e.g. prop/stand). The 6 base wrench equations
+  are simulated from the a priori model and add no independent information. Only joint
+  torque equations contribute to identification.
+
+- **`suspended`**: Robot hangs from a ball joint at the attachment frame (e.g. crane).
+  The base swings as joints move, producing real base dynamics. Both joint torques AND
+  base wrench equations contribute to identification. The URDF must have a link at the
+  attachment point (e.g. `crane_ft`) with an `<inertial>` element (even a tiny dummy mass).
+
+- **`free`**: Truly free-floating (e.g. walking). Base motion and contact wrenches must
+  come from real measurements (IMU + F/T sensors). Not yet supported for trajectory
+  generation.
+
+### Trajectory optimization for suspended robots
+
+The trajectory optimizer accounts for suspended dynamics when
+`floatingBaseAttachment: 'suspended'`. The optimizer evaluates each candidate
+trajectory with the pendulum simulation, checking that joint torques stay within
+limits even with the swinging base. This makes optimization slower but produces
+trajectories that are safe for the suspended setup.
+
+A world URDF can be provided for visualization (`--world model/world_suspended.urdf`)
+but world collision links are automatically excluded for suspended robots (since the
+robot swings freely).
+
+### Sensor noise and simulation effects
+
+When using the simulator for testing, be aware that unmodeled effects (backlash,
+cable forces, thermal drift, Stribeck friction) can significantly degrade
+identification quality — the identifier's linear friction model cannot capture them,
+and they get absorbed into the inertial parameters. For benchmarking, consider
+disabling effects that the identifier cannot model:
+
+```yaml
+simulateFriction: 0            # includes Stribeck stiction (not modeled by identifier)
+simulateThermalDrift: 0
+simulateCableForces: 0
+simulateStructuralDeflection: 0
+simulateBacklash: 0
+```

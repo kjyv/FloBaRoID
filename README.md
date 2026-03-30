@@ -12,21 +12,27 @@ humanoid robots. It aims to provide a complete solution for obtaining physical c
 
 Features:
 
-* find optimized excitation trajectories with non-linear global optimization (as parameters of fourier-series for periodic soft trajectories)
+* find optimized excitation trajectories with non-linear global optimization (Optuna + IPOPT, as parameters of Fourier-series for periodic soft trajectories)
+  * D-optimality objective with analytical gradients \[Ayusawa2017\]
+  * collision-aware (convex hull, capsule, or full mesh)
+  * supports floating-base robots with suspended dynamics (ball-joint at configurable attachment frame)
+* realistic measurement simulation from trajectories (friction, backlash, sensor noise, cable forces, thermal drift, etc.)
 * data preprocessing
     * derive velocity and acceleration values from position readings
     * data is zero-phase low-pass filtered from supplied measurements
-    * it is possible to only select a combination of data blocks to yield a better condition number \[Venture2009\]
+    * optionally select best data blocks from measurements by sub-regressor quality \[Venture2009\]
+      (useful for real robot data with variable excitation quality)
 * validation with other measurement files
-* excitation of robots, using ROS/MoveIt! or Yarp
+* excitation of real robots, using ROS/MoveIt! or Yarp
 * implemented estimation methods:
   * ordinary least squares, OLS
   * weighted least squares \[Zak1994\]
   * estimation of parameter error using previously known CAD values \[Gautier2013\]
   * essential standard parameters \[Pham1991\]\[Gautier2013\], estimating only those that are most certain for the measurement data and leaving the others unchanged
-  * identification problem formulation with constraints as linear convex SDP problem to get optimal physical consistent standard parameters \[Sousa2014\]
+  * SDP-constrained identification for physically consistent parameters \[Sousa2014\], using cvxpy (using e.g. CLARABEL or MOSEK solvers)
+  * closest-to-CAD recovery of standard parameters from feasible base solution
   * non-linear optimization within consistent parameter space \[Traversaro2016\]
-* visualization of trajectories
+* 3D visualization of robot model, trajectories, and world environment (OpenGL)
 * plotting of measured and estimated joint state and torques (interactive, HTML, PDF or Tikz)
 * output of the identified parameters directly into URDF
 
@@ -34,10 +40,8 @@ Features:
 
 You'll need some or all of these depenencies installed in your system:
 
-* **suite-sparse** (required for building cvxopt): `brew install suite-sparse` (macOS) or `apt install libsuitesparse-dev` (Ubuntu/Debian)
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **ipopt** (optional, for IPOPT solver in trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
-* **dsdp5** (command line executable, required for SDP-constrained identification)
+* **ipopt** (recommended, for IPOPT solver in trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
 
 ## Installation
 
@@ -46,7 +50,8 @@ run e.g. `uv run identifier.py` to run the tools in uv virtual env. It will inst
 automatically.
 
 Optional extras can be installed with:
-* `uv sync --extra ipopt` — IPOPT solver support (requires libipopt, see above)
+* `uv sync --extra optimization` — IPOPT solver support via cyipopt (requires libipopt, see above)
+* `uv sync --extra visualization` — matplotlib2tikz for TikZ export
 
 
 ## Commands
@@ -71,8 +76,10 @@ uv run excite.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --
   Settings are controlled via the config file (`simulate*` options).
 
 ```bash
-uv run simulator.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --filename measurements.npz
+uv run simulator.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf
 ```
+
+Saves to `<model>.measurements.npz` by default. Override with `--filename`.
 
 * **identifier.py**: identify dynamical parameters (mass, COM and rotational inertia) starting from an URDF description and from torque and force measurements
 
@@ -86,17 +93,9 @@ uv run identifier.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urd
 uv run visualizer.py --config configs/kuka_lwr4.yaml --model model/kuka_lwr4.urdf --trajectory model/kuka_lwr4.urdf.trajectory.npz
 ```
 
-### Optional extras
-
-```bash
-uv sync --extra tikz-plots      # matplotlib2tikz
-```
-
 ### Additional non-PyPI dependencies
 
-* symengine.py (to speedup SDP, optional)
-
-requirements for excitation module:
+Requirements for excitation module:
 
 * for ros, python modules: ros, moveit\_msg, moveit\_commander
 * for yarp: c compiler, installed [robotology-superbuild](https://github.com/robotology-playground/robotology-superbuild), python modules: yarp
@@ -106,13 +105,12 @@ Also see the [Tutorial](documentation/TUTORIAL.md).
 
 Known limitations:
 
-* trajectory optimization for floating-base robots assumes a stationary base (robot mounted or standing).
-  Dynamic balance criteria (e.g., ZMP) are not yet implemented.
+* trajectory optimization for floating-base robots with suspended dynamics uses a ball-joint
+  model. True chain/cable dynamics and walking contact dynamics are not yet implemented.
 * YARP excitation module is not very generic (ROS should be)
 * using position control over YARP is not realtime safe and can expose timing issues (especially with python to C bridge)
-* Since preparing SDP matrices uses sympy expressions, most of the time for solving the identification problem is spent in symbolic manipulations rather than the actual convex optimization solver. Possibly the time demands can be reduced.
 
-SDP optimization code is based on or uses parts from [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)
+SDP identification approach based on \[Sousa2014\] and [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident), reimplemented using cvxpy.
 
 Usage is licensed under the LGPL 3.0, see License.md. Please quote the following publication if you're using this software for any project:
 `S. Bethge, J. Malzahn, N. Tsagarakis, D. Caldwell: "FloBaRoID — A Software Package for the Identification of Robot Dynamics Parameters", 26th International Conference on Robotics in Alpe-Adria-Danube Region (RAAD), 2017`

@@ -531,14 +531,47 @@ class OutputConsole:
                 # sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
                 # print( "Squared distance of std parameter vectors (identified vs. a priori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
-            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
-                # print("Mean error (a priori - approx) of all base params: {:.5f}".\
-                #        format(sum_error_all_base/len(idf.model.xBase)))
-                sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
-                sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
-                print(
-                    f"Squared distance of base parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
-                )
+            # base parameter comparison — always show when model_real is available.
+            # base params are what the data actually determines, so this is the fair
+            # metric for identification quality (std params are non-unique).
+            if not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
+                sq_error_base_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
+                sq_error_base_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
+                norm_real = la.norm(self.xBaseReal)
+                if norm_real > 0:
+                    pct_apriori = la.norm(self.xBaseReal - idf.model.xBaseModel) * 100 / norm_real
+                    pct_idf = la.norm(self.xBaseReal - idf.model.xBase) * 100 / norm_real
+                    print(
+                        f"Squared distance of base parameter vectors (identified vs. a priori) to real: "
+                        f"{sq_error_base_idf:.2f} vs. {sq_error_base_apriori:.2f} "
+                        f"({pct_idf:.1f}% vs. {pct_apriori:.1f}% relative)"
+                    )
+                else:
+                    print(
+                        f"Squared distance of base parameter vectors (identified vs. a priori) to real: "
+                        f"{sq_error_base_idf:.2f} vs. {sq_error_base_apriori:.2f}"
+                    )
+                # interpretation help
+                std_improved = sq_error_idf < sq_error_apriori
+                base_improved = sq_error_base_idf < sq_error_base_apriori
+                if base_improved and std_improved:
+                    print("  Both base and std parameters improved over a priori.")
+                elif base_improved and not std_improved:
+                    print(
+                        "  Note: base params improved but std params moved away from real. "
+                        "This is expected — many std parameter sets map to the same base params. "
+                        "Base param distance is the meaningful metric for identification quality."
+                    )
+                elif std_improved and not base_improved:
+                    print(
+                        "  Note: std params improved but base params moved away from real. "
+                        "The trajectory may not excite all base parameters sufficiently."
+                    )
+                else:
+                    print(
+                        "  Note: neither base nor std params improved. The trajectory may not "
+                        "provide enough excitation, or the a priori model is already close to optimal."
+                    )
         else:
             if idf.opt["showStandardParams"] and not summary_only:
                 if idf.opt["identifyGravityParamsOnly"]:
@@ -548,9 +581,9 @@ class OutputConsole:
                 else:
                     sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
                 print(f"Squared distance of identifiable std parameter vectors to a priori: {sq_error_apriori}")
-            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
-                sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
-                print(f"Squared distance of base parameter vectors (identified vs. a priori): {sq_error_apriori}")
+            if not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
+                sq_error_base = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
+                print(f"Squared distance of base parameter vectors (identified vs. a priori): {sq_error_base:.2f}")
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
         # get percentual error (i.e. how big is the error relative to the measured magnitudes)

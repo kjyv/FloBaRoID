@@ -14,39 +14,41 @@ all steps of this task are held within a configuration file in the config/ dir.
 in the configuration should be set (for the case of the LWR4+ that is done) and
 optionally supply a world urdf file that includes the ground and objects that
 the robot might collide with, e.g. a table. The optimization will simulate each
-trajectory and check for all constraints to be met while minimizing the
-condition number of the dynamics regressor. This might take a while depending on
+trajectory and check for all constraints to be met while maximizing the
+D-optimality of the dynamics regressor. This might take a while depending on
 the degrees of freedom. An output file containing the found parameters of the
 trajectory will be saved.
-`./trajectory.py --config configs/example.yaml --model model/example.urdf --world model/world.urdf`
+`uv run trajectory.py --config configs/example.yaml --model model/example.urdf --world model/world.urdf`
 
 3. Get joint torque measurements for the trajectory from your robotic system, if
 suitable by using the excite.py script. It will load the previously created
 trajectory file and move the robot through the specified module (in the config
-file). Alternatively, simulation can be enabled to simulate the torques using
-the supplied model parameters. If necessary, look at the existing modules and
-write a custom one for your communication method. After retrieving the
-measurements, filtering as well as deriving velocity and acceleration is done
-and is saved to a measurements file. If you are using other means of motion
-control and data recording and don't use the excite.py script, the data needs to
-be filtered and saved to a numpy data file that has the expected data fields
-(see README.md in excitation/). There is also the **csv2npz.py** script that
-loads raw data from csv text files, preprocesses them with the same filtering
-and writes to the container format (you'll need to customize it for the columns
-in your csv file etc.).
-In this example for the LWR4+, we simply simulate the trajectory file to receive a measurements file.
-`./excite.py --model model/example.urdf --config configs/example.yaml --plot \`
-`--trajectory model/example.urdf.trajectory.npz --filename measurements.npz`
+file). If necessary, look at the existing modules and write a custom one for
+your communication method. After retrieving the measurements, filtering as well
+as deriving velocity and acceleration is done and is saved to a measurements
+file. If you are using other means of motion control and data recording and
+don't use the excite.py script, the data needs to be filtered and saved to a
+numpy data file that has the expected data fields (see README.md in
+excitation/). There is also the **csv2npz.py** script that loads raw data from
+csv text files, preprocesses them with the same filtering and writes to the
+container format (you'll need to customize it for the columns in your csv file
+etc.).
+`uv run excite.py --model model/example.urdf --config configs/example.yaml --plot`
+
+   Alternatively, use **simulator.py** to simulate realistic measurements from
+   the trajectory without a physical robot. This adds configurable effects
+   (friction, sensor noise, backlash, cable forces, thermal drift, etc.):
+`uv run simulator.py --config configs/example.yaml --model model/example.urdf`
 
 4. Finally, run identifier.py with the measurements file and again the kinematic
    model in a .urdf file with the a priori parameters. These parameters don't
    have to be physical consistent but it's recommended (they should be when they
-   come from a CAD system). The constrained optimization for identification
-   Optionally you can supply an output .urdf file path to which the input urdf
-   with exchanged identified parameters is written. Another measurements file
-   can be supplied for validation.
-`./identifier.py --config configs/example.yaml --model model/example.urdf --measurements \`
-`measurements.npz --validation measurements_2.npz --output model/example_identified.urdf`
+   come from a CAD system). Optionally you can supply an output .urdf file path
+   to which the input urdf with exchanged identified parameters is written.
+   Another measurements file can be supplied for validation. A separate
+   `--model_real` URDF can be provided as ground truth for comparison.
+`uv run identifier.py --config configs/example.yaml --model model/example.urdf \`
+`--measurements model/example.urdf.measurements.npz --output model/example_identified.urdf`
 
 The output html file in output/ should look similar to the following:
 

@@ -224,11 +224,11 @@ limitCOMToApriori: 0
 limitCOMAprioriBoundary: 0.005
 
 limitOverallMass: 1
-limitMassVal: null
-limitMassRange: 0.2
+limitMassVal: 139.14                 # total robot mass (from weighing) — null uses a priori sum
+limitMassRange: 0.5                  # allowed deviation from limitMassVal (kg)
 
 limitMassToApriori: 1
-limitMassAprioriBoundary: 0.05
+limitMassAprioriBoundary: 0.15       # per-link mass can deviate ±15% from a priori
 
 dontChangeParams: []
 # pin all parameters of these links to a priori (virtual frames, sensor links, fixed-joint

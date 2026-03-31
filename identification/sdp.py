@@ -279,6 +279,13 @@ class SDP:
                             self.constraints.append(self.x[idx(p_fv2)] >= self.epsilon_safemargin)
                             self.constr_per_param[p_fv2].append(">0")
 
+                    # Stribeck stiction Fs >= 0
+                    if idf.opt.get("stribeckVelocity", 0) > 0:
+                        for i in range(idf.model.num_dofs):
+                            p_fs = idf.model.num_all_params - idf.model.num_dofs + i
+                            self.constraints.append(self.x[idx(p_fs)] >= self.epsilon_safemargin)
+                            self.constr_per_param[p_fs].append(">0")
+
         if idf.opt["showTiming"]:
             print(f"Initializing cvxpy constraints took {t.interval:.3f} sec.")
 

@@ -382,6 +382,14 @@ class ParamHelpers:
                     # same value again for asymmetric value since urdf does only have one value
                     params[start + nd + nd + i] = friction[j]["f_velocity"]
 
+        # initialize Stribeck stiction Fs (URDF doesn't have this, derive from Fc)
+        if model.opt.get("stribeckVelocity", 0) > 0 and not model.opt["identifyGravityParamsOnly"]:
+            fs_start = model.num_all_params - nd
+            for i in range(len(model.jointNames)):
+                fc = params[start + i]
+                # default: 60% of Coulomb friction (same as simulator's stiction model)
+                params[fs_start + i] = abs(fc) * 0.6 if abs(fc) > 0 else 0.0
+
 
 class URDFHelpers:
     def __init__(self, paramHelpers: ParamHelpers, model: Model, opt: dict) -> None:

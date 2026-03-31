@@ -4,25 +4,25 @@
 # Robot assumed suspended from crane at torso. All joints move simultaneously.
 
 # trajectory optimization
-optimizeTrajectory: 1            #find new parameters with optimization or load previous params from file (if no file exists, use random)
-useGlobalOptimization: 1         #use global solver first (recommended)
+optimizeTrajectory: 1            # find new parameters with optimization or load previous params from file (if no file exists, use random)
+useGlobalOptimization: 1         # use global solver first (recommended)
 globalSolver: 'Optuna'
-globalOptIterations: 2           # n_trials = globalOptSize * globalOptIterations
+globalOptIterations: 3           # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 25
 optunaSampler: 'TPE'
 globalOptJobs: 0                 # parallel worker processes (0 = auto: CPU cores - 2)
-useLocalOptimization: 1          #do local optimization after using global solver
+useLocalOptimization: 1          # do local optimization after using global solver
 localSolver: 'IPOPT'             # prefer IPOPT, SLSQP or PSQP don't really work well for large robots
-localOptIterations: 25           #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
+localOptIterations: 50           # how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 localOptSensStep: 0.02
-useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality (much faster than pyOptSparse FD)
-analyticalGradientEpsilon: 1.0e-7  #FD step for numerical regressor Jacobian in analytical gradient
-analyticalGradientJobs: 0        #parallel workers for regressor FD in gradient (0 = auto: CPU cores - 2)
+useAnalyticalGradients: 1        # analytical gradients via regularized D-optimality (much faster than pyOptSparse FD)
+analyticalGradientEpsilon: 1.0e-7  # FD step for numerical regressor Jacobian in analytical gradient
+analyticalGradientJobs: 0        # parallel workers for regressor FD in gradient (0 = auto: CPU cores - 2)
 minTolConstr: 0.01               # tolerance for feasibility (tanh rounding can cause tiny angle violations)
-showOptimizationGraph: 1         #display updating graph during trajectory optimization
-showOptimizationTrajs: 0         #display the trajectory plot after each optimization step
-showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
-transparentLinks: []             #visualize with some see-through
+showOptimizationGraph: 1         # display updating graph during trajectory optimization
+showOptimizationTrajs: 0         # display the trajectory plot after each optimization step
+showModelVisualization: 0        # display 3D model of robot during optimization (static only atm)
+transparentLinks: []             # visualize with some see-through
 
 # collision checking parameters
 # the Waist is the base (propped on mount)
@@ -160,15 +160,17 @@ simulateStaticPostures: 0
 simulateNumStops: 3
 
 # toggle individual realistic effects
-simulateFriction: 1              # viscous + Coulomb + Stribeck stiction
-simulateThermalDrift: 1          # temperature-dependent friction change (see warmup time above)
-simulateCableForces: 1           # configuration-dependent cable/hose forces
-simulateGravityCompResidual: 0   # imperfect controller gravity compensation (off: LWR4 has joint torque sensors)
-simulateTorqueQuantization: 1    # motor PWM discretization
-simulateStructuralDeflection: 1  # load-dependent link deflection
-simulateBacklash: 1              # gear backlash dead zone
-simulateEncoderQuantization: 1   # finite encoder resolution
-simulateTimingJitter: 1          # non-uniform sampling timestamps
+simulateFriction: 1              # viscous + Coulomb friction
+simulateStribeckVelocity: 0      # Stribeck stiction (rad/s, 0 = disabled). Note: current
+                                 # implementation is a continuous approximation, not true stiction.
+simulateThermalDrift: 0          # disabled: not modeled by identifier
+simulateCableForces: 0           # disabled: not modeled by identifier
+simulateGravityCompResidual: 0
+simulateTorqueQuantization: 0    # disabled: adds noise
+simulateStructuralDeflection: 0  # disabled: not modeled by identifier
+simulateBacklash: 0              # disabled: not modeled by identifier
+simulateEncoderQuantization: 0   # disabled: adds noise
+simulateTimingJitter: 0          # disabled: adds noise
 simulateRandomSeed: 42           # random seed for reproducibility
 
 #### data preprocessing and selection
@@ -191,7 +193,7 @@ selectBlocksFromMeasurements: 0
 blockSize: 250                   # needs to be at least as much as parameters so regressor is square or higher
 selectBestPerenctage: 50         #select percentage of blocks sorted by condition number
 
-removeNearZero: 1   #remove samples that have almost zero velocity. this helps to reduce backlash in data
+removeNearZero: 0   #remove samples that have almost zero velocity. this helps to reduce backlash in data
 minVel: 0.01        #velocity that one of a sample's joints needs to have for the sample to be used (rad/s)
 
 # IMU processing (floating base)
@@ -227,6 +229,15 @@ identifyFriction: 1
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
+
+# Stribeck velocity constant (rad/s) for stiction identification.
+# Determines how quickly static friction decays to kinetic friction near zero velocity.
+# The stiction magnitude Fs is identified as a linear parameter; vs is a known constant.
+# Typical values: 0.01-0.1 rad/s for harmonic drives, 0.05-0.2 for spur gears.
+# To determine experimentally: move each joint very slowly through zero velocity and
+# observe the velocity at which the friction peak occurs.
+# Set to 0 to disable Stribeck friction identification.
+stribeckVelocity: 0
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0

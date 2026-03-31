@@ -81,11 +81,29 @@ class OutputConsole:
         # collect values for parameters
         description = idf.model.getDescriptionOfParameters()
         if idf.opt["identifyFriction"]:
-            for i in range(0, idf.model.num_dofs):
-                description += f"Parameter {i + idf.model.num_model_params}: Constant friction / offset of joint {idf.model.jointNames[i]}\n"
+            mp = idf.model.num_model_params
+            nd = idf.model.num_dofs
+            for i in range(nd):
+                description += (
+                    f"Parameter {mp + i}: Fc_{i} - Constant friction / offset of joint {idf.model.jointNames[i]}\n"
+                )
 
-            for i in range(0, idf.model.num_dofs * 2):
-                description += f"Parameter {i + idf.model.num_dofs + idf.model.num_model_params}: Velocity dep. friction joint {idf.model.jointNames[i % idf.model.num_dofs]}\n"
+            if not idf.opt["identifyGravityParamsOnly"]:
+                if idf.opt["identifySymmetricVelFriction"]:
+                    for i in range(nd):
+                        description += f"Parameter {mp + nd + i}: Fv_{i} - Velocity dep. friction joint {idf.model.jointNames[i]}\n"
+                else:
+                    for i in range(nd):
+                        description += f"Parameter {mp + nd + i}: Fv+_{i} - Velocity dep. friction (+) joint {idf.model.jointNames[i]}\n"
+                    for i in range(nd):
+                        description += f"Parameter {mp + 2 * nd + i}: Fv-_{i} - Velocity dep. friction (-) joint {idf.model.jointNames[i]}\n"
+
+                if idf.opt.get("stribeckVelocity", 0) > 0:
+                    fs_start = idf.model.num_all_params - nd
+                    for i in range(nd):
+                        description += (
+                            f"Parameter {fs_start + i}: Fs_{i} - Stribeck stiction of joint {idf.model.jointNames[i]}\n"
+                        )
 
         idx_ep = 0  # count essential params
         lines = list()

@@ -68,9 +68,31 @@ class SubprocessRunner:
         self._thread: threading.Thread | None = None
         self._cancelled = threading.Event()
 
+    @staticmethod
+    def _wrap_with_sleep_inhibitor(cmd: list[str]) -> list[str]:
+        """Wrap command with a sleep-inhibiting wrapper if available.
+
+        Uses caffeinate on macOS or systemd-inhibit on Linux so the system
+        stays awake while long-running computations are in progress.
+        """
+        system = platform.system()
+        if system == "Darwin" and shutil.which("caffeinate"):
+            # -i: prevent idle sleep, -s: prevent system sleep on AC power
+            return ["caffeinate", "-i", "-s", "--"] + cmd
+        if system == "Linux" and shutil.which("systemd-inhibit"):
+            return [
+                "systemd-inhibit",
+                "--what=idle",
+                "--who=FloBaRoID",
+                "--reason=Running optimization",
+                "--",
+            ] + cmd
+        return cmd
+
     def run(self, cmd: list[str]) -> None:
         """Start a subprocess and stream its output via callbacks."""
         self._cancelled.clear()
+        cmd = self._wrap_with_sleep_inhibitor(cmd)
         self._process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -87,11 +109,13 @@ class SubprocessRunner:
 
         Uses raw os.read() on the pipe fd so that partial lines (e.g. input()
         prompts without a trailing newline) are delivered immediately.
+        Keeps reading until EOF even after cancellation so the subprocess can
+        flush its cleanup/save output and doesn't deadlock on a full pipe.
         """
         assert self._process is not None
         assert self._process.stdout is not None
         fd = self._process.stdout.fileno()
-        while not self._cancelled.is_set():
+        while True:
             try:
                 data = os.read(fd, 4096)
             except OSError:
@@ -105,14 +129,13 @@ class SubprocessRunner:
     def cancel(self) -> None:
         """Gracefully stop the running subprocess.
 
-        Sends SIGINT first so Python scripts can handle KeyboardInterrupt
-        and save files. Falls back to SIGTERM, then SIGKILL.
+        Sends SIGINT so Python scripts can handle KeyboardInterrupt and save
+        intermediate results. The reader thread keeps draining output until
+        the process exits, so cleanup messages remain visible.
         """
         self._cancelled.set()
         if self._process is not None:
             self._process.send_signal(signal.SIGINT)
-            # let the process handle KeyboardInterrupt and clean up without a timeout;
-            # the reader thread will detect completion via EOF
 
     def send_input(self, text: str) -> None:
         """Write text to the subprocess's stdin."""
@@ -796,9 +819,8 @@ class FloBaRoIDApp(customtkinter.CTk):
             self._pipeline_runner = None
         else:
             self._runner.cancel()
-        self._status_label.configure(text="Status: Cancelled")
-        self._output_panel.append_text("\n[Cancelled]\n")
-        self.after(200, self._update_button_states)
+        self._status_label.configure(text="Status: Cancelling...")
+        self._output_panel.append_text("\n[Cancelling... waiting for graceful shutdown]\n")
 
     # ── subprocess callbacks (called from background thread) ────────────────
 
@@ -810,14 +832,19 @@ class FloBaRoIDApp(customtkinter.CTk):
 
     def _handle_completion(self, return_code: int) -> None:
         """Handle subprocess completion on the main thread."""
-        if return_code == 0:
+        was_cancelled = self._runner._cancelled.is_set()
+
+        if was_cancelled:
+            self._output_panel.append_text(f"\n[Cancelled (exit code {return_code})]\n")
+        elif return_code == 0:
             self._output_panel.append_text(f"\n[Process exited with code {return_code}]\n")
         else:
             self._output_panel.append_text(f"\n[Process FAILED with code {return_code}]\n")
 
         # after successful runs, auto-fill output fields if they were empty
+        # (also applies to cancelled runs that saved successfully)
         last = getattr(self, "_last_script", None)
-        if return_code == 0 and last == "trajectory.py" and not self._trajectory_row.get_value():
+        if last == "trajectory.py" and not self._trajectory_row.get_value():
             default_traj = self._model_row.get_value() + ".trajectory.npz"
             if (PROJECT_ROOT / default_traj).exists():
                 self._trajectory_row.set_value(default_traj)
@@ -833,7 +860,12 @@ class FloBaRoIDApp(customtkinter.CTk):
         if self._pipeline_runner:
             self._pipeline_runner.on_step_done(return_code)
         else:
-            status = "Complete" if return_code == 0 else f"Failed (exit code {return_code})"
+            if was_cancelled:
+                status = "Cancelled"
+            elif return_code == 0:
+                status = "Complete"
+            else:
+                status = f"Failed (exit code {return_code})"
             self._status_label.configure(text=f"Status: {status}")
             self._update_button_states()
 

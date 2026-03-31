@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import random
+import signal
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -58,6 +59,9 @@ def _optuna_worker(
     Each worker creates its own Model and optimizer instance to avoid
     sharing non-picklable iDynTree objects across processes.
     """
+    # let the main process handle Ctrl-C; workers are terminated explicitly
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     # prevent matplotlib from opening windows in worker processes
     import matplotlib
 
@@ -808,6 +812,7 @@ class Optimizer:
             if self.config["showOptimizationGraph"]:
                 plt.show(block=False)
 
+            interrupted = False
             try:
                 while any(p.is_alive() for p in processes):
                     time.sleep(2)
@@ -835,6 +840,7 @@ class Optimizer:
                         flush=True,
                     )
             except KeyboardInterrupt:
+                interrupted = True
                 print("\n  Ctrl-C: terminating worker processes...")
                 for p in processes:
                     p.terminate()
@@ -848,10 +854,20 @@ class Optimizer:
                     print(f"  worker {p.name} exited with code {p.exitcode}")
 
             # reload study results from shared storage
-            study = optuna.load_study(study_name="trajectory_opt", storage=storage)
-            os.remove(storage_path)
+            # workers terminated mid-write may leave the SQLite DB corrupt,
+            # so wrap in try-except and always clean up the file
+            completed_study: optuna.Study | None = None
+            try:
+                completed_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+            except Exception as e:
+                print(f"  WARNING: could not reload Optuna study ({e}), using results collected so far")
+            finally:
+                if os.path.exists(storage_path):
+                    os.remove(storage_path)
         else:
+            interrupted = False
             study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+            completed_study = study
 
         # extract best feasible solution
         # constraints are stored either in local dict (single process) or trial user_attrs (multiprocess)
@@ -860,13 +876,22 @@ class Optimizer:
                 return trial_constraints[t.number]
             return t.user_attrs.get("constraints", [10.0] * num_constraints)
 
-        feasible_trials = [
-            t for t in study.trials if t.value is not None and all(v <= 0.01 for v in _get_constraints(t))
-        ]
+        feasible_trials: list[Any] = []
+        if completed_study is not None:
+            try:
+                feasible_trials = [
+                    t
+                    for t in completed_study.trials
+                    if t.value is not None and all(v <= 0.01 for v in _get_constraints(t))
+                ]
+            except Exception as e:
+                print(f"  WARNING: could not read Optuna trials ({e}), using results collected so far")
+
         # sort by objective value (best first) and verify with dense collision check
         feasible_trials.sort(key=lambda t: t.value)  # type: ignore[arg-type,return-value]
 
         verified = False
+        n_total_trials = len(completed_study.trials) if completed_study is not None else "?"
         for trial in feasible_trials:
             candidate_x = np.array([trial.params[info[0]] for info in var_info])
             # re-evaluate with dense collision checking (every sample instead of every Nth)
@@ -881,7 +906,7 @@ class Optimizer:
                     self.last_best_f = f_verify
                     self.last_best_sol = candidate_x
                 print(
-                    f"Optuna best verified: {f_verify:.2f} ({len(feasible_trials)}/{len(study.trials)} passed sparse check)"
+                    f"Optuna best verified: {f_verify:.2f} ({len(feasible_trials)}/{n_total_trials} passed sparse check)"
                 )
                 verified = True
                 break
@@ -891,13 +916,18 @@ class Optimizer:
                 )
 
         if not verified:
-            print(f"Optuna: no solution survived dense collision verification ({len(study.trials)} trials)")
+            print(f"Optuna: no solution survived dense collision verification ({n_total_trials} trials)")
+
+        # re-raise so runOptimizer skips local optimization after user cancellation
+        if interrupted:
+            raise KeyboardInterrupt
 
     def runOptimizer(self, opt_prob: Any) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
 
         from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP, Optimization
 
+        interrupted = False
         if self.config["useGlobalOptimization"]:
             ### global optimization
             sr = random.SystemRandom()
@@ -955,13 +985,14 @@ class Optimizer:
                     sol = opt(opt_prob, storeHistory=False)
                     print(sol)
             except KeyboardInterrupt:
+                interrupted = True
                 print("\n\nGlobal optimization interrupted by user.")
                 _kill_gradient_pool()
 
             self.gather_solutions()
 
         ### local optimization
-        if self.config["useLocalOptimization"]:
+        if self.config["useLocalOptimization"] and not interrupted:
             print("Runnning local gradient based solver")
 
             # TODO: run local optimization for e.g. the three last best results (global solutions

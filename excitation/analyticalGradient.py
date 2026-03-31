@@ -191,6 +191,11 @@ def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
     Called once when the worker is spawned. The model is cached in
     the module-level _worker_state dict for reuse across tasks.
     """
+    import signal
+
+    # let the main process handle Ctrl-C; pool workers are terminated explicitly
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     import matplotlib
 
     matplotlib.use("Agg")  # prevent display in workers

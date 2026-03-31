@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.5
+
+### GUI
+- Graceful cancellation: cancel button now waits for the subprocess to finish saving
+  instead of cutting off output immediately. Shows "Cancelling..." status while the
+  process shuts down, then the final status once it exits.
+- Sleep inhibition: subprocesses are wrapped with `caffeinate` (macOS) or
+  `systemd-inhibit` (Linux) so the system stays awake during long-running optimizations
+- Cancelled trajectory runs now auto-fill the trajectory file field if the file was saved
+
+### Trajectory optimization
+- Worker processes (Optuna and gradient pool) now ignore SIGINT; only the main process
+  handles Ctrl-C, eliminating noisy traceback spam from child processes
+- Optuna study reload after worker termination is wrapped in error handling to survive
+  SQLite corruption from mid-write worker kills
+- Ctrl-C during global optimization now skips local optimization and proceeds directly
+  to saving the best solution found so far
+
 ## 0.9.4
 
 ### Identification (SDP)

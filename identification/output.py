@@ -514,15 +514,46 @@ class OutputConsole:
                 cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel, full=True)
                 cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
 
-            if False in list(cons_apriori.values()):
+            # determine which links are pinned (fixed to a priori) — their
+            # inconsistency is expected and not a problem for identification
+            pinned_params = set(idf.opt.get("dontChangeParams", []))
+            delete_cols = set(idf.sdp.delete_cols) if hasattr(idf, "sdp") and hasattr(idf.sdp, "delete_cols") else set()
+            pinned_links = set()
+            for i in range(idf.model.num_links):
+                link_params = set(range(i * 10, i * 10 + 10))
+                if link_params.issubset(pinned_params) or link_params.issubset(delete_cols):
+                    pinned_links.add(i)
+
+            bad_apriori = {k for k, v in cons_apriori.items() if not v}
+            bad_ident = {k for k, v in cons_ident.items() if not v}
+            bad_apriori_free = bad_apriori - pinned_links
+            bad_ident_free = bad_ident - pinned_links
+            bad_apriori_pinned = bad_apriori & pinned_links
+            bad_ident_pinned = bad_ident & pinned_links
+
+            if bad_apriori:
                 print(Fore.RED + "A priori parameters are not physical consistent!" + Fore.RESET)
-                print(f"Per-link physical consistency (a priori): {cons_apriori}")
+                if bad_apriori_free:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_apriori_free)]
+                    print(f"  inconsistent (identified) links: {', '.join(names)}")
+                else:
+                    print("  all identified links are consistent")
+                if bad_apriori_pinned:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_apriori_pinned)]
+                    print(f"  inconsistent pinned links (not identified, ignored): {', '.join(names)}")
             else:
                 print("A priori parameters are physical consistent")
 
-            if False in list(cons_ident.values()):
-                print("Identified parameters are not physical consistent,")
-                print(f"per-link physical consistency (identified): {cons_ident}")
+            if bad_ident:
+                print(Fore.RED + "Identified parameters are not physical consistent!" + Fore.RESET)
+                if bad_ident_free:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_ident_free)]
+                    print(f"  inconsistent (identified) links: {', '.join(names)}")
+                else:
+                    print("  all identified links are consistent")
+                if bad_ident_pinned:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_ident_pinned)]
+                    print(f"  inconsistent pinned links (not identified, ignored): {', '.join(names)}")
             else:
                 print("Identified parameters are physical consistent")
 

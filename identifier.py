@@ -172,21 +172,36 @@ class Identification:
         if self.opt["addContacts"]:
             tauEst += self.model.contactForcesSum
 
-        # add post-identified friction contribution if available
-        if hasattr(self, "postid_friction"):
+        # when friction is not in the regressor (identifyFrictionSimultaneously=0),
+        # add friction contribution separately: post-identified for the identified
+        # prediction, URDF a priori friction for the CAD/urdf prediction
+        if not self.opt.get("identifyFrictionSimultaneously", False):
             n_s = self.data.num_used_samples
             block = self.model.num_dofs + fb
             skip = self.opt.get("skipSamples", 0) + 1
             velocities = self.data.samples["velocities"][: n_s * skip : skip]
             sign_threshold = 0.02
-            tau_est_2d = tauEst.reshape(n_s, block)
-            fric = self.postid_friction
-            for j in range(self.model.num_dofs):
-                vel = velocities[:, j]
-                tau_est_2d[:, fb + j] += (
-                    fric["Fc"][j] * np.tanh(vel / sign_threshold) + fric["Fv"][j] * vel + fric["off"][j]
-                )
-            tauEst = tau_est_2d.flatten()
+
+            fric = None
+            if estimateWith in ("std", "std_direct") and hasattr(self, "postid_friction"):
+                fric = self.postid_friction
+            elif estimateWith == "urdf":
+                # use a priori friction from URDF
+                urdf_friction = helpers.URDFHelpers.getJointFriction(self.model.urdf_file)
+                fric = {
+                    "Fc": np.array([urdf_friction[j]["f_constant"] for j in self.model.jointNames]),
+                    "Fv": np.array([urdf_friction[j]["f_velocity"] for j in self.model.jointNames]),
+                    "off": np.zeros(self.model.num_dofs),
+                }
+
+            if fric is not None:
+                tau_est_2d = tauEst.reshape(n_s, block)
+                for j in range(self.model.num_dofs):
+                    vel = velocities[:, j]
+                    tau_est_2d[:, fb + j] += (
+                        fric["Fc"][j] * np.tanh(vel / sign_threshold) + fric["Fv"][j] * vel + fric["off"][j]
+                    )
+                tauEst = tau_est_2d.flatten()
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))

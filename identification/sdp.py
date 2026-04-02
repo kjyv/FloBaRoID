@@ -348,6 +348,32 @@ class SDP:
                 R1_K = R1 @ K  # pure numpy multiply
                 e_rho1 = rho1 - contactForces - R1_K @ self.x
 
+            # Tikhonov regularization on friction: penalize deviation from a priori
+            # This stabilizes Fc/Fv individual values under their mutual correlation
+            lambda_f = float(idf.opt.get("frictionRegularization", 0))
+            if lambda_f > 0 and idf.opt["identifyFriction"]:
+                friction_start = idf.model.friction_params_start
+                friction_idxs = [p for p in idable_params if p >= friction_start]
+                if friction_idxs:
+                    n_friction = len(friction_idxs)
+                    # scale lambda relative to base error magnitude
+                    l_f = lambda_f * np.sqrt(float(idf.base_error) / max(n_friction, 1))
+                    Y_fric = np.zeros((n_friction, len(idable_params)))
+                    fric_prior = np.zeros(n_friction)
+                    for i, p in enumerate(friction_idxs):
+                        Y_fric[i, self.param_index_map[p]] = l_f
+                        fric_prior[i] = l_f * idf.model.xStdModel[p]
+
+                    # augment the residual system
+                    if isinstance(e_rho1, cp.Expression):
+                        # already has regressor regularization rows
+                        pass
+                    e_rho1 = cp.hstack([e_rho1, fric_prior - Y_fric @ self.x])
+                    if idf.opt["verbose"]:
+                        print(
+                            f"  Friction regularization: lambda={lambda_f:.4f}, scaled={l_f:.4f}, {n_friction} params"
+                        )
+
             if idf.opt["verbose"] > 1:
                 print("Building Schur complement...", time.ctime())
 

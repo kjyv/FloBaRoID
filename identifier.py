@@ -582,6 +582,45 @@ class Identification:
             # else:
             self.xStdEssential[self.stdEssentialIdx] = self.xBase_essential[self.baseEssentialIdx]
 
+    def _extractBaseWrenchRows(self) -> tuple[np.ndarray, np.ndarray]:
+        """Extract only the 6 base wrench rows per sample from regressor and torques.
+
+        Implements the base-link dynamics approach from Ayusawa et al. (2014):
+        "Identifiability and identification of inertial parameters using the
+        underactuated base-link dynamics for legged multibody systems", IJRR.
+
+        For floating-base robots, each sample contributes (6 + num_dofs) rows to the
+        stacked regressor. The first 6 rows are the base wrench equations which depend
+        only on inertial parameters (no joint friction). Returns the base-wrench-only
+        regressor projected to base parameter space, and the corresponding torques.
+        """
+        nd = self.model.num_dofs
+        fb = 6
+        block = nd + fb
+        n_samples = self.data.num_used_samples
+
+        # extract base wrench rows (first 6 of each block)
+        base_row_indices = np.concatenate([np.arange(i * block, i * block + fb) for i in range(n_samples)])
+        YStd_bw = self.model.YStd[base_row_indices, :]
+
+        # project to base parameter space (same B matrix)
+        if self.opt["useBasisProjection"]:
+            YBase_bw = YStd_bw @ self.model.B
+        else:
+            YBase_bw = YStd_bw @ self.model.Pb
+
+        # corresponding torques (base wrench measurements)
+        if self.opt["useAPriori"]:
+            tau_bw = self.model.tau[base_row_indices]
+        else:
+            tau_bw = self.model.torques_stack[base_row_indices]
+
+        # subset contactForcesSum for the OLS step (stored separately,
+        # the full vector is needed for downstream torque estimation)
+        self._bw_contactForcesSum = self.model.contactForcesSum[base_row_indices]
+
+        return YBase_bw, tau_bw
+
     def identifyBaseParameters(
         self, YBase: np.ndarray | None = None, tau: np.ndarray | None = None, id_only: bool = False
     ) -> None:
@@ -613,7 +652,11 @@ class Identification:
         # identify using numpy least squares method (should be numerically more stable)
         self.model.xBase = la.lstsq(YBase, tau)[0]
         if self.opt["addContacts"]:
-            self.model.xBase -= self.model.YBaseInv.dot(self.model.contactForcesSum)
+            # use base-wrench-subset of contact forces if available (from _extractBaseWrenchRows)
+            cf = getattr(self, "_bw_contactForcesSum", self.model.contactForcesSum)
+            if cf.shape[0] != YBase.shape[0]:
+                cf = self.model.contactForcesSum  # fallback to full
+            self.model.xBase -= self.model.YBaseInv.dot(cf)
 
         """
         # using pseudoinverse
@@ -781,8 +824,15 @@ class Identification:
             self.findStdFromBaseEssParameters()
             self.identifyStandardEssentialParameters()
         else:
-            # need to identify OLS base params in any case
-            self.identifyBaseParameters()
+            # identify base parameters — optionally using only base wrench equations
+            # (Ayusawa method: base wrench is friction-free for floating-base robots)
+            if self.opt["floatingBase"] and self.opt.get("useBaseWrenchForBaseParams", False):
+                YBase_bw, tau_bw = self._extractBaseWrenchRows()
+                cond = la.cond(YBase_bw)
+                print(f"Identifying base params from base wrench only (condition number: {cond:.1f})")
+                self.identifyBaseParameters(YBase_bw, tau_bw)
+            else:
+                self.identifyBaseParameters()
 
             if self.opt["constrainToConsistent"]:
                 if self.opt["useAPriori"]:
@@ -854,6 +904,94 @@ class Identification:
                     # only then go back to absolute base params
                     if self.opt["useAPriori"]:
                         self.getBaseParamsFromParamError()
+
+        # post-identification friction: with known inertial params, the joint torque
+        # residual is mostly friction. Fit Fc, Fv, offset per joint from the residual.
+        # This is the second step of the Ayusawa two-step approach.
+        if self.opt.get("postIdentifyFriction", False) and self.opt["floatingBase"]:
+            self._postIdentifyFriction()
+
+    def _postIdentifyFriction(self) -> None:
+        """Identify friction from joint torque residuals after inertial identification.
+
+        Second step of the two-step approach inspired by Ayusawa et al. (2014).
+        With inertial parameters already identified (from base wrench or full regressor),
+        compute the residual tau_measured - tau_inertial and fit Fc, Fv, tau_off per
+        joint using OLS. Unlike pre-identification, the inertial params are now accurate,
+        so the residual is dominated by friction rather than inertial model errors.
+        """
+        nd = self.model.num_dofs
+        fb = 6
+        block = nd + fb
+        sign_threshold = 0.02  # rad/s, matches simulator
+        n_samples = self.data.num_used_samples
+
+        # compute inertial torques from identified std params (inertial only, no friction)
+        # use the full regressor but only inertial columns
+        num_inertial = self.model.num_model_params
+        inertial_params = self.model.xStd[:num_inertial]
+        tau_inertial = self.model.YStd[:, :num_inertial].dot(inertial_params)
+
+        # measured torques
+        tau_measured = self.model.torques_stack
+
+        # residual = measured - inertial prediction (should be mostly friction + noise)
+        tau_residual = tau_measured - tau_inertial
+
+        # reshape to (n_samples, block) to extract joint torque rows
+        tau_residual_2d = tau_residual.reshape(n_samples, block)
+
+        # get velocities for each sample
+        velocities = self.data.samples["velocities"][
+            : n_samples * (self.opt["skipSamples"] + 1) : self.opt["skipSamples"] + 1
+        ]
+
+        # store friction params separately (xStd may not have friction slots
+        # when identifyFrictionSimultaneously=0)
+        self.postid_friction = {
+            "Fc": np.zeros(nd),
+            "Fv": np.zeros(nd),
+            "off": np.zeros(nd),
+        }
+
+        print("Post-identifying friction from residuals (OLS on identified inertials)...")
+        for j in range(nd):
+            vel = velocities[:, j]
+            residual = tau_residual_2d[:, fb + j]  # joint torque rows only
+
+            # regressor: [tanh(v/threshold), v, 1]
+            A = np.column_stack([np.tanh(vel / sign_threshold), vel, np.ones(n_samples)])
+            params, _, _, _ = la.lstsq(A, residual, rcond=None)
+            fc_id, fv_id, off_id = params
+
+            # enforce Fv >= 0 (physical constraint)
+            fv_id = max(fv_id, 0.0)
+
+            self.postid_friction["Fc"][j] = fc_id
+            self.postid_friction["Fv"][j] = fv_id
+            self.postid_friction["off"][j] = off_id
+
+        fc = self.postid_friction["Fc"]
+        fv = self.postid_friction["Fv"]
+        off = self.postid_friction["off"]
+        print(
+            f"  Fc:  [{fc.min():.2f}, {fc.max():.2f}] (real: Fc = 3% of effort)\n"
+            f"  Fv:  [{fv.min():.2f}, {fv.max():.2f}] (real: 0.84-3.0)\n"
+            f"  off: [{off.min():.2f}, {off.max():.2f}] (real: 0.0)"
+        )
+
+        # compute friction-corrected torque prediction for comparison
+        tau_friction = np.zeros_like(tau_measured)
+        tau_friction_2d = tau_friction.reshape(n_samples, block)
+        for j in range(nd):
+            vel = velocities[:, j]
+            tau_friction_2d[:, fb + j] = fc[j] * np.tanh(vel / sign_threshold) + fv[j] * vel + off[j]
+        tau_total = tau_inertial + tau_friction.flatten()
+        residual_with_friction = tau_measured - tau_total
+        residual_without = tau_measured - tau_inertial
+        nrms_with = np.sqrt(np.mean(residual_with_friction**2)) / np.sqrt(np.mean(tau_measured**2)) * 100
+        nrms_without = np.sqrt(np.mean(residual_without**2)) / np.sqrt(np.mean(tau_measured**2)) * 100
+        print(f"  NRMS: {nrms_with:.3f}% (with friction) vs {nrms_without:.3f}% (inertial only)")
 
     def plot(self, text: str | None = None) -> None:
         """Create state and torque plots."""

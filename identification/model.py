@@ -131,19 +131,27 @@ class Model:
         self.num_model_params = self.num_links * 10
         self.num_all_params = self.num_model_params
 
-        # add N offset params (offsets or constant friction), velocity dependent friction params,
-        # and optionally Stribeck stiction params
+        # add friction params per joint: Fc (Coulomb), Fv (viscous), tau_off (offset),
+        # and optionally Stribeck stiction Fs
         if self.opt["identifyFriction"]:
+            # Fc (Coulomb friction): 1 per joint
             self.num_identified_params = self.num_model_params + self.num_dofs
             self.num_all_params += self.num_dofs
 
             if not self.opt["identifyGravityParamsOnly"]:
                 if self.opt["identifySymmetricVelFriction"]:
+                    # Fv (viscous friction): 1 per joint
                     self.num_identified_params += self.num_dofs
                     self.num_all_params += self.num_dofs
                 else:
+                    # Fv+, Fv- (asymmetric viscous): 2 per joint
                     self.num_identified_params += 2 * self.num_dofs
                     self.num_all_params += 2 * self.num_dofs
+
+                # tau_off (torque offset): 1 per joint — absorbs amplifier bias,
+                # sensor offsets, and asymmetric Coulomb effects (Gautier et al.)
+                self.num_identified_params += self.num_dofs
+                self.num_all_params += self.num_dofs
 
                 # Stribeck stiction: Fs * exp(-|vel|/vs) * sign(vel)
                 # with vs (Stribeck velocity) as a known constant from config
@@ -183,12 +191,17 @@ class Model:
         self.idyn_model.getInertialParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
         if self.opt["identifyFriction"]:
+            # Fc (Coulomb)
             self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
             if not self.opt["identifyGravityParamsOnly"]:
                 if self.opt["identifySymmetricVelFriction"]:
+                    # Fv (viscous)
                     self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
                 else:
+                    # Fv+, Fv- (asymmetric viscous)
                     self.xStdModel = np.concatenate((self.xStdModel, np.zeros(2 * self.num_dofs)))
+                # tau_off (torque offset) — initialized to 0, no URDF source
+                self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
                 # Stribeck stiction Fs params
                 if self.opt.get("stribeckVelocity", 0) > 0:
                     self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
@@ -301,10 +314,14 @@ class Model:
                 )
                 torques += xStdModel[p_vel] * vel
 
+                # torque offset (constant bias per joint)
+                p_off = range(p_vel.stop, p_vel.stop + self.num_dofs)
+                torques += xStdModel[p_off]
+
                 # Stribeck stiction: Fs * exp(-|vel|/vs) * sign(vel)
                 if self.opt.get("stribeckVelocity", 0) > 0:
                     vs = float(self.opt["stribeckVelocity"])
-                    p_stribeck = range(p_vel.stop, p_vel.stop + self.num_dofs)
+                    p_stribeck = range(p_off.stop, p_off.stop + self.num_dofs)
                     torques += xStdModel[p_stribeck] * np.exp(-np.abs(vel) / vs) * np.sign(vel)
 
         if self.opt["floatingBase"]:
@@ -470,6 +487,11 @@ class Model:
                                     (np.zeros((fb, self.num_dofs * 2)), vel_diag)
                                 )  # add base dynamics rows
                             regressor = np.concatenate((regressor, friction_regressor), axis=1)
+
+                            # torque offset: constant 1.0 per joint (absorbs amplifier bias etc.)
+                            offset_ones = np.identity(self.num_dofs)
+                            offset_regressor = np.vstack((np.zeros((fb, self.num_dofs)), offset_ones))
+                            regressor = np.concatenate((regressor, offset_regressor), axis=1)
 
                             # Stribeck stiction: Fs * exp(-|vel|/vs) * sign(vel)
                             if self.opt.get("stribeckVelocity", 0) > 0:
@@ -761,6 +783,11 @@ class Model:
                             )  # add base dynamics rows
                         A = np.concatenate((A, friction_regressor), axis=1)
 
+                        # torque offset: constant 1.0 per joint (absorbs amplifier bias etc.)
+                        offset_ones = np.identity(self.num_dofs)
+                        offset_regressor = np.vstack((np.zeros((fb * 6, self.num_dofs)), offset_ones))
+                        A = np.concatenate((A, offset_regressor), axis=1)
+
                         # Stribeck stiction columns
                         if self.opt.get("stribeckVelocity", 0) > 0:
                             vs = float(self.opt["stribeckVelocity"])
@@ -956,24 +983,35 @@ class Model:
                 self.identified_params.append(mp + i)
             if not self.opt["identifyGravityParamsOnly"]:
                 if self.opt["identifySymmetricVelFriction"]:
+                    fv_offset = self.num_dofs  # Fv starts after Fc
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv_{i}")]
                         param_syms_list.extend(s)
                         self.friction_syms.extend(s)
-                        self.identified_params.append(mp + self.num_dofs + i)
+                        self.identified_params.append(mp + fv_offset + i)
+                    off_offset = 2 * self.num_dofs  # tau_off starts after Fc, Fv
                 else:
+                    fv_offset = self.num_dofs  # Fv+ starts after Fc
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv+_{i}")]
                         param_syms_list.extend(s)
                         self.friction_syms.extend(s)
-                        self.identified_params.append(mp + self.num_dofs + i)
+                        self.identified_params.append(mp + fv_offset + i)
                     for i in range(0, self.num_dofs):
                         s = [symbols(f"Fv-_{i}")]
                         param_syms_list.extend(s)
                         self.friction_syms.extend(s)
                         self.identified_params.append(mp + 2 * self.num_dofs + i)
+                    off_offset = 3 * self.num_dofs  # tau_off starts after Fc, Fv+, Fv-
 
-                # Stribeck stiction symbols (after all Fv params)
+                # torque offset symbols
+                for i in range(self.num_dofs):
+                    s = [symbols(f"off_{i}")]
+                    param_syms_list.extend(s)
+                    self.friction_syms.extend(s)
+                    self.identified_params.append(mp + off_offset + i)
+
+                # Stribeck stiction symbols (after offset params)
                 if self.opt.get("stribeckVelocity", 0) > 0:
                     fs_start = self.num_all_params - self.num_dofs  # Fs params are at the end
                     for i in range(self.num_dofs):

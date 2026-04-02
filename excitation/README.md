@@ -216,7 +216,7 @@ To generate excitation trajectories and send them to the robot, set the option `
 `'yarp'` and run:
 
 ```bash
-uv run excite.py --config configs/walkman_cad.yaml --model model/walkman.urdf --filename measurements.npz
+uv run excite.py --config configs/walkman_full.yaml --model model/walkman_measured.urdf --filename measurements.npz
 ```
 
 This will also read the resulting joint torque measurements and write them to the given file.

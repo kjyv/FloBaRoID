@@ -365,7 +365,12 @@ class ParamHelpers:
 
     @staticmethod
     def addFrictionFromURDF(model: Model, urdf_file: str, params: np.ndarray) -> None:
-        """get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector"""
+        """Get friction vals from urdf (joint friction = fc, damping = fv) and set in params vector.
+
+        Parameter layout: [Fc_0..n, Fv_0..n, off_0..n, (Fs_0..n)]
+        For asymmetric: [Fc_0..n, Fv+_0..n, Fv-_0..n, off_0..n, (Fs_0..n)]
+        Offset (tau_off) is initialized to 0 (no URDF source).
+        """
 
         friction = URDFHelpers.getJointFriction(urdf_file)
         nd = model.num_dofs
@@ -373,14 +378,18 @@ class ParamHelpers:
 
         for i in range(len(model.jointNames)):
             j = model.jointNames[i]
+            # Fc (Coulomb friction)
             params[start + i] = friction[j]["f_constant"]
 
             if not model.opt["identifyGravityParamsOnly"]:
+                # Fv (viscous friction)
                 params[start + nd + i] = friction[j]["f_velocity"]
 
                 if not model.opt["identifySymmetricVelFriction"]:
-                    # same value again for asymmetric value since urdf does only have one value
+                    # same value again for asymmetric Fv- since urdf only has one value
                     params[start + nd + nd + i] = friction[j]["f_velocity"]
+
+                # tau_off stays at 0 (already initialized)
 
         # initialize Stribeck stiction Fs (URDF doesn't have this, derive from Fc)
         if model.opt.get("stribeckVelocity", 0) > 0 and not model.opt["identifyGravityParamsOnly"]:

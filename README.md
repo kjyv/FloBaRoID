@@ -32,6 +32,7 @@ Features:
   * SDP-constrained identification for physically consistent parameters \[Sousa2014\], using cvxpy (using e.g. CLARABEL or MOSEK solvers)
   * closest-to-CAD recovery of standard parameters from feasible base solution
   * non-linear optimization within consistent parameter space \[Traversaro2016\]
+  * two-step friction identification: friction-free base parameter estimation from base wrench equations \[Ayusawa2014\], followed by per-joint friction fitting from the residual
 * 3D visualization of robot model, trajectories, and world environment (OpenGL)
 * plotting of measured and estimated joint state and torques (interactive, HTML, PDF or Tikz)
 * output of the identified parameters directly into URDF
@@ -130,5 +131,7 @@ Usage is licensed under the LGPL 3.0, see License.md. Please quote the following
 \[Sousa2014\] C. D. Sousa, R. Cortesão: "Physical feasibility of robot base inertial parameter identification: A linear matrix inequality approach," The International Journal of Robotics Research, vol. 33, no. 6, pp. 931–944, 2014.
 
 \[Traversaro2016\] S. Traversaro, S. Brossette, A. Escande, F. Nori: "Identification of Fully Physical Consistent Inertial Parameters using Optimization on Manifolds," IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2016.
+
+\[Ayusawa2014\] K. Ayusawa, G. Venture, Y. Nakamura: "Identifiability and identification of inertial parameters using the underactuated base-link dynamics for legged multibody systems," The International Journal of Robotics Research, vol. 33, no. 3, pp. 446–468, 2014.
 
 \[Ayusawa2017\] K. Ayusawa, A. Rioux, E. Yoshida, G. Venture, M. Gautier: "Generating Persistently Exciting Trajectory Based on Condition Number Optimization," IEEE International Conference on Robotics and Automation (ICRA), Singapore, pp. 6518–6524, 2017.

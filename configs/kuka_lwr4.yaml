@@ -181,11 +181,16 @@ minTol: 0.0001
 # fixed or floating-base dynamics
 floatingBase: 0
 
-# identify motor friction (constant sign dependent offset and velocity dependent)
+# identify motor friction (Coulomb, viscous, and torque offset per joint)
 identifyFriction: 1
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
+
+# Tikhonov regularization weight for friction parameters toward a priori values.
+# Prevents Fc/Fv explosion from their mutual correlation in periodic trajectories.
+# 0 = disabled. Scaled relative to base error magnitude.
+frictionRegularization: 200
 
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0

@@ -222,13 +222,28 @@ floatingBase: 1
 #            a contact dynamics simulator (not yet implemented for trajectory generation)
 floatingBaseAttachment: 'suspended'
 floatingBaseAttachmentFrame: 'crane_ft'
-suspendedDamping: 500.0               # viscous damping at ball joint (Nm·s/rad)
+suspendedDamping: 15.0                # viscous damping at ball joint (Nm·s/rad)
 
-# identify motor friction (constant sign dependent offset and velocity dependent)
-identifyFriction: 1
+# Use only base wrench equations (friction-free) for base parameter identification.
+# Requires floating-base with meaningful base dynamics (low damping suspension).
+# The SDP then finds standard params consistent with these friction-free base params.
+useBaseWrenchForBaseParams: 1
+
+# identify motor friction (Coulomb, viscous, and torque offset per joint)
+identifyFriction: 0
+
+# Two-step friction identification: after SDP identifies inertial parameters,
+# fit Fc, Fv, tau_off per joint from the joint torque residual.
+# Only works with floatingBase. Best combined with useBaseWrenchForBaseParams.
+postIdentifyFriction: 1
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
+
+# Tikhonov regularization weight for friction parameters toward a priori values.
+# Prevents Fc/Fv explosion from their mutual correlation in periodic trajectories.
+# 0 = disabled, typical range: 0.001-0.1. Scaled relative to base error magnitude.
+frictionRegularization: 200
 
 # Stribeck velocity constant (rad/s) for stiction identification.
 # Determines how quickly static friction decays to kinetic friction near zero velocity.

@@ -172,6 +172,22 @@ class Identification:
         if self.opt["addContacts"]:
             tauEst += self.model.contactForcesSum
 
+        # add post-identified friction contribution if available
+        if hasattr(self, "postid_friction"):
+            n_s = self.data.num_used_samples
+            block = self.model.num_dofs + fb
+            skip = self.opt.get("skipSamples", 0) + 1
+            velocities = self.data.samples["velocities"][: n_s * skip : skip]
+            sign_threshold = 0.02
+            tau_est_2d = tauEst.reshape(n_s, block)
+            fric = self.postid_friction
+            for j in range(self.model.num_dofs):
+                vel = velocities[:, j]
+                tau_est_2d[:, fb + j] += (
+                    fric["Fc"][j] * np.tanh(vel / sign_threshold) + fric["Fv"][j] * vel + fric["off"][j]
+                )
+            tauEst = tau_est_2d.flatten()
+
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
         self.base_error = np.mean(sla.norm(self.model.tauMeasured - self.tauEstimated, axis=1))
 
@@ -975,9 +991,9 @@ class Identification:
         fv = self.postid_friction["Fv"]
         off = self.postid_friction["off"]
         print(
-            f"  Fc:  [{fc.min():.2f}, {fc.max():.2f}] (real: Fc = 3% of effort)\n"
-            f"  Fv:  [{fv.min():.2f}, {fv.max():.2f}] (real: 0.84-3.0)\n"
-            f"  off: [{off.min():.2f}, {off.max():.2f}] (real: 0.0)"
+            f"  Fc:  [{fc.min():.2f}, {fc.max():.2f}]\n"
+            f"  Fv:  [{fv.min():.2f}, {fv.max():.2f}]\n"
+            f"  off: [{off.min():.2f}, {off.max():.2f}]"
         )
 
         # compute friction-corrected torque prediction for comparison

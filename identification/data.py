@@ -24,10 +24,24 @@ class Data:
         # has some data been loaded?
         self.inited = False
 
+    @staticmethod
+    def _validate_required_keys(data: dict[str, np.ndarray]) -> None:
+        """Check that the loaded data contains all keys required for identification."""
+        required_keys = {"positions", "velocities", "accelerations", "torques"}
+        missing = required_keys - set(data.keys())
+        if missing:
+            available = sorted(data.keys())
+            raise KeyError(
+                f"Measurement data is missing required key(s): {sorted(missing)}. "
+                f"Available keys: {available}. "
+                f"Make sure you are loading a measurements file, not a trajectory file."
+            )
+
     def init_from_data(self, data: dict[str, np.ndarray]) -> None:
         """load data from numpy array"""
 
         self.samples = self.measurements = data.copy()
+        self._validate_required_keys(data)
         self.num_loaded_samples = self.samples["positions"].shape[0]
         self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
         if self.opt["verbose"]:
@@ -91,6 +105,7 @@ class Data:
                                 self.measurements[k] = np.concatenate((self.measurements[k], mv[k][so:, :]), axis=0)
                     m.close()
 
+            self._validate_required_keys(self.measurements)
             self.num_loaded_samples = self.measurements["positions"].shape[0]
             self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
             if self.opt["verbose"]:

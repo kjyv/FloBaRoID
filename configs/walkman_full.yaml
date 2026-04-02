@@ -159,6 +159,11 @@ simulateStaticPostures: 0
 # number of sudden stop/restart segments to insert into trajectory
 simulateNumStops: 3
 
+# torque sensor noise as fraction of torque limit per joint.
+# WALK-MAN uses SEA with 19-bit encoders — noise is ~0.005% of rated torque.
+# Default 0.01 (1%) is too high for SEA-based torque sensing.
+simulateTorqueSensorError: 0.0005
+
 # toggle individual realistic effects
 simulateFriction: 1              # viscous + Coulomb friction
 simulateStribeckVelocity: 0      # Stribeck stiction (rad/s, 0 = disabled). Note: current
@@ -274,7 +279,10 @@ checkAPrioriFeasibility: 1
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
 sdpSolver: 'clarabel'            # cvxpy solver: clarabel, scs, mosek, copt, cvxopt
-sdpSolverOptions: {}             # solver-specific options
+sdpSolverOptions:                # solver-specific options
+  tol_gap_abs: 1.0e-7            # relaxed from 1e-8 default to avoid "inaccurate" warnings
+  tol_gap_rel: 1.0e-7            # on large SDPs (480 params, 600+ constraints)
+  tol_feas: 1.0e-7
 sdpSafeMargin: 1.0e-6            # eigenvalue lower bound for physical consistency (smaller = easier for solver)
 sdpBaseParamTol: 1.0e-3          # tolerance for base param equality in closest-to-CAD step
 

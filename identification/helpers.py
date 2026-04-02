@@ -477,7 +477,7 @@ class URDFHelpers:
         for l in tree.findall("joint"):
             if l.attrib["name"] in self.model.jointNames:
                 joint_id = self.model.jointNames.index(l.attrib["name"])
-                if self.opt["identifyFriction"]:
+                if self.opt["identifyFrictionSimultaneously"]:
                     f_c = cast(float, xStdBary[self.model.num_links * per_link + joint_id])
                     if self.opt["identifyGravityParamsOnly"]:
                         f_v = 0.0

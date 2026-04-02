@@ -109,7 +109,7 @@ def _base_config():
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
     config["floatingBase"] = 0
-    config["identifyFriction"] = 0
+    config["identifyFrictionSimultaneously"] = 0
     config["identifyClosestToCAD"] = 0
     config["useAPriori"] = 0
     config["simulateTorques"] = 0
@@ -174,7 +174,7 @@ def test_identification_sdp(synth_data_path):
     config = _base_config()
     config["constrainToConsistent"] = 1
     config["identifyClosestToCAD"] = 1
-    config["identifyFriction"] = 1
+    config["identifyFrictionSimultaneously"] = 1
     config["identifySymmetricVelFriction"] = 1
     config["limitOverallMass"] = 1
     config["limitMassVal"] = 16.0

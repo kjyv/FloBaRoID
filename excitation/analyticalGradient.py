@@ -287,7 +287,7 @@ def _compute_single_regressor(
         Y = np.delete(Y, model.inertia_params, 1)
 
     # Append friction columns (must match what computeRegressors does in model.py)
-    if model.opt.get("identifyFriction", False):
+    if model.opt.get("identifyFrictionSimultaneously", False):
         sign_vel = np.sign(vel)
         static_diag = np.identity(nd) * sign_vel
         if fb:
@@ -569,7 +569,7 @@ def compute_analytical_gradient(
     W_iner = W_std[:, :n_inertial]
     params_iner = params[:n_inertial]
 
-    has_friction = model.opt.get("identifyFriction", False)
+    has_friction = model.opt.get("identifyFrictionSimultaneously", False)
     has_visc_friction = has_friction and not model.opt.get("identifyGravityParamsOnly", False)
     params_visc_arr = np.zeros(nd)
     # D-opt weight for viscous friction: d(v*Fv_d)/d(dq_d) = Fv_d at row (fb+d),

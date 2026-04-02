@@ -181,8 +181,9 @@ minTol: 0.0001
 # fixed or floating-base dynamics
 floatingBase: 0
 
-# identify motor friction (Coulomb, viscous, and torque offset per joint)
-identifyFriction: 1
+# identify friction simultaneously with inertial params in the SDP
+# (Coulomb, viscous, and torque offset columns in the regressor)
+identifyFrictionSimultaneously: 1
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1

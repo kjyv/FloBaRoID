@@ -229,8 +229,11 @@ suspendedDamping: 15.0                # viscous damping at ball joint (Nm·s/rad
 # The SDP then finds standard params consistent with these friction-free base params.
 useBaseWrenchForBaseParams: 1
 
-# identify motor friction (Coulomb, viscous, and torque offset per joint)
-identifyFriction: 0
+# identify friction simultaneously with inertial params in the SDP
+# (Coulomb, viscous, and torque offset columns in the regressor).
+# When using two-step approach (postIdentifyFriction), set to 0 so the SDP
+# handles only inertial params, then friction is identified from residuals.
+identifyFrictionSimultaneously: 0
 
 # Two-step friction identification: after SDP identifies inertial parameters,
 # fit Fc, Fv, tau_off per joint from the joint torque residual.

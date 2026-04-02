@@ -120,7 +120,7 @@ class Identification:
                     np.zeros(self.model.num_all_params - self.model.num_model_params),
                 )
             )
-            if self.opt["identifyFriction"]:
+            if self.opt["identifyFrictionSimultaneously"]:
                 self.paramHelpers.addFrictionFromURDF(self.model, self.urdf_file_real, self.xStdReal)
 
         self.validation_file = validation_file

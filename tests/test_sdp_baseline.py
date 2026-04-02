@@ -105,7 +105,7 @@ def _base_config() -> dict:
     with open(_config_file) as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
     config["floatingBase"] = 0
-    config["identifyFriction"] = 0
+    config["identifyFrictionSimultaneously"] = 0
     config["identifyClosestToCAD"] = 0
     config["useAPriori"] = 0
     config["simulateTorques"] = 0
@@ -259,7 +259,7 @@ def test_sdp_with_friction(synth_data_path: str) -> None:
     from identifier import Identification
 
     config = _base_config()
-    config["identifyFriction"] = 1
+    config["identifyFrictionSimultaneously"] = 1
     config["identifySymmetricVelFriction"] = 1
 
     try:
@@ -321,7 +321,7 @@ def test_sdp_closest_to_cad(synth_data_path: str) -> None:
     config["limitMassVal"] = 16.0
     config["limitMassRange"] = 0.3
     config["restrictCOMtoHull"] = 1
-    config["identifyFriction"] = 1
+    config["identifyFrictionSimultaneously"] = 1
     config["identifySymmetricVelFriction"] = 1
 
     try:

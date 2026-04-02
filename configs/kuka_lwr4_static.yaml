@@ -100,7 +100,7 @@ minTol: 0.0001
 floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
-identifyFriction: 0
+identifyFrictionSimultaneously: 0
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1

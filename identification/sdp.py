@@ -267,7 +267,7 @@ class SDP:
                         self.constr_per_param[b].append("sym")
 
             # friction constraints
-            if idf.opt["identifyFriction"]:
+            if idf.opt["identifyFrictionSimultaneously"]:
                 if not idf.opt["identifyGravityParamsOnly"]:
                     for i in range(idf.model.num_dofs):
                         # Fv > 0
@@ -351,7 +351,7 @@ class SDP:
             # Tikhonov regularization on friction: penalize deviation from a priori
             # This stabilizes Fc/Fv individual values under their mutual correlation
             lambda_f = float(idf.opt.get("frictionRegularization", 0))
-            if lambda_f > 0 and idf.opt["identifyFriction"]:
+            if lambda_f > 0 and idf.opt["identifyFrictionSimultaneously"]:
                 friction_start = idf.model.friction_params_start
                 friction_idxs = [p for p in idable_params if p >= friction_start]
                 if friction_idxs:

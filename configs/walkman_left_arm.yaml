@@ -144,7 +144,7 @@ minTol: 0.0001
 
 floatingBase: 1
 
-identifyFriction: 1
+identifyFrictionSimultaneously: 1
 identifySymmetricVelFriction: 1
 identifyGravityParamsOnly: 0
 simulateTorques: 0

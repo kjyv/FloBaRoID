@@ -133,7 +133,7 @@ class Model:
 
         # add friction params per joint: Fc (Coulomb), Fv (viscous), tau_off (offset),
         # and optionally Stribeck stiction Fs
-        if self.opt["identifyFriction"]:
+        if self.opt["identifyFrictionSimultaneously"]:
             # Fc (Coulomb friction): 1 per joint
             self.num_identified_params = self.num_model_params + self.num_dofs
             self.num_all_params += self.num_dofs
@@ -190,7 +190,7 @@ class Model:
         xStdModel = iDynTree.VectorDynSize(self.num_model_params)
         self.idyn_model.getInertialParameters(xStdModel)
         self.xStdModel = xStdModel.toNumPy()
-        if self.opt["identifyFriction"]:
+        if self.opt["identifyFrictionSimultaneously"]:
             # Fc (Coulomb)
             self.xStdModel = np.concatenate((self.xStdModel, np.zeros(self.num_dofs)))
             if not self.opt["identifyGravityParamsOnly"]:
@@ -296,7 +296,7 @@ class Model:
         kinDyn.inverseDynamics(base_acceleration, ddq, ext_wrenches, gen_torques)
         torques = gen_torques.jointTorques().toNumPy()
 
-        if self.opt["identifyFriction"]:
+        if self.opt["identifyFrictionSimultaneously"]:
             # add friction torques
             # Coulomb friction (sign-dependent: opposes direction of motion)
             # use tanh smoothing to match the simulator's continuous model
@@ -455,7 +455,7 @@ class Model:
                         # delete inertia param columns
                         regressor = np.delete(regressor, self.inertia_params, 1)
 
-                    if self.opt["identifyFriction"]:
+                    if self.opt["identifyFrictionSimultaneously"]:
                         # append tanh-smoothed sign(velocity) for Coulomb friction
                         # (matches the simulator's continuous friction model)
                         sign_threshold = 0.02  # rad/s
@@ -665,7 +665,7 @@ class Model:
                 or fbase != fb
                 or R.shape[0] != self.num_identified_params
                 or self.opt["identifyGravityParamsOnly"] != grav
-                or fric != self.opt["identifyFriction"]
+                or fric != self.opt["identifyFrictionSimultaneously"]
                 or fric_sym != self.opt["identifySymmetricVelFriction"]
             ):
                 generate_new = True
@@ -752,7 +752,7 @@ class Model:
                     # delete inertia param columns
                     A = np.delete(A, self.inertia_params, 1)
 
-                if self.opt["identifyFriction"]:
+                if self.opt["identifyFrictionSimultaneously"]:
                     # append unitary matrix to regressor for offsets/constant friction
                     sign = 1  # np.sign(dq.toNumPy())
                     static_diag = np.identity(self.num_dofs) * sign
@@ -816,7 +816,7 @@ class Model:
                 n=n_samples,
                 fb=self.opt["floatingBase"],
                 grav_only=self.opt["identifyGravityParamsOnly"],
-                fric=self.opt["identifyFriction"],
+                fric=self.opt["identifyFrictionSimultaneously"],
                 fric_sym=self.opt["identifySymmetricVelFriction"],
             )
 
@@ -974,7 +974,7 @@ class Model:
                     ]
                 )
 
-        if self.opt["identifyFriction"]:
+        if self.opt["identifyFrictionSimultaneously"]:
             mp = self.num_model_params
             for i in range(0, self.num_dofs):
                 s = [symbols(f"Fc_{i}")]

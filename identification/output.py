@@ -80,7 +80,7 @@ class OutputConsole:
 
         # collect values for parameters
         description = idf.model.getDescriptionOfParameters()
-        if idf.opt["identifyFriction"]:
+        if idf.opt["identifyFrictionSimultaneously"]:
             mp = idf.model.num_model_params
             nd = idf.model.num_dofs
             for i in range(nd):
@@ -489,7 +489,7 @@ class OutputConsole:
             print(f"condition number: {la.cond(idf.model.YBase)}")
 
         if idf.opt["identifyGravityParamsOnly"]:
-            fric = idf.model.num_dofs * idf.opt["identifyFriction"]
+            fric = idf.model.num_dofs * idf.opt["identifyFrictionSimultaneously"]
             sum_id = np.sum(idf.model.xStd[0 : idf.model.num_identified_params - fric : 4])
         else:
             sum_id = np.sum(idf.model.xStd[0 : idf.model.num_model_params : 10])

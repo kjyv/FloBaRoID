@@ -108,6 +108,9 @@ class SDP:
                 link_params = set(range(i * 10, i * 10 + 10))
                 if link_params.issubset(pinned_params) or link_params.issubset(self.delete_cols):
                     pinned_links.add(i)
+            # exposed for the geometric prior, which must skip links pinned to a priori
+            self.pinned_params = pinned_params
+            self.pinned_links = pinned_links
 
             if idf.opt["identifyGravityParamsOnly"]:
                 # only constrain mass > 0
@@ -289,6 +292,161 @@ class SDP:
         if idf.opt["showTiming"]:
             print(f"Initializing cvxpy constraints took {t.interval:.3f} sec.")
 
+    def _observabilityWeights(self, R1_K: np.ndarray) -> np.ndarray:
+        """Per-parameter CAD-pull weights from a ridge-regularized normal matrix.
+
+        The reduced normal matrix M = (R1*K)^T (R1*K) acts as the (unscaled) parameter
+        covariance: diag((M + eps I)^-1) is small for well-determined params (aligned
+        with large singular directions) and large for poorly-determined ones (incl. the
+        null space, where it tends to 1/eps). The ridge eps makes M invertible and is
+        scaled to M's magnitude so it is unit-invariant; the exact value only sets the
+        spread ceiling, which the clip below caps. Weights are returned ordered like
+        idable_params, normalized so the median is ~1 (keeping overall pull strength
+        comparable to the uniform mode / regularizationFactor) and clipped to [0.1, 100]:
+        well-determined params keep a small (0.1x) pull, the worst-determined a strong
+        (100x) one, avoiding extreme weights from near-zero or near-singular entries.
+        """
+        M = R1_K.T @ R1_K
+        eps = 1e-6 * float(np.trace(M)) / M.shape[0]
+        cov_diag = np.clip(np.diag(la.inv(M + eps * np.eye(M.shape[0]))), 0.0, None)
+        obs_std = np.sqrt(cov_diag)
+        positive = obs_std[obs_std > 0]
+        med = float(np.median(positive)) if positive.size else 1.0
+        return np.clip(obs_std / med, 0.1, 100.0)
+
+    @staticmethod
+    def _pseudoInertiaNumeric(p: np.ndarray) -> np.ndarray:
+        """Build the 4x4 pseudo-inertia matrix from a link's 10 standard parameters.
+
+        The pseudo-inertia is P = [[Sigma, h], [h^T, m]] with first moment h = m*c and
+        Sigma = 0.5*trace(I)*I_3 - I (the density-weighted second moment matrix). P is
+        positive definite iff the link parameters are physically consistent.
+        """
+        m, mx, my, mz, Ixx, Ixy, Ixz, Iyy, Iyz, Izz = (float(v) for v in p)
+        sxx = 0.5 * (-Ixx + Iyy + Izz)
+        syy = 0.5 * (Ixx - Iyy + Izz)
+        szz = 0.5 * (Ixx + Iyy - Izz)
+        return np.array(
+            [
+                [sxx, -Ixy, -Ixz, mx],
+                [-Ixy, syy, -Iyz, my],
+                [-Ixz, -Iyz, szz, mz],
+                [mx, my, mz, m],
+            ]
+        )
+
+    def _pseudoInertiaExpr(self, i: int) -> cp.Expression:
+        """Build the 4x4 pseudo-inertia of link i as an affine cvxpy expression in self.x.
+
+        Mirrors _pseudoInertiaNumeric but over the decision variable, for use in the
+        geometric (log-det divergence) prior.
+        """
+        idx = self.param_index_map
+        m = self.x[idx[i * 10]]
+        mx = self.x[idx[i * 10 + 1]]
+        my = self.x[idx[i * 10 + 2]]
+        mz = self.x[idx[i * 10 + 3]]
+        Ixx = self.x[idx[i * 10 + 4]]
+        Ixy = self.x[idx[i * 10 + 5]]
+        Ixz = self.x[idx[i * 10 + 6]]
+        Iyy = self.x[idx[i * 10 + 7]]
+        Iyz = self.x[idx[i * 10 + 8]]
+        Izz = self.x[idx[i * 10 + 9]]
+        sxx = 0.5 * (-Ixx + Iyy + Izz)
+        syy = 0.5 * (Ixx - Iyy + Izz)
+        szz = 0.5 * (Ixx + Iyy - Izz)
+        return cp.bmat(
+            [
+                [_s(sxx), _s(-Ixy), _s(-Ixz), _s(mx)],
+                [_s(-Ixy), _s(syy), _s(-Iyz), _s(my)],
+                [_s(-Ixz), _s(-Iyz), _s(szz), _s(mz)],
+                [_s(mx), _s(my), _s(mz), _s(m)],
+            ]
+        )
+
+    def _buildGeometricPrior(self, idf: Identification, R1_K: np.ndarray) -> cp.Expression | int:
+        """Build a geometric (log-det Bregman divergence) prior pulling each link's
+        pseudo-inertia toward its CAD value on the SPD manifold (Lee et al., 2020).
+
+        Unlike the Euclidean CAD pull (uniform/observability modes), the divergence
+            D(P || P0) = tr(P0^-1 P) - logdet(P) + logdet(P0) - 4
+        is coordinate/frame invariant, convex in the inertial parameters, zero iff
+        P == P0, and diverges as P approaches a degenerate (e.g. zero-mass) link. It
+        therefore repels the physically implausible null-space solutions a Euclidean
+        pull leaves unpenalized. Added to the objective rather than as residual rows, and
+        evaluated in whitened (affine-invariant) form for numerical stability (see below).
+
+        With `geometricObservabilityWeighting` enabled, each link's divergence is scaled
+        by the mean observability weight of its 10 params (same per-parameter weights as
+        the observability mode), so links the data determines poorly are pulled toward
+        CAD harder and well-determined links stay free.
+
+        Only full links whose 10 params are all free (not pinned/deleted) and whose CAD
+        pseudo-inertia is positive definite get a term; the rest are skipped.
+        """
+        if idf.opt["identifyGravityParamsOnly"]:
+            # inertia params are not identified here, so a full pseudo-inertia is undefined
+            return 0
+
+        pinned_links: set[int] = getattr(self, "pinned_links", set())
+        pinned_params: set[int] = getattr(self, "pinned_params", set())
+        reg_links = [
+            i
+            for i in range(idf.model.num_links)
+            # all 10 params must be free decision variables (not deleted, not pinned to CAD):
+            # a pinned link is already fixed at its CAD value, so its divergence is a
+            # degenerate (constant) log-det block that only burdens the conic solver.
+            if i not in pinned_links
+            and all(p in self.param_index_map and p not in pinned_params for p in range(i * 10, i * 10 + 10))
+        ]
+        if not reg_links:
+            return 0
+
+        # per-link weight. The torque-residual block of the objective is normalized to
+        # O(1) for the geometric mode (see identifyFeasibleStandardParameters), so the
+        # weight is a plain dimensionless strength tuned by `geometricRegularizationFactor`
+        # rather than the base-error-scaled `regularizationFactor` the Euclidean modes use
+        # (mixing the ~1e7 residual with the O(1) divergence breaks the conic solver).
+        base = float(idf.opt.get("geometricRegularizationFactor", 1.0)) / len(reg_links)
+
+        obs_w: np.ndarray | None = None
+        if idf.opt.get("geometricObservabilityWeighting", False):
+            obs_w = self._observabilityWeights(R1_K)
+
+        terms: list[cp.Expression] = []
+        skipped: list[int] = []
+        for i in reg_links:
+            P_cad = self._pseudoInertiaNumeric(idf.model.xStdModel[i * 10 : i * 10 + 10])
+            evals, evecs = la.eigh(P_cad)
+            if float(evals.min()) <= 1e-9:
+                # CAD link is (near-)degenerate: P0^-1/2 undefined, skip it
+                skipped.append(i)
+                continue
+            # Whiten by W = P0^-1/2 so the divergence is evaluated on Q = W P W, which is
+            # ~I at the a priori. This is the affine-invariant form of the divergence and
+            # is mathematically identical (logdet(P0) cancels), but Q is O(1) regardless of
+            # how badly P0 is scaled, which the raw tr(P0^-1 P) - logdet(P) form is not:
+            # small links have P0 spanning many orders of magnitude, giving the conic
+            # solver an unsolvable dynamic range.
+            W = evecs @ np.diag(1.0 / np.sqrt(evals)) @ evecs.T
+            Q = W @ self._pseudoInertiaExpr(i) @ W
+            D = cp.trace(Q) - cp.log_det(Q) - 4
+            link_w = base
+            if obs_w is not None:
+                # aggregate the link's 10 per-param observability weights into one scalar
+                link_w *= float(np.mean([obs_w[self.param_index_map[p]] for p in range(i * 10, i * 10 + 10)]))
+            terms.append(link_w * D)
+
+        if skipped and idf.opt["verbose"]:
+            names = ", ".join(idf.model.linkNames[i] for i in skipped)
+            print(Fore.YELLOW + f"  Geometric prior skipped (non-PD CAD pseudo-inertia): {names}" + Fore.RESET)
+        if not terms:
+            return 0
+        if idf.opt["verbose"]:
+            weighting = "observability-weighted" if obs_w is not None else "uniform"
+            print(f"  Geometric CAD regularization: {len(terms)} links, base weight={base:.4g} ({weighting})")
+        return cp.sum(terms)
+
     def identifyFeasibleStandardParameters(self, idf: Identification) -> None:
         """Find physically consistent standard parameters minimizing torque error."""
         with Timer() as t:
@@ -343,29 +501,15 @@ class SDP:
                     set(idf.model.non_id).difference(self.delete_cols).intersection(idf.model.identified_params)
                 )
                 if reg_mode == "observability":
-                    # Per-parameter spread from a ridge-regularized normal matrix of the
-                    # reduced system (R1*K), which acts as the (unscaled) parameter
-                    # covariance: diag((M + eps I)^-1) is small for well-determined params
-                    # (aligned with large singular directions) and large for poorly-
-                    # determined ones (incl. the null space, where it tends to 1/eps).
-                    M = R1_K.T @ R1_K
-                    # ridge so M is invertible and null-space directions get a large but
-                    # finite spread; scaled to M's magnitude so it is unit-invariant. The
-                    # exact value only sets the spread ceiling, which the clip below caps.
-                    eps = 1e-6 * float(np.trace(M)) / M.shape[0]
-                    cov_diag = np.clip(np.diag(la.inv(M + eps * np.eye(M.shape[0]))), 0.0, None)
-                    obs_std = np.sqrt(cov_diag)  # per-param std, ordered like idable_params
-                    # normalize so the median weight is ~1 (keeps the overall pull strength
-                    # comparable to the uniform mode / regularizationFactor), then clip to
-                    # [0.1, 100]: well-determined params keep a small (0.1x) CAD pull, the
-                    # worst-determined a strong (100x) one, avoiding extreme weights from
-                    # near-zero or near-singular covariance entries.
-                    positive = obs_std[obs_std > 0]
-                    med = float(np.median(positive)) if positive.size else 1.0
-                    w = np.clip(obs_std / med, 0.1, 100.0)
+                    w = self._observabilityWeights(R1_K)
                     reg_params = idable_params
                     base = (float(idf.base_error) / len(reg_params)) * idf.opt["regularizationFactor"]
                     reg_weights = {p: base * float(w[self.param_index_map[p]]) for p in reg_params}
+                elif reg_mode == "geometric":
+                    # geometric prior is a log-det Bregman divergence added to the
+                    # objective (see _buildGeometricPrior), not residual rows, so leave
+                    # reg_params empty here.
+                    pass
                 elif len(p_nid):
                     reg_params = p_nid
                     base = (float(idf.base_error) / len(p_nid)) * idf.opt["regularizationFactor"]
@@ -412,6 +556,21 @@ class SDP:
                             f"  Friction regularization: lambda={lambda_f:.4f}, scaled={l_f:.4f}, {n_friction} params"
                         )
 
+            geo_mode = (
+                idf.opt["useRegressorRegularization"] and idf.opt.get("cadRegularizationMode", "uniform") == "geometric"
+            )
+            if geo_mode:
+                # Normalize the torque-residual block to O(1) so it is commensurate with
+                # the dimensionless log-det divergence added below. The unnormalized
+                # squared residual is ~1e7 on a large robot while the divergence operates
+                # on O(1) inertial quantities (kg, kg*m^2); that ~1e10 dynamic range
+                # cannot be equilibrated by the conic solver (CLARABEL solver_error / SCS
+                # reports a false-unbounded ray). Scaling the residual is fit-preserving
+                # (it only rebalances fit against the prior, which the weight controls).
+                geo_scale = float(np.sqrt(rho2_norm_sqr)) if rho2_norm_sqr > 0 else 1.0
+                e_rho1 = e_rho1 / geo_scale
+                rho2_norm_sqr = rho2_norm_sqr / (geo_scale**2)
+
             if idf.opt["verbose"] > 1:
                 print("Building Schur complement...", time.ctime())
 
@@ -425,8 +584,12 @@ class SDP:
                 ]
             )
 
+            geo_penalty: cp.Expression | int = 0
+            if geo_mode:
+                geo_penalty = self._buildGeometricPrior(idf, R1_K)
+
             all_constraints = [U_rho >> 0] + self.constraints
-            prob = cp.Problem(cp.Minimize(u), all_constraints)
+            prob = cp.Problem(cp.Minimize(u + geo_penalty), all_constraints)
 
             if idf.opt["verbose"]:
                 print(f"Solving SDP with {self.solver_name} ({len(all_constraints)} constraints)...")

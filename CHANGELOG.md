@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.8
+
+Standard-parameter identification quality: better CAD null-space priors and friction
+modeling. See `documentation/std_parameter_roadmap.md` for the overarching design notes.
+
+### Identification — CAD null-space priors
+- `cadRegularizationMode: geometric`: pull each link's pseudo-inertia toward the a priori
+  (CAD) model with the log-det Bregman divergence on the SPD manifold \[Lee2020\] instead of
+  a Euclidean distance. The divergence is coordinate/frame invariant and diverges as a link
+  approaches degeneracy, so it actively repels the zero-mass / flat-inertia null-space
+  solutions a Euclidean pull leaves unpenalized. Evaluated in whitened (affine-invariant)
+  form `tr(Q) − logdet(Q) − 4` with `Q = P₀^{-1/2} P P₀^{-1/2}` for numerical stability,
+  and the torque-residual block is normalized so the conic problem stays well-scaled on
+  large floating-base models. Strength is `geometricRegularizationFactor`;
+  `geometricObservabilityWeighting` optionally scales each link's divergence by its
+  observability weight (helps only with heterogeneous per-link CAD trust). Opt-in; pinned
+  (`dontChangeLinks`) and degenerate-CAD links are skipped. See
+  `documentation/geometric_prior_analysis.md`.
+- `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
+  (CAD) model with a per-parameter weight that grows where the data determines it poorly
+  (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter
+  decomposition closer to CAD in weakly-excited directions. On a well-conditioned model
+  (walkman) this barely affects the torque fit; on small/poorly-conditioned systems it can
+  shift it more, so it is opt-in and the default remains `uniform`.
+
+### Identification — friction and data weighting
+- Two-step friction identification: the smoothed Coulomb sign term is centralized in
+  `helpers.getFrictionSignSeries` (shared by the regressor columns, the friction OLS and
+  all torque predictions) and computed from the raw measured velocities low-pass filtered
+  at `frictionVelocityCutoff` to suppress sign chatter near zero velocity.
+- `frictionVelocityDeadZone`: Swevers-style velocity dead zone in the friction OLS that
+  keeps the Coulomb and viscous terms separable under velocity noise.
+- `frictionFvRegularization`: per-joint Tikhonov prior pulling the viscous coefficient
+  toward the a priori URDF value (the OLS was previously unregularized).
+- `useTrajectoryWeighting`: with several measurement files (already supported via repeated
+  `--measurements`), weight each file's base-wrench equations by the inverse of its
+  residual noise rather than stacking samples equally, so a noisier file does not dominate.
+- The identifier reports friction parameter errors against the real model when
+  `--model_real` is given.
+
 ## 0.9.7
 
 ### Optimization (pyOptSparse -> cyipopt)
@@ -41,27 +81,6 @@
   under-approximate protruding parts and `scaleCollisionHull` shrinks them).
 - The visualizer marks robot-vs-world clearance violations (previously only robot
   self-collisions), using the same margin semantics as the optimizer.
-
-### Identification
-- `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
-  (CAD) model with a per-parameter weight that grows where the data determines it poorly
-  (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter
-  decomposition closer to CAD in weakly-excited directions. On a well-conditioned model
-  (walkman) this barely affects the torque fit; on small/poorly-conditioned systems it can
-  shift it more, so it is opt-in and the default remains `uniform`.
-- Two-step friction identification: the smoothed Coulomb sign term is centralized in
-  `helpers.getFrictionSignSeries` (shared by the regressor columns, the friction OLS and
-  all torque predictions) and computed from the raw measured velocities low-pass filtered
-  at `frictionVelocityCutoff` to suppress sign chatter near zero velocity.
-- `frictionVelocityDeadZone`: Swevers-style velocity dead zone in the friction OLS that
-  keeps the Coulomb and viscous terms separable under velocity noise.
-- `frictionFvRegularization`: per-joint Tikhonov prior pulling the viscous coefficient
-  toward the a priori URDF value (the OLS was previously unregularized).
-- `useTrajectoryWeighting`: with several measurement files (already supported via repeated
-  `--measurements`), weight each file's base-wrench equations by the inverse of its
-  residual noise rather than stacking samples equally, so a noisier file does not dominate.
-- The identifier reports friction parameter errors against the real model when
-  `--model_real` is given.
 
 ### Simulator
 - Noisy measurements are saved under the `*_raw` keys (matching the excite.py/csv2npz.py

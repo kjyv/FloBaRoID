@@ -156,6 +156,12 @@ class OutputConsole:
                 if idx_p in idf.stdEssentialIdx:
                     sum_diff_r_pc_ess += np.abs(diff_r_pc)
 
+                # display string for the %e column: the percentage is only meaningful when
+                # the reference (real) value is nonzero, else show a dash instead of a value
+                # blown up by dividing through ~0. Right-justified to the column width (7) so
+                # it lines up with the numeric rows.
+                pct_e_str = f"{np.abs(diff_r_pc):7.1f}" if real != 0 else f"{'-':>7}"
+
                 # get error percentage (new to apriori)
                 diff_apriori = apriori - real
                 # if apriori == 0: apriori = 0.01
@@ -173,11 +179,14 @@ class OutputConsole:
                     sum_pc_delta_ess += pc_delta
             else:
                 # get percentage difference between apriori and identified values
-                # (shown when real values are not known)
+                # (shown when real values are not known). Only meaningful when the a priori
+                # value is nonzero; otherwise show a dash rather than a value blown up by
+                # dividing through ~0. Right-justified to the column width (7) to line up
+                # with the numeric rows.
                 if apriori != 0:
-                    diff_pc = (100 * diff) / apriori
+                    pct_e_str = f"{(100 * diff) / apriori:7.1f}"
                 else:
-                    diff_pc = (100 * diff) / 0.01
+                    pct_e_str = f"{'-':>7}"
 
             # values for each line
             if idf.opt["useEssentialParams"] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
@@ -193,7 +202,7 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    np.abs(diff_r_pc),
+                    pct_e_str,
                     pc_delta,
                     sigma,
                     " ".join(idf.sdp.constr_per_param[idx_p_full]),
@@ -205,7 +214,7 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    np.abs(diff_r_pc),
+                    pct_e_str,
                     pc_delta,
                     sigma,
                     d,
@@ -217,14 +226,14 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    diff_pc,
+                    pct_e_str,
                     " ".join(idf.sdp.constr_per_param[idx_p_full]),
                     d,
                 ]
             elif idf.opt["useEssentialParams"]:
-                vals = [apriori, approx, diff, diff_pc, sigma, d]
+                vals = [apriori, approx, diff, pct_e_str, sigma, d]
             else:
-                vals = [apriori, approx, diff, diff_pc, d]
+                vals = [apriori, approx, diff, pct_e_str, d]
             lines.append(vals)
 
             if idf.opt["useEssentialParams"] and idx_p in idf.stdEssentialIdx:

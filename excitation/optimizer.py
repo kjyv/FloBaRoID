@@ -275,7 +275,7 @@ def plotter(config: dict, data: dict | None = None, filename: str | None = None)
             ]
 
     d = 0
-    cols = 2.0
+    cols = 2
     rows = round(len(datasets) / cols)
     for dat, title in datasets:
         plt.subplot(rows, cols, d + 1)

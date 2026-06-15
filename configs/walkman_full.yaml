@@ -437,7 +437,9 @@ useDependents: 0
 # 'uniform'/'observability' overall strength is the internal regularizationFactor.
 # Does not affect the (data-determined) base parameters, only the standard-parameter
 # decomposition within the null space.
-cadRegularizationMode: observability
+# 'geometric' measured the best base-parameter distance on this model (see
+# documentation/geometric_prior_analysis.md), so it is the configured choice here.
+cadRegularizationMode: geometric
 # geometric-mode tuning (only used when cadRegularizationMode is 'geometric'):
 geometricRegularizationFactor: 1.0   # dimensionless prior strength (residual is normalized)
 geometricObservabilityWeighting: 0   # scale each link's divergence by its observability

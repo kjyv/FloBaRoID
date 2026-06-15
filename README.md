@@ -1,21 +1,24 @@
-# FloBaRoID [![Build Status](https://travis-ci.org/kjyv/FloBaRoID.svg?branch=master)](https://travis-ci.org/kjyv/FloBaRoID)
+# FloBaRoID
 
 (FLOating BAse RObot dynamical IDentification)
 
 FloBaRoID is a python toolkit for parameter identification of floating-base rigid body tree-structures such as
 humanoid robots. It aims to provide a complete solution for obtaining physical consistent identified dynamics parameters.
+The full floating-base dynamics are identifiable both in simulation and from real robot measurements. All steps
+of the pipeline can be run from the command line or through a graphical interface (`uv run gui.py`).
 
 <div>
-<img alt="Overview diagram" src="https://cdn.rawgit.com/kjyv/FloBaRoID/master/documentation/identification_overview.svg" width="57%" align="left" hspace="5px">
-<img alt="Visualization of Kuka LWR4+" src="documentation/kuka_vis.png" width="38%">
+<img alt="Overview diagram" src="https://cdn.rawgit.com/kjyv/FloBaRoID/master/documentation/identification_overview.svg" width="62%" align="left" hspace="5px">
+<img alt="WALKMAN suspended from a crane in the visualizer" src="documentation/walkman_suspended.jpg" width="33%">
 </div>
 
 Features:
 
 * find optimized excitation trajectories with non-linear global optimization (Optuna + IPOPT, as parameters of Fourier-series for periodic soft trajectories)
-  * D-optimality objective with analytical gradients \[Ayusawa2017\]
-  * collision-aware (convex hull, capsule, or full mesh)
+  * D-optimality objective with analytical gradients \[Ayusawa2017\], optional per-joint velocity target
+  * collision-aware (convex hull, capsule, or full mesh), checked against the world and under the suspended base swing
   * supports floating-base robots with suspended dynamics (ball-joint at configurable attachment frame)
+  * robust feasibility: infeasible candidates are repaired by amplitude back-off and known trajectories can seed the search
 * realistic measurement simulation from trajectories (friction, backlash, sensor noise, cable forces, thermal drift, etc.)
 * data preprocessing
     * derive velocity and acceleration values from position readings
@@ -30,7 +33,8 @@ Features:
   * estimation of parameter error using previously known CAD values \[Gautier2013\]
   * essential standard parameters \[Pham1991\]\[Gautier2013\], estimating only those that are most certain for the measurement data and leaving the others unchanged
   * SDP-constrained identification for physically consistent parameters \[Sousa2014\], using cvxpy (using e.g. CLARABEL or MOSEK solvers)
-  * closest-to-CAD recovery of standard parameters from feasible base solution
+  * closest-to-CAD recovery of standard parameters from feasible base solution, optionally observability-weighted (pull weakly-determined parameters toward CAD, leave well-determined ones free)
+  * identification from several measurement files at once, with optional per-trajectory inverse-noise weighting
   * non-linear optimization within consistent parameter space \[Traversaro2016\]
   * two-step friction identification: friction-free base parameter estimation from base wrench equations \[Ayusawa2014\], followed by per-joint friction fitting from the residual
 * 3D visualization of robot model, trajectories, and world environment (OpenGL)
@@ -42,7 +46,7 @@ Features:
 You'll need some or all of these depenencies installed in your system:
 
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **ipopt** (required for building cyipopt, used for trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
+* **ipopt** (required for building cyipopt, used for trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For slightly better performance, you can also install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
 
 ## Installation
 
@@ -56,6 +60,13 @@ Optional dependency groups can be installed with:
 
 
 ## Commands
+
+All commands can also be launched and configured from a graphical interface that streams their
+live output:
+
+```bash
+uv run gui.py
+```
 
 * **trajectory.py**: generate optimized trajectories
 

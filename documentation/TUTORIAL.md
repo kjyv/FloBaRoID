@@ -51,6 +51,7 @@ This can be the model that was used for simulation while the identification
 starts at a slightly different model. 
 `uv run identifier.py --config configs/example.yaml --model model/example.urdf \`
 `--measurements model/example.urdf.measurements.npz --output model/example_identified.urdf`
+For real measurement data, the real URDF is of course not known so the parameter has no use.
 
 The output html file in output/ should look similar to the following:
 
@@ -276,9 +277,148 @@ trajectory with the pendulum simulation, checking that joint torques stay within
 limits even with the swinging base. This makes optimization slower but produces
 trajectories that are safe for the suspended setup.
 
-A world URDF can be provided for visualization (`--world model/world_suspended.urdf`)
-but world collision links are automatically excluded for suspended robots (since the
-robot swings freely).
+Collision checking uses the swung base pose for each sample, not the fixed mount
+pose: as the joints move, the simulated base swings, and self- and world-collision
+checks are evaluated at the resulting pose.
+Provide the world geometry with `--world model/world_suspended.urdf` so the crane and
+ground can be checked against it.
+
+```yaml
+worldCollisionMargin: 0.1        # required clearance (m) to world geometry;
+                                 # box hulls under-approximate protruding parts
+ignoreCollisionBetweenGroups: [] # [[groupA, groupB], ...] to skip cross-group pairs.
+                                 # Do NOT group-ignore arm/hand vs leg pairs: under a
+                                 # swinging base a hand can reach a lower leg.
+```
+
+Two robustness aids make global optimization practical when the feasible region is
+tiny (common for high-DOF humanoids under collision + torque constraints):
+
+```yaml
+globalOptAmplitudeRepair: 1      # back off Fourier amplitudes of infeasible Optuna
+                                 # candidates until constraints pass, so most trials
+                                 # contribute a feasible solution instead of being lost
+trajectorySeedSolutions: []      # .npz files of previously found trajectories to enqueue
+                                 # as initial trials (joint/harmonic structure must match
+                                 # trajectoryNf) — starts from a known-feasible point
+```
+
+### Exciting velocity for friction identification
+
+D-optimality of the inertial regressor rewards acceleration and pose diversity but
+does *not* by itself reward joint velocity, so a purely inertia-optimal trajectory can
+leave some joints barely moving. Friction parameters — viscous `Fv` especially — are
+then unidentifiable for those joints. Add a soft per-joint peak-velocity target so the
+optimizer keeps every joint moving:
+
+```yaml
+trajectoryTargetVelocity: 0.5    # target peak velocity (rad/s) per joint, soft cost.
+                                 # 0 = disabled.
+trajectoryPulseMax: 0.3          # upper bound on Fourier pulsation; higher gives the
+                                 # velocity target headroom (also lengthens the period)
+```
+
+This is a soft cost, so it trades against the D-optimality and torque/collision
+constraints rather than overriding them. Slow joints (proximal/torso joints of a
+suspended humanoid) benefit the most.
+
+### Two-step friction identification
+
+For floating-base robots, identify friction *after* the inertial parameters rather than
+simultaneously. The inertial parameters are estimated friction-free from the base-wrench
+equations (which contain no joint friction), then `Fc`/`Fv`/offset are fit per joint from
+the joint-torque residual:
+
+```yaml
+useBaseWrenchForBaseParams: 1    # base params from the base wrench (friction-free)
+identifyFrictionSimultaneously: 0
+postIdentifyFriction: 1          # fit friction per joint from the residual afterwards
+identifySymmetricVelFriction: 1  # one Fv per joint (required to write back to URDF)
+```
+
+The per-joint friction fit has a few settings worth knowing about. Their defaults are
+tuned for the WALKMAN simulator and documented inline in `configs/walkman_full.yaml`;
+the key ideas:
+
+- `frictionVelocityCutoff` (Hz): the velocity used for the Coulomb sign (`tanh`) term is
+  low-pass filtered at this cutoff so it does not chatter by ±`Fc` when the velocity hovers
+  in its noise floor. The filter is zero-phase, so zero crossings are not shifted. Choose
+  just above the trajectory's velocity bandwidth; set ≥ Nyquist to disable.
+- `frictionVelocityDeadZone` (rad/s): samples with `|v|` below this are dropped from the
+  fit — there the sign is unreliable and the `tanh` is in its linear region (collinear with
+  the viscous column). Choose above both the velocity noise floor and a small multiple of
+  `frictionSignThreshold`; too large loses slow joints' data.
+- `frictionFvRegularization`: Tikhonov weight pulling `Fv` toward the a priori URDF value,
+  expressed as equivalent excitation energy `sum(v^2)`. Joints with velocity energy well
+  above it are barely affected; weakly-excited joints stay near a priori. A moderate prior
+  helps even when the a priori `Fv` is off, because an unregularized `Fv` otherwise absorbs
+  unmodeled effects (thermal drift, cable forces).
+
+When a `--model_real` ground-truth URDF is given, the identifier also reports friction
+parameter errors against it, which is the most direct way to tune these.
+
+### Multiple trajectories
+
+A single trajectory rarely excites every parameter direction well, and on a high-DOF
+floating base the largest accuracy gains come from combining several. There are three
+ways to use multiple trajectories, in increasing sophistication:
+
+1. **Independent pooling.** Optimize several trajectories from separate optimizer runs
+   (each uses its own random seed), execute/simulate each, then pass all measurement
+   files to the identifier at once:
+
+   ```bash
+   uv run identifier.py --config configs/example.yaml --model model/example.urdf \
+     --measurements traj1.npz --measurements traj2.npz --measurements traj3.npz
+   ```
+
+   Pooling diverse excitation makes the *identifiable* (base) parameters markedly more
+   accurate. Different random seeds give genuinely different motions, which is what we
+   want here.
+
+2. **Per-trajectory inverse-noise weighting.** When pooling, weight each trajectory by
+   its inverse noise so cleaner data counts more:
+
+   ```yaml
+   useTrajectoryWeighting: 1
+   ```
+
+   In noise-free simulation this is a no-op; it pays off on real data where trajectories
+   differ in excitation quality.
+
+3. **Sequential experiment design.** Optimize the *next* trajectory to add information in
+   exactly the directions the previous ones left weak. Point the optimizer at the
+   already-executed measurement files; their accumulated information matrix is added to the
+   D-optimality objective:
+
+   ```yaml
+   trajectoryPriorMeasurements: ['traj1.npz', 'traj2.npz']
+   ```
+
+   Then identify on all files together as in option 1.
+
+Note that pooling and weighting improve the *base* parameters and the torque model;
+they do **not** recover more *standard* parameters — which standard parameters are
+identifiable is structural (fixed by the kinematics and sensor set) and excitation cannot
+change it.
+
+### Standard-parameter recovery from a feasible base solution
+
+The physically-consistent base solution leaves the standard parameters non-unique in the
+data null space; FloBaRoID recovers a full standard-parameter set closest to the a priori
+(CAD) values. By default every parameter is pulled toward CAD uniformly. The
+`observability` mode instead weights each parameter's pull by how poorly the data
+determines it: well-determined parameters stay free, weakly-determined ones stay near CAD.
+
+```yaml
+cadRegularizationMode: observability   # 'uniform' (default) or 'observability'
+```
+
+This keeps the decomposition sensible where the data is weak. It is opt-in because on
+well-conditioned robots it barely changes the fit but on small or poorly-conditioned
+systems it can trade a little of the torque fit for staying closer to CAD. Standard parameters
+are prior-dominated regardless of mode — report the base-parameter distance (shown with
+`--model_real`) as the primary metric.
 
 ### Sensor noise and simulation effects
 

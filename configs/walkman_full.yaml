@@ -59,7 +59,8 @@ fullMeshLinks: ['TorsoProtections']
 trajectoryBounded: 1
 trajectoryPulseInit: 0.15
 trajectoryPulseMin:  0.07        # 0.07 → ~90s
-trajectoryPulseMax:  0.21        # 0.21 → ~30s
+trajectoryPulseMax:  0.3         # 0.3 → ~20s; higher bound gives velocity headroom
+                                 # (velocity scales with pulse freq at fixed position amplitude)
 trajectoryCoeffInit: 0.01        #set this as high as possible without violating constraints at start (see output after start)
 trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
@@ -127,6 +128,13 @@ trajectoryTargetTorqueUtil: 0.3
 # minimum torque utilization per joint as fraction of torque limit (hard constraint)
 # (set conservatively — distal joints of serial chains have small achievable torques)
 minTorqueUtilization: 0.0
+
+# target peak velocity (rad/s) per joint, soft cost like the torque target.
+# Friction (especially viscous) params are unidentifiable for joints that barely
+# move, and D-optimality of the inertial regressor does not reward velocity by
+# itself (previous trajectories left e.g. WaistLat at 0.07 rad/s = 0.4% of its
+# velocity limit). 0 = disabled.
+trajectoryTargetVelocity: 0.5
 
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)

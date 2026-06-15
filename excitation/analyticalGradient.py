@@ -859,6 +859,34 @@ def compute_analytical_gradient(
 
     obj_grad += -10.0 * np.mean(dpos_range_dalpha, axis=0)
 
+    # f4 = mean(max(0, 1 - vel_absmax/target)) * 10
+    # (velocity of joint n only depends on joint n's trajectory params)
+    vel_target = float(config.get("trajectoryTargetVelocity", 0.0))
+    if vel_target > 0:
+        vel_absmax = cache["vel_absmax"]
+        vel_absmax_idx = cache["vel_absmax_idx"]
+        for n in range(nd):
+            if vel_absmax[n] >= vel_target:
+                continue
+            t_vel = int(vel_absmax_idx[n])
+            sign_v = np.sign(velocities[t_vel, n])
+            osc_n = optimizer.trajectory.oscillators[n]
+            _, ddq_vel, _ = _traj_jac_single(
+                osc_n,
+                times[t_vel],
+                optimizer.nf[n],
+                wf,
+                use_deg,
+                n_vars,
+                a_offsets[n],
+                b_offsets[n],
+                q0_start + n,
+                dq_dwf[t_vel, n],
+                ddq_dwf[t_vel, n],
+                dddq_dwf[t_vel, n],
+            )
+            obj_grad += (-10.0 / (nd * vel_target)) * sign_v * ddq_vel
+
     # ---- Constraint gradients ----
     con_grad = np.zeros((optimizer.num_constraints, n_vars))
 

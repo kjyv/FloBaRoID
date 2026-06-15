@@ -507,6 +507,17 @@ class TrajectoryOptimizer(Optimizer):
         f2 = (1.0 - pos_util_mean) * 10.0  # 0 when using full range, 10 when no motion
         f += f2
 
+        # 4. velocity magnitude: penalize joints whose peak velocity stays below the
+        # target. Friction (the viscous term in particular) is unidentifiable for
+        # joints that barely move — D-optimality of the inertial regressor does not
+        # reward velocity by itself, so without this term slow joints stay slow.
+        vel_target = float(self.config.get("trajectoryTargetVelocity", 0.0))
+        f4 = 0.0
+        if vel_target > 0:
+            vel_utilization = vel_absmax / vel_target
+            f4 = float(np.mean(np.maximum(0.0, 1.0 - vel_utilization)))
+            f += f4 * 10.0
+
         if self.config["verbose"] or f1 > 0.3:
             print(
                 f"torque: {np.round(utilization, 3).tolist()} (bal={f1:.2f}, mag={util_mean:.2f}/{target_utilization})"
@@ -520,7 +531,7 @@ class TrajectoryOptimizer(Optimizer):
 
         dopt_part = neg_log_det * self._dopt_scale
         print(
-            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
+            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f} + vel_mag: {f4 * 10.0:.1f}, best: {self.last_best_f:.1f})",
             end=" ",
         )
         print(Fore.RESET)
@@ -559,6 +570,7 @@ class TrajectoryOptimizer(Optimizer):
                 "pos_min_idx": np.argmin(pos, axis=0),
                 "pos_max_idx": np.argmax(pos, axis=0),
                 "vel_absmax_idx": np.argmax(np.abs(vel), axis=0),
+                "vel_absmax": vel_absmax.copy(),
                 "utilization": utilization.copy(),
                 "util_mean": float(util_mean),
                 "util_std": float(np.std(utilization)),

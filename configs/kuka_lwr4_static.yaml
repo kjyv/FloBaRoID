@@ -20,10 +20,8 @@ initialPostures:                 #for static optimization, feasible postures to 
 
 # proper trajectory optimization
 useGlobalOptimization: 0         #use global solver first (recommended)
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
-localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 10            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
@@ -127,7 +125,6 @@ identifyClosestToCAD: 0
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'   # one of IPOPT, SLSQP, ALPSO
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

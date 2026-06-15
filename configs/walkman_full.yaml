@@ -6,16 +6,14 @@
 # trajectory optimization
 optimizeTrajectory: 1            # find new parameters with optimization or load previous params from file (if no file exists, use random)
 useGlobalOptimization: 1         # use global solver first (recommended)
-globalSolver: 'Optuna'
 globalOptIterations: 3           # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 25
 optunaSampler: 'TPE'
 globalOptJobs: 0                 # parallel worker processes (0 = auto: CPU cores - 2)
 useLocalOptimization: 1          # do local optimization after using global solver
-localSolver: 'IPOPT'             # prefer IPOPT, SLSQP or PSQP don't really work well for large robots
 localOptIterations: 50           # how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 localOptSensStep: 0.02
-useAnalyticalGradients: 1        # analytical gradients via regularized D-optimality (much faster than pyOptSparse FD)
+useAnalyticalGradients: 1        # analytical gradients via regularized D-optimality (much faster than FD)
 analyticalGradientEpsilon: 1.0e-7  # FD step for numerical regressor Jacobian in analytical gradient
 analyticalGradientJobs: 0        # parallel workers for regressor FD in gradient (0 = auto: CPU cores - 2)
 minTolConstr: 0.01               # tolerance for feasibility (tanh rounding can cause tiny angle violations)
@@ -337,7 +335,6 @@ sdpBaseParamTol: 1.0e-3          # tolerance for base param equality in closest-
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'             # one of IPOPT, SLSQP, ALPSO
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)

@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
 from idyntree import bindings as iDynTree
-from pyoptsparse import Optimization
 
 from excitation.optimizer import Optimizer, plotter
 from excitation.trajectoryGenerator import (
@@ -556,10 +555,9 @@ class TrajectoryOptimizer(Optimizer):
         )
         print(Fore.RESET)
 
-        is_gradient = getattr(getattr(self, "opt_prob", None), "is_gradient", False)
-        if self.config["verbose"] and is_gradient:
+        if self.config["verbose"] and self.is_gradient_eval:
             print("(Gradient evaluation)")
-        if not is_gradient and self.config["showOptimizationGraph"]:
+        if not self.is_gradient_eval and self.config["showOptimizationGraph"]:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -603,9 +601,10 @@ class TrajectoryOptimizer(Optimizer):
                 "pos_range_available": pos_range_available.copy(),
             }
 
-        # IPOPT respects the fail flag (discards the evaluation), SLSQP doesn't
-        # (it treats the returned values as real, so fail=1 corrupts its gradient)
-        fail = 1.0 if (self._eval_failed and self.config.get("localSolver") == "IPOPT") else 0.0
+        # IPOPT via cyipopt has no fail flag mechanism — failed evaluations are
+        # already clamped to large but finite values above. The flag is still
+        # returned for informational purposes (ignored by the solvers).
+        fail = 1.0 if self._eval_failed else 0.0
         return f, g, fail
 
     def testBounds(self, x):
@@ -709,88 +708,62 @@ class TrajectoryOptimizer(Optimizer):
                 return
         print("repair: no feasible point found by amplitude backoff")
 
-    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrapper to convert pyOptSparse dict-based API to flat array."""
-        x = np.array([xdict[name] for name in self._var_names]).flatten()
-        f, g, fail = self.objectiveFunc(x)
-        funcs = {"f": f, "g": np.array(g)}
-        return funcs, bool(fail)
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build initial values and bounds for the flat variable vector.
 
-    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
-        """Compute analytical gradients for pyOptSparse.
-
-        Called by pyOptSparse when sens= is set to this method. Uses cached
-        data from the last objectiveFunc call to compute exact gradients via
-        the chain rule through the regressor SVD.
-        """
-        from excitation.analyticalGradient import compute_analytical_gradient
-
-        if not hasattr(self, "_ag_cache"):
-            print("Warning: no cached data for analytical gradient, returning zeros")
-            func_sens: dict = {"f": {}, "g": {}}
-            for name in self._var_names:
-                func_sens["f"][name] = np.array([0.0])
-                func_sens["g"][name] = np.zeros((self.num_constraints, 1))
-            return func_sens, False
-
-        obj_grad, con_grad = compute_analytical_gradient(self)
-
-        func_sens = {"f": {}, "g": {}}
-        for k, name in enumerate(self._var_names):
-            func_sens["f"][name] = np.array([obj_grad[k]])
-            func_sens["g"][name] = con_grad[:, k].reshape(-1, 1)
-
-        return func_sens, False
-
-    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
-        """Add variables, define bounds.
+        Variable order is (wf, q offsets, a coefficients, b coefficients), with
+        per-joint nf so each joint may have a different coefficient count.
 
         Args:
-            opt_prob: pyOptSparse Optimization object
             initial_values: optional flat array of initial variable values (e.g. from a
                 previous global optimization). If None, uses default init values.
+
+        Returns:
+            (x0, lower, upper) arrays.
         """
+        if initial_values is not None:
+            x0 = np.array(initial_values, dtype=float)
+        else:
+            x0 = np.concatenate(
+                (
+                    [self.wf_init],
+                    np.asarray(self.qinit, dtype=float),
+                    np.concatenate(self.ainit),
+                    np.concatenate(self.binit),
+                )
+            )
 
-        self._var_names: list[str] = []
-        idx = 0
+        lower = np.concatenate(
+            (
+                [self.wf_min],
+                np.asarray(self.qmin, dtype=float),
+                np.full(self.total_ab, self.amin, dtype=float),
+                np.full(self.total_ab, self.bmin, dtype=float),
+            )
+        )
+        upper = np.concatenate(
+            (
+                [self.wf_max],
+                np.asarray(self.qmax, dtype=float),
+                np.full(self.total_ab, self.amax, dtype=float),
+                np.full(self.total_ab, self.bmax, dtype=float),
+            )
+        )
+        return x0, lower, upper
 
-        # w_f - pulsation
-        self._var_names.append("wf")
-        wf_val = float(initial_values[idx]) if initial_values is not None else self.wf_init
-        opt_prob.addVar("wf", value=wf_val, lower=self.wf_min, upper=self.wf_max)
-        idx += 1
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Build bounds for the constraint values (computed in objectiveFunc).
 
-        # q - offsets
-        for i in range(self.num_dofs):
-            name = "q_%d" % i
-            self._var_names.append(name)
-            q_val = float(initial_values[idx]) if initial_values is not None else self.qinit[i]
-            opt_prob.addVar(name, value=q_val, lower=self.qmin[i], upper=self.qmax[i])
-            idx += 1
-        # a, b - sin/cos params (per-joint nf, so each joint may have different count)
-        for i in range(self.num_dofs):
-            for j in range(self.nf[i]):
-                name = f"a{i}_{j}"
-                self._var_names.append(name)
-                a_val = float(initial_values[idx]) if initial_values is not None else self.ainit[i][j]
-                opt_prob.addVar(name, value=a_val, lower=self.amin, upper=self.amax)
-                idx += 1
-        for i in range(self.num_dofs):
-            for j in range(self.nf[i]):
-                name = f"b{i}_{j}"
-                self._var_names.append(name)
-                b_val = float(initial_values[idx]) if initial_values is not None else self.binit[i][j]
-                opt_prob.addVar(name, value=b_val, lower=self.bmin, upper=self.bmax)
-                idx += 1
-
-        # add constraint vars (constraint functions are in obfunc).
-        # Joint/velocity/torque constraints use g <= 0 for feasible (e.g.
-        # g = limit_lower - min_position < 0 when joint is above lower limit).
-        # Collision constraints use g >= 0 for feasible (positive = no collision).
+        Joint/velocity/torque constraints use g <= 0 for feasible (e.g.
+        g = limit_lower - min_position < 0 when joint is above lower limit).
+        Collision constraints use g >= 0 for feasible (positive = no collision).
+        """
         c_s = self.num_constraints - self.num_coll_constraints
         lower = np.concatenate([-np.inf * np.ones(c_s), np.zeros(self.num_constraints - c_s)])
         upper = np.concatenate([np.zeros(c_s), np.inf * np.ones(self.num_constraints - c_s)])
-        opt_prob.addConGroup("g", self.num_constraints, lower=lower, upper=upper)
+        return lower, upper
 
     def optimizeTrajectory(self) -> "PulsedTrajectory":
         """Find trajectory parameters by optimization.
@@ -799,14 +772,8 @@ class TrajectoryOptimizer(Optimizer):
         is returned even if the user aborts early with Ctrl-C.
         """
 
-        # Instanciate Optimization Problem
-        opt_prob = Optimization("Trajectory optimization", self._objFuncWrapper)
-        opt_prob.addObj("f")
-        self.opt_prob = opt_prob
-
-        self.addVarsAndConstraints(opt_prob)
         try:
-            sol_vec = self.runOptimizer(opt_prob)
+            sol_vec = self.runOptimizer()
         except KeyboardInterrupt:
             print("\n\nTrajectory optimization interrupted by user.")
             if len(self.last_best_sol) > 0:

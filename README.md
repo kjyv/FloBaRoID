@@ -42,7 +42,7 @@ Features:
 You'll need some or all of these depenencies installed in your system:
 
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **ipopt** (recommended, for IPOPT solver in trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
+* **ipopt** (required for building cyipopt, used for trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For better performance, install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
 
 ## Installation
 
@@ -51,7 +51,6 @@ run e.g. `uv run identifier.py` to run the tools in uv virtual env. It will inst
 automatically.
 
 Optional dependency groups can be installed with:
-* `uv sync --group optimization` — IPOPT solver support via cyipopt (requires libipopt, see above)
 * `uv sync --group visualization` — matplotlib2tikz for TikZ export
 * `uv sync --all-groups` — everything (recommended)
 

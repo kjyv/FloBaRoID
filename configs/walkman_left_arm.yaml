@@ -7,13 +7,11 @@ optimizeTrajectory: 1
 
 # trajectory optimization
 useGlobalOptimization: 0
-globalSolver: 'Optuna'
 globalOptIterations: 20    # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 20
 optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
 # globalOptJobs: 4         # parallel worker processes (default: CPU cores - 2)
 useLocalOptimization: 1
-localSolver: 'IPOPT'
 localOptIterations: 50
 localOptSensStep: 0.02
 useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality
@@ -155,7 +153,6 @@ identifyClosestToCAD: 1
 
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'
 
 noChange: 0
 noChangeThresh: 400

@@ -5,18 +5,21 @@ import random
 import signal
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from excitation.trajectoryOptimizer import TrajectoryOptimizer
     from identification.model import Model
     from identifier import Identification
 
+import cyipopt
 import fcl
 import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
+from excitation.analyticalGradient import compute_analytical_gradient
 from excitation.analyticalGradient import kill_gradient_pool as _kill_gradient_pool
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
 from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
@@ -282,6 +285,119 @@ def plotter(config: dict, data: dict | None = None, filename: str | None = None)
     plt.show()
 
 
+class IpoptProblem:
+    """Adapter between the optimizers' flat-vector objective functions and the
+    class-based cyipopt API.
+
+    The result of the last objective evaluation is cached so that constraints(x)
+    after objective(x) at the same point doesn't re-run the (expensive)
+    simulation. Gradients are likewise cached per x so that gradient() and
+    jacobian() at the same point only compute once.
+    """
+
+    def __init__(
+        self,
+        opt: Optimizer,
+        eval_func: Callable[[np.ndarray], tuple[float, Any, Any]],
+        num_constraints: int,
+        sens_step: float,
+        use_analytical_gradients: bool = False,
+    ) -> None:
+        """Create the adapter.
+
+        Args:
+            opt: optimizer instance (provides the is_gradient_eval flag, the
+                approx_jacobian helper and the analytical gradient cache)
+            eval_func: function returning (f, g, fail) for a flat variable vector
+            num_constraints: number of constraint values returned by eval_func
+            sens_step: step size for finite-difference gradients
+            use_analytical_gradients: compute gradients via
+                compute_analytical_gradient() instead of finite differences
+        """
+        self.opt = opt
+        self.eval_func = eval_func
+        self.m = num_constraints
+        self.sens_step = sens_step
+        self.use_analytical_gradients = use_analytical_gradients
+        self._last_x: np.ndarray | None = None
+        self._last_f: float = 0.0
+        self._last_g: np.ndarray = np.zeros(num_constraints)
+        self._grad_x: np.ndarray | None = None
+        self._obj_grad: np.ndarray = np.array([])
+        self._con_jac: np.ndarray = np.array([])
+
+    def _call(self, x: np.ndarray) -> tuple[float, np.ndarray]:
+        """Evaluate eval_func without caching.
+
+        IPOPT (via cyipopt) has no fail flag mechanism, so failed evaluations
+        rely on the objective functions clamping NaN/inf to large finite
+        values. Early-returns with empty constraint arrays (non-finite input x)
+        are mapped to a large objective value here.
+        """
+        f, g, _fail = self.eval_func(np.asarray(x, dtype=float))
+        g_arr = np.asarray(g, dtype=float)
+        if g_arr.size != self.m:
+            g_arr = np.zeros(self.m)
+            f = 1e10
+        return float(f), g_arr
+
+    def _evaluate(self, x: np.ndarray) -> tuple[float, np.ndarray]:
+        """Evaluate eval_func at x, reusing the cached result if x is unchanged."""
+        if self._last_x is None or not np.array_equal(x, self._last_x):
+            f, g = self._call(x)
+            self._last_x = np.array(x, dtype=float)
+            self._last_f = f
+            self._last_g = g
+        return self._last_f, self._last_g
+
+    def objective(self, x: np.ndarray) -> float:
+        """Objective callback for cyipopt."""
+        return self._evaluate(x)[0]
+
+    def constraints(self, x: np.ndarray) -> np.ndarray:
+        """Constraint callback for cyipopt."""
+        return self._evaluate(x)[1]
+
+    def _fdFunc(self, x: np.ndarray) -> np.ndarray:
+        """Combined [f, g] vector for finite differencing (reuses the eval cache
+        for the unperturbed base point, doesn't pollute it with FD probes)."""
+        if self._last_x is not None and np.array_equal(x, self._last_x):
+            return np.concatenate(([self._last_f], self._last_g))
+        f, g = self._call(x)
+        return np.concatenate(([f], g))
+
+    def _computeGradients(self, x: np.ndarray) -> None:
+        """Compute and cache objective gradient and constraint jacobian at x."""
+        if self._grad_x is not None and np.array_equal(x, self._grad_x):
+            return
+        self.opt.is_gradient_eval = True
+        try:
+            if self.use_analytical_gradients:
+                # the analytical gradient uses cached simulation data from the
+                # last objectiveFunc call -- make sure that data matches x
+                self._evaluate(x)
+                obj_grad, con_jac = compute_analytical_gradient(cast("TrajectoryOptimizer", self.opt))
+            else:
+                jac = self.opt.approx_jacobian(self._fdFunc, np.asarray(x, dtype=float), self.sens_step)
+                obj_grad = jac[0, :]
+                con_jac = jac[1:, :]
+        finally:
+            self.opt.is_gradient_eval = False
+        self._grad_x = np.array(x, dtype=float)
+        self._obj_grad = np.asarray(obj_grad)
+        self._con_jac = np.asarray(con_jac)
+
+    def gradient(self, x: np.ndarray) -> np.ndarray:
+        """Objective gradient callback for cyipopt."""
+        self._computeGradients(x)
+        return self._obj_grad
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        """Constraint jacobian callback for cyipopt (dense, row-major)."""
+        self._computeGradients(x)
+        return self._con_jac.ravel()
+
+
 class Optimizer:
     """base class for different optimizers"""
 
@@ -309,15 +425,16 @@ class Optimizer:
         self.last_best_infeasible_sol = np.array([])
 
         self.iter_cnt = 0  # iteration counter
+        self.iter_max = 0  # expected total function evaluations (informational)
         self.last_g: np.ndarray | list[float] | None = None  # last constraint values
         self.is_global = False
+        self.is_gradient_eval = False  # set by IpoptProblem during gradient/jacobian evaluations
         self.local_iter_max = 0
 
         # attributes declared here for type checking; set by subclasses
         self.trajectory: Any = None
         self.world_gravity: Any = None
         self.num_postures: int = 0
-        self._var_names: list[str] = []
 
         # trajectory optimizer attributes (set by TrajectoryOptimizer/PostureOptimizer)
         self.wf_min: float = 0.0
@@ -623,16 +740,14 @@ class Optimizer:
         and a fail flag"""
         raise NotImplementedError
 
-    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrap objectiveFunc for pyOptSparse dict-based API."""
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return (x0, lower, upper) arrays for the optimization variables."""
         raise NotImplementedError
 
-    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
-        """Compute analytical gradients for pyOptSparse. Overridden in subclasses."""
-        raise NotImplementedError
-
-    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
-        """Add variables and constraints to the optimization problem."""
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (lower, upper) arrays for the constraint values."""
         raise NotImplementedError
 
     def initGraph(self):
@@ -931,74 +1046,26 @@ class Optimizer:
         if interrupted:
             raise KeyboardInterrupt
 
-    def runOptimizer(self, opt_prob: Any) -> np.ndarray:
+    def runOptimizer(self) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
-
-        from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP, Optimization
 
         interrupted = False
         if self.config["useGlobalOptimization"]:
             ### global optimization
-            sr = random.SystemRandom()
-            if self.config["globalSolver"] == "NSGA2":
-                opt = NSGA2()  # genetic algorithm
-                if self.config["globalOptSize"] % 4:
-                    raise OSError("globalOptSize needs to be a multiple of 4 for NSGA2")
-                opt.setOption("PopSize", self.config["globalOptSize"])  # Population Size (a Multiple of 4)
-                opt.setOption("maxGen", self.config["globalOptIterations"])  # Maximum Number of Generations
-                opt.setOption("PrintOut", 0)  # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
-                opt.setOption("xinit", 1)  # Use Initial Solution Flag (0 - random population, 1 - use given solution)
-                opt.setOption("seed", sr.randint(1, 2**31))  # Random Number Seed
-                # pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
-                opt.setOption("pMut_real", 0.5)  # Probablity of Mutation of Real Variables (1/nreal)
-                # eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
-                # eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
-                # pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
-                # pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
-                self.iter_max = self.config["globalOptSize"] * self.config["globalOptIterations"]
-            elif self.config["globalSolver"] == "ALPSO":
-                opt = ALPSO()  # augmented lagrange particle swarm optimization
-                opt.setOption("stopCriteria", 0)  # stop at max iters
-                opt.setOption("dynInnerIter", 1)  # dynamic inner iter number
-                opt.setOption("maxInnerIter", 3)
-                opt.setOption("maxOuterIter", self.config["globalOptIterations"])
-                opt.setOption("printInnerIters", 1)
-                opt.setOption("printOuterIters", 1)
-                opt.setOption("SwarmSize", self.config["globalOptSize"])
-                opt.setOption("xinit", 1)
-                opt.setOption("seed", sr.randint(1, 2**31))
-                # slightly more explorative than defaults — local solver handles convergence
-                opt.setOption("vmax", 3.0)  # higher max velocity for broader search (default 2.0)
-                opt.setOption("c2", 0.7)  # weaker social pull, less premature convergence (default 1.0)
-                opt.setOption("w2", 0.65)  # higher final inertia to keep searching longer (default 0.55)
-                # TODO: how to properly limit max number of function calls?
-                # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-                self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
-                    "maxOuterIter"
-                ) + opt.getOption("SwarmSize")
-            elif self.config["globalSolver"] == "Optuna":
-                opt = None  # Optuna runs separately below
-            else:
-                print("Solver {} not defined".format(self.config["globalSolver"]))
-                sys.exit(1)
-
-            # run global optimization
             if self.config["verbose"]:
-                print("Running global optimization with {}".format(self.config["globalSolver"]))
+                print("Running global optimization with Optuna")
             self.is_global = True
 
             try:
-                if self.config["globalSolver"] == "Optuna":
-                    self._runOptuna()
-                else:
-                    sol = opt(opt_prob, storeHistory=False)
-                    print(sol)
+                self._runOptuna()
             except KeyboardInterrupt:
                 interrupted = True
                 print("\n\nGlobal optimization interrupted by user.")
                 _kill_gradient_pool()
 
             self.gather_solutions()
+
+        ipopt_info: dict | None = None
 
         ### local optimization
         if self.config["useLocalOptimization"] and not interrupted:
@@ -1007,53 +1074,57 @@ class Optimizer:
             # TODO: run local optimization for e.g. the three last best results (global solutions
             # could be more or less optimal within their local minima)
 
-            # after using global optimization, refine solution with gradient based method init
-            # optimizer (more or less local)
-            if self.config["localSolver"] == "SLSQP":
-                opt2 = SLSQP()  # sequential least squares
-                opt2.setOption("MAXIT", self.config["localOptIterations"])
-                # IPRINT: -1=silent, 0=iter+final, 1=detailed
-                opt2.setOption("IPRINT", -1 if not self.config["verbose"] else 0)
-            elif self.config["localSolver"] == "IPOPT":
-                opt2 = IPOPT()
-                opt2.setOption(
-                    "linear_solver", "mumps"
-                )  # mumps (bundled) or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
-                opt2.setOption("max_iter", self.config["localOptIterations"])
-                if self.config["verbose"]:
-                    opt2.setOption("print_level", 4)  # 0 none ... 5 max
-                else:
-                    opt2.setOption("print_level", 0)  # 0 none ... 5 max
-            elif self.config["localSolver"] == "PSQP":
-                opt2 = PSQP()
-                opt2.setOption("MIT", self.config["localOptIterations"])  # max iterations
-                # opt2.setOption('MFV', ??)  # max function evaluations
-
             self.iter_max = 0  # not meaningful for local opt (most FD probes fail silently)
 
-            # Create a fresh opt_prob so ALPSO's NaN state doesn't contaminate
-            # the starting point. Pass the ALPSO best as initial values directly
-            # to addVar (setDVs is unreliable after ALPSO's NaN solution).
+            # after using global optimization, refine solution with the gradient based
+            # solver, starting from the best solution found so far (if any)
             init_vals = np.array(self.last_best_sol) if len(self.last_best_sol) > 0 else None
             if init_vals is not None:
                 print(f"Starting local optimization from global best (obj={self.last_best_f:.2f})")
             else:
                 print("Starting local optimization from default initial trajectory (no feasible global solution found)")
-            opt_prob_local = Optimization("Trajectory optimization", self._objFuncWrapper)
-            opt_prob_local.addObj("f")
-            self.opt_prob = opt_prob_local
-            self.addVarsAndConstraints(opt_prob_local, initial_values=init_vals)
+            x0, var_lower, var_upper = self.buildVariableBounds(initial_values=init_vals)
+            con_lower, con_upper = self.buildConstraintBounds()
 
             if self.config["verbose"]:
-                print("Running local optimization with {}".format(self.config["localSolver"]))
+                print("Running local optimization with IPOPT (cyipopt)")
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
+            use_analytical = bool(self.config.get("useAnalyticalGradients", False))
+            if use_analytical:
+                print("Using analytical gradients for local optimization")
+
+            problem = IpoptProblem(
+                self,
+                self.objectiveFunc,
+                self.num_constraints,
+                sens_step,
+                use_analytical_gradients=use_analytical,
+            )
+            # IPOPT treats bounds beyond +-1e19 as infinite
+            nlp = cyipopt.Problem(
+                n=len(x0),
+                m=self.num_constraints,
+                problem_obj=problem,
+                lb=np.clip(var_lower, -1e19, 1e19),
+                ub=np.clip(var_upper, -1e19, 1e19),
+                cl=np.clip(con_lower, -1e19, 1e19),
+                cu=np.clip(con_upper, -1e19, 1e19),
+            )
+            nlp.add_option(
+                "linear_solver", "mumps"
+            )  # mumps (bundled) or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            nlp.add_option("max_iter", int(self.config["localOptIterations"]))
+            if self.config["verbose"]:
+                nlp.add_option("print_level", 4)  # 0 none ... 12 max
+            else:
+                nlp.add_option("print_level", 0)  # 0 none ... 12 max
+            nlp.add_option("sb", "yes")  # suppress the IPOPT banner
+            # only first derivatives are available, no exact hessian
+            nlp.add_option("hessian_approximation", "limited-memory")
+
             try:
-                if self.config.get("useAnalyticalGradients", False):
-                    print("Using analytical gradients for local optimization")
-                    sol = opt2(opt_prob_local, sens=self._sensitivityWrapper, storeHistory=False)
-                else:
-                    sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
+                _, ipopt_info = nlp.solve(x0)
             except KeyboardInterrupt:
                 print("\n\nOptimization interrupted by user.")
                 _kill_gradient_pool()
@@ -1080,7 +1151,11 @@ class Optimizer:
             print("\n")
             return self.last_best_sol
         else:
-            # no feasible solution found at all — print raw solver output for debugging
-            print(sol)
+            # no feasible solution found at all — print solver status for debugging
+            if ipopt_info is not None:
+                status_msg = ipopt_info["status_msg"]
+                if isinstance(status_msg, bytes):
+                    status_msg = status_msg.decode()
+                print("IPOPT status {}: {}".format(ipopt_info["status"], status_msg))
             print("No feasible solution found!")
             sys.exit(-1)

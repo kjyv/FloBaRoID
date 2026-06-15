@@ -27,7 +27,7 @@ dependencies = [
     "pyglet==2.1.13",
     "plotly~=6.6.0",
     "kaleido~=1.2.0",
-    "pyoptsparse==2.15.0",
+    "cyipopt==1.6.1",
     "python-fcl~=0.7.0",
     "mypy~=1.19.1",
     "optuna>=4.8.0",
@@ -39,7 +39,6 @@ dependencies = [
 python-preference = "managed"
 
 [tool.uv.sources]
-pyoptsparse = { git = "https://github.com/mdolab/pyoptsparse.git", tag = "v2.15.0" }
 idyntree = { git = "https://github.com/robotology/idyntree.git", tag = "v15.0.0" }
 
 [dependency-groups]
@@ -52,10 +51,6 @@ dev = [
 visualization = [
     "matplotlib",
     "matplotlib2tikz",
-]
-optimization = [
-    # IPOPT; good local gradient solver, preferred over SLSQP
-    "cyipopt",
 ]
 
 [tool.ruff]

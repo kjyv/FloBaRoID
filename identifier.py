@@ -655,6 +655,33 @@ class Identification:
         # the full vector is needed for downstream torque estimation)
         self._bw_contactForcesSum = self.model.contactForcesSum[base_row_indices]
 
+        # per-trajectory weighting: when identifying from multiple measurement files,
+        # equal-weight sample stacking lets an information-sparse trajectory dilute
+        # the informative ones. Estimate the per-(file, wrench component) residual
+        # noise from a cheap OLS pre-pass and weight the rows with 1/sigma.
+        file_boundaries = getattr(self.data, "file_boundaries", [0])
+        if self.opt.get("useTrajectoryWeighting", 0) and len(file_boundaries) > 2:
+            skip = self.opt.get("skipSamples", 0) + 1
+            x_pre, _, _, _ = la.lstsq(YBase_bw, tau_bw, rcond=None)
+            residual_2d = (tau_bw - YBase_bw @ x_pre).reshape(n_samples, fb)
+            # map used samples to their source file
+            loaded_idx = np.arange(n_samples) * skip
+            file_idx = np.searchsorted(file_boundaries, loaded_idx, side="right") - 1
+            n_files = len(file_boundaries) - 1
+            sigma = np.ones((n_files, fb))
+            for k in range(n_files):
+                mask = file_idx == k
+                if np.count_nonzero(mask) > fb:
+                    sigma[k] = np.sqrt(np.mean(residual_2d[mask] ** 2, axis=0))
+            # normalize so the average weight is ~1 (keeps the residual scale stable
+            # for downstream regularization terms)
+            weights = np.mean(sigma) / np.maximum(sigma, 1e-12)
+            print(f"per-trajectory weights (mean over wrench components): {np.mean(weights, axis=1).round(2)}")
+            row_weights = weights[file_idx].flatten()
+            YBase_bw = YBase_bw * row_weights[:, np.newaxis]
+            tau_bw = tau_bw * row_weights
+            self._bw_contactForcesSum = self._bw_contactForcesSum * row_weights
+
         return YBase_bw, tau_bw
 
     def identifyBaseParameters(

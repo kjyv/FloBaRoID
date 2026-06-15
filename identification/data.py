@@ -21,6 +21,10 @@ class Data:
         self.unusedBlocks: list[tuple[Any, ...]] = list()
         self.seenBlocks: list[tuple[Any, ...]] = list()
 
+        # per-file sample boundaries in the concatenated sample space
+        # (single pseudo-file until init_from_files fills it)
+        self.file_boundaries: list[int] = [0]
+
         # has some data been loaded?
         self.inited = False
 
@@ -53,6 +57,9 @@ class Data:
 
         with Timer() as t:
             so = self.opt["startOffset"]
+            # per-file sample boundaries in the concatenated (loaded) sample space,
+            # for per-trajectory weighting in identification
+            self.file_boundaries = [0]
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
@@ -62,6 +69,7 @@ class Data:
                     except:
                         # python2.7
                         m = np.load(fn)
+                    self.file_boundaries.append(self.file_boundaries[-1] + m["positions"].shape[0] - so)
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]

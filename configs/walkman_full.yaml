@@ -434,6 +434,13 @@ useDependents: 0
 # distributed)
 useWLS: 0
 
+# when identifying from multiple measurement files, weight each file's equations
+# by the inverse of its per-wrench-component residual noise (estimated from an
+# OLS pre-pass). Prevents an information-sparse trajectory from diluting the
+# informative ones in the combined identification. Only affects the base-wrench
+# base parameter identification (useBaseWrenchForBaseParams).
+useTrajectoryWeighting: 1
+
 # whether to filter the regressor columns (cutoff frequency is system dependent)
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
 # correlation between (observation) regressor and measured torques

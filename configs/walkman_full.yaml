@@ -296,15 +296,27 @@ frictionSignThreshold: 0.02
 # Set >= Nyquist to disable (uses the pipeline velocities instead).
 frictionVelocityCutoff: 3.0
 
-# Tikhonov weight pulling Fv toward the a priori URDF value in the two-step
-# friction OLS. Expressed as equivalent excitation energy sum(v^2) in
-# (rad/s)^2 * samples: joints whose kept-sample velocity energy is well above
-# this are barely affected, joints below it stay near a priori. 0 = disabled.
-# Sweep against the known real model showed a broad optimum at 20-100 (Fv error
-# minimum); above that the a priori bias dominates. Note the unregularized Fv
-# absorbs unmodeled effects (thermal drift, cable forces), which is why a
-# fairly strong prior helps even when the a priori values are ~2x off.
+# Tikhonov weight pulling Fv toward the a priori URDF value in the friction OLS.
+# Expressed as equivalent excitation energy sum(v^2) in (rad/s)^2 * samples:
+# joints whose kept-sample velocity energy is well above this are barely affected,
+# joints below it stay near a priori. 0 = disabled. Note the unregularized Fv
+# absorbs unmodeled effects (thermal drift, cable forces), which is why a fairly
+# strong prior helps even when the a priori values are off.
+# This absolute weight is in raw energy units, so the right value depends on the
+# trajectory's speed/sampling — prefer frictionFvRegularizationRelative below, which
+# is unit-free and transfers across robots. The absolute weight is used only when the
+# relative one is 0.
 frictionFvRegularization: 50.0
+
+# Self-scaling form of the Fv prior (preferred, dimensionless). The weight is set to
+# alpha * median(per-joint kept-sample velocity energy), so a single value works
+# across robots/trajectories without guessing absolute energy units, while staying
+# per-joint adaptive: a joint at the median excitation gets a 50/50 data/prior blend
+# at alpha=1, well-excited joints stay data-driven, the weakest fall back to a priori.
+# Set this without ground truth via held-out validation and by raising it until no
+# joint's Fv collapses to 0 (the Fc/Fv split degenerates when a joint moves at a
+# narrow speed band). 0 = use the absolute weight above instead.
+frictionFvRegularizationRelative: 0.0
 
 # Velocity dead zone (rad/s) for the two-step friction OLS (Swevers et al.):
 # samples with |v| below this are excluded from the fit because the friction

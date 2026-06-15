@@ -971,8 +971,21 @@ class Identification:
         # post-identification friction: with known inertial params, the joint torque
         # residual is mostly friction. Fit Fc, Fv, offset per joint from the residual.
         # This is the second step of the Ayusawa two-step approach.
-        if self.opt.get("postIdentifyFriction", False) and self.opt["floatingBase"]:
-            self._postIdentifyFriction()
+        # On a floating base the inertial params come from the friction-free base wrench,
+        # so the residual is genuinely friction-only. A fixed base has no friction-free
+        # anchor, so it must first identify friction simultaneously (friction columns in the
+        # regressor); the residual refit then re-estimates friction per joint with the more
+        # robust dead-zone / Fv-prior handling and replaces the jointly-fit friction slots.
+        if self.opt.get("postIdentifyFriction", False):
+            if self.opt["floatingBase"] or self.opt.get("identifyFrictionSimultaneously", False):
+                self._postIdentifyFriction()
+            else:
+                print(
+                    "postIdentifyFriction skipped: on a fixed base it requires "
+                    "identifyFrictionSimultaneously=1 (joint torques have no friction-free "
+                    "anchor, so the inertial parameters must be identified with friction in "
+                    "the regressor before friction can be refit from the residual)."
+                )
 
     def _postIdentifyFriction(self) -> None:
         """Identify friction from joint torque residuals after inertial identification.
@@ -984,7 +997,7 @@ class Identification:
         so the residual is dominated by friction rather than inertial model errors.
         """
         nd = self.model.num_dofs
-        fb = 6
+        fb = 6 if self.opt["floatingBase"] else 0
         block = nd + fb
         n_samples = self.data.num_used_samples
 
@@ -1027,23 +1040,13 @@ class Identification:
         deadzone = float(self.opt.get("frictionVelocityDeadZone", 0.0))
         deadzone_kept = np.zeros(nd)
 
-        # Tikhonov regularization of Fv toward the a priori URDF value. The data
-        # term's Fv information scales with sum(v^2) over the kept samples, so a
-        # fixed weight is automatically per-joint adaptive: negligible for
-        # well-excited joints, dominant for joints that barely move (whose Fv is
-        # otherwise unidentifiable and inflates). The weight is the equivalent
-        # excitation energy of the prior in (rad/s)^2 * samples.
-        lambda_fv = float(self.opt.get("frictionFvRegularization", 0.0))
-        if lambda_fv > 0:
-            urdf_friction = helpers.URDFHelpers.getJointFriction(self.model.urdf_file)
-            fv_apriori = np.array([urdf_friction[name]["f_velocity"] for name in self.model.jointNames])
-
-        print("Post-identifying friction from residuals (OLS on identified inertials)...")
+        # precompute the per-joint dead-zone keep mask and the kept-sample velocity energy
+        # sum(v^2). The energy is the data term's Fv information and is also used to
+        # auto-scale the Fv regularization weight below.
+        keep_masks: list[np.ndarray] = []
+        fv_energy = np.zeros(nd)
         for j in range(nd):
-            vel = velocities[:, j]
             vel_sign = velocities_for_sign[:, j]
-            residual = tau_residual_2d[:, fb + j]  # joint torque rows only
-
             if deadzone > 0:
                 keep = np.abs(vel_sign) >= deadzone
                 # need both motion directions and enough samples for a stable 3-param fit,
@@ -1052,7 +1055,37 @@ class Identification:
                     keep = np.ones(n_samples, dtype=bool)
             else:
                 keep = np.ones(n_samples, dtype=bool)
+            keep_masks.append(keep)
             deadzone_kept[j] = np.count_nonzero(keep) / n_samples
+            fv_energy[j] = float(np.sum(velocities[keep, j] ** 2))
+
+        # Tikhonov regularization of Fv toward the a priori URDF value. Because the data
+        # term's Fv information is the kept-sample velocity energy sum(v^2), the weight is
+        # naturally expressed on that scale: a joint with energy >> lambda is data-driven,
+        # a joint with energy << lambda stays near a priori (its Fv is otherwise
+        # unidentifiable and inflates). There are two ways to set it:
+        #   - frictionFvRegularizationRelative (alpha, dimensionless) — preferred. The weight
+        #     is set to alpha * median(per-joint energy), so a single value transfers across
+        #     robots and trajectories without guessing absolute energy units, while staying
+        #     per-joint adaptive: a joint at the median excitation gets a 50/50 data/prior
+        #     blend at alpha = 1, well-excited joints stay data-driven, the weakest fall back
+        #     to a priori. This is the ground-truth-free way to choose it.
+        #   - frictionFvRegularization (absolute) — the raw equivalent energy in
+        #     (rad/s)^2 * samples, used only when the relative weight is unset.
+        alpha_fv = float(self.opt.get("frictionFvRegularizationRelative", 0.0))
+        if alpha_fv > 0:
+            lambda_fv = alpha_fv * float(np.median(fv_energy))
+        else:
+            lambda_fv = float(self.opt.get("frictionFvRegularization", 0.0))
+        if lambda_fv > 0:
+            urdf_friction = helpers.URDFHelpers.getJointFriction(self.model.urdf_file)
+            fv_apriori = np.array([urdf_friction[name]["f_velocity"] for name in self.model.jointNames])
+
+        print("Post-identifying friction from residuals (OLS on identified inertials)...")
+        for j in range(nd):
+            vel = velocities[:, j]
+            keep = keep_masks[j]
+            residual = tau_residual_2d[:, fb + j]  # joint torque rows only
 
             # regressor: [sign_series, v, 1]
             # smoothed sign from less-filtered velocity (zero-crossing timing) but
@@ -1087,6 +1120,11 @@ class Identification:
                 f"{deadzone_kept.mean() * 100:.0f}% of samples on average "
                 f"(min {deadzone_kept.min() * 100:.0f}%)"
             )
+        if alpha_fv > 0:
+            print(
+                f"  Fv regularization: relative alpha={alpha_fv} -> lambda={lambda_fv:.1f} "
+                f"(alpha x median joint velocity energy {np.median(fv_energy):.1f} (rad/s)^2*samples)"
+            )
 
         # when the real model is known (simulation), report actual friction parameter
         # errors — the parameter quality is the metric that matters, the ranges and
@@ -1120,6 +1158,25 @@ class Identification:
         nrms_with = np.sqrt(np.mean(residual_with_friction**2)) / np.sqrt(np.mean(tau_measured**2)) * 100
         nrms_without = np.sqrt(np.mean(residual_without**2)) / np.sqrt(np.mean(tau_measured**2)) * 100
         print(f"  NRMS: {nrms_with:.3f}% (with friction) vs {nrms_without:.3f}% (inertial only)")
+
+        # When friction was identified simultaneously (the fixed-base case), the standard
+        # parameter vector already holds friction slots that were fit jointly inside the
+        # SDP without the dead-zone / Fv-prior handling. Overwrite them with this robust
+        # residual refit so the identified model, the torque prediction (YStd.xStd) and the
+        # URDF export all use it; the inertial parameters are left untouched. Only the
+        # symmetric, non-Stribeck layout maps one-to-one onto the friction slots, and the
+        # write-back position is valid only when no standard params were dropped (so the
+        # compact xStd index equals the full index at friction_params_start).
+        if (
+            self.opt.get("identifyFrictionSimultaneously", False)
+            and self.opt["identifySymmetricVelFriction"]
+            and self.opt.get("stribeckVelocity", 0) == 0
+            and len(self.model.xStd) == self.model.num_all_params
+        ):
+            fs = self.model.friction_params_start
+            self.model.xStd[fs : fs + nd] = fc
+            self.model.xStd[fs + nd : fs + 2 * nd] = fv
+            self.model.xStd[fs + 2 * nd : fs + 3 * nd] = off
 
     def plot(self, text: str | None = None) -> None:
         """Create state and torque plots."""

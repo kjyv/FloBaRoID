@@ -42,8 +42,10 @@ Everything below is grouped accordingly.
   per-parameter pull toward CAD weighted by how poorly the data determines each parameter
   (ridge-regularized normal matrix of the reduced system). Well-determined params stay free,
   weakly-determined ones stay near CAD. Robust across independent CAD priors; reduces
-  std-param drift and improves base-param distance without changing the torque fit or
-  held-out validation. Default `uniform` preserved; enabled for walkman.
+  std-param drift and improves base-param distance. On the well-conditioned walkman it
+  barely changes the torque fit or held-out validation; on small/poorly-conditioned
+  systems the fit can shift more (it trades a little fit for CAD-closeness), so it is
+  opt-in: default `uniform` preserved, enabled for walkman.
 - ⏸ **Per-link soft-trust priors**: graded per-link trust in CAD (generalizing
   `dontChangeLinks` from hard pin to a finite weight). The only lever to preserve std
   accuracy on links whose CAD is trustworthy. Trust is prior knowledge the data cannot

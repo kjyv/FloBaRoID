@@ -111,3 +111,103 @@ def test_collision_constraint_count_matches_pairs(monkeypatch):
     # collision residuals written at index c_s + g_cnt always stay in range
     con_lower, con_upper = topt.buildConstraintBounds()
     assert len(con_lower) == topt.num_constraints == len(con_upper)
+
+
+def _var_info(topt):
+    """Reconstruct the Optuna var_info list (name, lo, hi, init) for an optimizer."""
+    vi = [("wf", topt.wf_min, topt.wf_max, topt.wf_init)]
+    for i in range(topt.num_dofs):
+        vi.append((f"q_{i}", float(topt.qmin[i]), float(topt.qmax[i]), float(topt.qinit[i])))
+    for i in range(topt.num_dofs):
+        for j in range(topt.nf[i]):
+            vi.append((f"a{i}_{j}", topt.amin, topt.amax, float(topt.ainit[i][j])))
+    for i in range(topt.num_dofs):
+        for j in range(topt.nf[i]):
+            vi.append((f"b{i}_{j}", topt.bmin, topt.bmax, float(topt.binit[i][j])))
+    return vi
+
+
+def test_scale_amplitudes_only_scales_coefficients(monkeypatch):
+    """scaleAmplitudes scales the Fourier a/b coefficients but leaves wf and q untouched."""
+    topt = _build_kuka_optimizer(monkeypatch)
+    x0, _, _ = topt.buildVariableBounds()
+    scaled = topt.scaleAmplitudes(x0, 0.5)
+    wf0, q0, a0, b0 = topt.vecToParams(x0)
+    wf1, q1, a1, b1 = topt.vecToParams(scaled)
+    assert wf1 == wf0
+    np.testing.assert_allclose(q1, q0)
+    for i in range(topt.num_dofs):
+        np.testing.assert_allclose(a1[i], 0.5 * a0[i])
+        np.testing.assert_allclose(b1[i], 0.5 * b0[i])
+
+
+def test_build_seed_trial_params(monkeypatch):
+    """buildSeedTrialParams loads a structure-matching trajectory file and skips a mismatched one."""
+    import tempfile
+
+    topt = _build_kuka_optimizer(monkeypatch)
+    vi = _var_info(topt)
+    tmp = tempfile.mkdtemp()
+
+    # matching file: same joint count and per-joint harmonics as the current config
+    good = os.path.join(tmp, "good_traj.npz")
+    a_good = np.array([np.full(topt.nf[i], 0.05) for i in range(topt.num_dofs)], dtype=object)
+    np.savez(
+        good,
+        a=a_good,
+        b=a_good,
+        q=np.zeros(topt.num_dofs),
+        nf=np.array([topt.nf[i] for i in range(topt.num_dofs)]),
+        wf=np.float64(0.1),
+    )
+    topt.config["trajectorySeedSolutions"] = [good]
+    seeds = topt.buildSeedTrialParams(vi)
+    assert len(seeds) == 1
+    assert set(seeds[0].keys()) == {name for name, *_ in vi}
+
+    # mismatched structure (different per-joint harmonics) must be skipped
+    bad = os.path.join(tmp, "bad_traj.npz")
+    a_bad = np.array([np.zeros(topt.nf[i] + 1) for i in range(topt.num_dofs)], dtype=object)
+    np.savez(
+        bad,
+        a=a_bad,
+        b=a_bad,
+        q=np.zeros(topt.num_dofs),
+        nf=np.array([topt.nf[i] + 1 for i in range(topt.num_dofs)]),
+        wf=np.float64(0.1),
+    )
+    topt.config["trajectorySeedSolutions"] = [bad]
+    assert topt.buildSeedTrialParams(vi) == []
+
+
+def test_analytical_gradient_matches_finite_differences(monkeypatch):
+    """The analytical objective gradient agrees with finite differences of objectiveFunc.
+
+    Guards the intricate gradient assembly (D-optimality + velocity/torque/position soft
+    costs) against regressions; the velocity-magnitude cost is enabled so its term is
+    exercised too.
+    """
+    topt = _build_kuka_optimizer(monkeypatch)
+    topt.config["useAnalyticalGradients"] = 1
+    topt.config["trajectoryTargetVelocity"] = 0.5  # exercise the velocity-magnitude term
+    from excitation.analyticalGradient import compute_analytical_gradient
+
+    x0, _, _ = topt.buildVariableBounds()
+    f0, _g0, _ = topt.objectiveFunc(x0)
+    obj_grad, _con_grad = compute_analytical_gradient(topt)
+
+    rng = np.random.default_rng(0)
+    idxs = sorted(rng.choice(len(x0), size=8, replace=False).tolist())
+    eps = 1e-6
+    for i in idxs:
+        xp = x0.copy()
+        xp[i] += eps
+        xm = x0.copy()
+        xm[i] -= eps
+        fp, _, _ = topt.objectiveFunc(xp)
+        fm, _, _ = topt.objectiveFunc(xm)
+        fd = (fp - fm) / (2 * eps)
+        # generous tolerance: catches sign flips / missing terms / factor errors. The
+        # analytical D-optimality part itself uses an inner FD, so exact agreement is
+        # not expected; near-zero entries are dominated by FD noise (atol).
+        assert abs(obj_grad[i] - fd) <= 0.08 * abs(fd) + 0.05, f"grad[{i}]: analytical {obj_grad[i]} vs FD {fd}"

@@ -40,8 +40,9 @@
 - `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
   (CAD) model with a per-parameter weight that grows where the data determines it poorly
   (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter
-  decomposition closer to CAD in weakly-excited directions without changing the torque fit;
-  the default remains `uniform`.
+  decomposition closer to CAD in weakly-excited directions. On a well-conditioned model
+  (walkman) this barely affects the torque fit; on small/poorly-conditioned systems it can
+  shift it more, so it is opt-in and the default remains `uniform`.
 - Two-step friction identification: the smoothed Coulomb sign term is centralized in
   `helpers.getFrictionSignSeries` (shared by the regressor columns, the friction OLS and
   all torque predictions) and computed from the raw measured velocities low-pass filtered

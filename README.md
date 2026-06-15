@@ -50,9 +50,10 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then
 run e.g. `uv run identifier.py` to run the tools in uv virtual env. It will install necessary dependencies
 automatically.
 
-Optional extras can be installed with:
-* `uv sync --extra optimization` — IPOPT solver support via cyipopt (requires libipopt, see above)
-* `uv sync --extra visualization` — matplotlib2tikz for TikZ export
+Optional dependency groups can be installed with:
+* `uv sync --group optimization` — IPOPT solver support via cyipopt (requires libipopt, see above)
+* `uv sync --group visualization` — matplotlib2tikz for TikZ export
+* `uv sync --all-groups` — everything (recommended)
 
 
 ## Commands

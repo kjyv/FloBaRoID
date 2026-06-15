@@ -56,14 +56,29 @@ Everything below is grouped accordingly.
   already loaded, but assumes near-uniform density (wrong for motor/battery-heavy links) —
   a sanity prior, not a trust oracle.
 
-## (b) Add equations — recover *more* standard params
+## (b) Add equations — recover *more* standard params (quantified: low ROI here)
 
-- ◻ **Known payloads / varied loading** — best value without new hardware: re-identify with
-  a known mass attached, or in multiple contact configurations. This changes which parameter
-  combinations are observable and breaks base-parameter degeneracy. The suspended floating
-  base already buys some of this over fixed-base. **Highest-impact open std-param item.**
-- ◻ **Extra sensors (link IMUs, force/torque)** — the largest lever, but hardware: directly
-  makes more standard parameters individually identifiable.
+A structural identifiability analysis of the 29-DOF suspended walkman (random-regressor
+SVD over joint torques + base wrench) bounds how much this can help:
+- Of ~420 real inertial parameters, only ~70 are individually identifiable; ~213
+  base-parameter directions are determined, leaving a **~207-direction null space** — the
+  recoverable gap. The worst-lumped links are the proximal/torso group (Waist, hip motors,
+  torso, shoulders) and the terminal links (hands, head, wrists).
+- Each added **6-axis F/T** sensor recovers only **~3** of those 207 directions, because the
+  floating-base wrench (already measured) plus joint torques already capture most of what an
+  extremity F/T would add — it only isolates the distal-from-proximal split. Roughly
+  additive for disjoint placements: both wrists +6, both ankles +6, wrists+ankles +12,
+  +knees+elbows ~+24. Closing the whole gap needs essentially an F/T at every joint.
+- **Known payloads do not change the rank at all** — they only improve conditioning and let
+  you identify the payload itself.
+
+So for a high-DOF floating-base humanoid, adding equations is **low ROI for standard-parameter
+recovery**: realistic instrumentation reaches ~10% of the gap. Worth it only if the sensors
+are wanted anyway (e.g. foot F/T for contact/control, giving a small std-param bonus).
+- ◻ **Extra sensors (link IMUs, force/torque)** — only meaningful if instrumenting many
+  joints; a few extremity sensors barely move std-param recovery (see numbers above).
+- ◻ **Known payloads / varied loading** — improves conditioning and identifies the payload,
+  but does not break the structural null space.
 
 ## (c) Reduce unmodeled-effect bias (matters on real hardware; indirectly helps std)
 
@@ -104,13 +119,23 @@ std decomposition. Priority roughly by how pervasively each acts:
   trajectory — the training residual understates the true error.
 - When a real model is available, report friction and parameter errors against it directly.
 
-## Next std-param win (no hardware)
+## Bottom line for standard-parameter fidelity
 
-Given priors are now reasonable, the highest-impact *open* item is **known-payload /
-varied-loading identification** — the one thing that genuinely recovers *more* standard
-parameters rather than decomposing the same null space more nicely. Everything else either
-improves base params / the torque model (already strong) or is prior-tuning with diminishing
-returns absent per-link CAD knowledge.
+The identifiability analysis (section b) shows the data side is close to exhausted: ~207
+std-param directions are unrecoverable from torque + base-wrench sensing, and practical
+extra instrumentation reaches only ~10% of that. So **priors are essentially the only
+practical lever** for getting standard parameters closer to real:
+- ✅ observability-weighted CAD regularization (done) — keeps the decomposition sensible
+  where the data is weak;
+- ⏸ per-link soft-trust priors — the remaining lever, valuable only when CAD quality
+  genuinely varies between links (real-robot knowledge).
+
+Adding sensors/payloads/contacts is low ROI for std params on a high-DOF floating base, and
+known payloads don't change the rank at all. The base parameters and torque model are
+already strong and data-determined; chasing more std-param recovery via more equations is
+not worthwhile here. If individual link parameters are genuinely needed, the realistic
+options are trusting/pinning the links whose CAD is reliable, or instrumenting essentially
+every joint — not a few extremity sensors.
 
 ## Pointers
 Friction/excitation/collision design rationale (the *why* behind current settings) is in

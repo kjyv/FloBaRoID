@@ -14,9 +14,6 @@ from identification import helpers
 
 np.set_printoptions(linewidth=160)
 
-# redefine unicode for testing in python2/3
-unicode = str
-
 # color triplets
 color_triplets_6 = [
     [0.29019608, 0.43529412, 0.89019608],
@@ -287,7 +284,7 @@ class OutputConsole:
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
-                if type(lines[0][w]) in [str, unicode, list]:
+                if isinstance(lines[0][w], (str, list)):
                     # strings don't have precision
                     template += f"|{{{w}:{column_widths[w]}}}"
                 else:
@@ -395,7 +392,7 @@ class OutputConsole:
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
-                if type(lines[0][w]) in [str, unicode]:
+                if isinstance(lines[0][w], str):
                     # strings don't have precision
                     template += f"|{{{w}:{column_widths[w]}}}"
                 else:
@@ -485,7 +482,6 @@ class OutputConsole:
                 )
             else:
                 print(f"\ncurrent block: {idf.data.block_pos}")
-            # print "unused blocks: {}".format(idf.unusedBlocks)
             print(f"condition number: {la.cond(idf.model.YBase)}")
 
         if idf.opt["identifyGravityParamsOnly"]:

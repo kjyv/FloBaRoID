@@ -63,12 +63,9 @@ class Data:
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
-                    try:
-                        # python3
-                        m = np.load(fn, encoding="latin1", fix_imports=True, allow_pickle=True)
-                    except:
-                        # python2.7
-                        m = np.load(fn)
+                    # latin1 encoding so measurement files written by old (python 2)
+                    # versions of the tools still load
+                    m = np.load(fn, encoding="latin1", allow_pickle=True)
                     self.file_boundaries.append(self.file_boundaries[-1] + m["positions"].shape[0] - so)
                     mv = {}
                     for k in m.keys():

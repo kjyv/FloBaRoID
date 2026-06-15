@@ -142,6 +142,19 @@ trajectoryTargetVelocity: 0.5
 # optimization.
 trajectoryPriorMeasurements: []
 
+# repair infeasible Optuna candidates by backing off their Fourier amplitudes
+# (scales 0.7/0.5/0.3) until constraints pass. The trial then reports the
+# repaired objective/constraints, so every candidate can contribute a feasible
+# solution (previously only 1-2 of 75 trials were feasible). Costs up to 3
+# extra evaluations per infeasible trial.
+globalOptAmplitudeRepair: 1
+
+# previously optimized trajectory files (.npz with Fourier params) to enqueue
+# as initial Optuna trials — the sampler starts from known-feasible solutions
+# instead of rediscovering the tiny feasible region by chance. Joint/harmonic
+# structure must match trajectoryNf.
+trajectorySeedSolutions: []
+
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0

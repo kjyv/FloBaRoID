@@ -93,14 +93,29 @@ def _optuna_worker(
     worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics)
     worker_opt.is_global = True
 
-    def worker_objective(trial: _optuna.Trial) -> float:
-        """Objective for a single Optuna trial in a worker process."""
-        x = [trial.suggest_float(name, lo, hi) for name, lo, hi, _ in var_info]
-        f, g, _fail = worker_opt.objectiveFunc(np.array(x))
-        # store constraints as trial user attributes for the constraints_func
+    def worker_to_violations(g: np.ndarray) -> list[float]:
+        """Convert constraint values to optuna's "violation <= 0 is feasible" convention."""
         c_s = worker_opt.num_constraints - worker_opt.num_coll_constraints
         violations = [float(g[i]) for i in range(c_s)]
         violations += [float(-g[i]) for i in range(c_s, worker_opt.num_constraints)]
+        return violations
+
+    def worker_objective(trial: _optuna.Trial) -> float:
+        """Objective for a single Optuna trial in a worker process."""
+        x = np.array([trial.suggest_float(name, lo, hi) for name, lo, hi, _ in var_info])
+        f, g, fail = worker_opt.objectiveFunc(x)
+        violations = worker_to_violations(np.asarray(g))
+
+        # infeasible candidates can still contribute a feasible solution by
+        # backing off their amplitudes (see repairTrialCandidate)
+        if not fail and any(v > 0 for v in violations):
+            repaired = worker_opt.repairTrialCandidate(x)
+            if repaired is not None:
+                f, g_rep, scale = repaired
+                violations = worker_to_violations(g_rep)
+                trial.set_user_attr("repair_scale", scale)
+
+        # store constraints as trial user attributes for the constraints_func
         trial.set_user_attr("constraints", violations)
         return f
 
@@ -823,6 +838,22 @@ class Optimizer:
         their solution (e.g. TrajectoryOptimizer scales Fourier amplitudes).
         """
 
+    def repairTrialCandidate(self, x: np.ndarray) -> tuple[float, np.ndarray, float] | None:
+        """Turn an infeasible global-search candidate into a feasible one.
+
+        Returns (f, g, scale) of the repaired point or None. No-op by default;
+        overridden by TrajectoryOptimizer (amplitude backoff).
+        """
+        return None
+
+    def buildSeedTrialParams(self, var_info: list[tuple[str, float, float, float]]) -> list[dict[str, float]]:
+        """Build parameter dicts of known-good solutions to enqueue as Optuna trials.
+
+        Empty by default; overridden by TrajectoryOptimizer (previously
+        optimized trajectory files via trajectorySeedSolutions).
+        """
+        return []
+
     def _runOptuna(self) -> None:
         """Run Optuna TPE or NSGA2 global optimization.
 
@@ -854,24 +885,35 @@ class Optimizer:
         num_constraints = self.num_constraints
         num_coll_constraints = self.num_coll_constraints
 
+        def to_violations(g: np.ndarray) -> list[float]:
+            """Convert constraint values to optuna's "violation <= 0 is feasible" convention.
+
+            g <= 0 is feasible for joint/velocity/torque constraints, g > 0 for collisions.
+            """
+            c_s = num_constraints - num_coll_constraints
+            violations = [float(g[i]) for i in range(c_s)]
+            violations += [float(-g[i]) for i in range(c_s, num_constraints)]
+            return violations
+
         def objective(trial: optuna.Trial) -> float:
             x = []
             for name, lo, hi, init in var_info:
                 x.append(trial.suggest_float(name, lo, hi))
             x_arr = np.array(x)
             f, g, fail = self.objectiveFunc(x_arr)
+            violations = to_violations(np.asarray(g))
 
-            # store constraint values for this trial (g <= 0 means feasible for
-            # joint/velocity/torque constraints, g > 0 means feasible for collision)
-            c_s = num_constraints - num_coll_constraints
-            # convert all to "violation <= 0 is feasible" convention for optuna
-            violations = []
-            for i in range(c_s):
-                violations.append(float(g[i]))  # already <= 0 for feasible
-            for i in range(c_s, num_constraints):
-                violations.append(float(-g[i]))  # collision: flip sign (g > 0 → -g < 0 = feasible)
+            # infeasible candidates can still contribute a feasible solution by
+            # backing off their amplitudes; the trial then reports the repaired
+            # objective/constraints, biasing the sampler toward repairable shapes
+            if not fail and any(v > 0 for v in violations):
+                repaired = self.repairTrialCandidate(x_arr)
+                if repaired is not None:
+                    f, g_rep, scale = repaired
+                    violations = to_violations(g_rep)
+                    trial.set_user_attr("repair_scale", scale)
+
             trial_constraints[trial.number] = violations
-
             return f
 
         def constraints_func(trial: optuna.trial.FrozenTrial) -> list[float]:
@@ -889,10 +931,14 @@ class Optimizer:
                 constant_liar=True,  # parallel: assume running trials return worst value
             )
 
-        # enqueue the initial solution as the first trial
+        # enqueue the initial solution as the first trial, followed by any
+        # known-good seed solutions (previously optimized trajectories)
         init_params = {info[0]: info[3] for info in var_info}
+        seed_trials = self.buildSeedTrialParams(var_info)
         study = optuna.create_study(direction="minimize", sampler=sampler)
         study.enqueue_trial(init_params)
+        for seed in seed_trials:
+            study.enqueue_trial(seed)
 
         cpu_count = os.cpu_count() or 1
         default_jobs = max(1, cpu_count - 2)
@@ -916,6 +962,8 @@ class Optimizer:
                 storage=storage,
             )
             study.enqueue_trial(init_params)
+            for seed in seed_trials:
+                study.enqueue_trial(seed)
 
             # each worker runs until the study has enough total trials
             # (workers check the shared DB and stop when n_trials is reached)
@@ -1018,6 +1066,11 @@ class Optimizer:
         n_total_trials = len(completed_study.trials) if completed_study is not None else "?"
         for trial in feasible_trials:
             candidate_x = np.array([trial.params[info[0]] for info in var_info])
+            # repaired trials report the backed-off solution; reconstruct it from
+            # the stored amplitude scale (trial.params holds the unrepaired point)
+            repair_scale = trial.user_attrs.get("repair_scale")
+            if repair_scale is not None:
+                candidate_x = cast("TrajectoryOptimizer", self).scaleAmplitudes(candidate_x, float(repair_scale))
             # re-evaluate with dense collision checking (every sample instead of every Nth)
             old_step = self.config.get("collisionCheckStep", 5)
             self.config["collisionCheckStep"] = 1

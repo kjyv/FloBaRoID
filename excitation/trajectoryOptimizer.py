@@ -681,6 +681,18 @@ class TrajectoryOptimizer(Optimizer):
         x = kwargs["x_new"]
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
+    def scaleAmplitudes(self, x: np.ndarray, scale: float) -> np.ndarray:
+        """Return x with the Fourier coefficients (a, b) scaled by the given factor.
+
+        Pulse frequency and oscillation centers are kept — scaling toward zero
+        shrinks the motion amplitude, which monotonically relaxes the position,
+        velocity, torque and collision constraints.
+        """
+        wf, q, a, b = self.vecToParams(x)
+        a_s = [ai * scale for ai in a]
+        b_s = [bi * scale for bi in b]
+        return np.array([wf] + list(q) + [c for ai in a_s for c in ai] + [c for bi in b_s for c in bi])
+
     def repairBestInfeasible(self) -> None:
         """Amplitude-backoff repair of the best infeasible solution.
 
@@ -693,20 +705,75 @@ class TrajectoryOptimizer(Optimizer):
         """
         if self.last_best_infeasible_sol.size == 0 or self.last_best_infeasible_f >= self.last_best_f:
             return
-        wf, q, a, b = self.vecToParams(self.last_best_infeasible_sol)
         print(
             f"amplitude-backoff repair of best infeasible solution "
             f"(obj={self.last_best_infeasible_f:.2f} vs feasible best {self.last_best_f:.2f})"
         )
         for scale in (0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5):
-            a_s = [ai * scale for ai in a]
-            b_s = [bi * scale for bi in b]
-            x_try = np.array([wf] + list(q) + [c for ai in a_s for c in ai] + [c for bi in b_s for c in bi])
+            x_try = self.scaleAmplitudes(self.last_best_infeasible_sol, scale)
             f, g, fail = self.objectiveFunc(x_try)
             if not fail and self.testConstraints(g):
                 print(f"repair: feasible at amplitude scale {scale} (obj={f:.2f})")
                 return
         print("repair: no feasible point found by amplitude backoff")
+
+    def repairTrialCandidate(self, x: np.ndarray) -> tuple[float, np.ndarray, float] | None:
+        """Back off the Fourier amplitudes of an infeasible global-search candidate.
+
+        Returns (f, g, scale) of the first feasible backoff or None. Used during
+        the Optuna phase (when globalOptAmplitudeRepair is set) so that infeasible
+        trials still contribute feasible solutions: the trial then reports the
+        repaired objective and constraints, biasing the sampler toward shapes
+        that repair well. The evaluations go through objectiveFunc, so the
+        best-feasible tracking picks the repaired points up automatically. The
+        scale is stored on the trial so verification can reconstruct the
+        repaired solution from the (unrepaired) trial params.
+        """
+        if not self.config.get("globalOptAmplitudeRepair", 0):
+            return None
+        for scale in (0.7, 0.5, 0.3):
+            x_try = self.scaleAmplitudes(x, scale)
+            f, g, fail = self.objectiveFunc(x_try)
+            if not fail and self.testConstraints(g):
+                return f, np.asarray(g), scale
+        return None
+
+    def buildSeedTrialParams(self, var_info: list[tuple[str, float, float, float]]) -> list[dict[str, float]]:
+        """Build Optuna seed trials from previously optimized trajectory files.
+
+        Each file in trajectorySeedSolutions provides its Fourier params
+        (wf, q, a, b) as an enqueued trial, so the sampler starts from
+        known-feasible solutions instead of having to rediscover the (tiny)
+        feasible region by chance. Values are clipped to the current variable
+        bounds; files whose joint/harmonic structure doesn't match are skipped.
+        """
+        seeds: list[dict[str, float]] = []
+        bounds = {name: (lo, hi) for name, lo, hi, _ in var_info}
+        for fn in self.config.get("trajectorySeedSolutions") or []:
+            tf = np.load(fn, allow_pickle=True)
+            if "a" not in tf:
+                print(f"seed solution {fn} has no trajectory params, skipping")
+                continue
+            a = [np.asarray(ai) for ai in tf["a"]]
+            b = [np.asarray(bi) for bi in tf["b"]]
+            nf = np.asarray(tf["nf"])
+            if len(a) != self.num_dofs or any(int(nf[i]) != int(self.nf[i]) for i in range(self.num_dofs)):
+                print(f"seed solution {fn} has a different joint/harmonic structure, skipping")
+                continue
+            q = np.asarray(tf["q"])
+            params = {"wf": float(tf["wf"])}
+            for i in range(self.num_dofs):
+                params[f"q_{i}"] = float(q[i])
+            for i in range(self.num_dofs):
+                for j in range(self.nf[i]):
+                    params[f"a{i}_{j}"] = float(a[i][j])
+                    params[f"b{i}_{j}"] = float(b[i][j])
+            for name in params:
+                lo, hi = bounds[name]
+                params[name] = float(np.clip(params[name], lo, hi))
+            print(f"enqueuing seed solution from {fn}")
+            seeds.append(params)
+        return seeds
 
     def buildVariableBounds(
         self, initial_values: np.ndarray | None = None

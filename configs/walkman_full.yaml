@@ -416,6 +416,16 @@ useEssentialParams: 0
 # after getting essential base params, include dependent std columns for std essential params
 useDependents: 0
 
+# how the consistent standard parameters are pulled toward the a priori (CAD) model:
+#   'uniform'       — pull only the non-identifiable params, with one weight (default)
+#   'observability' — pull every identifiable param with a per-parameter weight that
+#                     grows where the data determines it poorly, so well-determined
+#                     params stay free and weakly-determined ones stay near CAD.
+# Does not affect the (data-determined) base parameters, only the standard-parameter
+# decomposition within the null space. Overall strength is the internal
+# regularizationFactor.
+cadRegularizationMode: observability
+
 # use weighted least squares(WLS) instead of ordinary least squares
 # needs small condition number, otherwise might amplify some parameters too much as the
 # covariance estimation can be wrong (also assumes that error is zero mean and normal

@@ -37,6 +37,11 @@
   self-collisions), using the same margin semantics as the optimizer.
 
 ### Identification
+- `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
+  (CAD) model with a per-parameter weight that grows where the data determines it poorly
+  (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter
+  decomposition closer to CAD in weakly-excited directions without changing the torque fit;
+  the default remains `uniform`.
 - Two-step friction identification: the smoothed Coulomb sign term is centralized in
   `helpers.getFrictionSignSeries` (shared by the regressor columns, the friction OLS and
   all torque predictions) and computed from the raw measured velocities low-pass filtered

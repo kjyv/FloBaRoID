@@ -316,13 +316,6 @@ class SDP:
 
             contactForces = Q.T.dot(idf.model.contactForcesSum)
 
-            if idf.opt["useRegressorRegularization"]:
-                p_nid = idf.model.non_id
-                p_nid = list(
-                    set(p_nid).difference(set(self.delete_cols)).intersection(set(idf.model.identified_params))
-                )
-                contactForces = np.concatenate((contactForces, np.zeros(len(p_nid))))
-
             if idf.opt["verbose"] > 1:
                 print("Building cost matrix...", time.ctime())
 
@@ -333,19 +326,54 @@ class SDP:
                 ** 2
             )
 
-            if idf.opt["useRegressorRegularization"] and len(p_nid):
-                l_reg = (float(idf.base_error) / len(p_nid)) * idf.opt["regularizationFactor"]
-                # augmented system: [R1*K; l*I_nid] @ x ≈ [rho1; l*xStdModel_nid]
-                R1_K = R1 @ K
-                Y_bot = np.zeros((len(p_nid), len(idable_params)))
-                for i, p in enumerate(p_nid):
-                    Y_bot[i, self.param_index_map[p]] = l_reg
-                Y_combined = np.vstack([R1_K, Y_bot])  # numpy stack, then one cvxpy multiply
+            R1_K = R1 @ K
 
-                rho1_hat = np.concatenate((rho1, l_reg * idf.model.xStdModel[p_nid]))
+            # CAD regularization: pull standard params toward the a priori model so the
+            # underdetermined (null-space) part of the decomposition stays physical.
+            #   'uniform' (default): pull the non-identifiable params with one weight
+            #       (hard identifiable/non-identifiable split).
+            #   'observability': pull every identifiable param with a per-parameter weight
+            #       that grows where the data determines it poorly, so well-determined
+            #       params barely move and weakly-determined ones stay near CAD.
+            reg_params: list[int] = []
+            reg_weights: dict[int, float] = {}
+            if idf.opt["useRegressorRegularization"]:
+                reg_mode = idf.opt.get("cadRegularizationMode", "uniform")
+                p_nid = list(
+                    set(idf.model.non_id).difference(self.delete_cols).intersection(idf.model.identified_params)
+                )
+                if reg_mode == "observability":
+                    # per-parameter spread from a ridge-regularized normal matrix of the
+                    # reduced system (R1*K): poorly-determined params (incl. null-space)
+                    # get a large spread, well-determined ones a small spread.
+                    M = R1_K.T @ R1_K
+                    eps = 1e-6 * float(np.trace(M)) / M.shape[0]
+                    cov_diag = np.clip(np.diag(la.inv(M + eps * np.eye(M.shape[0]))), 0.0, None)
+                    obs_std = np.sqrt(cov_diag)  # ordered like idable_params
+                    positive = obs_std[obs_std > 0]
+                    med = float(np.median(positive)) if positive.size else 1.0
+                    w = np.clip(obs_std / med, 0.1, 100.0)
+                    reg_params = idable_params
+                    base = (float(idf.base_error) / len(reg_params)) * idf.opt["regularizationFactor"]
+                    reg_weights = {p: base * float(w[self.param_index_map[p]]) for p in reg_params}
+                elif len(p_nid):
+                    reg_params = p_nid
+                    base = (float(idf.base_error) / len(p_nid)) * idf.opt["regularizationFactor"]
+                    reg_weights = {p: base for p in p_nid}
+
+            if reg_params:
+                # augmented system: [R1*K; diag(w)] @ x ≈ [rho1; diag(w)*xStdModel]
+                contactForces = np.concatenate((contactForces, np.zeros(len(reg_params))))
+                Y_bot = np.zeros((len(reg_params), len(idable_params)))
+                rho_bot = np.zeros(len(reg_params))
+                for i, p in enumerate(reg_params):
+                    wp = reg_weights[p]
+                    Y_bot[i, self.param_index_map[p]] = wp
+                    rho_bot[i] = wp * idf.model.xStdModel[p]
+                Y_combined = np.vstack([R1_K, Y_bot])  # numpy stack, then one cvxpy multiply
+                rho1_hat = np.concatenate((rho1, rho_bot))
                 e_rho1 = rho1_hat - contactForces - Y_combined @ self.x
             else:
-                R1_K = R1 @ K  # pure numpy multiply
                 e_rho1 = rho1 - contactForces - R1_K @ self.x
 
             # Tikhonov regularization on friction: penalize deviation from a priori

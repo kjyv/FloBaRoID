@@ -222,6 +222,14 @@ checkAPrioriFeasibility: 0
 # staying in previous solution nullspace (using SDP)
 identifyClosestToCAD: 1
 
+# how the closest-to-CAD recovery weights the pull toward CAD: 'uniform' minimizes the
+# total distance (which lets a few weakly-determined params absorb the consistency
+# constraints and grow far from CAD), 'observability' weights each param by how poorly the
+# data determines it, so weakly-determined params stay near CAD and well-determined ones
+# stay free. On this real-hardware KUKA data observability keeps the per-link parameters
+# physical and improves held-out validation at the same training fit.
+cadRegularizationMode: 'observability'
+
 sdpSolver: 'clarabel'            # cvxpy solver: clarabel, scs, mosek, copt, cvxopt
 
 # use a non-linear gradient based solver instead of SDP

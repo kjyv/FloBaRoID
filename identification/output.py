@@ -81,32 +81,36 @@ class OutputConsole:
             mp = idf.model.num_model_params
             nd = idf.model.num_dofs
             for i in range(nd):
-                description += f"Parameter {mp + i}: Fc_{i} - Coulomb friction of joint {idf.model.jointNames[i]}\n"
+                # the parameter symbol (Fc_i) is added later from param_syms, so only the
+                # human-readable description goes here (avoids a doubled "Fc_i - Fc_i -" label)
+                description += f"Parameter {mp + i}: Coulomb friction of joint {idf.model.jointNames[i]}\n"
 
             if not idf.opt["identifyGravityParamsOnly"]:
                 if idf.opt["identifySymmetricVelFriction"]:
                     for i in range(nd):
-                        description += (
-                            f"Parameter {mp + nd + i}: Fv_{i} - Viscous friction of joint {idf.model.jointNames[i]}\n"
-                        )
+                        description += f"Parameter {mp + nd + i}: Viscous friction of joint {idf.model.jointNames[i]}\n"
                     off_offset = 2 * nd
                 else:
                     for i in range(nd):
-                        description += f"Parameter {mp + nd + i}: Fv+_{i} - Viscous friction (+) of joint {idf.model.jointNames[i]}\n"
+                        description += (
+                            f"Parameter {mp + nd + i}: Viscous friction (+) of joint {idf.model.jointNames[i]}\n"
+                        )
                     for i in range(nd):
-                        description += f"Parameter {mp + 2 * nd + i}: Fv-_{i} - Viscous friction (-) of joint {idf.model.jointNames[i]}\n"
+                        description += (
+                            f"Parameter {mp + 2 * nd + i}: Viscous friction (-) of joint {idf.model.jointNames[i]}\n"
+                        )
                     off_offset = 3 * nd
 
                 for i in range(nd):
                     description += (
-                        f"Parameter {mp + off_offset + i}: off_{i} - Torque offset of joint {idf.model.jointNames[i]}\n"
+                        f"Parameter {mp + off_offset + i}: Torque offset of joint {idf.model.jointNames[i]}\n"
                     )
 
                 if idf.opt.get("stribeckVelocity", 0) > 0:
                     fs_start = idf.model.num_all_params - nd
                     for i in range(nd):
                         description += (
-                            f"Parameter {fs_start + i}: Fs_{i} - Stribeck stiction of joint {idf.model.jointNames[i]}\n"
+                            f"Parameter {fs_start + i}: Stribeck stiction of joint {idf.model.jointNames[i]}\n"
                         )
 
         idx_ep = 0  # count essential params

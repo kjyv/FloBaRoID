@@ -174,7 +174,6 @@ staticPostureTime: 0.02          # time in s per posture (nr. of samples => this
 initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
 exciteMethod: null               #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: ''               #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
@@ -185,7 +184,6 @@ useDeg: 0                        #give angles in degrees (internal and data is a
 # dynamics and adding real-world effects (friction, noise, backlash, etc.)
 
 # append static postures to dynamic trajectory data for gravity term excitation
-simulateStaticPostures: 0
 #staticPostures:
 #   - []
 # number of sudden stop/restart segments to insert into trajectory
@@ -405,21 +403,6 @@ symmetryTolerance: 0.1
 # left/right symmetry link pairs: [leftLink, rightLink]
 # auto-expands to all 10 params per link with standard L/R sign pattern
 # (y-components flip sign: m=+, hx=+, hy=-, hz=+, Ixx=+, Ixy=-, Ixz=+, Iyy=+, Iyz=-, Izz=+)
-symmetryLinkPairs:
-    - [LHipMot, RHipMot]
-    - [LThighUpLeg, RThighUpLeg]
-    - [LThighLowLeg, RThighLowLeg]
-    - [LLowLeg, RLowLeg]
-    - [LFootmot, RFootmot]
-    - [LFoot, RFoot]
-    - [LShp, RShp]
-    - [LShr, RShr]
-    - [LShy, RShy]
-    - [LElb, RElb]
-    - [LForearm, RForearm]
-    - [LWrMot2, RWrMot2]
-    - [LWrMot3, RWrMot3]
-    - [LSoftHandLink, RSoftHandLink, [1,1,1,1,1,1,1,1,1,1]]  # all positive (no L/R flip)
 
 # use previously known CAD parameters to identify parameter error, estimates parameters closer to
 # known ones (taken from URDF file)
@@ -462,7 +445,6 @@ plotBaseDynamics: 1          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
-plotLegend: 1                #show plot legend
 
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution

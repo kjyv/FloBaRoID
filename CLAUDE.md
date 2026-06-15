@@ -42,3 +42,18 @@
 
 - If while analyzing data and from discussions with the user you find something interesting and
   noteworthy, write it down in an analysis document
+
+## Committed content (docs and commit messages)
+
+- Everything committed to the repository must make sense as a permanent statement to a future
+  reader who has no knowledge of the session that produced it.
+- Do NOT put experiment-specific result numbers (e.g. counts, error values, or metrics from a
+  particular walkman/kuka run) into the changelog, README, or general documentation. Describe what
+  a feature does and why, not what one run measured. Concrete numbers belong in a dedicated
+  analysis document, framed as findings, not in general docs.
+- Do NOT commit information that is only true temporarily during a session (e.g. "needs
+  regeneration", "best result so far", "to be re-run"). Commit the durable state, not the in-progress
+  status.
+- Commit messages must document the actual change (what and why), not narrate the session that led
+  to it. Avoid messages like "correct/retract/refine an earlier claim" — squash such iterations into
+  the commit that makes the real change.

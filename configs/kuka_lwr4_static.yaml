@@ -49,7 +49,6 @@ minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
 exciteMethod: null #'ros'        #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
@@ -188,6 +187,10 @@ useDependents: 0
 # covariance estimation can be wrong (also assumes that error is zero mean and normal
 # distributed)
 useWLS: 0
+# when identifying from several measurement files (repeated --measurements),
+# weight each file's equations by the inverse of its residual noise instead of
+# stacking all samples equally, so a noisier session does not dominate (0 = off)
+useTrajectoryWeighting: 0
 
 # whether to filter the regressor columns (cutoff frequency is system dependent)
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
@@ -208,7 +211,6 @@ plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
-plotLegend: 1                #show plot legend
 
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution

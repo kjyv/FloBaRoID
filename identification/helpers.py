@@ -110,7 +110,22 @@ def getFrictionSignVelocities(samples: dict[str, np.ndarray], opt: dict[str, Any
                 for j in range(samples["velocities_raw"].shape[1])
             ]
         )
+        print(f"Friction sign-filtering: low-pass at {cutoff} Hz on raw velocities for the Coulomb sign term")
     else:
+        # fall back to the pipeline velocities (no sign-velocity filtering). This is
+        # silent on the result otherwise, so note it — a user expecting the configured
+        # frictionVelocityCutoff on e.g. real-hardware data that lacks raw velocities
+        # would not get it.
+        if not has_raw:
+            print(
+                "Friction sign-filtering: data has no 'velocities_raw'/'frequency' — "
+                "using pipeline velocities unfiltered for the Coulomb sign term"
+            )
+        else:
+            print(
+                f"Friction sign-filtering: cutoff {cutoff} Hz is at/above Nyquist "
+                f"({freq / 2} Hz) — using pipeline velocities unfiltered for the Coulomb sign term"
+            )
         velocities_for_sign = samples["velocities"]
 
     samples["velocities_for_sign"] = velocities_for_sign

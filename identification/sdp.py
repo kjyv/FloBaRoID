@@ -343,13 +343,23 @@ class SDP:
                     set(idf.model.non_id).difference(self.delete_cols).intersection(idf.model.identified_params)
                 )
                 if reg_mode == "observability":
-                    # per-parameter spread from a ridge-regularized normal matrix of the
-                    # reduced system (R1*K): poorly-determined params (incl. null-space)
-                    # get a large spread, well-determined ones a small spread.
+                    # Per-parameter spread from a ridge-regularized normal matrix of the
+                    # reduced system (R1*K), which acts as the (unscaled) parameter
+                    # covariance: diag((M + eps I)^-1) is small for well-determined params
+                    # (aligned with large singular directions) and large for poorly-
+                    # determined ones (incl. the null space, where it tends to 1/eps).
                     M = R1_K.T @ R1_K
+                    # ridge so M is invertible and null-space directions get a large but
+                    # finite spread; scaled to M's magnitude so it is unit-invariant. The
+                    # exact value only sets the spread ceiling, which the clip below caps.
                     eps = 1e-6 * float(np.trace(M)) / M.shape[0]
                     cov_diag = np.clip(np.diag(la.inv(M + eps * np.eye(M.shape[0]))), 0.0, None)
-                    obs_std = np.sqrt(cov_diag)  # ordered like idable_params
+                    obs_std = np.sqrt(cov_diag)  # per-param std, ordered like idable_params
+                    # normalize so the median weight is ~1 (keeps the overall pull strength
+                    # comparable to the uniform mode / regularizationFactor), then clip to
+                    # [0.1, 100]: well-determined params keep a small (0.1x) CAD pull, the
+                    # worst-determined a strong (100x) one, avoiding extreme weights from
+                    # near-zero or near-singular covariance entries.
                     positive = obs_std[obs_std > 0]
                     med = float(np.median(positive)) if positive.size else 1.0
                     w = np.clip(obs_std / med, 0.1, 100.0)

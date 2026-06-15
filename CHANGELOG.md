@@ -6,8 +6,14 @@
 - Removed the pyOptSparse dependency; IPOPT is now driven directly via cyipopt (a required
   dependency; needs libipopt installed for building).
 - Removed the SLSQP, PSQP, ALPSO and NSGA2 solver code paths and the now single-valued
-  `localSolver`, `nlOptSolver` and `globalSolver` config options (IPOPT for local and NL
-  identification, Optuna for global search).
+  `localSolver`, `nlOptSolver` and `globalSolver` config options (IPOPT for local trajectory
+  optimization, Optuna for global search).
+- Removed the nonlinear constrained identification path (`constrainUsingNL`, the
+  Traversaro-manifold reparametrization) and its `nlOptMaxIterations` option. The
+  closest-to-CAD-feasible step is convex (quadratic distance subject to the pseudo-inertia
+  PSD constraint), which the SDP already solves exactly and robustly; the manifold path
+  added no benefit and broke on models with zero-mass pinned links (division by zero in the
+  consistent-space mapping).
 - Gradient and constraint-jacobian evaluations are cached per point, so repeated solver
   callbacks at the same point don't re-run the expensive trajectory simulation.
 

@@ -74,3 +74,12 @@ data
 .mypy_cache
 output/js/plotly.min.js
 .gui_state.json
+
+# OS / solver artifacts
+.DS_Store
+IPOPT.out
+*~
+
+# generated trajectory/measurement data variants
+model/*.urdf.trajectory_*.npz
+model/*.measurements*.npz

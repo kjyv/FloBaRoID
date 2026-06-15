@@ -143,7 +143,7 @@ def getFrictionSignSeries(samples: dict[str, np.ndarray], opt: dict[str, Any]) -
     Note: a Schmitt-trigger hysteresis inside the noise band was tried as an alternative
     and refuted — holding the sign produces larger actual errors than the noise-smoothed
     tanh because it can sit at the wrong +-1 for whole slow-crossing episodes (see
-    documentation/friction_velocity_filter_analysis.md).
+    documentation/design_notes.md).
     """
     if "friction_sign_series" in samples:
         return samples["friction_sign_series"]

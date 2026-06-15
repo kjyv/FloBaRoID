@@ -3,7 +3,7 @@
 ## 0.9.8
 
 Standard-parameter identification quality: better CAD null-space priors and friction
-modeling. See `documentation/std_parameter_roadmap.md` for the overarching design notes.
+modeling. See `documentation/design_notes.md` for the overarching design notes.
 
 ### Identification — CAD null-space priors
 - `cadRegularizationMode: geometric`: pull each link's pseudo-inertia toward the a priori
@@ -17,7 +17,7 @@ modeling. See `documentation/std_parameter_roadmap.md` for the overarching desig
   `geometricObservabilityWeighting` optionally scales each link's divergence by its
   observability weight (helps only with heterogeneous per-link CAD trust). Opt-in; pinned
   (`dontChangeLinks`) and degenerate-CAD links are skipped. See
-  `documentation/geometric_prior_analysis.md`.
+  `documentation/analysis_findings.md`.
 - `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
   (CAD) model with a per-parameter weight that grows where the data determines it poorly
   (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter

@@ -37,12 +37,11 @@ ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['TorsoProtections', 'LShp']
 # skip collision checks between two groups of links (cross-group pairs are ignored,
 # within-group pairs are still checked). Each entry is [groupA, groupB].
-ignoreCollisionBetweenGroups:
-    # lower legs and feet can't reach the upper body (arms, torso protection, upper torso)
-    - [['LLowLeg', 'LFootmot', 'LFoot', 'RLowLeg', 'RFootmot', 'RFoot'],
-       ['DWS', 'DWYTorso', 'TorsoProtections',
-        'LShp', 'LShr', 'LShy', 'LElb', 'LForearm', 'LWrMot2', 'LWrMot3', 'LSoftHandLink',
-        'RShp', 'RShr', 'RShy', 'RElb', 'RForearm', 'RWrMot2', 'RWrMot3', 'RSoftHandLink']]
+# NOTE: a previous version excluded lower-legs/feet vs the whole upper body assuming
+# "the legs can't reach the arms". That holds only for gentle motion — the
+# velocity-cost trajectories swing a hand down into the lower leg (LSoftHand vs LLowLeg
+# penetrated 16 cm and was never checked). Do not group-ignore arm/hand vs leg pairs.
+ignoreCollisionBetweenGroups: []
 # only check collision between links within this kinematic distance (joints apart)
 # reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
 collisionMaxKinematicDistance: 0

@@ -142,48 +142,16 @@ class TrajectoryOptimizer(Optimizer):
         self.idyn_model = loader.model()
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
-        # amount of collision checks to be done (exclude links without visual geometry)
+        # links without visual/collision geometry can't be checked
         self.no_geometry_links = set(self.model.linkNames) - set(self.link_cuboid_hulls.keys())
-        eff_links = (
-            self.model.num_links
-            - len(self.no_geometry_links)
-            - len(self.config["ignoreLinksForCollision"])
-            + len(self.world_links)
-        )
         self.num_samples = int(self.config["excitationFrequency"] * self.trajectory.getPeriodLength())
-        self.num_coll_constraints = eff_links * (eff_links - 1) // 2
 
-        # ignore neighbors
-        nb_pairs: list[tuple] = []
-        for link in self.neighbors:
-            if link in self.config["ignoreLinksForCollision"]:
-                continue
-            if link not in self.model.linkNames:
-                continue
-            if link not in self.link_cuboid_hulls:
-                continue
-            nb_real = (
-                set(self.neighbors[link]["links"])
-                .difference(self.config["ignoreLinksForCollision"])
-                .difference(self.no_geometry_links)
-                .intersection(self.model.linkNames)
-            )
-            for l in nb_real:
-                if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
-                    nb_pairs.append((link, l))
-        # only count ignore pairs where both links are in the effective set
-        # (not already removed via ignoreLinksForCollision)
-        ignored = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
-        all_links = set(self.model.linkNames + self.world_links)
-        effective_ignore_pairs = [
-            p
-            for p in self.config["ignoreLinkPairsForCollision"]
-            if p[0] in all_links and p[1] in all_links and p[0] not in ignored and p[1] not in ignored
-        ]
-        self.num_coll_constraints -= (
-            len(nb_pairs)  # neighbors
-            + len(effective_ignore_pairs)
-        )  # custom combinations
+        # build the exact list of link pairs to check once, so the constraint count
+        # (size of the collision portion of g) matches the pairs actually evaluated.
+        # (a previous approximate eff_links*(eff_links-1)/2 formula did not, which
+        # overflowed g when ignoreCollisionBetweenGroups was emptied)
+        self._buildCollisionPairs()
+        self.num_coll_constraints = len(self._collision_pairs)
         self.num_constraints += self.num_coll_constraints
 
         # sequential experiment design: accumulate the information matrix of previous
@@ -376,78 +344,8 @@ class TrajectoryOptimizer(Optimizer):
         if self.config["verbose"] > 1:
             print("checking collisions")
 
-        # pre-compute the list of link pairs to check (only once, not per sample)
-        if not hasattr(self, "_collision_pairs"):
-            all_links = self.model.linkNames + self.world_links
-            ignore_links = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
-            ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
-                (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
-            }
-
-            # optionally limit collision checks to links within a maximum kinematic distance
-            # (dramatically reduces pairs for humanoids where e.g. left foot can't reach right hand)
-            max_kin_dist = self.config.get("collisionMaxKinematicDistance", 0)
-
-            def _kin_distance(start: str, target: str) -> int:
-                """BFS shortest path in the kinematic tree."""
-                visited = {start}
-                queue = [(start, 0)]
-                while queue:
-                    current, dist = queue.pop(0)
-                    if current == target:
-                        return dist
-                    for nb in self.neighbors.get(current, {}).get("links", []):
-                        if nb not in visited:
-                            visited.add(nb)
-                            queue.append((nb, dist + 1))
-                return 999
-
-            # Build set of group-excluded pairs (links in different groups can't collide)
-            group_ignore: set[tuple[str, str]] = set()
-            for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
-                if len(group_pair) == 2:
-                    for a in group_pair[0]:
-                        for b in group_pair[1]:
-                            group_ignore.add((a, b))
-                            group_ignore.add((b, a))
-
-            self._collision_pairs: list[tuple[str, str]] = []
-            num_robot_links = len(self.model.linkNames)
-            for l0 in range(len(all_links)):
-                for l1 in range(l0 + 1, len(all_links)):
-                    l0_name = all_links[l0]
-                    l1_name = all_links[l1]
-                    # world links are static — world-world pairs are irrelevant
-                    # (and often touch by construction, e.g. crane column on ground)
-                    if l0 >= num_robot_links and l1 >= num_robot_links:
-                        continue
-                    if l0_name in ignore_links or l1_name in ignore_links:
-                        continue
-                    if (l0_name, l1_name) in ignore_pairs:
-                        continue
-                    if (l0_name, l1_name) in group_ignore:
-                        continue
-                    # neighbors can't collide with a proper joint range
-                    if l0 < self.model.num_links and l1 < self.model.num_links:
-                        if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
-                            continue
-                    # skip pairs too far apart in the kinematic tree
-                    if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
-                        continue
-                    self._collision_pairs.append((l0_name, l1_name))
-            # clearance margin for robot-vs-world pairs: the box hulls
-            # under-approximate protruding parts (fingers) and scaleCollisionHull
-            # shrinks them further, so require a safety distance to world geometry
-            world_margin = float(self.config.get("worldCollisionMargin", 0.0))
-            world_link_set = set(self.world_links)
-            self._collision_pair_margins = np.array(
-                [
-                    world_margin if (l0 in world_link_set or l1 in world_link_set) else 0.0
-                    for l0, l1 in self._collision_pairs
-                ]
-            )
-            if self.config.get("verbose", 0):
-                print(f"Collision pairs: {len(self._collision_pairs)}")
+        # the link pairs to check are built once in __init__ (so num_coll_constraints
+        # matches len(_collision_pairs) exactly)
 
         collision_step = self.config.get("collisionCheckStep", 3)
         use_ag = self.config.get("useAnalyticalGradients", False)
@@ -728,6 +626,85 @@ class TrajectoryOptimizer(Optimizer):
     def testParams(self, **kwargs):
         x = kwargs["x_new"]
         return self.testBounds(x) and self.testConstraints(self.last_g)
+
+    def _buildCollisionPairs(self) -> None:
+        """Build the list of link pairs to collision-check and their world-clearance margins.
+
+        Applies all pair filters (ignored links, ignored pairs, ignored groups, neighbors,
+        kinematic distance, world-world skip). Called once in __init__ so that
+        num_coll_constraints == len(self._collision_pairs); the per-evaluation collision
+        loop reuses the result.
+        """
+        all_links = self.model.linkNames + self.world_links
+        ignore_links = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
+        ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
+            (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
+        }
+
+        # optionally limit collision checks to links within a maximum kinematic distance
+        # (dramatically reduces pairs for humanoids where e.g. left foot can't reach right hand)
+        max_kin_dist = self.config.get("collisionMaxKinematicDistance", 0)
+
+        def _kin_distance(start: str, target: str) -> int:
+            """BFS shortest path in the kinematic tree."""
+            visited = {start}
+            queue = [(start, 0)]
+            while queue:
+                current, dist = queue.pop(0)
+                if current == target:
+                    return dist
+                for nb in self.neighbors.get(current, {}).get("links", []):
+                    if nb not in visited:
+                        visited.add(nb)
+                        queue.append((nb, dist + 1))
+            return 999
+
+        # Build set of group-excluded pairs (links in different groups can't collide)
+        group_ignore: set[tuple[str, str]] = set()
+        for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
+            if len(group_pair) == 2:
+                for a in group_pair[0]:
+                    for b in group_pair[1]:
+                        group_ignore.add((a, b))
+                        group_ignore.add((b, a))
+
+        self._collision_pairs: list[tuple[str, str]] = []
+        num_robot_links = len(self.model.linkNames)
+        for l0 in range(len(all_links)):
+            for l1 in range(l0 + 1, len(all_links)):
+                l0_name = all_links[l0]
+                l1_name = all_links[l1]
+                # world links are static — world-world pairs are irrelevant
+                # (and often touch by construction, e.g. crane column on ground)
+                if l0 >= num_robot_links and l1 >= num_robot_links:
+                    continue
+                if l0_name in ignore_links or l1_name in ignore_links:
+                    continue
+                if (l0_name, l1_name) in ignore_pairs:
+                    continue
+                if (l0_name, l1_name) in group_ignore:
+                    continue
+                # neighbors can't collide with a proper joint range
+                if l0 < self.model.num_links and l1 < self.model.num_links:
+                    if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
+                        continue
+                # skip pairs too far apart in the kinematic tree
+                if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
+                    continue
+                self._collision_pairs.append((l0_name, l1_name))
+        # clearance margin for robot-vs-world pairs: the box hulls under-approximate
+        # protruding parts (fingers) and scaleCollisionHull shrinks them further, so
+        # require a safety distance to world geometry
+        world_margin = float(self.config.get("worldCollisionMargin", 0.0))
+        world_link_set = set(self.world_links)
+        self._collision_pair_margins = np.array(
+            [
+                world_margin if (l0 in world_link_set or l1 in world_link_set) else 0.0
+                for l0, l1 in self._collision_pairs
+            ]
+        )
+        if self.config.get("verbose", 0):
+            print(f"Collision pairs: {len(self._collision_pairs)}")
 
     def scaleAmplitudes(self, x: np.ndarray, scale: float) -> np.ndarray:
         """Return x with the Fourier coefficients (a, b) scaled by the given factor.

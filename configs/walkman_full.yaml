@@ -253,6 +253,38 @@ identifySymmetricVelFriction: 1
 # 0 = disabled, typical range: 0.001-0.1. Scaled relative to base error magnitude.
 frictionRegularization: 200
 
+# tanh smoothing threshold (rad/s) for the Coulomb sign term in identification.
+# Should match the actual friction transition width (simulator default: 0.02).
+frictionSignThreshold: 0.02
+
+# Low-pass cutoff (Hz) for the velocity used in the Coulomb sign computation.
+# The raw measured velocities are filtered at this cutoff before the tanh sign
+# term, which otherwise chatters by +-Fc whenever the velocity hovers within
+# its noise floor. The filter is zero-phase (filtfilt), so zero crossings are
+# not shifted — choose just above the trajectory's velocity bandwidth (here
+# 99% of the power is below ~1 Hz) to suppress as much noise as possible.
+# Set >= Nyquist to disable (uses the pipeline velocities instead).
+frictionVelocityCutoff: 3.0
+
+# Tikhonov weight pulling Fv toward the a priori URDF value in the two-step
+# friction OLS. Expressed as equivalent excitation energy sum(v^2) in
+# (rad/s)^2 * samples: joints whose kept-sample velocity energy is well above
+# this are barely affected, joints below it stay near a priori. 0 = disabled.
+# Sweep against the known real model showed a broad optimum at 20-100 (Fv error
+# minimum); above that the a priori bias dominates. Note the unregularized Fv
+# absorbs unmodeled effects (thermal drift, cable forces), which is why a
+# fairly strong prior helps even when the a priori values are ~2x off.
+frictionFvRegularization: 50.0
+
+# Velocity dead zone (rad/s) for the two-step friction OLS (Swevers et al.):
+# samples with |v| below this are excluded from the fit because the friction
+# sign is unreliable there (velocity noise floor) and the tanh is in its linear
+# region (collinear with the viscous column). Choose above both the velocity
+# noise floor (~3 sigma) and ~2.5x frictionSignThreshold so the tanh is
+# saturated in the kept samples. Too large loses slow joints' data and degrades
+# the fit again. 0 = disabled.
+frictionVelocityDeadZone: 0.05
+
 # Stribeck velocity constant (rad/s) for stiction identification.
 # Determines how quickly static friction decays to kinetic friction near zero velocity.
 # The stiction magnitude Fs is identified as a linear parameter; vs is a known constant.

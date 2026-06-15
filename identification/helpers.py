@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import numpy.linalg as la
+import scipy.signal
 from colorama import Fore
 from idyntree import bindings as iDynTree
 from tqdm import tqdm
@@ -83,6 +84,61 @@ def getNRMSE(
             return float(np.mean(rmsd / range) * 100)
     else:
         return float(np.mean(rmsd) * 100)
+
+
+def getFrictionSignVelocities(samples: dict[str, np.ndarray], opt: dict[str, Any]) -> np.ndarray:
+    """Return joint velocities to use for Coulomb friction sign computation (full length, unskipped).
+
+    Low-pass filters the raw measured velocities at frictionVelocityCutoff (less aggressive
+    than the main velocity processing) to suppress sensor noise while preserving
+    zero-crossing timing, which the steep tanh(v/threshold) sign term is sensitive to.
+    Falls back to the pipeline velocities when raw velocities or the sampling frequency
+    are unavailable or the cutoff is not below Nyquist. The result is cached in the
+    samples dict under "velocities_for_sign".
+    """
+    if "velocities_for_sign" in samples:
+        return samples["velocities_for_sign"]
+
+    cutoff = float(opt.get("frictionVelocityCutoff", 25.0))
+    has_raw = "velocities_raw" in samples and "frequency" in samples
+    freq = float(samples["frequency"]) if has_raw else 0.0
+    if has_raw and cutoff < freq / 2:
+        sos = scipy.signal.butter(3, cutoff, btype="low", fs=freq, output="sos")
+        velocities_for_sign = np.column_stack(
+            [
+                scipy.signal.sosfiltfilt(sos, samples["velocities_raw"][:, j])
+                for j in range(samples["velocities_raw"].shape[1])
+            ]
+        )
+    else:
+        velocities_for_sign = samples["velocities"]
+
+    samples["velocities_for_sign"] = velocities_for_sign
+    return velocities_for_sign
+
+
+def getFrictionSignSeries(samples: dict[str, np.ndarray], opt: dict[str, Any]) -> np.ndarray:
+    """Return the smoothed Coulomb friction sign series for all joints (full length, unskipped).
+
+    Computes tanh(v_sign / frictionSignThreshold) from the sign velocities (see
+    getFrictionSignVelocities). Centralized so that the regressor columns, the friction
+    OLS and all torque predictions use the identical sign term. The result is cached in
+    the samples dict under "friction_sign_series".
+
+    Note: a Schmitt-trigger hysteresis inside the noise band was tried as an alternative
+    and refuted — holding the sign produces larger actual errors than the noise-smoothed
+    tanh because it can sit at the wrong +-1 for whole slow-crossing episodes (see
+    documentation/friction_velocity_filter_analysis.md).
+    """
+    if "friction_sign_series" in samples:
+        return samples["friction_sign_series"]
+
+    velocities_for_sign = getFrictionSignVelocities(samples, opt)
+    sign_threshold = float(opt.get("frictionSignThreshold", 0.02))
+    sign_series = np.tanh(velocities_for_sign / sign_threshold)
+
+    samples["friction_sign_series"] = sign_series
+    return sign_series
 
 
 def rotationMatrixToEulerAngles(R):

@@ -299,9 +299,9 @@ class Model:
         if self.opt["identifyFrictionSimultaneously"]:
             # add friction torques
             # Coulomb friction (sign-dependent: opposes direction of motion)
-            # use tanh smoothing to match the simulator's continuous model
-            sign_threshold = 0.02  # rad/s, matches simulationEffects default
-            sign = np.tanh(vel / sign_threshold)
+            # smoothed sign from less-filtered velocity with hysteresis against
+            # noise chatter near zero velocity (see helpers.getFrictionSignSeries)
+            sign = helpers.getFrictionSignSeries(samples, self.opt)[sample_idx]
             p_constant = range(self.friction_params_start, self.friction_params_start + self.num_dofs)
             torques += sign * xStdModel[p_constant]
 
@@ -321,8 +321,9 @@ class Model:
                 # Stribeck stiction: Fs * exp(-|vel|/vs) * sign(vel)
                 if self.opt.get("stribeckVelocity", 0) > 0:
                     vs = float(self.opt["stribeckVelocity"])
+                    vel_sign = helpers.getFrictionSignVelocities(samples, self.opt)[sample_idx]
                     p_stribeck = range(p_off.stop, p_off.stop + self.num_dofs)
-                    torques += xStdModel[p_stribeck] * np.exp(-np.abs(vel) / vs) * np.sign(vel)
+                    torques += xStdModel[p_stribeck] * np.exp(-np.abs(vel_sign) / vs) * np.sign(sign)
 
         if self.opt["floatingBase"]:
             return np.concatenate((gen_torques.baseWrench().toNumPy(), torques))
@@ -456,10 +457,9 @@ class Model:
                         regressor = np.delete(regressor, self.inertia_params, 1)
 
                     if self.opt["identifyFrictionSimultaneously"]:
-                        # append tanh-smoothed sign(velocity) for Coulomb friction
-                        # (matches the simulator's continuous friction model)
-                        sign_threshold = 0.02  # rad/s
-                        sign = np.tanh(dq.toNumPy() / sign_threshold)
+                        # append smoothed sign(velocity) for Coulomb friction
+                        # (zero-crossing timing + hysteresis, see helpers.getFrictionSignSeries)
+                        sign = helpers.getFrictionSignSeries(data.samples, self.opt)[m_idx]
                         static_diag = np.identity(self.num_dofs) * sign
                         offset_regressor = np.vstack((np.zeros((fb, self.num_dofs)), static_diag))
                         regressor = np.concatenate((regressor, offset_regressor), axis=1)
@@ -753,8 +753,9 @@ class Model:
                     A = np.delete(A, self.inertia_params, 1)
 
                 if self.opt["identifyFrictionSimultaneously"]:
-                    # append unitary matrix to regressor for offsets/constant friction
-                    sign = 1  # np.sign(dq.toNumPy())
+                    # append tanh-smoothed sign(velocity) for Coulomb friction
+                    sign_threshold = float(self.opt.get("frictionSignThreshold", 0.02))
+                    sign = np.tanh(dq.toNumPy() / sign_threshold)
                     static_diag = np.identity(self.num_dofs) * sign
                     offset_regressor = np.vstack((np.zeros((fb * 6, self.num_dofs)), static_diag))
                     A = np.concatenate((A, offset_regressor), axis=1)

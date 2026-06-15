@@ -180,7 +180,10 @@ class Identification:
             block = self.model.num_dofs + fb
             skip = self.opt.get("skipSamples", 0) + 1
             velocities = self.data.samples["velocities"][: n_s * skip : skip]
-            sign_threshold = 0.02
+
+            # smoothed Coulomb sign from the less aggressively filtered velocity
+            # (preserves zero-crossing timing, hysteresis against noise chatter)
+            sign_series = helpers.getFrictionSignSeries(self.data.samples, self.opt)[: n_s * skip : skip]
 
             fric = None
             if estimateWith in ("std", "std_direct") and hasattr(self, "postid_friction"):
@@ -198,9 +201,7 @@ class Identification:
                 tau_est_2d = tauEst.reshape(n_s, block)
                 for j in range(self.model.num_dofs):
                     vel = velocities[:, j]
-                    tau_est_2d[:, fb + j] += (
-                        fric["Fc"][j] * np.tanh(vel / sign_threshold) + fric["Fv"][j] * vel + fric["off"][j]
-                    )
+                    tau_est_2d[:, fb + j] += fric["Fc"][j] * sign_series[:, j] + fric["Fv"][j] * vel + fric["off"][j]
                 tauEst = tau_est_2d.flatten()
 
         self.tauEstimated = np.reshape(tauEst, (self.data.num_used_samples, self.model.num_dofs + fb))
@@ -251,7 +252,11 @@ class Identification:
 
         if self.validation_file is None:
             return
-        v_data = np.load(self.validation_file)
+        # load into a plain dict: simulateDynamicsIDynTree caches derived series
+        # (e.g. the friction sign velocities) in the samples mapping.
+        # allow_pickle for the contacts dict array.
+        with np.load(self.validation_file, allow_pickle=True) as v_npz:
+            v_data = {k: v_npz[k] for k in v_npz.files}
 
         if self.opt["estimateWith"] == "urdf":
             params = self.model.xStdModel
@@ -954,7 +959,6 @@ class Identification:
         nd = self.model.num_dofs
         fb = 6
         block = nd + fb
-        sign_threshold = 0.02  # rad/s, matches simulator
         n_samples = self.data.num_used_samples
 
         # compute inertial torques from identified std params (inertial only, no friction)
@@ -973,9 +977,13 @@ class Identification:
         tau_residual_2d = tau_residual.reshape(n_samples, block)
 
         # get velocities for each sample
-        velocities = self.data.samples["velocities"][
-            : n_samples * (self.opt["skipSamples"] + 1) : self.opt["skipSamples"] + 1
-        ]
+        skip = self.opt.get("skipSamples", 0) + 1
+        velocities = self.data.samples["velocities"][: n_samples * skip : skip]
+
+        # use less-filtered velocity for Coulomb sign (preserves zero-crossing timing)
+        velocities_for_sign = helpers.getFrictionSignVelocities(self.data.samples, self.opt)[: n_samples * skip : skip]
+        # smoothed Coulomb sign (hysteresis against noise chatter near zero velocity)
+        sign_series = helpers.getFrictionSignSeries(self.data.samples, self.opt)[: n_samples * skip : skip]
 
         # store friction params separately (xStd may not have friction slots
         # when identifyFrictionSimultaneously=0)
@@ -985,14 +993,50 @@ class Identification:
             "off": np.zeros(nd),
         }
 
+        # Swevers-style velocity dead zone: exclude samples where |velocity| is below
+        # the measurement noise floor, so the friction sign is unreliable. Outside the
+        # dead zone the tanh column saturates towards +-sign(v) and stays structurally
+        # different from the viscous column, keeping Fc/Fv separable.
+        deadzone = float(self.opt.get("frictionVelocityDeadZone", 0.0))
+        deadzone_kept = np.zeros(nd)
+
+        # Tikhonov regularization of Fv toward the a priori URDF value. The data
+        # term's Fv information scales with sum(v^2) over the kept samples, so a
+        # fixed weight is automatically per-joint adaptive: negligible for
+        # well-excited joints, dominant for joints that barely move (whose Fv is
+        # otherwise unidentifiable and inflates). The weight is the equivalent
+        # excitation energy of the prior in (rad/s)^2 * samples.
+        lambda_fv = float(self.opt.get("frictionFvRegularization", 0.0))
+        if lambda_fv > 0:
+            urdf_friction = helpers.URDFHelpers.getJointFriction(self.model.urdf_file)
+            fv_apriori = np.array([urdf_friction[name]["f_velocity"] for name in self.model.jointNames])
+
         print("Post-identifying friction from residuals (OLS on identified inertials)...")
         for j in range(nd):
             vel = velocities[:, j]
+            vel_sign = velocities_for_sign[:, j]
             residual = tau_residual_2d[:, fb + j]  # joint torque rows only
 
-            # regressor: [tanh(v/threshold), v, 1]
-            A = np.column_stack([np.tanh(vel / sign_threshold), vel, np.ones(n_samples)])
-            params, _, _, _ = la.lstsq(A, residual, rcond=None)
+            if deadzone > 0:
+                keep = np.abs(vel_sign) >= deadzone
+                # need both motion directions and enough samples for a stable 3-param fit,
+                # otherwise fall back to using all samples
+                if np.count_nonzero(keep) < 10 * 3 or not (vel_sign[keep] > 0).any() or not (vel_sign[keep] < 0).any():
+                    keep = np.ones(n_samples, dtype=bool)
+            else:
+                keep = np.ones(n_samples, dtype=bool)
+            deadzone_kept[j] = np.count_nonzero(keep) / n_samples
+
+            # regressor: [sign_series, v, 1]
+            # smoothed sign from less-filtered velocity (zero-crossing timing) but
+            # filtered velocity for Fv*v (smooth viscous term)
+            A = np.column_stack([sign_series[keep, j], vel[keep], np.ones(np.count_nonzero(keep))])
+            b = residual[keep]
+            if lambda_fv > 0:
+                w = np.sqrt(lambda_fv)
+                A = np.vstack((A, [0.0, w, 0.0]))
+                b = np.append(b, w * fv_apriori[j])
+            params, _, _, _ = la.lstsq(A, b, rcond=None)
             fc_id, fv_id, off_id = params
 
             # enforce Fv >= 0 (physical constraint)
@@ -1010,13 +1054,39 @@ class Identification:
             f"  Fv:  [{fv.min():.2f}, {fv.max():.2f}]\n"
             f"  off: [{off.min():.2f}, {off.max():.2f}]"
         )
+        if deadzone > 0:
+            print(
+                f"  dead zone |v| >= {deadzone} rad/s kept "
+                f"{deadzone_kept.mean() * 100:.0f}% of samples on average "
+                f"(min {deadzone_kept.min() * 100:.0f}%)"
+            )
+
+        # when the real model is known (simulation), report actual friction parameter
+        # errors — the parameter quality is the metric that matters, the ranges and
+        # the fit NRMS are only proxies
+        if self.urdf_file_real:
+            real_friction = helpers.URDFHelpers.getJointFriction(self.urdf_file_real)
+            fc_real = np.array([real_friction[name]["f_constant"] for name in self.model.jointNames])
+            fv_real = np.array([real_friction[name]["f_velocity"] for name in self.model.jointNames])
+            fc_err = fc - fc_real
+            fv_err = fv - fv_real
+            print(
+                f"  Fc error vs real: RMS {np.sqrt(np.mean(fc_err**2)):.2f}, "
+                f"max |{np.abs(fc_err).max():.2f}| ({self.model.jointNames[int(np.abs(fc_err).argmax())]})\n"
+                f"  Fv error vs real: RMS {np.sqrt(np.mean(fv_err**2)):.2f}, "
+                f"max |{np.abs(fv_err).max():.2f}| ({self.model.jointNames[int(np.abs(fv_err).argmax())]})"
+            )
+            if self.opt["verbose"]:
+                print(f"  {'joint':15s} {'Fc_id':>7s} {'Fc_real':>7s} {'Fv_id':>7s} {'Fv_real':>7s}")
+                for j, name in enumerate(self.model.jointNames):
+                    print(f"  {name:15s} {fc[j]:7.2f} {fc_real[j]:7.2f} {fv[j]:7.2f} {fv_real[j]:7.2f}")
 
         # compute friction-corrected torque prediction for comparison
         tau_friction = np.zeros_like(tau_measured)
         tau_friction_2d = tau_friction.reshape(n_samples, block)
         for j in range(nd):
             vel = velocities[:, j]
-            tau_friction_2d[:, fb + j] = fc[j] * np.tanh(vel / sign_threshold) + fv[j] * vel + off[j]
+            tau_friction_2d[:, fb + j] = fc[j] * sign_series[:, j] + fv[j] * vel + off[j]
         tau_total = tau_inertial + tau_friction.flatten()
         residual_with_friction = tau_measured - tau_total
         residual_without = tau_measured - tau_inertial

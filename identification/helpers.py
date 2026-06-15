@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import numpy.linalg as la
+import scipy.signal
 from colorama import Fore
 from idyntree import bindings as iDynTree
 from tqdm import tqdm
@@ -83,6 +84,76 @@ def getNRMSE(
             return float(np.mean(rmsd / range) * 100)
     else:
         return float(np.mean(rmsd) * 100)
+
+
+def getFrictionSignVelocities(samples: dict[str, np.ndarray], opt: dict[str, Any]) -> np.ndarray:
+    """Return joint velocities to use for Coulomb friction sign computation (full length, unskipped).
+
+    Low-pass filters the raw measured velocities at frictionVelocityCutoff (less aggressive
+    than the main velocity processing) to suppress sensor noise while preserving
+    zero-crossing timing, which the steep tanh(v/threshold) sign term is sensitive to.
+    Falls back to the pipeline velocities when raw velocities or the sampling frequency
+    are unavailable or the cutoff is not below Nyquist. The result is cached in the
+    samples dict under "velocities_for_sign".
+    """
+    if "velocities_for_sign" in samples:
+        return samples["velocities_for_sign"]
+
+    cutoff = float(opt.get("frictionVelocityCutoff", 25.0))
+    has_raw = "velocities_raw" in samples and "frequency" in samples
+    freq = float(samples["frequency"]) if has_raw else 0.0
+    if has_raw and cutoff < freq / 2:
+        sos = scipy.signal.butter(3, cutoff, btype="low", fs=freq, output="sos")
+        velocities_for_sign = np.column_stack(
+            [
+                scipy.signal.sosfiltfilt(sos, samples["velocities_raw"][:, j])
+                for j in range(samples["velocities_raw"].shape[1])
+            ]
+        )
+        print(f"Friction sign-filtering: low-pass at {cutoff} Hz on raw velocities for the Coulomb sign term")
+    else:
+        # fall back to the pipeline velocities (no sign-velocity filtering). This is
+        # silent on the result otherwise, so note it — a user expecting the configured
+        # frictionVelocityCutoff on e.g. real-hardware data that lacks raw velocities
+        # would not get it.
+        if not has_raw:
+            print(
+                "Friction sign-filtering: data has no 'velocities_raw'/'frequency' — "
+                "using pipeline velocities unfiltered for the Coulomb sign term"
+            )
+        else:
+            print(
+                f"Friction sign-filtering: cutoff {cutoff} Hz is at/above Nyquist "
+                f"({freq / 2} Hz) — using pipeline velocities unfiltered for the Coulomb sign term"
+            )
+        velocities_for_sign = samples["velocities"]
+
+    samples["velocities_for_sign"] = velocities_for_sign
+    return velocities_for_sign
+
+
+def getFrictionSignSeries(samples: dict[str, np.ndarray], opt: dict[str, Any]) -> np.ndarray:
+    """Return the smoothed Coulomb friction sign series for all joints (full length, unskipped).
+
+    Computes tanh(v_sign / frictionSignThreshold) from the sign velocities (see
+    getFrictionSignVelocities). Centralized so that the regressor columns, the friction
+    OLS and all torque predictions use the identical sign term. The result is cached in
+    the samples dict under "friction_sign_series".
+
+    Note: a Schmitt-trigger hysteresis inside the noise band was tried as an alternative
+    and refuted — holding the sign produces larger actual errors than the noise-smoothed
+    tanh because it can sit at the wrong +-1 for whole slow-crossing episodes (see
+    documentation/friction_velocity_filter_analysis.md).
+    """
+    if "friction_sign_series" in samples:
+        return samples["friction_sign_series"]
+
+    velocities_for_sign = getFrictionSignVelocities(samples, opt)
+    sign_threshold = float(opt.get("frictionSignThreshold", 0.02))
+    sign_series = np.tanh(velocities_for_sign / sign_threshold)
+
+    samples["friction_sign_series"] = sign_series
+    return sign_series
 
 
 def rotationMatrixToEulerAngles(R):
@@ -365,7 +436,12 @@ class ParamHelpers:
 
     @staticmethod
     def addFrictionFromURDF(model: Model, urdf_file: str, params: np.ndarray) -> None:
-        """get friction vals from urdf (joint friction = fc, damping= fv) and set in params vector"""
+        """Get friction vals from urdf (joint friction = fc, damping = fv) and set in params vector.
+
+        Parameter layout: [Fc_0..n, Fv_0..n, off_0..n, (Fs_0..n)]
+        For asymmetric: [Fc_0..n, Fv+_0..n, Fv-_0..n, off_0..n, (Fs_0..n)]
+        Offset (tau_off) is initialized to 0 (no URDF source).
+        """
 
         friction = URDFHelpers.getJointFriction(urdf_file)
         nd = model.num_dofs
@@ -373,14 +449,26 @@ class ParamHelpers:
 
         for i in range(len(model.jointNames)):
             j = model.jointNames[i]
+            # Fc (Coulomb friction)
             params[start + i] = friction[j]["f_constant"]
 
             if not model.opt["identifyGravityParamsOnly"]:
+                # Fv (viscous friction)
                 params[start + nd + i] = friction[j]["f_velocity"]
 
                 if not model.opt["identifySymmetricVelFriction"]:
-                    # same value again for asymmetric value since urdf does only have one value
+                    # same value again for asymmetric Fv- since urdf only has one value
                     params[start + nd + nd + i] = friction[j]["f_velocity"]
+
+                # tau_off stays at 0 (already initialized)
+
+        # initialize Stribeck stiction Fs (URDF doesn't have this, derive from Fc)
+        if model.opt.get("stribeckVelocity", 0) > 0 and not model.opt["identifyGravityParamsOnly"]:
+            fs_start = model.num_all_params - nd
+            for i in range(len(model.jointNames)):
+                fc = params[start + i]
+                # default: 60% of Coulomb friction (same as simulator's stiction model)
+                params[fs_start + i] = abs(fc) * 0.6 if abs(fc) > 0 else 0.0
 
 
 class URDFHelpers:
@@ -460,7 +548,7 @@ class URDFHelpers:
         for l in tree.findall("joint"):
             if l.attrib["name"] in self.model.jointNames:
                 joint_id = self.model.jointNames.index(l.attrib["name"])
-                if self.opt["identifyFriction"]:
+                if self.opt["identifyFrictionSimultaneously"]:
                     f_c = cast(float, xStdBary[self.model.num_links * per_link + joint_id])
                     if self.opt["identifyGravityParamsOnly"]:
                         f_v = 0.0

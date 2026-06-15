@@ -9,7 +9,7 @@
 
   Inertial matrix has to be in CoM frame (URDF specs)
 
-  Velocity and effort limits are fake!
+  Velocity and effort limits from Negrello et al., ICRA 2016 and Tsagarakis et al., JFR 2017.
 -->
   <!-- ************ MODEL CONFIGURATION ************ -->
   <!--
@@ -145,7 +145,7 @@
 
   Inertial matrix has to be in CoM frame (URDF specs)
 
-  Velocity and effort limits are fake!
+  Velocity and effort limits from Negrello et al., ICRA 2016 and Tsagarakis et al., JFR 2017.
 -->
   <!--
 The coordinate frame called base_link is rigidly attached to the robot root body. It is recommended to choose the robot waist as its root body. The base_link can be attached to the root in any arbitrary position or orientation; for every hardware platform there will be a different place on the base that provides an obvious point of reference. Note that REP 103 [1] specifies a preferred orientation for frames. -->
@@ -153,8 +153,8 @@ The coordinate frame called base_link is rigidly attached to the robot root body
   <link name="Waist">
     <inertial>
       <origin rpy="0.0 0.0 0.0" xyz="-0.022813402 -0.00073935443 0.030422909"/>
-      <mass value="1.1046081e+01"/>
-      <inertia ixx="0.096207978" ixy="0.00014081043" ixz="0.0031258127" iyy="0.098511158" iyz="0.00013938149" izz="0.086541531"/>
+      <mass value="10.02296987"/>
+      <inertia ixx="0.12392939" ixy="0.00010348" ixz="0.00229716" iyy="0.11378814" iyz="0.00009136" izz="0.09294232"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -186,8 +186,8 @@ and to define the end effectors of the robot-->
   <link name="DWL">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.04610869 0.02232230 -0.02249514"/>
-      <mass value="1.44965471"/>
-      <inertia ixx="0.01096760" ixy="0.00111556" ixz="0.00030030" iyy="0.00409572" iyz="0.00054456" izz="0.01143795"/>
+      <mass value="1.62393960"/>
+      <inertia ixx="0.01312033" ixy="0.00173118" ixz="0.00042877" iyy="0.00519608" iyz="0.00047284" izz="0.00918957"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -206,8 +206,8 @@ and to define the end effectors of the robot-->
   <link name="DWS">
     <inertial>
       <origin rpy="0 0 0" xyz="0.00010203 0.00928164 0.08113610"/>
-      <mass value="5.28825567"/>
-      <inertia ixx="0.01628069" ixy="-0.00000323" ixz="0.00001424" iyy="0.01424286" iyz="0.00075458" izz="0.00994169"/>
+      <mass value="5.82188154"/>
+      <inertia ixx="0.01695402" ixy="-0.00000393" ixz="0.00001525" iyy="0.01615944" iyz="0.00105686" izz="0.01297047"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -225,9 +225,9 @@ and to define the end effectors of the robot-->
   </link>
   <link name="DWYTorso">
     <inertial>
-      <origin rpy="0 0 0" xyz="0.0 0.00 0.3"/>
-      <mass value="26"/>
-      <inertia ixx="0.18629757" ixy="0.00008160" ixz="0.00030250" iyy="0.02013829" iyz="-0.00001790" izz="0.18850541"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.3"/>
+      <mass value="8.03384087"/>
+      <inertia ixx="0.05942421" ixy="0.00003652" ixz="0.00008375" iyy="0.00675041" iyz="-0.00000660" izz="0.06551287"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -259,8 +259,8 @@ and to define the end effectors of the robot-->
   <link name="TorsoProtections">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.082963193 7.0747291e-07 0.075409106"/>
-      <mass value="4.7"/>
-      <inertia ixx="0.14773769" ixy="0.0" ixz="-0.029780072" iyy="0.16085511" iyz="0.0" izz="0.15409381"/>
+      <mass value="4.41086969"/>
+      <inertia ixx="0.10753387" ixy="-0.00000870" ixz="-0.04047435" iyy="0.17123459" iyz="0.00000931" izz="0.12363169"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -280,8 +280,8 @@ and to define the end effectors of the robot-->
   <link name="backpack">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 -0.065"/>
-      <mass value="10.0"/>
-      <inertia ixx="0.0890833333333" ixy="0.0" ixz="0.0" iyy="0.0354166666667" iyz="0.0" izz="0.0963333333333"/>
+      <mass value="14.72519204"/>
+      <inertia ixx="0.11795991" ixy="-0.00000120" ixz="-0.00000756" iyy="0.04030080" iyz="-0.00000010" izz="0.15667810"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -319,7 +319,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.1115 0 0.195982"/>
     <axis xyz="0.89879991307 0 0.43835911792"/>
     <limit effort="210" lower="-0.3490658503988659" upper="0.3490658503988659" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="4.2"/>
   </joint>
   <joint name="WaistSag" type="revolute">
     <parent link="DWL"/>
@@ -327,7 +327,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit effort="400" lower="-0.349065850398" upper="1.39626340159" velocity="9.0"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="WaistYaw" type="revolute">
     <parent link="DWS"/>
@@ -335,15 +335,15 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 0.22275"/>
     <axis xyz="0 0 1"/>
     <limit effort="140" lower="-2.84488668074" upper="2.84488668074" velocity="19.5"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <!-- ********************NECK********************* -->
   <!-- LINKS -->
   <link name="NeckYaw">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.1155"/>
-      <mass value="0.35"/>
-      <inertia ixx="0.00032840119" ixy="0.0" ixz="0.0" iyy="7.0371675e-05" iyz="0.0" izz="0.00032840111"/>
+      <mass value="0.45891713"/>
+      <inertia ixx="0.00064864" ixy="-0.00000377" ixz="0.00000040" iyy="0.00009544" iyz="0.00000093" izz="0.00057153"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -362,8 +362,8 @@ and to define the end effectors of the robot-->
   <link name="NeckPitch">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.102 0.0 0.26575"/>
-      <mass value="0.623"/>
-      <inertia ixx="0.0010388333" ixy="0.0" ixz="0.0" iyy="0.00054689381" iyz="0.0" izz="0.00054689381"/>
+      <mass value="0.15425476"/>
+      <inertia ixx="0.00037994" ixy="0.00000790" ixz="0.00000196" iyy="0.00018410" iyz="0.00000844" izz="0.00019968"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
@@ -387,7 +387,7 @@ and to define the end effectors of the robot-->
     <axis xyz="0 0 1"/>
     <!--     <limit velocity="6.283" effort="120" lower="${(-175.0)*toRad}" upper="${(175.0)*toRad}" /> -->
     <limit effort="120" lower="-0.610865238196" upper="0.610865238196" velocity="6.283"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.4"/>
   </joint>
   <joint name="NeckPitchj" type="fixed">
     <parent link="NeckYaw"/>
@@ -396,7 +396,7 @@ and to define the end effectors of the robot-->
     <axis xyz="0 1 0"/>
     <!--limit velocity="6.283" effort="120" lower="${(-30.0)*toRad}" upper="${(70.0)*toRad}" /-->
     <limit effort="120" lower="-0.261799387798" upper="1.04719755119" velocity="6.283"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.4"/>
   </joint>
   <!-- ********************LEGS******************** -->
   <!-- This links are defined in order to be compliant with http://www.ros.org/reps/rep-0120.html#coordinate-frames
@@ -415,8 +415,8 @@ and to define the end effectors of the robot-->
   <link name="RHipMot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.10348188 -0.10919813 -0.064924056"/>
-      <mass value="3.7958197"/>
-      <inertia ixx="0.015639017" ixy="0.0018504661" ixz="0.0023907793" iyy="0.023519749" iyz="-0.0023303162" izz="0.020953643"/>
+      <mass value="3.55380981"/>
+      <inertia ixx="0.01428977" ixy="0.00188387" ixz="0.00218315" iyy="0.01911300" iyz="-0.00328923" izz="0.02096327"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -435,8 +435,8 @@ and to define the end effectors of the robot-->
   <link name="RThighUpLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0052929709 -0.022561833 0.0056701669"/>
-      <mass value="3.2402068"/>
-      <inertia ixx="0.010102097" ixy="0.00010858487" ixz="0.00025291395" iyy="0.0067147" iyz="8.3447072e-05" izz="0.01048513"/>
+      <mass value="2.72753304"/>
+      <inertia ixx="0.00828682" ixy="0.00012735" ixz="0.00015756" iyy="0.00650412" iyz="0.00010951" izz="0.00776915"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -455,8 +455,8 @@ and to define the end effectors of the robot-->
   <link name="RThighLowLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="0.037746286 -0.028539939 -0.19310133"/>
-      <mass value="5.0950736"/>
-      <inertia ixx="0.051607858" ixy="0.0022253472" ixz="0.002452979" iyy="0.044349153" iyz="-0.0041006942" izz="0.023374453"/>
+      <mass value="5.18383457"/>
+      <inertia ixx="0.04414314" ixy="0.00270799" ixz="0.00303037" iyy="0.03256687" iyz="-0.00521070" izz="0.02902460"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -475,8 +475,8 @@ and to define the end effectors of the robot-->
   <link name="RLowLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0050828668 0.0037732093 -0.072605017"/>
-      <mass value="5.6495309"/>
-      <inertia ixx="0.10535542" ixy="-0.00058199221" ixz="0.0016743598" iyy="0.097857796" iyz="-0.0033770181" izz="0.020854086"/>
+      <mass value="5.69349708"/>
+      <inertia ixx="0.11638456" ixy="-0.00077188" ixz="0.00174785" iyy="0.09090669" iyz="-0.00265333" izz="0.03065977"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -495,8 +495,8 @@ and to define the end effectors of the robot-->
   <link name="RFootmot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.022024173 0.0025677238 0.00094588455"/>
-      <mass value="3.2844159"/>
-      <inertia ixx="0.0075550679" ixy="0.00067488292" ixz="5.8332889e-05" iyy="0.011241163" iyz="-0.00014552081" izz="0.013391865"/>
+      <mass value="2.75686395"/>
+      <inertia ixx="0.00643519" ixy="0.00084114" ixz="0.00005427" iyy="0.01217055" iyz="-0.00009633" izz="0.01379525"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -515,8 +515,8 @@ and to define the end effectors of the robot-->
   <link name="RFoot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00653584 -0.00479384 -0.10180375"/>
-      <mass value="3.42638110"/>
-      <inertia ixx="0.01032886" ixy="-0.00016407" ixz="-0.00201294" iyy="0.02854025" iyz="0.00046315" izz="0.02799499"/>
+      <mass value="2.48363431"/>
+      <inertia ixx="0.00899538" ixy="-0.00012295" ixz="-0.00154344" iyy="0.02228287" iyz="0.00032856" izz="0.02450956"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -540,8 +540,8 @@ and to define the end effectors of the robot-->
   <link name="LHipMot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.10348188 0.10919813 -0.064924056"/>
-      <mass value="3.7958197"/>
-      <inertia ixx="0.015639017" ixy="-0.0018504661" ixz="0.0023907793" iyy="0.023519749" iyz="0.0023303162" izz="0.020953643"/>
+      <mass value="3.50029395"/>
+      <inertia ixx="0.01336597" ixy="-0.00176091" ixz="0.00269022" iyy="0.01889539" iyz="0.00345347" izz="0.02533409"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -560,8 +560,8 @@ and to define the end effectors of the robot-->
   <link name="LThighUpLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0052929709 0.022561833 0.0056701669"/>
-      <mass value="3.2402068"/>
-      <inertia ixx="0.010102097" ixy="-0.00010858487" ixz="0.00025291395" iyy="0.0067147" iyz="-8.3447072e-05" izz="0.01048513"/>
+      <mass value="2.66176684"/>
+      <inertia ixx="0.00902785" ixy="-0.00006785" ixz="0.00019869" iyy="0.00731403" iyz="-0.00005745" izz="0.00829126"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -580,8 +580,8 @@ and to define the end effectors of the robot-->
   <link name="LThighLowLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="0.037746286 0.028539939 -0.19310133"/>
-      <mass value="5.0950736"/>
-      <inertia ixx="0.051607858" ixy="-0.0022253472" ixz="0.002452979" iyy="0.044349153" iyz="0.0041006942" izz="0.023374453"/>
+      <mass value="5.35135688"/>
+      <inertia ixx="0.06384535" ixy="-0.00288795" ixz="0.00191896" iyy="0.05001128" iyz="0.00562614" izz="0.02984461"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -600,8 +600,8 @@ and to define the end effectors of the robot-->
   <link name="LLowLeg">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0050828668 -0.0037732093 -0.072605017"/>
-      <mass value="5.6495309"/>
-      <inertia ixx="0.10535542" ixy="0.00058199221" ixz="0.0016743598" iyy="0.097857796" iyz="0.0033770181" izz="0.020854086"/>
+      <mass value="6.32817416"/>
+      <inertia ixx="0.15064630" ixy="0.00048341" ixz="0.00158135" iyy="0.14620918" iyz="0.00383901" izz="0.02242601"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -620,8 +620,8 @@ and to define the end effectors of the robot-->
   <link name="LFootmot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.022024173 -0.0025677238 0.00094588455"/>
-      <mass value="3.2844159"/>
-      <inertia ixx="0.0075550679" ixy="-0.00067488292" ixz="5.8332889e-05" iyy="0.011241163" iyz="0.00014552081" izz="0.013391865"/>
+      <mass value="3.07375923"/>
+      <inertia ixx="0.00874531" ixy="-0.00059978" ixz="0.00004317" iyy="0.00753245" iyz="0.00009636" izz="0.01282565"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -640,8 +640,8 @@ and to define the end effectors of the robot-->
   <link name="LFoot">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00653584 0.00479384 -0.10180375"/>
-      <mass value="3.42638110"/>
-      <inertia ixx="0.01032886" ixy="0.00016407" ixz="-0.00201294" iyy="0.02854025" iyz="-0.00046315" izz="0.02799499"/>
+      <mass value="2.28980943"/>
+      <inertia ixx="0.00984535" ixy="0.00014363" ixz="-0.00135049" iyy="0.01921276" iyz="-0.00048042" izz="0.02131973"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -671,7 +671,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.1059 -0.06 0.0"/>
     <axis xyz="1 0 0"/>
     <limit effort="400" lower="-0.87222" upper="0.697778" velocity="9.0"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="RHipYaw" type="revolute">
     <parent link="RHipMot"/>
@@ -679,7 +679,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="-0.0889 -0.121032 -0.217872"/>
     <axis xyz="0 0 1"/>
     <limit effort="140" lower="-1.57" upper="0.872222" velocity="19.5"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="RHipSag" type="revolute">
     <parent link="RThighUpLeg"/>
@@ -687,7 +687,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
     <axis xyz="0 1 0"/>
     <limit effort="400" lower="-2.09333" upper="1.046667" velocity="8.2"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="RKneeSag" type="revolute">
     <parent link="RThighLowLeg"/>
@@ -695,7 +695,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.356"/>
     <axis xyz="0 1 0"/>
     <limit effort="400" lower="0.0" upper="2.442222" velocity="8.2"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="RAnkSag" type="revolute">
     <parent link="RLowLeg"/>
@@ -703,7 +703,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.4"/>
     <axis xyz="0 1 0"/>
     <limit effort="330" lower="-1.39556" upper="0.697778" velocity="18.6"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="6.6"/>
   </joint>
   <joint name="RAnkLat" type="revolute">
     <parent link="RFootmot"/>
@@ -711,7 +711,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
     <axis xyz="1 0 0"/>
     <limit effort="210" lower="-0.785" upper="0.785" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="4.2"/>
   </joint>
   <!-- ********************LEFT LEG******************** -->
   <joint name="LHipLat" type="revolute">
@@ -720,7 +720,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.1059 0.06 0.0"/>
     <axis xyz="1 0 0"/>
     <limit effort="400" lower="-0.697778" upper="0.87222" velocity="9.0"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="LHipYaw" type="revolute">
     <parent link="LHipMot"/>
@@ -728,7 +728,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="-0.0889 0.121032 -0.217872"/>
     <axis xyz="0 0 1"/>
     <limit effort="140" lower="-0.872222" upper="1.57" velocity="19.5"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="LHipSag" type="revolute">
     <parent link="LThighUpLeg"/>
@@ -736,7 +736,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
     <axis xyz="0 1 0"/>
     <limit effort="400" lower="-2.09333" upper="1.046667" velocity="8.2"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="LKneeSag" type="revolute">
     <parent link="LThighLowLeg"/>
@@ -744,7 +744,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.356"/>
     <axis xyz="0 1 0"/>
     <limit effort="400" lower="0.0" upper="2.442222" velocity="8.2"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="8.0"/>
   </joint>
   <joint name="LAnkSag" type="revolute">
     <parent link="LLowLeg"/>
@@ -752,7 +752,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.4"/>
     <axis xyz="0 1 0"/>
     <limit effort="330" lower="-1.39556" upper="0.697778" velocity="18.6"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="6.6"/>
   </joint>
   <joint name="LAnkLat" type="revolute">
     <parent link="LFootmot"/>
@@ -760,7 +760,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
     <axis xyz="1 0 0"/>
     <limit effort="210" lower="-0.785" upper="0.785" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="4.2"/>
   </joint>
   <joint name="l_ankle_joint" type="fixed">
     <parent link="LFoot"/>
@@ -857,8 +857,8 @@ and to define the end effectors of the robot-->
   <link name="RShp">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00543349 -0.04480023 0.01581062"/>
-      <mass value="1.81745527"/>
-      <inertia ixx="0.00571053" ixy="0.00041083" ixz="-0.00005130" iyy="0.01126908" iyz="-0.00003461" izz="0.01371197"/>
+      <mass value="1.95410466"/>
+      <inertia ixx="0.00516101" ixy="0.00036118" ixz="-0.00003429" iyy="0.01194715" iyz="-0.00003997" izz="0.01282142"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -877,8 +877,8 @@ and to define the end effectors of the robot-->
   <link name="RShr">
     <inertial>
       <origin rpy="0 0 0" xyz="0.00729315 0.00002698 -0.07529696"/>
-      <mass value="5.00486460"/>
-      <inertia ixx="0.01644345" ixy="-0.00001187" ixz="-0.00010546" iyy="0.01804804" iyz="-0.00000565" izz="0.00802420"/>
+      <mass value="5.07396915"/>
+      <inertia ixx="0.01323604" ixy="-0.00001035" ixz="-0.00008315" iyy="0.01723686" iyz="-0.00000617" izz="0.01100200"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -897,8 +897,8 @@ and to define the end effectors of the robot-->
   <link name="RShy">
     <inertial>
       <origin rpy="0 0 0" xyz="0.02765373 -0.03258647 -0.12698781"/>
-      <mass value="3.20289133"/>
-      <inertia ixx="0.01129046" ixy="0.00013518" ixz="-0.00134760" iyy="0.00984951" iyz="-0.00026836" izz="0.00728549"/>
+      <mass value="3.23766656"/>
+      <inertia ixx="0.00948422" ixy="0.00010615" ixz="-0.00158381" iyy="0.01079977" iyz="-0.00023849" izz="0.00837712"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -917,8 +917,8 @@ and to define the end effectors of the robot-->
   <link name="RElb">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.055754915 -0.007582604 -0.043820396"/>
-      <mass value="8.6765385e-01"/>
-      <inertia ixx="0.0040395238" ixy="0.00034973136" ixz="-0.00068400465" iyy="0.0022460561" iyz="0.00028844444" izz="0.0044895027"/>
+      <mass value="0.84224368"/>
+      <inertia ixx="0.00447497" ixy="0.00045491" ixz="-0.00060095" iyy="0.00235306" iyz="0.00022164" izz="0.00347263"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -938,8 +938,8 @@ and to define the end effectors of the robot-->
   <link name="LShp">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.00543349 0.04480023 0.01581062"/>
-      <mass value="1.81745527"/>
-      <inertia ixx="0.00571053" ixy="-0.00041083" ixz="-0.00005130" iyy="0.01126908" iyz="0.00003461" izz="0.01371197"/>
+      <mass value="1.59833920"/>
+      <inertia ixx="0.00639486" ixy="-0.00044049" ixz="-0.00004256" iyy="0.01324185" iyz="0.00004102" izz="0.01033767"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -958,8 +958,8 @@ and to define the end effectors of the robot-->
   <link name="LShr">
     <inertial>
       <origin rpy="0 0 0" xyz="0.00729315 -0.00002698 -0.07529696"/>
-      <mass value="5.00486460"/>
-      <inertia ixx="0.01644345" ixy="0.00001187" ixz="-0.00010546" iyy="0.01804804" iyz="0.00000565" izz="0.00802420"/>
+      <mass value="4.71203907"/>
+      <inertia ixx="0.02018423" ixy="0.00000928" ixz="-0.00010138" iyy="0.01852593" iyz="0.00000430" izz="0.01115293"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -978,8 +978,8 @@ and to define the end effectors of the robot-->
   <link name="LShy">
     <inertial>
       <origin rpy="0 0 0" xyz="0.02765373 0.03258647 -0.12698781"/>
-      <mass value="3.20289133"/>
-      <inertia ixx="0.01129046" ixy="-0.00013518" ixz="-0.00134760" iyy="0.00984951" iyz="0.00026836" izz="0.00728549"/>
+      <mass value="3.19885974"/>
+      <inertia ixx="0.01376127" ixy="-0.00016844" ixz="-0.00139843" iyy="0.00836710" iyz="0.00027303" izz="0.00793558"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -998,8 +998,8 @@ and to define the end effectors of the robot-->
   <link name="LElb">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.055754915 0.007582604 -0.043820396"/>
-      <mass value="8.6765385e-01"/>
-      <inertia ixx="0.0040395238" ixy="-0.00034973136" ixz="-0.00068400465" iyy="0.0022460561" iyz="-0.00028844444" izz="0.0044895027"/>
+      <mass value="0.77275176"/>
+      <inertia ixx="0.00360129" ixy="-0.00039689" ixz="-0.00061119" iyy="0.00328052" iyz="-0.00026015" izz="0.00656741"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1023,7 +1023,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0.3491" xyz="0.045646 -0.219164 0.001531"/>
     <axis xyz="0 0.743144825 -0.669130606"/>
     <limit effort="140" lower="-2.84488668074" upper="2.8099800957" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="RShLat" type="revolute">
     <parent link="RShp"/>
@@ -1031,7 +1031,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 -0.116568264 0.03364"/>
     <axis xyz="1 0 0"/>
     <limit effort="140" lower="-3.8571776469" upper="-0.122173047639" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="RShYaw" type="revolute">
     <parent link="RShr"/>
@@ -1039,7 +1039,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.222"/>
     <axis xyz="0 0 1"/>
     <limit effort="140" lower="-2.86233997326" upper="2.82743338822" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="RElbj" type="revolute">
     <parent link="RShy"/>
@@ -1047,7 +1047,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.036 0.0 -0.15"/>
     <axis xyz="0 1 0"/>
     <limit effort="56" lower="-2.96705972838" upper="0.593411945677" velocity="11.3"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <!-- LEFT ARM -->
   <joint name="LShSag" type="revolute">
@@ -1056,7 +1056,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 -0.3491" xyz="0.045646 0.219164 0.001531"/>
     <axis xyz="0.0 0.743144825 0.669130606"/>
     <limit effort="140" lower="-2.87979326578" upper="2.79252680318" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="LShLat" type="revolute">
     <parent link="LShp"/>
@@ -1064,7 +1064,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.116568264 0.03364"/>
     <axis xyz="1 0 0"/>
     <limit effort="140" lower="0.0872664625995" upper="3.8571776469" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="LShYaw" type="revolute">
     <parent link="LShr"/>
@@ -1072,7 +1072,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.0 0.0 -0.222"/>
     <axis xyz="0 0 1"/>
     <limit effort="140" lower="-2.84488668074" upper="2.84488668074" velocity="16.7"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="1.5" friction="2.8"/>
   </joint>
   <joint name="LElbj" type="revolute">
     <parent link="LShy"/>
@@ -1080,7 +1080,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0.036 0.0 -0.15"/>
     <axis xyz="0 1 0"/>
     <limit effort="56" lower="-2.96705972838" upper="0.593411945677" velocity="11.3"/>
-    <dynamics damping="3.0" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <!-- ***** LEGS F/T SENSOR REF FRAMES *******-->
   <link name="l_leg_ft"/>
@@ -1118,8 +1118,8 @@ and to define the end effectors of the robot-->
   <link name="LForearm">
     <inertial>
       <origin rpy="0 0 0" xyz="1.2625599e-05 0.0042975381 0.044717986"/>
-      <mass value="2.2127686"/>
-      <inertia ixx="0.0065428368" ixy="-4.1196967e-05" ixz="3.272727e-06" iyy="0.005587829" iyz="0.00042088668" izz="0.0024783023"/>
+      <mass value="2.09446476"/>
+      <inertia ixx="0.00794518" ixy="-0.00004499" ixz="0.00000214" iyy="0.00675253" iyz="0.00030102" izz="0.00283853"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1138,8 +1138,8 @@ and to define the end effectors of the robot-->
   <link name="LWrMot2">
     <inertial>
       <origin rpy="0 0 0" xyz="0.009819377 0.0013797184 -0.080380065"/>
-      <mass value="1.2838072"/>
-      <inertia ixx="0.001994124" ixy="2.569706e-05" ixz="0.00017443538" iyy="0.0021755329" iyz="-0.00012100987" izz="0.001830376"/>
+      <mass value="1.19465445"/>
+      <inertia ixx="0.00197471" ixy="0.00002705" ixz="0.00009808" iyy="0.00142870" iyz="-0.00008207" izz="0.00129636"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1158,8 +1158,8 @@ and to define the end effectors of the robot-->
   <link name="LWrMot3">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0070380706 -1.0811188e-05 -0.039669274"/>
-      <mass value="4.2801447e-01"/>
-      <inertia ixx="0.00028620156" ixy="5.2570457e-08" ixz="-3.9174213e-05" iyy="0.00071261855" iyz="-9.5020266e-08" izz="0.00061444258"/>
+      <mass value="0.16270568"/>
+      <inertia ixx="0.00013049" ixy="0.00000003" ixz="-0.00001265" iyy="0.00031793" iyz="-0.00000003" izz="0.00020966"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1179,8 +1179,8 @@ and to define the end effectors of the robot-->
   <link name="RForearm">
     <inertial>
       <origin rpy="0 0 0" xyz="1.2625599e-05 -0.0042975381 0.044717986"/>
-      <mass value="2.2127686"/>
-      <inertia ixx="0.0065428368" ixy="4.1196967e-05" ixz="3.272727e-06" iyy="0.005587829" iyz="-0.00042088668" izz="0.0024783023"/>
+      <mass value="2.10337727"/>
+      <inertia ixx="0.00699244" ixy="0.00004261" ixz="0.00000217" iyy="0.00662804" iyz="-0.00036907" izz="0.00266024"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1199,8 +1199,8 @@ and to define the end effectors of the robot-->
   <link name="RWrMot2">
     <inertial>
       <origin rpy="0 0 0" xyz="0.009819377 -0.0013797184 -0.080380065"/>
-      <mass value="1.2838072"/>
-      <inertia ixx="0.001994124" ixy="-2.569706e-05" ixz="0.00017443538" iyy="0.0021755329" iyz="0.00012100987" izz="0.001830376"/>
+      <mass value="1.04328337"/>
+      <inertia ixx="0.00157106" ixy="-0.00003142" ixz="0.00017940" iyy="0.00259976" iyz="0.00013920" izz="0.00159448"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1219,8 +1219,8 @@ and to define the end effectors of the robot-->
   <link name="RWrMot3">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0070380706 1.0811188e-05 -0.039669274"/>
-      <mass value="4.2801447e-01"/>
-      <inertia ixx="0.00028620156" ixy="-5.2570457e-08" ixz="-3.9174213e-05" iyy="0.00071261855" iyz="9.5020266e-08" izz="0.00061444258"/>
+      <mass value="0.16109230"/>
+      <inertia ixx="0.00012242" ixy="-0.00000003" ixz="-0.00001321" iyy="0.00029006" iyz="0.00000002" izz="0.00020529"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1244,7 +1244,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="-0.075 0.0 -0.1955"/>
     <axis xyz="0 0 1"/>
     <limit effort="56" lower="-2.529" upper="2.529" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="LWrj1" type="revolute">
     <parent link="LForearm"/>
@@ -1252,7 +1252,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit effort="56" lower="-1.48" upper="1.48" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="LWrj2" type="revolute">
     <parent link="LWrMot2"/>
@@ -1260,7 +1260,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 -0.092"/>
     <axis xyz="1 0 0"/>
     <limit effort="56" lower="-1.48" upper="1.48" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="l_wrist_joint" type="fixed">
     <parent link="LWrMot3"/>
@@ -1274,7 +1274,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="-0.075 0.0 -0.1955"/>
     <axis xyz="0 0 1"/>
     <limit effort="56" lower="-2.529" upper="2.529" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="RWrj1" type="revolute">
     <parent link="RForearm"/>
@@ -1282,7 +1282,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit effort="56" lower="-1.48" upper="1.48" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="RWrj2" type="revolute">
     <parent link="RWrMot2"/>
@@ -1290,7 +1290,7 @@ and to define the end effectors of the robot-->
     <origin rpy="0 0 0" xyz="0 0 -0.092"/>
     <axis xyz="1 0 0"/>
     <limit effort="56" lower="-1.48" upper="1.48" velocity="11.3"/>
-    <dynamics damping="0.03" friction="0"/>
+    <dynamics damping="0.4" friction="1.12"/>
   </joint>
   <joint name="r_wrist_joint" type="fixed">
     <parent link="RWrMot3"/>
@@ -1305,8 +1305,8 @@ and to define the end effectors of the robot-->
   <link name="RSoftHandLink">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 -0.17"/>
-      <mass value="1.2"/>
-      <inertia ixx="0.00232" ixy="0" ixz="0" iyy="0.00296" iyz="0" izz="0.00136"/>
+      <mass value="2.23037198"/>
+      <inertia ixx="0.00366314" ixy="0.00000830" ixz="-0.00000260" iyy="0.00698133" iyz="-0.00000969" izz="0.00338871"/>
     </inertial>
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
@@ -1331,8 +1331,8 @@ and to define the end effectors of the robot-->
   <link name="LSoftHandLink">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 -0.17"/>
-      <mass value="1.2"/>
-      <inertia ixx="0.00232" ixy="0" ixz="0" iyy="0.00296" iyz="0" izz="0.00136"/>
+      <mass value="2.36330972"/>
+      <inertia ixx="0.00434756" ixy="0.00000706" ixz="-0.00000411" iyy="0.00741969" iyz="-0.00000230" izz="0.00340420"/>
     </inertial>
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
@@ -1436,8 +1436,8 @@ and to define the end effectors of the robot-->
   <link name="multisense/head">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.075493 3.3383E-05 0.02774"/>
-      <mass value="1.41984"/>
-      <inertia ixx="0.0039688" ixy="-1.5797E-06" ixz="-0.00089293" iyy="0.0041178" iyz="-6.8415E-07" izz="0.0035243"/>
+      <mass value="4.06488321"/>
+      <inertia ixx="0.01021404" ixy="-0.00000616" ixz="-0.00298647" iyy="0.00954440" iyz="-0.00000209" izz="0.01053661"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1456,8 +1456,8 @@ and to define the end effectors of the robot-->
   <link name="multisense/hokuyo_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0.032428 0.0004084 -0.0041835"/>
-      <mass value="0.057654"/>
-      <inertia ixx="3.7174E-05" ixy="4.9927E-08" ixz="1.1015E-05" iyy="4.2412E-05" iyz="-9.8165E-09" izz="4.167E-05"/>
+      <mass value="0.31059106"/>
+      <inertia ixx="0.00025503" ixy="0.00000033" ixz="0.00009203" iyy="0.00035221" iyz="-0.00000008" izz="0.00020967"/>
     </inertial>
     <visual>
       <origin rpy="1.5707963267949 0 1.5707963267949" xyz="0 0 0"/>
@@ -1495,7 +1495,7 @@ and to define the end effectors of the robot-->
   <!-- Stereo Camera -->
   <joint name="left_camera_frame_joint" type="fixed">
     <!-- optical frame collocated with tilting DOF -->
-    <origin xyz="0.0 0.035 -0.002"/>
+    <origin xyz="-0.02787746 0.00379130 -0.02191020"/>
     <parent link="multisense/head"/>
     <child link="multisense/left_camera_frame"/>
   </joint>

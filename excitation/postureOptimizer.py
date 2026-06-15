@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 import matplotlib.pyplot as plt
 import numpy as np
 from idyntree import bindings as iDynTree
-from pyoptsparse import Optimization
 
 from excitation.optimizer import Optimizer, plotter
 from excitation.trajectoryGenerator import FixedPositionTrajectory
@@ -181,7 +180,7 @@ class PostureOptimizer(Optimizer):
         f = float(np.linalg.norm(param_error) ** 2)  # + np.std(param_error)
 
         c = self.testConstraints(g)
-        if self.config["showOptimizationGraph"] and not getattr(self.opt_prob, "is_gradient", False):
+        if self.config["showOptimizationGraph"] and not self.is_gradient_eval:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -192,7 +191,7 @@ class PostureOptimizer(Optimizer):
         print(f"Objective function value: {f} (last best: {self.last_best_f})")
 
         if self.config["verbose"]:
-            if hasattr(self.opt_prob, "is_gradient") and self.opt_prob.is_gradient:
+            if self.is_gradient_eval:
                 print("(Gradient evaluation)")
             print(f"Parameter error: {param_error}")
             if self.config["verbose"] > 1:
@@ -208,25 +207,25 @@ class PostureOptimizer(Optimizer):
 
         return f, g, fail
 
-    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrapper to convert pyOptSparse dict-based API to flat array."""
-        x = np.array([xdict[name] for name in self._var_names]).flatten()
-        f, g, fail = self.objectiveFunc(x)
-        funcs = {"f": f, "g": np.array(g)}
-        return funcs, bool(fail)
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build initial values and bounds for the posture angle variables.
 
-    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
-        """Add variables, define bounds.
-        variable type: 'c' - continuous, 'i' - integer, 'd' - discrete (choices)
-        constraint types: 'i' - inequality, 'e' - equality
+        Variable order is num_postures blocks of num_dofs joint angles.
+
+        Args:
+            initial_values: optional flat array of initial variable values (e.g. from a
+                previous global optimization). If None, uses configured initial postures.
+
+        Returns:
+            (x0, lower, upper) arrays.
         """
+        x0: list[float] = []
+        lower: list[float] = []
+        upper: list[float] = []
 
-        self._var_names: list[str] = []
-
-        # add objective
-        opt_prob.addObj("f")
-
-        # add variables: angles for each posture
+        # variables: angles for each posture
         for p in range(self.num_postures):
             for d in range(self.num_dofs):
                 d_n = self.model.jointNames[d]
@@ -248,13 +247,19 @@ class PostureOptimizer(Optimizer):
                 else:
                     initial = 0.0
 
-                name = f"p_{p} q_{d}"
-                self._var_names.append(name)
-                opt_prob.addVar(name, value=initial, lower=low, upper=high)
+                x0.append(initial)
+                lower.append(low)
+                upper.append(high)
 
-        # add constraints (functions are calculated in objectiveFunc())
-        # for each link mesh distance to each other link, should be >0
-        opt_prob.addConGroup("g", self.num_constraints, lower=0.0, upper=np.inf)
+        x0_arr = np.array(initial_values, dtype=float) if initial_values is not None else np.array(x0)
+        return x0_arr, np.array(lower), np.array(upper)
+
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Build bounds for the constraint values (computed in objectiveFunc()).
+
+        For each link mesh distance to each other link, should be > 0.
+        """
+        return np.zeros(self.num_constraints), np.inf * np.ones(self.num_constraints)
 
     def vecToParam(self, x: np.ndarray) -> list[dict[str, Any]]:
         # put solution vector into form for trajectory class
@@ -271,26 +276,11 @@ class PostureOptimizer(Optimizer):
     def optimizeTrajectory(self) -> FixedPositionTrajectory:
         # use non-linear optimization to find parameters
 
-        ## describe optimization problem with pyOptSparse classes
+        # ipopt, not really correct
+        num_vars = self.num_postures * self.num_dofs
+        self.local_iter_max = (num_vars + self.num_constraints) * self.config["localOptIterations"]
 
-        # Instanciate Optimization Problem
-        self.opt_prob = Optimization("Posture optimization", self._objFuncWrapper)
-
-        self.addVarsAndConstraints(self.opt_prob)
-        # print(self.opt_prob)
-
-        if self.config["localSolver"] in ["SLSQP", "PSQP"]:
-            # slsqp/psqp
-
-            num_vars = self.num_postures * self.num_dofs
-            # num of gradient evals divided by parallel processes times iterations
-            self.local_iter_max = (num_vars * 2) * self.config["localOptIterations"]
-        else:
-            # ipopt, not really correct
-            num_vars = self.num_postures * self.num_dofs
-            self.local_iter_max = (num_vars + self.num_constraints) * self.config["localOptIterations"]
-
-        sol_vec = self.runOptimizer(self.opt_prob)
+        sol_vec = self.runOptimizer()
 
         angles = self.vecToParam(sol_vec)
         self.trajectory.initWithAngles(angles)

@@ -1,5 +1,106 @@
 # Changelog
 
+## 0.9.7
+
+### Optimization (pyOptSparse -> cyipopt)
+- Removed the pyOptSparse dependency; IPOPT is now driven directly via cyipopt (a required
+  dependency; needs libipopt installed for building).
+- Removed the SLSQP, PSQP, ALPSO and NSGA2 solver code paths and the now single-valued
+  `localSolver`, `nlOptSolver` and `globalSolver` config options (IPOPT for local and NL
+  identification, Optuna for global search).
+- Gradient and constraint-jacobian evaluations are cached per point, so repeated solver
+  callbacks at the same point don't re-run the expensive trajectory simulation.
+
+### Trajectory optimization (excitation)
+- `trajectoryTargetVelocity`: optional per-joint peak-velocity soft cost (with analytical
+  gradient). Friction is unidentifiable for joints that barely move and the inertial
+  D-optimality objective does not reward joint velocity by itself.
+- `globalOptAmplitudeRepair`: infeasible global-search candidates are repaired in-place by
+  backing off their Fourier amplitudes, so they can still contribute a feasible solution.
+- `trajectorySeedSolutions`: previously optimized trajectories can be enqueued as initial
+  global-search trials.
+- `trajectoryPriorMeasurements`: optional sequential experiment design — the information
+  matrix of previously executed trajectories enters the D-optimality objective so a new
+  trajectory maximizes the information it adds.
+
+### Collision checking
+- Robot-vs-world collision checking now works for the suspended floating base: it uses the
+  simulated (swung) base pose rather than the fixed mount pose, includes world links for
+  suspended attachment, composes the world URDF joint chain when placing world geometry,
+  and checks the ramp-in/out transitions against representative swung poses. World-world
+  pairs are skipped.
+- The collision constraint count is taken from the actual checked-pair list rather than an
+  approximate formula, so it stays correct under any pairing configuration.
+- New `worldCollisionMargin`: required clearance to world geometry (box hulls
+  under-approximate protruding parts and `scaleCollisionHull` shrinks them).
+- The visualizer marks robot-vs-world clearance violations (previously only robot
+  self-collisions), using the same margin semantics as the optimizer.
+
+### Identification
+- `cadRegularizationMode: observability`: pull each standard parameter toward the a priori
+  (CAD) model with a per-parameter weight that grows where the data determines it poorly
+  (vs. the previous hard identifiable/non-identifiable split). Keeps the standard-parameter
+  decomposition closer to CAD in weakly-excited directions. On a well-conditioned model
+  (walkman) this barely affects the torque fit; on small/poorly-conditioned systems it can
+  shift it more, so it is opt-in and the default remains `uniform`.
+- Two-step friction identification: the smoothed Coulomb sign term is centralized in
+  `helpers.getFrictionSignSeries` (shared by the regressor columns, the friction OLS and
+  all torque predictions) and computed from the raw measured velocities low-pass filtered
+  at `frictionVelocityCutoff` to suppress sign chatter near zero velocity.
+- `frictionVelocityDeadZone`: Swevers-style velocity dead zone in the friction OLS that
+  keeps the Coulomb and viscous terms separable under velocity noise.
+- `frictionFvRegularization`: per-joint Tikhonov prior pulling the viscous coefficient
+  toward the a priori URDF value (the OLS was previously unregularized).
+- `useTrajectoryWeighting`: with several measurement files (already supported via repeated
+  `--measurements`), weight each file's base-wrench equations by the inverse of its
+  residual noise rather than stacking samples equally, so a noisier file does not dominate.
+- The identifier reports friction parameter errors against the real model when
+  `--model_real` is given.
+
+### Simulator
+- Noisy measurements are saved under the `*_raw` keys (matching the excite.py/csv2npz.py
+  real-data semantics); the clean reference signals remain available as `target_*`.
+
+### Fixes and tooling
+- Validation-data loading no longer crashes on pickled contact arrays.
+- Regenerated the kuka example trajectory in the positions-based format used by excite.py.
+- Pinned Python to 3.13 (idyntree does not build on 3.14 yet); corrected the README
+  dependency-group instructions (`uv sync --group` / `--all-groups`).
+- Removed remaining Python 2 compatibility code (the np.load fallback with its bare except,
+  the `unicode` alias); latin1 decoding of old measurement files is kept.
+
+## 0.9.5
+
+### GUI
+- Graceful cancellation: cancel button now waits for the subprocess to finish saving
+  instead of cutting off output immediately. Shows "Cancelling..." status while the
+  process shuts down, then the final status once it exits.
+- Sleep inhibition: subprocesses are wrapped with `caffeinate` (macOS) or
+  `systemd-inhibit` (Linux) so the system stays awake during long-running optimizations
+- Cancelled trajectory runs now auto-fill the trajectory file field if the file was saved
+
+### Trajectory optimization
+- Worker processes (Optuna and gradient pool) now ignore SIGINT; only the main process
+  handles Ctrl-C, eliminating noisy traceback spam from child processes
+- Optuna study reload after worker termination is wrapped in error handling to survive
+  SQLite corruption from mid-write worker kills
+- Ctrl-C during global optimization now skips local optimization and proceeds directly
+  to saving the best solution found so far
+
+## 0.9.4
+
+### Identification (SDP)
+- **Replaced SDP solver pipeline**: removed sympy/lmi_sdp/cvxopt/dsdp5, replaced with
+  cvxpy. Supports CLARABEL (default, bundled), SCS (bundled), MOSEK (optional), and others.
+  CLARABEL solves the full 29-DOF WALKMAN in cases where cvxopt failed. 
+- Removed dependencies: `cvxopt`, `pylmi-sdp`. Added: `cvxpy`.
+- Constraints built numerically (numpy) instead of symbolically (sympy) — faster and much simpler
+- `sdpSolver` config option selects solver (replaces `sdpBackend`/`onlyUseDSDP`)
+- `sdpSolverOptions` passes solver-specific options
+- Pinned links (`dontChangeLinks`) excluded from PSD, hull, and mass constraints —
+  prevents infeasible contradictions from zero-mass virtual links
+- Closest-to-CAD refinement step skipped when first solve fails
+
 ## 0.9.3
 
 ### Suspended base dynamics
@@ -33,7 +134,6 @@
 - `dontChangeLinks`: pin all parameters of named links to a priori (replaces manual
   parameter index lists)
 - `sdpSafeMargin`: configurable eigenvalue lower bound for physical consistency constraints
-- `sdpFeasTol`: configurable cvxopt feasibility tolerance for thin feasible regions
 - Improved cvxopt error reporting (iterations, gap, primal/dual infeasibility)
 
 ### Trajectory optimization

@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
 from idyntree import bindings as iDynTree
-from pyoptsparse import Optimization
 
 from excitation.optimizer import Optimizer, plotter
 from excitation.trajectoryGenerator import (
     PulsedTrajectory,
 )
+from identification.data import Data
 from identification.helpers import URDFHelpers
 
 
@@ -142,49 +142,33 @@ class TrajectoryOptimizer(Optimizer):
         self.idyn_model = loader.model()
         self.neighbors = URDFHelpers.getNeighbors(self.idyn_model)
 
-        # amount of collision checks to be done (exclude links without visual geometry)
+        # links without visual/collision geometry can't be checked
         self.no_geometry_links = set(self.model.linkNames) - set(self.link_cuboid_hulls.keys())
-        eff_links = (
-            self.model.num_links
-            - len(self.no_geometry_links)
-            - len(self.config["ignoreLinksForCollision"])
-            + len(self.world_links)
-        )
         self.num_samples = int(self.config["excitationFrequency"] * self.trajectory.getPeriodLength())
-        self.num_coll_constraints = eff_links * (eff_links - 1) // 2
 
-        # ignore neighbors
-        nb_pairs: list[tuple] = []
-        for link in self.neighbors:
-            if link in self.config["ignoreLinksForCollision"]:
-                continue
-            if link not in self.model.linkNames:
-                continue
-            if link not in self.link_cuboid_hulls:
-                continue
-            nb_real = (
-                set(self.neighbors[link]["links"])
-                .difference(self.config["ignoreLinksForCollision"])
-                .difference(self.no_geometry_links)
-                .intersection(self.model.linkNames)
-            )
-            for l in nb_real:
-                if (link, l) not in nb_pairs and (l, link) not in nb_pairs:
-                    nb_pairs.append((link, l))
-        # only count ignore pairs where both links are in the effective set
-        # (not already removed via ignoreLinksForCollision)
-        ignored = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
-        all_links = set(self.model.linkNames + self.world_links)
-        effective_ignore_pairs = [
-            p
-            for p in self.config["ignoreLinkPairsForCollision"]
-            if p[0] in all_links and p[1] in all_links and p[0] not in ignored and p[1] not in ignored
-        ]
-        self.num_coll_constraints -= (
-            len(nb_pairs)  # neighbors
-            + len(effective_ignore_pairs)
-        )  # custom combinations
+        # build the exact list of link pairs to check once, so the constraint count
+        # (size of the collision portion of g) matches the pairs actually evaluated.
+        # (a previous approximate eff_links*(eff_links-1)/2 formula did not, which
+        # overflowed g when ignoreCollisionBetweenGroups was emptied)
+        self._buildCollisionPairs()
+        self.num_coll_constraints = len(self._collision_pairs)
         self.num_constraints += self.num_coll_constraints
+
+        # sequential experiment design: accumulate the information matrix of previous
+        # trajectories' measurements. The D-optimality objective then maximizes
+        # log det(YtY_prior + Y^T Y), i.e. the information *added* by the new
+        # trajectory in the directions the previous ones left weak.
+        self.YtY_prior: np.ndarray | None = None
+        prior_files = self.config.get("trajectoryPriorMeasurements") or []
+        if prior_files:
+            yty = np.zeros((self.model.num_base_params, self.model.num_base_params))
+            for prior_file in prior_files:
+                print(f"computing prior information matrix from {prior_file}")
+                prior_data = Data(self.config)
+                prior_data.init_from_files([[prior_file]])
+                self.model.computeRegressors(prior_data)
+                yty += self.model.YBase.T @ self.model.YBase
+            self.YtY_prior = yty
 
         self.initVisualizer()
 
@@ -277,6 +261,9 @@ class TrajectoryOptimizer(Optimizer):
         # number at (λ_max + δ)/δ, preventing the gradient from losing precision.
         # δ is set relative to the largest eigenvalue so it's scale-invariant.
         YtY = self.model.YBase.T @ self.model.YBase
+        if self.YtY_prior is not None:
+            # sequential design: maximize information added on top of previous trajectories
+            YtY = YtY + self.YtY_prior
         eigvals = np.linalg.eigvalsh(YtY)
         lambda_max = float(eigvals[-1])
         # δ = fraction of λ_max; controls the conditioning of the gradient.
@@ -357,86 +344,61 @@ class TrajectoryOptimizer(Optimizer):
         if self.config["verbose"] > 1:
             print("checking collisions")
 
-        # pre-compute the list of link pairs to check (only once, not per sample)
-        if not hasattr(self, "_collision_pairs"):
-            all_links = self.model.linkNames + self.world_links
-            ignore_links = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
-            ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
-                (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
-            }
-
-            # optionally limit collision checks to links within a maximum kinematic distance
-            # (dramatically reduces pairs for humanoids where e.g. left foot can't reach right hand)
-            max_kin_dist = self.config.get("collisionMaxKinematicDistance", 0)
-
-            def _kin_distance(start: str, target: str) -> int:
-                """BFS shortest path in the kinematic tree."""
-                visited = {start}
-                queue = [(start, 0)]
-                while queue:
-                    current, dist = queue.pop(0)
-                    if current == target:
-                        return dist
-                    for nb in self.neighbors.get(current, {}).get("links", []):
-                        if nb not in visited:
-                            visited.add(nb)
-                            queue.append((nb, dist + 1))
-                return 999
-
-            # Build set of group-excluded pairs (links in different groups can't collide)
-            group_ignore: set[tuple[str, str]] = set()
-            for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
-                if len(group_pair) == 2:
-                    for a in group_pair[0]:
-                        for b in group_pair[1]:
-                            group_ignore.add((a, b))
-                            group_ignore.add((b, a))
-
-            self._collision_pairs: list[tuple[str, str]] = []
-            for l0 in range(len(all_links)):
-                for l1 in range(l0 + 1, len(all_links)):
-                    l0_name = all_links[l0]
-                    l1_name = all_links[l1]
-                    if l0_name in ignore_links or l1_name in ignore_links:
-                        continue
-                    if (l0_name, l1_name) in ignore_pairs:
-                        continue
-                    if (l0_name, l1_name) in group_ignore:
-                        continue
-                    # neighbors can't collide with a proper joint range
-                    if l0 < self.model.num_links and l1 < self.model.num_links:
-                        if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
-                            continue
-                    # skip pairs too far apart in the kinematic tree
-                    if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
-                        continue
-                    self._collision_pairs.append((l0_name, l1_name))
-            if self.config.get("verbose", 0):
-                print(f"Collision pairs: {len(self._collision_pairs)}")
+        # the link pairs to check are built once in __init__ (so num_coll_constraints
+        # matches len(_collision_pairs) exactly)
 
         collision_step = self.config.get("collisionCheckStep", 3)
         use_ag = self.config.get("useAnalyticalGradients", False)
         if use_ag:
             coll_argmin: dict[int, tuple[int, np.ndarray]] = {}
 
+        # base pose per sample from the simulated (suspended) base motion — collision
+        # checks must use the swung base pose, otherwise robot-vs-world pairs are
+        # evaluated at the mount pose and miss collisions under swing
+        base_rpy = trajectory_data.get("base_rpy")
+        base_pos = trajectory_data.get("base_position")
+
         # Collect all configurations to check (main trajectory + transition)
-        collision_configs: list[tuple[int, np.ndarray]] = []
+        collision_configs: list[tuple[int, np.ndarray, np.ndarray | None, np.ndarray | None]] = []
         for p in range(0, pos.shape[0], collision_step):
-            collision_configs.append((p, pos[p]))
+            collision_configs.append(
+                (
+                    p,
+                    pos[p],
+                    base_rpy[p] if base_rpy is not None else None,
+                    base_pos[p] if base_pos is not None else None,
+                )
+            )
 
         # also check the minimum-jerk transitions from/to zero position
         # (the trajectory is periodic so both paths are nearly identical,
         # but check both since pos[0] and pos[-1] may differ slightly)
+        # base pose: the base keeps swinging with large amplitude during the
+        # ramp-out (the suspension decays much slower than the 3s transition),
+        # so check each transition configuration against several representative
+        # base poses sampled from the periodic motion instead of the rest pose
         transition_duration = self.config.get("transitionDuration", 3.0)
         if transition_duration > 0:
             transition_samples = self.config.get("transitionCollisionSamples", 10)
             zero_pos = np.zeros(self.num_dofs)
+            if base_rpy is not None:
+                pose_idx = list(np.linspace(0, len(base_rpy) - 1, 6).astype(int))
+                pose_idx.append(int(np.argmax(np.abs(base_rpy).sum(axis=1))))  # extreme swing
+                transition_poses = [
+                    (base_rpy[i], base_pos[i] if base_pos is not None else None) for i in sorted(set(pose_idx))
+                ]
+            else:
+                transition_poses = [(None, None)]
+            tcount = 0
             for q_boundary in [pos[0], pos[-1]]:
                 for ti in range(transition_samples):
                     tau = (ti + 1) / (transition_samples + 1)
                     s = 10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5
                     q_trans = zero_pos + s * (q_boundary - zero_pos)
-                    collision_configs.append((-1 - ti, q_trans))  # negative index = transition sample
+                    for rpy_t, bpos_t in transition_poses:
+                        tcount += 1
+                        # negative index = transition sample
+                        collision_configs.append((-tcount, q_trans, rpy_t, bpos_t))
 
         use_capsule = self.config.get("collisionMode", "convex") == "capsule" and self._capsules
         collision_link_names = sorted(set(l for pair in self._collision_pairs for l in pair))
@@ -450,8 +412,8 @@ class TrajectoryOptimizer(Optimizer):
                 self._fcl_objects[link_name] = (fcl.CollisionObject(geom), offset)
         fcl_req = fcl.DistanceRequest(True)
 
-        for p_idx, q_check in collision_configs:
-            self.setCollisionRobotState(q_check)
+        for p_idx, q_check, rpy_check, bpos_check in collision_configs:
+            self.setCollisionRobotState(q_check, base_rpy=rpy_check, base_position=bpos_check)
             for g_cnt, (l0_name, l1_name) in enumerate(self._collision_pairs):
                 if use_capsule and l0_name in self._capsules and l1_name in self._capsules:
                     d = self.getCapsuleDistance(l0_name, l1_name)
@@ -464,6 +426,7 @@ class TrajectoryOptimizer(Optimizer):
                     obj0.setTransform(fcl.Transform(rot0, pos0 + off0))
                     obj1.setTransform(fcl.Transform(rot1, pos1 + off1))
                     d = fcl.distance(obj0, obj1, fcl_req, fcl.DistanceResult())
+                d -= self._collision_pair_margins[g_cnt]
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
                     if use_ag and p_idx >= 0:
@@ -507,6 +470,17 @@ class TrajectoryOptimizer(Optimizer):
         f2 = (1.0 - pos_util_mean) * 10.0  # 0 when using full range, 10 when no motion
         f += f2
 
+        # 4. velocity magnitude: penalize joints whose peak velocity stays below the
+        # target. Friction (the viscous term in particular) is unidentifiable for
+        # joints that barely move — D-optimality of the inertial regressor does not
+        # reward velocity by itself, so without this term slow joints stay slow.
+        vel_target = float(self.config.get("trajectoryTargetVelocity", 0.0))
+        f4 = 0.0
+        if vel_target > 0:
+            vel_utilization = vel_absmax / vel_target
+            f4 = float(np.mean(np.maximum(0.0, 1.0 - vel_utilization)))
+            f += f4 * 10.0
+
         if self.config["verbose"] or f1 > 0.3:
             print(
                 f"torque: {np.round(utilization, 3).tolist()} (bal={f1:.2f}, mag={util_mean:.2f}/{target_utilization})"
@@ -520,15 +494,14 @@ class TrajectoryOptimizer(Optimizer):
 
         dopt_part = neg_log_det * self._dopt_scale
         print(
-            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
+            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f} + vel_mag: {f4 * 10.0:.1f}, best: {self.last_best_f:.1f})",
             end=" ",
         )
         print(Fore.RESET)
 
-        is_gradient = getattr(getattr(self, "opt_prob", None), "is_gradient", False)
-        if self.config["verbose"] and is_gradient:
+        if self.config["verbose"] and self.is_gradient_eval:
             print("(Gradient evaluation)")
-        if not is_gradient and self.config["showOptimizationGraph"]:
+        if not self.is_gradient_eval and self.config["showOptimizationGraph"]:
             self.xar.append(self.iter_cnt)
             self.yar.append(f)
             self.x_constr.append(c)
@@ -541,6 +514,10 @@ class TrajectoryOptimizer(Optimizer):
             self.last_best_f = f
             self.last_best_f_f1 = f1
             self.last_best_sol = x
+        elif not c and f < self.last_best_infeasible_f:
+            # candidate for amplitude-backoff repair (see repairBestInfeasible)
+            self.last_best_infeasible_f = f
+            self.last_best_infeasible_sol = x
 
         print("\n\n")
 
@@ -553,12 +530,15 @@ class TrajectoryOptimizer(Optimizer):
                 "accelerations": trajectory_data["accelerations"].copy(),
                 "times": trajectory_data["times"].copy(),
                 "torques": torques.copy(),
+                "base_rpy": base_rpy.copy() if base_rpy is not None else None,
+                "base_position": base_pos.copy() if base_pos is not None else None,
                 "n_observable": n_observable,
                 "dopt_scale": self._dopt_scale,
                 "torque_absmax_idx": np.argmax(np.abs(torques[:, fb:]), axis=0),
                 "pos_min_idx": np.argmin(pos, axis=0),
                 "pos_max_idx": np.argmax(pos, axis=0),
                 "vel_absmax_idx": np.argmax(np.abs(vel), axis=0),
+                "vel_absmax": vel_absmax.copy(),
                 "utilization": utilization.copy(),
                 "util_mean": float(util_mean),
                 "util_std": float(np.std(utilization)),
@@ -567,9 +547,10 @@ class TrajectoryOptimizer(Optimizer):
                 "pos_range_available": pos_range_available.copy(),
             }
 
-        # IPOPT respects the fail flag (discards the evaluation), SLSQP doesn't
-        # (it treats the returned values as real, so fail=1 corrupts its gradient)
-        fail = 1.0 if (self._eval_failed and self.config.get("localSolver") == "IPOPT") else 0.0
+        # IPOPT via cyipopt has no fail flag mechanism — failed evaluations are
+        # already clamped to large but finite values above. The flag is still
+        # returned for informational purposes (ignored by the solvers).
+        fail = 1.0 if self._eval_failed else 0.0
         return f, g, fail
 
     def testBounds(self, x):
@@ -646,88 +627,235 @@ class TrajectoryOptimizer(Optimizer):
         x = kwargs["x_new"]
         return self.testBounds(x) and self.testConstraints(self.last_g)
 
-    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrapper to convert pyOptSparse dict-based API to flat array."""
-        x = np.array([xdict[name] for name in self._var_names]).flatten()
-        f, g, fail = self.objectiveFunc(x)
-        funcs = {"f": f, "g": np.array(g)}
-        return funcs, bool(fail)
+    def _buildCollisionPairs(self) -> None:
+        """Build the list of link pairs to collision-check and their world-clearance margins.
 
-    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
-        """Compute analytical gradients for pyOptSparse.
-
-        Called by pyOptSparse when sens= is set to this method. Uses cached
-        data from the last objectiveFunc call to compute exact gradients via
-        the chain rule through the regressor SVD.
+        Applies all pair filters (ignored links, ignored pairs, ignored groups, neighbors,
+        kinematic distance, world-world skip). Called once in __init__ so that
+        num_coll_constraints == len(self._collision_pairs); the per-evaluation collision
+        loop reuses the result.
         """
-        from excitation.analyticalGradient import compute_analytical_gradient
+        all_links = self.model.linkNames + self.world_links
+        ignore_links = set(self.config["ignoreLinksForCollision"]) | self.no_geometry_links
+        ignore_pairs = {(a, b) for a, b in self.config["ignoreLinkPairsForCollision"]} | {
+            (b, a) for a, b in self.config["ignoreLinkPairsForCollision"]
+        }
 
-        if not hasattr(self, "_ag_cache"):
-            print("Warning: no cached data for analytical gradient, returning zeros")
-            func_sens: dict = {"f": {}, "g": {}}
-            for name in self._var_names:
-                func_sens["f"][name] = np.array([0.0])
-                func_sens["g"][name] = np.zeros((self.num_constraints, 1))
-            return func_sens, False
+        # optionally limit collision checks to links within a maximum kinematic distance
+        # (dramatically reduces pairs for humanoids where e.g. left foot can't reach right hand)
+        max_kin_dist = self.config.get("collisionMaxKinematicDistance", 0)
 
-        obj_grad, con_grad = compute_analytical_gradient(self)
+        def _kin_distance(start: str, target: str) -> int:
+            """BFS shortest path in the kinematic tree."""
+            visited = {start}
+            queue = [(start, 0)]
+            while queue:
+                current, dist = queue.pop(0)
+                if current == target:
+                    return dist
+                for nb in self.neighbors.get(current, {}).get("links", []):
+                    if nb not in visited:
+                        visited.add(nb)
+                        queue.append((nb, dist + 1))
+            return 999
 
-        func_sens = {"f": {}, "g": {}}
-        for k, name in enumerate(self._var_names):
-            func_sens["f"][name] = np.array([obj_grad[k]])
-            func_sens["g"][name] = con_grad[:, k].reshape(-1, 1)
+        # Build set of group-excluded pairs (links in different groups can't collide)
+        group_ignore: set[tuple[str, str]] = set()
+        for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
+            if len(group_pair) == 2:
+                for a in group_pair[0]:
+                    for b in group_pair[1]:
+                        group_ignore.add((a, b))
+                        group_ignore.add((b, a))
 
-        return func_sens, False
+        self._collision_pairs: list[tuple[str, str]] = []
+        num_robot_links = len(self.model.linkNames)
+        for l0 in range(len(all_links)):
+            for l1 in range(l0 + 1, len(all_links)):
+                l0_name = all_links[l0]
+                l1_name = all_links[l1]
+                # world links are static — world-world pairs are irrelevant
+                # (and often touch by construction, e.g. crane column on ground)
+                if l0 >= num_robot_links and l1 >= num_robot_links:
+                    continue
+                if l0_name in ignore_links or l1_name in ignore_links:
+                    continue
+                if (l0_name, l1_name) in ignore_pairs:
+                    continue
+                if (l0_name, l1_name) in group_ignore:
+                    continue
+                # neighbors can't collide with a proper joint range
+                if l0 < self.model.num_links and l1 < self.model.num_links:
+                    if l0_name in self.neighbors[l1_name]["links"] or l1_name in self.neighbors[l0_name]["links"]:
+                        continue
+                # skip pairs too far apart in the kinematic tree
+                if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
+                    continue
+                self._collision_pairs.append((l0_name, l1_name))
+        # clearance margin for robot-vs-world pairs: the box hulls under-approximate
+        # protruding parts (fingers) and scaleCollisionHull shrinks them further, so
+        # require a safety distance to world geometry
+        world_margin = float(self.config.get("worldCollisionMargin", 0.0))
+        world_link_set = set(self.world_links)
+        self._collision_pair_margins = np.array(
+            [
+                world_margin if (l0 in world_link_set or l1 in world_link_set) else 0.0
+                for l0, l1 in self._collision_pairs
+            ]
+        )
+        if self.config.get("verbose", 0):
+            print(f"Collision pairs: {len(self._collision_pairs)}")
 
-    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
-        """Add variables, define bounds.
+    def scaleAmplitudes(self, x: np.ndarray, scale: float) -> np.ndarray:
+        """Return x with the Fourier coefficients (a, b) scaled by the given factor.
+
+        Pulse frequency and oscillation centers are kept — scaling toward zero
+        shrinks the motion amplitude, which monotonically relaxes the position,
+        velocity, torque and collision constraints.
+        """
+        wf, q, a, b = self.vecToParams(x)
+        a_s = [ai * scale for ai in a]
+        b_s = [bi * scale for bi in b]
+        return np.array([wf] + list(q) + [c for ai in a_s for c in ai] + [c for bi in b_s for c in bi])
+
+    def repairBestInfeasible(self) -> None:
+        """Amplitude-backoff repair of the best infeasible solution.
+
+        IPOPT often ends at informative but infeasible iterates (torque/collision
+        violations) and its restoration never returns to feasibility, so the run
+        falls back to a much earlier feasible point. Scale the Fourier coefficients
+        of the best infeasible solution toward zero until the constraints are
+        satisfied — objectiveFunc's best-tracking adopts the repaired point if it
+        beats the best feasible solution found so far.
+        """
+        if self.last_best_infeasible_sol.size == 0 or self.last_best_infeasible_f >= self.last_best_f:
+            return
+        print(
+            f"amplitude-backoff repair of best infeasible solution "
+            f"(obj={self.last_best_infeasible_f:.2f} vs feasible best {self.last_best_f:.2f})"
+        )
+        for scale in (0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5):
+            x_try = self.scaleAmplitudes(self.last_best_infeasible_sol, scale)
+            f, g, fail = self.objectiveFunc(x_try)
+            if not fail and self.testConstraints(g):
+                print(f"repair: feasible at amplitude scale {scale} (obj={f:.2f})")
+                return
+        print("repair: no feasible point found by amplitude backoff")
+
+    def repairTrialCandidate(self, x: np.ndarray) -> tuple[float, np.ndarray, float] | None:
+        """Back off the Fourier amplitudes of an infeasible global-search candidate.
+
+        Returns (f, g, scale) of the first feasible backoff or None. Used during
+        the Optuna phase (when globalOptAmplitudeRepair is set) so that infeasible
+        trials still contribute feasible solutions: the trial then reports the
+        repaired objective and constraints, biasing the sampler toward shapes
+        that repair well. The evaluations go through objectiveFunc, so the
+        best-feasible tracking picks the repaired points up automatically. The
+        scale is stored on the trial so verification can reconstruct the
+        repaired solution from the (unrepaired) trial params.
+        """
+        if not self.config.get("globalOptAmplitudeRepair", 0):
+            return None
+        for scale in (0.7, 0.5, 0.3):
+            x_try = self.scaleAmplitudes(x, scale)
+            f, g, fail = self.objectiveFunc(x_try)
+            if not fail and self.testConstraints(g):
+                return f, np.asarray(g), scale
+        return None
+
+    def buildSeedTrialParams(self, var_info: list[tuple[str, float, float, float]]) -> list[dict[str, float]]:
+        """Build Optuna seed trials from previously optimized trajectory files.
+
+        Each file in trajectorySeedSolutions provides its Fourier params
+        (wf, q, a, b) as an enqueued trial, so the sampler starts from
+        known-feasible solutions instead of having to rediscover the (tiny)
+        feasible region by chance. Values are clipped to the current variable
+        bounds; files whose joint/harmonic structure doesn't match are skipped.
+        """
+        seeds: list[dict[str, float]] = []
+        bounds = {name: (lo, hi) for name, lo, hi, _ in var_info}
+        for fn in self.config.get("trajectorySeedSolutions") or []:
+            tf = np.load(fn, allow_pickle=True)
+            if "a" not in tf:
+                print(f"seed solution {fn} has no trajectory params, skipping")
+                continue
+            a = [np.asarray(ai) for ai in tf["a"]]
+            b = [np.asarray(bi) for bi in tf["b"]]
+            nf = np.asarray(tf["nf"])
+            if len(a) != self.num_dofs or any(int(nf[i]) != int(self.nf[i]) for i in range(self.num_dofs)):
+                print(f"seed solution {fn} has a different joint/harmonic structure, skipping")
+                continue
+            q = np.asarray(tf["q"])
+            params = {"wf": float(tf["wf"])}
+            for i in range(self.num_dofs):
+                params[f"q_{i}"] = float(q[i])
+            for i in range(self.num_dofs):
+                for j in range(self.nf[i]):
+                    params[f"a{i}_{j}"] = float(a[i][j])
+                    params[f"b{i}_{j}"] = float(b[i][j])
+            for name in params:
+                lo, hi = bounds[name]
+                params[name] = float(np.clip(params[name], lo, hi))
+            print(f"enqueuing seed solution from {fn}")
+            seeds.append(params)
+        return seeds
+
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build initial values and bounds for the flat variable vector.
+
+        Variable order is (wf, q offsets, a coefficients, b coefficients), with
+        per-joint nf so each joint may have a different coefficient count.
 
         Args:
-            opt_prob: pyOptSparse Optimization object
             initial_values: optional flat array of initial variable values (e.g. from a
                 previous global optimization). If None, uses default init values.
+
+        Returns:
+            (x0, lower, upper) arrays.
         """
+        if initial_values is not None:
+            x0 = np.array(initial_values, dtype=float)
+        else:
+            x0 = np.concatenate(
+                (
+                    [self.wf_init],
+                    np.asarray(self.qinit, dtype=float),
+                    np.concatenate(self.ainit),
+                    np.concatenate(self.binit),
+                )
+            )
 
-        self._var_names: list[str] = []
-        idx = 0
+        lower = np.concatenate(
+            (
+                [self.wf_min],
+                np.asarray(self.qmin, dtype=float),
+                np.full(self.total_ab, self.amin, dtype=float),
+                np.full(self.total_ab, self.bmin, dtype=float),
+            )
+        )
+        upper = np.concatenate(
+            (
+                [self.wf_max],
+                np.asarray(self.qmax, dtype=float),
+                np.full(self.total_ab, self.amax, dtype=float),
+                np.full(self.total_ab, self.bmax, dtype=float),
+            )
+        )
+        return x0, lower, upper
 
-        # w_f - pulsation
-        self._var_names.append("wf")
-        wf_val = float(initial_values[idx]) if initial_values is not None else self.wf_init
-        opt_prob.addVar("wf", value=wf_val, lower=self.wf_min, upper=self.wf_max)
-        idx += 1
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Build bounds for the constraint values (computed in objectiveFunc).
 
-        # q - offsets
-        for i in range(self.num_dofs):
-            name = "q_%d" % i
-            self._var_names.append(name)
-            q_val = float(initial_values[idx]) if initial_values is not None else self.qinit[i]
-            opt_prob.addVar(name, value=q_val, lower=self.qmin[i], upper=self.qmax[i])
-            idx += 1
-        # a, b - sin/cos params (per-joint nf, so each joint may have different count)
-        for i in range(self.num_dofs):
-            for j in range(self.nf[i]):
-                name = f"a{i}_{j}"
-                self._var_names.append(name)
-                a_val = float(initial_values[idx]) if initial_values is not None else self.ainit[i][j]
-                opt_prob.addVar(name, value=a_val, lower=self.amin, upper=self.amax)
-                idx += 1
-        for i in range(self.num_dofs):
-            for j in range(self.nf[i]):
-                name = f"b{i}_{j}"
-                self._var_names.append(name)
-                b_val = float(initial_values[idx]) if initial_values is not None else self.binit[i][j]
-                opt_prob.addVar(name, value=b_val, lower=self.bmin, upper=self.bmax)
-                idx += 1
-
-        # add constraint vars (constraint functions are in obfunc).
-        # Joint/velocity/torque constraints use g <= 0 for feasible (e.g.
-        # g = limit_lower - min_position < 0 when joint is above lower limit).
-        # Collision constraints use g >= 0 for feasible (positive = no collision).
+        Joint/velocity/torque constraints use g <= 0 for feasible (e.g.
+        g = limit_lower - min_position < 0 when joint is above lower limit).
+        Collision constraints use g >= 0 for feasible (positive = no collision).
+        """
         c_s = self.num_constraints - self.num_coll_constraints
         lower = np.concatenate([-np.inf * np.ones(c_s), np.zeros(self.num_constraints - c_s)])
         upper = np.concatenate([np.zeros(c_s), np.inf * np.ones(self.num_constraints - c_s)])
-        opt_prob.addConGroup("g", self.num_constraints, lower=lower, upper=upper)
+        return lower, upper
 
     def optimizeTrajectory(self) -> "PulsedTrajectory":
         """Find trajectory parameters by optimization.
@@ -736,14 +864,8 @@ class TrajectoryOptimizer(Optimizer):
         is returned even if the user aborts early with Ctrl-C.
         """
 
-        # Instanciate Optimization Problem
-        opt_prob = Optimization("Trajectory optimization", self._objFuncWrapper)
-        opt_prob.addObj("f")
-        self.opt_prob = opt_prob
-
-        self.addVarsAndConstraints(opt_prob)
         try:
-            sol_vec = self.runOptimizer(opt_prob)
+            sol_vec = self.runOptimizer()
         except KeyboardInterrupt:
             print("\n\nTrajectory optimization interrupted by user.")
             if len(self.last_best_sol) > 0:

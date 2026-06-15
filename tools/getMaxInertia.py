@@ -17,7 +17,7 @@ from identification import helpers
 
 if __name__ == "__main__":
     # urdf_file = os.path.join(_project_dir, 'model/centauro.urdf')
-    urdf_file = os.path.join(_project_dir, "model/walkman.urdf")
+    urdf_file = os.path.join(_project_dir, "model/walkman_apriori.urdf")
     loader = iDynTree.ModelLoader()
     loader.loadModelFromFile(urdf_file)
     model = loader.model()

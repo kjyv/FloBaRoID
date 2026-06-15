@@ -532,8 +532,15 @@ def add_friction(
 
         viscous = fv * vel
         smooth_sign = np.tanh(vel / sign_threshold)
-        stribeck_decay = np.exp(-np.abs(vel) / stribeck_vel)
-        coulomb_stiction = (fc + fs * stribeck_decay) * smooth_sign
+
+        # Stribeck stiction: adds extra friction near zero velocity that decays
+        # exponentially. Note: this is a continuous approximation — real stiction
+        # would require state tracking (stuck vs moving) and is discontinuous.
+        if stribeck_vel > 0 and fs > 0:
+            stribeck_decay = np.exp(-np.abs(vel) / stribeck_vel)
+            coulomb_stiction = (fc + fs * stribeck_decay) * smooth_sign
+        else:
+            coulomb_stiction = fc * smooth_sign
 
         friction_torques[:, torque_col_offset + j] = viscous + coulomb_stiction
 

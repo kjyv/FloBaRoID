@@ -21,13 +21,31 @@ class Data:
         self.unusedBlocks: list[tuple[Any, ...]] = list()
         self.seenBlocks: list[tuple[Any, ...]] = list()
 
+        # per-file sample boundaries in the concatenated sample space
+        # (single pseudo-file until init_from_files fills it)
+        self.file_boundaries: list[int] = [0]
+
         # has some data been loaded?
         self.inited = False
+
+    @staticmethod
+    def _validate_required_keys(data: dict[str, np.ndarray]) -> None:
+        """Check that the loaded data contains all keys required for identification."""
+        required_keys = {"positions", "velocities", "accelerations", "torques"}
+        missing = required_keys - set(data.keys())
+        if missing:
+            available = sorted(data.keys())
+            raise KeyError(
+                f"Measurement data is missing required key(s): {sorted(missing)}. "
+                f"Available keys: {available}. "
+                f"Make sure you are loading a measurements file, not a trajectory file."
+            )
 
     def init_from_data(self, data: dict[str, np.ndarray]) -> None:
         """load data from numpy array"""
 
         self.samples = self.measurements = data.copy()
+        self._validate_required_keys(data)
         self.num_loaded_samples = self.samples["positions"].shape[0]
         self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
         if self.opt["verbose"]:
@@ -39,15 +57,16 @@ class Data:
 
         with Timer() as t:
             so = self.opt["startOffset"]
+            # per-file sample boundaries in the concatenated (loaded) sample space,
+            # for per-trajectory weighting in identification
+            self.file_boundaries = [0]
             # load data from multiple files and concatenate, fix timing
             for fa in measurements_files:
                 for fn in fa:
-                    try:
-                        # python3
-                        m = np.load(fn, encoding="latin1", fix_imports=True, allow_pickle=True)
-                    except:
-                        # python2.7
-                        m = np.load(fn)
+                    # latin1 encoding so measurement files written by old (python 2)
+                    # versions of the tools still load
+                    m = np.load(fn, encoding="latin1", allow_pickle=True)
+                    self.file_boundaries.append(self.file_boundaries[-1] + m["positions"].shape[0] - so)
                     mv = {}
                     for k in m.keys():
                         mv[k] = m[k]
@@ -91,6 +110,7 @@ class Data:
                                 self.measurements[k] = np.concatenate((self.measurements[k], mv[k][so:, :]), axis=0)
                     m.close()
 
+            self._validate_required_keys(self.measurements)
             self.num_loaded_samples = self.measurements["positions"].shape[0]
             self.num_used_samples = self.num_loaded_samples // (self.opt["skipSamples"] + 1)
             if self.opt["verbose"]:

@@ -20,10 +20,8 @@ initialPostures:                 #for static optimization, feasible postures to 
 
 # proper trajectory optimization
 useGlobalOptimization: 0         #use global solver first (recommended)
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 1
 useLocalOptimization: 1          #do local (gradient based) optimization after using global solver
-localSolver: 'IPOPT'             #one of SLSQP, PSQP, IPOPT
 localOptIterations: 10            #how many optimizer iterations to use. this is not equal to function calls (does not include gradients etc.)
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
@@ -51,7 +49,6 @@ minVelocityConstraint: 0
 minVelocityPercentage: 0.1
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
 exciteMethod: null #'ros'        #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
@@ -100,7 +97,7 @@ minTol: 0.0001
 floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
-identifyFriction: 0
+identifyFrictionSimultaneously: 0
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
@@ -127,7 +124,6 @@ identifyClosestToCAD: 0
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'   # one of IPOPT, SLSQP, ALPSO
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
@@ -191,6 +187,10 @@ useDependents: 0
 # covariance estimation can be wrong (also assumes that error is zero mean and normal
 # distributed)
 useWLS: 0
+# when identifying from several measurement files (repeated --measurements),
+# weight each file's equations by the inverse of its residual noise instead of
+# stacking all samples equally, so a noisier session does not dominate (0 = off)
+useTrajectoryWeighting: 0
 
 # whether to filter the regressor columns (cutoff frequency is system dependent)
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
@@ -211,7 +211,6 @@ plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
-plotLegend: 1                #show plot legend
 
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution

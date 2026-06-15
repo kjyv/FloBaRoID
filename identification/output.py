@@ -14,9 +14,6 @@ from identification import helpers
 
 np.set_printoptions(linewidth=160)
 
-# redefine unicode for testing in python2/3
-unicode = str
-
 # color triplets
 color_triplets_6 = [
     [0.29019608, 0.43529412, 0.89019608],
@@ -80,12 +77,41 @@ class OutputConsole:
 
         # collect values for parameters
         description = idf.model.getDescriptionOfParameters()
-        if idf.opt["identifyFriction"]:
-            for i in range(0, idf.model.num_dofs):
-                description += f"Parameter {i + idf.model.num_model_params}: Constant friction / offset of joint {idf.model.jointNames[i]}\n"
+        if idf.opt["identifyFrictionSimultaneously"]:
+            mp = idf.model.num_model_params
+            nd = idf.model.num_dofs
+            for i in range(nd):
+                # the parameter symbol (Fc_i) is added later from param_syms, so only the
+                # human-readable description goes here (avoids a doubled "Fc_i - Fc_i -" label)
+                description += f"Parameter {mp + i}: Coulomb friction of joint {idf.model.jointNames[i]}\n"
 
-            for i in range(0, idf.model.num_dofs * 2):
-                description += f"Parameter {i + idf.model.num_dofs + idf.model.num_model_params}: Velocity dep. friction joint {idf.model.jointNames[i % idf.model.num_dofs]}\n"
+            if not idf.opt["identifyGravityParamsOnly"]:
+                if idf.opt["identifySymmetricVelFriction"]:
+                    for i in range(nd):
+                        description += f"Parameter {mp + nd + i}: Viscous friction of joint {idf.model.jointNames[i]}\n"
+                    off_offset = 2 * nd
+                else:
+                    for i in range(nd):
+                        description += (
+                            f"Parameter {mp + nd + i}: Viscous friction (+) of joint {idf.model.jointNames[i]}\n"
+                        )
+                    for i in range(nd):
+                        description += (
+                            f"Parameter {mp + 2 * nd + i}: Viscous friction (-) of joint {idf.model.jointNames[i]}\n"
+                        )
+                    off_offset = 3 * nd
+
+                for i in range(nd):
+                    description += (
+                        f"Parameter {mp + off_offset + i}: Torque offset of joint {idf.model.jointNames[i]}\n"
+                    )
+
+                if idf.opt.get("stribeckVelocity", 0) > 0:
+                    fs_start = idf.model.num_all_params - nd
+                    for i in range(nd):
+                        description += (
+                            f"Parameter {fs_start + i}: Stribeck stiction of joint {idf.model.jointNames[i]}\n"
+                        )
 
         idx_ep = 0  # count essential params
         lines = list()
@@ -130,6 +156,12 @@ class OutputConsole:
                 if idx_p in idf.stdEssentialIdx:
                     sum_diff_r_pc_ess += np.abs(diff_r_pc)
 
+                # display string for the %e column: the percentage is only meaningful when
+                # the reference (real) value is nonzero, else show a dash instead of a value
+                # blown up by dividing through ~0. Right-justified to the column width (7) so
+                # it lines up with the numeric rows.
+                pct_e_str = f"{np.abs(diff_r_pc):7.1f}" if real != 0 else f"{'-':>7}"
+
                 # get error percentage (new to apriori)
                 diff_apriori = apriori - real
                 # if apriori == 0: apriori = 0.01
@@ -147,11 +179,14 @@ class OutputConsole:
                     sum_pc_delta_ess += pc_delta
             else:
                 # get percentage difference between apriori and identified values
-                # (shown when real values are not known)
+                # (shown when real values are not known). Only meaningful when the a priori
+                # value is nonzero; otherwise show a dash rather than a value blown up by
+                # dividing through ~0. Right-justified to the column width (7) to line up
+                # with the numeric rows.
                 if apriori != 0:
-                    diff_pc = (100 * diff) / apriori
+                    pct_e_str = f"{(100 * diff) / apriori:7.1f}"
                 else:
-                    diff_pc = (100 * diff) / 0.01
+                    pct_e_str = f"{'-':>7}"
 
             # values for each line
             if idf.opt["useEssentialParams"] and idx_ep < idf.num_essential_params and idx_p in idf.stdEssentialIdx:
@@ -167,7 +202,7 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    np.abs(diff_r_pc),
+                    pct_e_str,
                     pc_delta,
                     sigma,
                     " ".join(idf.sdp.constr_per_param[idx_p_full]),
@@ -179,7 +214,7 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    np.abs(diff_r_pc),
+                    pct_e_str,
                     pc_delta,
                     sigma,
                     d,
@@ -191,14 +226,14 @@ class OutputConsole:
                     apriori,
                     approx,
                     diff,
-                    diff_pc,
+                    pct_e_str,
                     " ".join(idf.sdp.constr_per_param[idx_p_full]),
                     d,
                 ]
             elif idf.opt["useEssentialParams"]:
-                vals = [apriori, approx, diff, diff_pc, sigma, d]
+                vals = [apriori, approx, diff, pct_e_str, sigma, d]
             else:
-                vals = [apriori, approx, diff, diff_pc, d]
+                vals = [apriori, approx, diff, pct_e_str, d]
             lines.append(vals)
 
             if idf.opt["useEssentialParams"] and idx_p in idf.stdEssentialIdx:
@@ -262,7 +297,7 @@ class OutputConsole:
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
-                if type(lines[0][w]) in [str, unicode, list]:
+                if isinstance(lines[0][w], (str, list)):
                     # strings don't have precision
                     template += f"|{{{w}:{column_widths[w]}}}"
                 else:
@@ -370,7 +405,7 @@ class OutputConsole:
             # print values/description
             template = ""
             for w in range(0, len(column_widths)):
-                if type(lines[0][w]) in [str, unicode]:
+                if isinstance(lines[0][w], str):
                     # strings don't have precision
                     template += f"|{{{w}:{column_widths[w]}}}"
                 else:
@@ -460,11 +495,10 @@ class OutputConsole:
                 )
             else:
                 print(f"\ncurrent block: {idf.data.block_pos}")
-            # print "unused blocks: {}".format(idf.unusedBlocks)
             print(f"condition number: {la.cond(idf.model.YBase)}")
 
         if idf.opt["identifyGravityParamsOnly"]:
-            fric = idf.model.num_dofs * idf.opt["identifyFriction"]
+            fric = idf.model.num_dofs * idf.opt["identifyFrictionSimultaneously"]
             sum_id = np.sum(idf.model.xStd[0 : idf.model.num_identified_params - fric : 4])
         else:
             sum_id = np.sum(idf.model.xStd[0 : idf.model.num_model_params : 10])
@@ -489,15 +523,46 @@ class OutputConsole:
                 cons_apriori = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStdModel, full=True)
                 cons_ident = idf.paramHelpers.checkPhysicalConsistencyNoTriangle(idf.model.xStd)
 
-            if False in list(cons_apriori.values()):
+            # determine which links are pinned (fixed to a priori) — their
+            # inconsistency is expected and not a problem for identification
+            pinned_params = set(idf.opt.get("dontChangeParams", []))
+            delete_cols = set(idf.sdp.delete_cols) if hasattr(idf, "sdp") and hasattr(idf.sdp, "delete_cols") else set()
+            pinned_links = set()
+            for i in range(idf.model.num_links):
+                link_params = set(range(i * 10, i * 10 + 10))
+                if link_params.issubset(pinned_params) or link_params.issubset(delete_cols):
+                    pinned_links.add(i)
+
+            bad_apriori = {k for k, v in cons_apriori.items() if not v}
+            bad_ident = {k for k, v in cons_ident.items() if not v}
+            bad_apriori_free = bad_apriori - pinned_links
+            bad_ident_free = bad_ident - pinned_links
+            bad_apriori_pinned = bad_apriori & pinned_links
+            bad_ident_pinned = bad_ident & pinned_links
+
+            if bad_apriori:
                 print(Fore.RED + "A priori parameters are not physical consistent!" + Fore.RESET)
-                print(f"Per-link physical consistency (a priori): {cons_apriori}")
+                if bad_apriori_free:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_apriori_free)]
+                    print(f"  inconsistent (identified) links: {', '.join(names)}")
+                else:
+                    print("  all identified links are consistent")
+                if bad_apriori_pinned:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_apriori_pinned)]
+                    print(f"  inconsistent pinned links (not identified, ignored): {', '.join(names)}")
             else:
                 print("A priori parameters are physical consistent")
 
-            if False in list(cons_ident.values()):
-                print("Identified parameters are not physical consistent,")
-                print(f"per-link physical consistency (identified): {cons_ident}")
+            if bad_ident:
+                print(Fore.RED + "Identified parameters are not physical consistent!" + Fore.RESET)
+                if bad_ident_free:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_ident_free)]
+                    print(f"  inconsistent (identified) links: {', '.join(names)}")
+                else:
+                    print("  all identified links are consistent")
+                if bad_ident_pinned:
+                    names = [f"{i}:{idf.model.linkNames[i]}" for i in sorted(bad_ident_pinned)]
+                    print(f"  inconsistent pinned links (not identified, ignored): {', '.join(names)}")
             else:
                 print("Identified parameters are physical consistent")
 
@@ -531,14 +596,47 @@ class OutputConsole:
                 # sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
                 # print( "Squared distance of std parameter vectors (identified vs. a priori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
-            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
-                # print("Mean error (a priori - approx) of all base params: {:.5f}".\
-                #        format(sum_error_all_base/len(idf.model.xBase)))
-                sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
-                sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
-                print(
-                    f"Squared distance of base parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
-                )
+            # base parameter comparison — always show when model_real is available.
+            # base params are what the data actually determines, so this is the fair
+            # metric for identification quality (std params are non-unique).
+            if not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
+                sq_error_base_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
+                sq_error_base_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
+                norm_real = la.norm(self.xBaseReal)
+                if norm_real > 0:
+                    pct_apriori = la.norm(self.xBaseReal - idf.model.xBaseModel) * 100 / norm_real
+                    pct_idf = la.norm(self.xBaseReal - idf.model.xBase) * 100 / norm_real
+                    print(
+                        f"Squared distance of base parameter vectors (identified vs. a priori) to real: "
+                        f"{sq_error_base_idf:.2f} vs. {sq_error_base_apriori:.2f} "
+                        f"({pct_idf:.1f}% vs. {pct_apriori:.1f}% relative)"
+                    )
+                else:
+                    print(
+                        f"Squared distance of base parameter vectors (identified vs. a priori) to real: "
+                        f"{sq_error_base_idf:.2f} vs. {sq_error_base_apriori:.2f}"
+                    )
+                # interpretation help
+                std_improved = sq_error_idf < sq_error_apriori
+                base_improved = sq_error_base_idf < sq_error_base_apriori
+                if base_improved and std_improved:
+                    print("  Both base and std parameters improved over a priori.")
+                elif base_improved and not std_improved:
+                    print(
+                        "  Note: base params improved but std params moved away from real. "
+                        "This is expected — many std parameter sets map to the same base params. "
+                        "Base param distance is the meaningful metric for identification quality."
+                    )
+                elif std_improved and not base_improved:
+                    print(
+                        "  Note: std params improved but base params moved away from real. "
+                        "The trajectory may not excite all base parameters sufficiently."
+                    )
+                else:
+                    print(
+                        "  Note: neither base nor std params improved. The trajectory may not "
+                        "provide enough excitation, or the a priori model is already close to optimal."
+                    )
         else:
             if idf.opt["showStandardParams"] and not summary_only:
                 if idf.opt["identifyGravityParamsOnly"]:
@@ -548,9 +646,9 @@ class OutputConsole:
                 else:
                     sq_error_apriori = np.square(la.norm(self.xStd[p_idf] - idf.model.xStdModel[p_idf]))
                 print(f"Squared distance of identifiable std parameter vectors to a priori: {sq_error_apriori}")
-            if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
-                sq_error_apriori = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
-                print(f"Squared distance of base parameter vectors (identified vs. a priori): {sq_error_apriori}")
+            if not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
+                sq_error_base = np.square(la.norm(idf.model.xBase - idf.model.xBaseModel))
+                print(f"Squared distance of base parameter vectors (identified vs. a priori): {sq_error_base:.2f}")
 
         print(Style.BRIGHT + "\nTorque prediction errors" + Style.RESET_ALL)
         # get percentual error (i.e. how big is the error relative to the measured magnitudes)
@@ -600,7 +698,10 @@ class OutputMatplotlib:
         for ds in self.progress(range(len(self.datasets))):
             group = self.datasets[ds]
             n_subplots = len(group["dataset"])
-            fig = make_subplots(rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.02)
+            subplot_titles = [group["dataset"][i]["title"] for i in range(n_subplots)]
+            fig = make_subplots(
+                rows=n_subplots, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=subplot_titles
+            )
 
             for d_i in range(n_subplots):
                 d = group["dataset"][d_i]
@@ -648,17 +749,6 @@ class OutputMatplotlib:
                         )
 
                 fig.update_yaxes(title_text=group.get("y_label", ""), row=row, col=1)
-                # subplot title as annotation
-                fig.add_annotation(
-                    text=d["title"],
-                    xref="x domain",
-                    yref="y domain",
-                    x=0.5,
-                    y=1.05,
-                    showarrow=False,
-                    row=row,
-                    col=1,
-                )
 
             # unified scaling
             if group["unified_scaling"]:
@@ -671,7 +761,13 @@ class OutputMatplotlib:
                     fig.update_yaxes(range=[ymin, ymax], row=r, col=1)
 
             fig.update_xaxes(title_text="Time (s)", row=n_subplots, col=1)
-            fig.update_layout(height=300 * n_subplots, legend=dict(orientation="h"))
+            fig.update_layout(
+                height=300 * n_subplots + 40,
+                margin=dict(b=60),
+                legend=dict(orientation="h", yanchor="bottom", y=0, xanchor="center", x=0.5, yref="container"),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
             figures.append(fig)
 
         return figures

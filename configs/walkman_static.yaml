@@ -5,11 +5,9 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 # trajectory optimization
 useGlobalOptimization: 0         #use global solver first (recommended)
-globalSolver: 'ALPSO'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10          #Swarm iterations or Generations
 globalOptSize: 100               #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
 showOptimizationGraph: 1         #display updating graph during trajectory optimization
@@ -124,7 +122,6 @@ initialPostures: [               #for static optimization, feasible postures to 
     ]
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements to save to data files (use e.g. with Gazebo)
 exciteMethod: null #'yarp'       #'yarp' or 'ros' (use simulator.py for simulated data)
 excitationFrequency: 200.0       #data frequency for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 1                        #encode angles in degrees for excitation (internal and data is always in rad)
@@ -172,7 +169,7 @@ minTol: 0.001
 floatingBase: 0
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
-identifyFriction: 0
+identifyFrictionSimultaneously: 0
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
@@ -199,7 +196,6 @@ identifyClosestToCAD: 0
 # use a non-linear gradient based solver instead of SDP
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'   # one of IPOPT, SLSQP, ALPSO
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
@@ -244,14 +240,7 @@ dontConstrain: []
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.1
-symmetryLinkPairs:
-    - [LHipMot, RHipMot]
-    - [LThighUpLeg, RThighUpLeg]
-    - [LThighLowLeg, RThighLowLeg]
-    - [LLowLeg, RLowLeg]
-    - [LFootmot, RFootmot]
-    - [LFoot, RFoot]
-useAPriori: 0
+useAPriori: 0    # identify the parameter error relative to the a-priori model
 
 # identify std parameters directly, but only for essential parameters (Gautier, 2013)
 useEssentialParams: 0
@@ -264,6 +253,10 @@ useDependents: 0
 # covariance estimation can be wrong (also assumes that error is zero mean and normal
 # distributed)
 useWLS: 0
+# when identifying from several measurement files (repeated --measurements),
+# weight each file's equations by the inverse of its residual noise instead of
+# stacking all samples equally, so a noisier session does not dominate (0 = off)
+useTrajectoryWeighting: 0
 
 # whether to filter the regressor columns (cutoff frequency is system dependent)
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
@@ -282,7 +275,6 @@ plotBaseDynamics: 0          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
-plotLegend: 1                #show plot legend
 
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution

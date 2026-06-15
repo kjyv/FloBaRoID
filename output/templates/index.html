@@ -18,11 +18,34 @@
             {{ text }}
         </div>
         <script src="js/ansi_up.js" type="text/javascript"></script>
-            <script type="text/javascript">
+        <script type="text/javascript">
             var cdiv = document.getElementById("console");
             var txt  = cdiv.innerHTML;
             var html = ansi_up.ansi_to_html(txt);
             cdiv.innerHTML = html;
+
+            // adapt plotly plots for dark/light mode
+            (function() {
+                var isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                var fontColor = isDark ? "#ccc" : "#222";
+                var gridColor = isDark ? "#444" : "#eee";
+
+                var plots = document.querySelectorAll(".plotly-graph-div");
+                plots.forEach(function(plot) {
+                    var axisUpdate = {};
+                    var layout = plot.layout || {};
+                    // update all xaxis/yaxis variants (xaxis, xaxis2, xaxis3, ...)
+                    for (var key in layout) {
+                        if (key.match(/^[xy]axis\d*$/)) {
+                            axisUpdate[key + ".color"] = fontColor;
+                            axisUpdate[key + ".gridcolor"] = gridColor;
+                        }
+                    }
+                    axisUpdate["font.color"] = fontColor;
+                    axisUpdate["legend.font.color"] = fontColor;
+                    Plotly.relayout(plot, axisUpdate);
+                });
+            })();
         </script>
     </body>
 </html>

@@ -40,7 +40,7 @@ def test_static_equilibrium_base_stays_small() -> None:
     """
     from excitation.suspendedDynamics import simulate_suspended_base_motion
 
-    urdf = "model/walkman.urdf"
+    urdf = "model/walkman_apriori.urdf"
     n_dofs = 29
     num_samples = 50
     freq = 200.0
@@ -71,7 +71,7 @@ def test_joint_motion_produces_base_swing() -> None:
     """Moving joints should cause the base to swing (nonzero base RPY)."""
     from excitation.suspendedDynamics import simulate_suspended_base_motion
 
-    urdf = "model/walkman.urdf"
+    urdf = "model/walkman_apriori.urdf"
     n_dofs = 29
     num_samples = 200
     freq = 200.0

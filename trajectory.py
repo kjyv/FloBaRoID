@@ -143,9 +143,13 @@ def main():
 
         ri_t, ri_pos, ri_vel, ri_acc = minimum_jerk_transition(zero_pos, q_start, transition_duration, freq)
         ro_t, ro_pos, ro_vel, ro_acc = minimum_jerk_transition(q_end, zero_pos, transition_duration, freq)
-        ro_t += times[-1] + 1.0 / freq
 
-        times = np.concatenate([ri_t, times + ri_t[-1] + 1.0 / freq, ro_t])
+        # shift main trajectory past the ramp-in, then place ramp-out after the shifted main trajectory
+        ramp_in_offset = ri_t[-1] + 1.0 / freq
+        main_times_shifted = times + ramp_in_offset
+        ro_t += main_times_shifted[-1] + 1.0 / freq
+
+        times = np.concatenate([ri_t, main_times_shifted, ro_t])
         positions = np.concatenate([ri_pos, positions, ro_pos])
         velocities = np.concatenate([ri_vel, velocities, ro_vel])
         accelerations = np.concatenate([ri_acc, accelerations, ro_acc])

@@ -109,7 +109,7 @@ def _base_config():
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
     config["floatingBase"] = 0
-    config["identifyFriction"] = 0
+    config["identifyFrictionSimultaneously"] = 0
     config["identifyClosestToCAD"] = 0
     config["useAPriori"] = 0
     config["simulateTorques"] = 0
@@ -174,7 +174,7 @@ def test_identification_sdp(synth_data_path):
     config = _base_config()
     config["constrainToConsistent"] = 1
     config["identifyClosestToCAD"] = 1
-    config["identifyFriction"] = 1
+    config["identifyFrictionSimultaneously"] = 1
     config["identifySymmetricVelFriction"] = 1
     config["limitOverallMass"] = 1
     config["limitMassVal"] = 16.0
@@ -210,6 +210,95 @@ def test_identification_sdp(synth_data_path):
         relative_base_error = base_error / la.norm(idf.model.xBaseModel)
         print(f"SDP base parameter error: {relative_base_error:.4%}")
 
+    finally:
+        _cleanup_regressor_cache()
+
+
+def test_postidentify_friction_fixed_base_writeback(synth_data_path):
+    """Fixed-base post-hoc friction refit (option 1): with friction identified
+    simultaneously, postIdentifyFriction refits Fc/Fv/offset per joint from the residual
+    and writes the result back into the standard-parameter friction slots."""
+    from identifier import Identification
+
+    config = _base_config()
+    config["constrainToConsistent"] = 1
+    config["identifyClosestToCAD"] = 1
+    config["identifyFrictionSimultaneously"] = 1
+    config["identifySymmetricVelFriction"] = 1
+    config["postIdentifyFriction"] = 1
+    config["frictionVelocityDeadZone"] = 0.05
+    config["frictionFvRegularization"] = 50.0
+
+    try:
+        idf = Identification(config, _urdf_file, None, [[synth_data_path]], None, None)
+        idf.estimateParameters()
+
+        # the refit ran on the fixed base (no longer gated to floating base)
+        assert hasattr(idf, "postid_friction"), "post-identification friction did not run"
+
+        nd = idf.model.num_dofs
+        fs = idf.model.friction_params_start
+        xstd = np.asarray(idf.model.xStd, dtype=float)
+        fc = xstd[fs : fs + nd]
+        fv = xstd[fs + nd : fs + 2 * nd]
+        off = xstd[fs + 2 * nd : fs + 3 * nd]
+
+        # the friction slots in xStd now hold the refit values, not the jointly-fit ones
+        assert np.allclose(fc, idf.postid_friction["Fc"]), "Fc not written back to xStd"
+        assert np.allclose(fv, idf.postid_friction["Fv"]), "Fv not written back to xStd"
+        assert np.allclose(off, idf.postid_friction["off"]), "offset not written back to xStd"
+
+        # results are finite and Fv stays non-negative (physical constraint enforced in the fit)
+        assert np.all(np.isfinite(xstd))
+        assert np.all(fv >= -1e-9), f"negative viscous friction: {fv}"
+    finally:
+        _cleanup_regressor_cache()
+
+
+def test_postidentify_friction_relative_fv_regularization(synth_data_path):
+    """The self-scaling Fv prior (frictionFvRegularizationRelative) runs and yields a
+    finite, non-negative Fv: the weight is derived from the data's own excitation energy
+    (alpha * median per-joint velocity energy), so no absolute energy units are needed."""
+    from identifier import Identification
+
+    config = _base_config()
+    config["constrainToConsistent"] = 1
+    config["identifyClosestToCAD"] = 1
+    config["identifyFrictionSimultaneously"] = 1
+    config["identifySymmetricVelFriction"] = 1
+    config["postIdentifyFriction"] = 1
+    config["frictionVelocityDeadZone"] = 0.05
+    config["frictionFvRegularization"] = 0.0  # absolute off, relative on
+    config["frictionFvRegularizationRelative"] = 0.2
+
+    try:
+        idf = Identification(config, _urdf_file, None, [[synth_data_path]], None, None)
+        idf.estimateParameters()
+        assert hasattr(idf, "postid_friction"), "post-identification friction did not run"
+        fv = idf.postid_friction["Fv"]
+        assert np.all(np.isfinite(fv))
+        assert np.all(fv >= -1e-9), f"negative viscous friction: {fv}"
+    finally:
+        _cleanup_regressor_cache()
+
+
+def test_postidentify_friction_skipped_without_simultaneous(synth_data_path):
+    """On a fixed base the post-hoc refit needs friction in the regressor first (no
+    friction-free anchor), so it is skipped when identifyFrictionSimultaneously is off."""
+    from identifier import Identification
+
+    config = _base_config()
+    config["constrainToConsistent"] = 1
+    config["identifyClosestToCAD"] = 1
+    config["identifyFrictionSimultaneously"] = 0
+    config["postIdentifyFriction"] = 1
+
+    try:
+        idf = Identification(config, _urdf_file, None, [[synth_data_path]], None, None)
+        idf.estimateParameters()
+        assert not hasattr(idf, "postid_friction"), (
+            "refit should be skipped on a fixed base without simultaneous friction"
+        )
     finally:
         _cleanup_regressor_cache()
 

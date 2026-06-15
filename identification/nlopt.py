@@ -1,13 +1,12 @@
 import os
 import sys
-from typing import Any
 
+import cyipopt
 import numpy as np
 import numpy.linalg as la
-from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP, Optimization
 
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
-from excitation.optimizer import Optimizer
+from excitation.optimizer import IpoptProblem, Optimizer
 
 
 class NLOPT(Optimizer):
@@ -51,6 +50,9 @@ class NLOPT(Optimizer):
         self.inner_iter = 0
         self.last_best_u = 1e16
         self.last_best_x: np.ndarray | None = None
+
+        # lower/upper bound of the overall mass constraint (set in buildConstraintBounds)
+        self._mass_con_bounds: tuple[float, float] = (-np.inf, np.inf)
 
         self.param_weights = np.zeros(self.model.num_all_params - self.start_link * self.per_link)
         for p in range(len(self.param_weights)):
@@ -228,7 +230,7 @@ class NLOPT(Optimizer):
         c = self.testConstraints(cons)
 
         if self.idf.opt["showOptimizationGraph"]:
-            if c or not getattr(self.opt_prob, "is_gradient", False):
+            if c or not self.is_gradient_eval:
                 self.xar.append(self.inner_iter)
                 self.yar.append(float(u))
                 self.x_constr.append(c)
@@ -319,7 +321,7 @@ class NLOPT(Optimizer):
         c = self.testConstraints(cons)
 
         if self.idf.opt["showOptimizationGraph"]:
-            if c or not getattr(self.opt_prob, "is_gradient", False):
+            if c or not self.is_gradient_eval:
                 self.xar.append(self.inner_iter)
                 self.yar.append(float(u))
                 self.x_constr.append(c)
@@ -344,38 +346,50 @@ class NLOPT(Optimizer):
     def testConstraints(self, g):
         result = False
         cons_base = g[0 : len(self.xBase_feas)]
+        mass_lower, mass_upper = self._mass_con_bounds
         if self.idf.opt["optInFeasibleParamSpace"]:
             iq_start = len(self.xBase_feas) + self.nl
             iq_end = len(self.xBase_feas) + self.nl * 2
             cons_ident_q = g[iq_start:iq_end]
             cons_det_q = g[0 : self.nl]
             cons_mass = g[iq_end]
-            mass_con = self.opt_prob.getCon(iq_end)
             cons_com = g[iq_end + 1 :]
             if (
                 np.all(np.array(cons_det_q) >= 0)
                 and (np.abs(np.sum(np.array(cons_base))) <= 1e-6)
                 and np.all(np.abs(cons_ident_q) <= 0.001)
                 and np.all(cons_com >= 0.0)
-                and cons_mass < mass_con.upper
-                and cons_mass > mass_con.lower
+                and cons_mass < mass_upper
+                and cons_mass > mass_lower
             ):
                 result = True
         else:
             cons_mass = g[-self.nl * 6 - 1]
-            mass_con = self.opt_prob.getCon(len(g) - self.nl * 6 - 1)
             if (
                 np.all(np.array(g[len(self.xBase_feas) :]) >= 0)
                 and (np.abs(np.sum(np.array(cons_base))) <= 1e-6)
-                and cons_mass < mass_con.upper
-                and cons_mass > mass_con.lower
+                and cons_mass < mass_upper
+                and cons_mass > mass_lower
             ):
                 result = True
 
         return result
 
-    def addVarsAndConstraints(self, opt, initial_values=None):
-        """Add variables and constraints for the optimization problem."""
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build initial values and bounds for the standard parameter variables.
+
+        Variable order matches self.identified_params (with extra Q/L variables
+        per link in feasible parametrization mode).
+
+        Args:
+            initial_values: optional flat array of initial variable values. If None,
+                the previous solution (model.xStd) is used as starting point.
+
+        Returns:
+            (x0, lower, upper) arrays.
+        """
         if not self.idf.opt["identifyGravityParamsOnly"]:
             # only constrain triangle inequality if it holds true for starting point
             self.use_tri_ineq = False not in self.idf.paramHelpers.checkPhysicalConsistency(self.model.xStd).values()
@@ -387,137 +401,116 @@ class NLOPT(Optimizer):
         else:
             print("Not constraining to triangle inequality")
 
-        self._var_names: list[str] = []
+        lower: list[float] = []
+        upper: list[float] = []
 
         ## add variables for standard params
         for i in self.identified_params:
-            p = self.model.param_syms[i]
             if i % self.per_link == 0 and i < self.model.num_model_params:  # mass
-                self._var_names.append(str(p))
-                opt.addVar(str(p), lower=0.1, upper=np.inf)
+                lower.append(0.1)
+                upper.append(np.inf)
             else:
                 if not self.idf.opt["identifyGravityParamsOnly"] and i >= self.model.num_model_params:  # friction
                     # TODO: remove friction from optimization (they shouldn't change and are not dependent in base params)
-                    self._var_names.append(str(p))
-                    opt.addVar(str(p), lower=0.0, upper=np.inf)
+                    lower.append(0.0)
+                    upper.append(np.inf)
                 else:
                     if i % self.per_link not in [1, 2, 3] and self.idf.opt["optInFeasibleParamSpace"]:
                         pass
                     else:
                         # inertia: unbounded variable
-                        self._var_names.append(str(p))
-                        opt.addVar(str(p), lower=-np.inf, upper=np.inf)
+                        lower.append(-np.inf)
+                        upper.append(np.inf)
 
             # add variables for feasible parametrization space
             if self.idf.opt["optInFeasibleParamSpace"] and not self.idf.opt["identifyGravityParamsOnly"]:
                 if i % self.per_link == 4 and i < self.model.num_model_params:
-                    l = i // 10
                     # Q as rotation matrix in R^3x3
-                    for qi in range(9):
-                        name = f"q{qi}_{l}"
-                        self._var_names.append(name)
-                        opt.addVar(name, lower=-10, upper=10)
+                    for _qi in range(9):
+                        lower.append(-10.0)
+                        upper.append(10.0)
                     # L ln R^3+
-                    for li in range(3):
-                        name = f"l{li}_{l}"
-                        self._var_names.append(name)
-                        opt.addVar(name, lower=0, upper=np.inf)
+                    for _li in range(3):
+                        lower.append(0.0)
+                        upper.append(np.inf)
 
-        ## constraints
+        # set previous sol as starting point (as primal should be already within constraints for
+        # most solvers to perform well)
+        n_vars = len(lower)
+        if initial_values is not None:
+            x0 = np.array(initial_values, dtype=float)
+        elif self.idf.opt["optInFeasibleParamSpace"]:
+            x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param : self.idf.model.num_model_params])
+            x0 = np.zeros(n_vars)
+            for i in range(n_vars):
+                if i < len(x_cons):
+                    x0[i] = x_cons[i]
+                else:
+                    x0[i] = self.model.xStd[self.idf.model.num_model_params + (i - len(x_cons))]
+        else:
+            x0 = np.array([self.model.xStd[i + self.start_link * self.per_link] for i in range(n_vars)])
 
-        # add constraints for projection to feasible base parameters (equality constraints before
+        return x0, np.array(lower), np.array(upper)
+
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Build lower/upper bounds for the constraint values.
+
+        The order matches the cons list built in minimizeSolToCADStd /
+        minimizeSolToCADFeasible.
+        """
+        lower: list[float] = []
+        upper: list[float] = []
+
+        # constraints for projection to feasible base parameters (equality constraints before
         # inequality)
         if not self.min_est_error:
-            opt.addConGroup("xbase", len(self.xBase_feas), lower=0.0, upper=0.0)
+            lower += [0.0] * len(self.xBase_feas)
+            upper += [0.0] * len(self.xBase_feas)
 
         if not self.idf.opt["optInFeasibleParamSpace"]:
-            # add naive consistency constraints (inertia positive definite, triangel inequality)
+            # naive consistency constraints (inertia positive definite, triangel inequality)
             if not self.idf.opt["identifyGravityParamsOnly"]:
-                opt.addConGroup("inertia", 3 * self.nl, lower=0.0, upper=100)
+                lower += [0.0] * (3 * self.nl)
+                upper += [100.0] * (3 * self.nl)
                 if self.use_tri_ineq:
-                    opt.addConGroup("tri_ineq", 3 * self.nl, lower=0.0, upper=100)
+                    lower += [0.0] * (3 * self.nl)
+                    upper += [100.0] * (3 * self.nl)
         else:
-            opt.addConGroup("det R > 0", self.nl, lower=0.0, upper=np.inf)
-            opt.addConGroup("R.T*R = I", self.nl, lower=-0.001, upper=0.001)
+            # det R > 0
+            lower += [0.0] * self.nl
+            upper += [np.inf] * self.nl
+            # R.T*R = I
+            lower += [-0.001] * self.nl
+            upper += [0.001] * self.nl
 
         # constraints for overall mass
         if self.idf.opt["limitOverallMass"]:
-            lower = upper = self.idf.opt["limitMassVal"]
+            mass_lower = mass_upper = self.idf.opt["limitMassVal"]
             if not self.idf.opt["floatingBase"] and self.idf.opt["deleteFixedBase"]:
-                lower = upper = self.idf.opt["limitMassVal"] - self.idf.model.xStd[0]
+                mass_lower = mass_upper = self.idf.opt["limitMassVal"] - self.idf.model.xStd[0]
 
-            opt.addConGroup(
-                "mass sum",
-                1,
-                lower=lower * (1 - self.idf.opt["limitMassRange"]),
-                upper=upper * (1 + self.idf.opt["limitMassRange"]),
+            self._mass_con_bounds = (
+                mass_lower * (1 - self.idf.opt["limitMassRange"]),
+                mass_upper * (1 + self.idf.opt["limitMassRange"]),
             )
+            lower.append(self._mass_con_bounds[0])
+            upper.append(self._mass_con_bounds[1])
 
         # constraints for COM in enclosing hull
         if self.idf.opt["restrictCOMtoHull"]:
-            opt.addConGroup("com", 6 * self.nl, lower=0.0, upper=100)
+            lower += [0.0] * (6 * self.nl)
+            upper += [100.0] * (6 * self.nl)
 
-    def _objFuncWrapperStd(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrapper for minimizeSolToCADStd to convert pyOptSparse dict API."""
-        x = np.array([xdict[name] for name in self._var_names]).flatten()
-        u, cons, fail = self.minimizeSolToCADStd(x)
-        funcs: dict[str, Any] = {"u": u}
-        # distribute constraints into their named groups
-        idx = 0
-        if not self.min_est_error:
-            n = len(self.xBase_feas)
-            funcs["xbase"] = np.array(cons[idx : idx + n])
-            idx += n
-        if not self.idf.opt["optInFeasibleParamSpace"]:
-            if not self.idf.opt["identifyGravityParamsOnly"]:
-                n = 3 * self.nl
-                funcs["inertia"] = np.array(cons[idx : idx + n])
-                idx += n
-                if self.use_tri_ineq:
-                    funcs["tri_ineq"] = np.array(cons[idx : idx + n])
-                    idx += n
-        if self.idf.opt["limitOverallMass"]:
-            funcs["mass sum"] = np.array(cons[idx : idx + 1])
-            idx += 1
-        if self.idf.opt["restrictCOMtoHull"]:
-            n = 6 * self.nl
-            funcs["com"] = np.array(cons[idx : idx + n])
-            idx += n
-        return funcs, bool(fail)
-
-    def _objFuncWrapperFeasible(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrapper for minimizeSolToCADFeasible to convert pyOptSparse dict API."""
-        x = np.array([xdict[name] for name in self._var_names]).flatten()
-        u, cons, fail = self.minimizeSolToCADFeasible(x)
-        funcs: dict[str, Any] = {"u": u}
-        # distribute constraints into their named groups
-        idx = 0
-        if not self.min_est_error:
-            n = len(self.xBase_feas)
-            funcs["xbase"] = np.array(cons[idx : idx + n])
-            idx += n
-        funcs["det R > 0"] = np.array(cons[idx : idx + self.nl])
-        idx += self.nl
-        funcs["R.T*R = I"] = np.array(cons[idx : idx + self.nl])
-        idx += self.nl
-        if self.idf.opt["limitOverallMass"]:
-            funcs["mass sum"] = np.array(cons[idx : idx + 1])
-            idx += 1
-        if self.idf.opt["restrictCOMtoHull"]:
-            n = 6 * self.nl
-            funcs["com"] = np.array(cons[idx : idx + n])
-            idx += n
-        return funcs, bool(fail)
+        return np.array(lower), np.array(upper)
 
     def identifyFeasibleStdFromFeasibleBase(self, xBase):
         self.xBase_feas = xBase
 
         # formulate problem as objective function
         if self.idf.opt["optInFeasibleParamSpace"]:
-            opt = Optimization("Constrained OLS", self._objFuncWrapperFeasible)
+            eval_func = self.minimizeSolToCADFeasible
         else:
-            opt = Optimization("Constrained OLS", self._objFuncWrapperStd)
-        opt.addObj("u")
+            eval_func = self.minimizeSolToCADStd
 
         """
         x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
@@ -525,107 +518,49 @@ class NLOPT(Optimizer):
         print(test - self.idf.model.xStd[self.start_param:self.idf.model.num_model_params])
         """
 
-        self.addVarsAndConstraints(opt)
-
-        # set previous sol as starting point (as primal should be already within constraints for
-        # most solvers to perform well)
-        if self.idf.opt["optInFeasibleParamSpace"]:
-            x_cons = self.mapStdToConsistent(self.idf.model.xStd[self.start_param : self.idf.model.num_model_params])
-            dvs = {}
-            for i, name in enumerate(self._var_names):
-                if i < len(x_cons):
-                    dvs[name] = x_cons[i]
-                else:
-                    j = i - len(x_cons)
-                    dvs[name] = self.model.xStd[self.idf.model.num_model_params + j]
-            opt.setDVs(dvs)
-        else:
-            dvs = {}
-            for i, name in enumerate(self._var_names):
-                dvs[name] = self.model.xStd[i + self.start_link * self.per_link]
-            opt.setDVs(dvs)
-
+        # not necessarily deterministic
         if self.idf.opt["verbose"]:
-            print(opt)
+            print("Using IPOPT")
 
-        if self.idf.opt["nlOptSolver"] == "IPOPT":
-            # not necessarily deterministic
-            if self.idf.opt["verbose"]:
-                print("Using IPOPT")
-            solver = IPOPT()
-            # solver.setOption('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
-            # for details, see http://www.gams.com/latest/docs/solvers/ipopt/index.html#IPOPTlinear_solver
-            solver.setOption("max_iter", self.idf.opt["nlOptMaxIterations"])
-            solver.setOption("print_level", 3)  # 0 none ... 5 max
+        x0, var_lower, var_upper = self.buildVariableBounds()
+        con_lower, con_upper = self.buildConstraintBounds()
+        num_constraints = len(con_lower)
 
-            # don't start too far away from inital values (boundaries push even if starting inside feasible set)
-            solver.setOption("bound_push", 0.0000001)
-            solver.setOption("bound_frac", 0.0000001)
-            # don't relax bounds
-            solver.setOption("bound_relax_factor", 0.0)  # 1e-16)
+        # use FD for gradients (step matches the pyOptSparse default)
+        problem = IpoptProblem(self, eval_func, num_constraints, sens_step=1e-6)
+        # IPOPT treats bounds beyond +-1e19 as infinite
+        nlp = cyipopt.Problem(
+            n=len(x0),
+            m=num_constraints,
+            problem_obj=problem,
+            lb=np.clip(var_lower, -1e19, 1e19),
+            ub=np.clip(var_upper, -1e19, 1e19),
+            cl=np.clip(con_lower, -1e19, 1e19),
+            cu=np.clip(con_upper, -1e19, 1e19),
+        )
+        # nlp.add_option('linear_solver', 'ma97')  #mumps or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+        # for details, see https://coin-or.github.io/Ipopt/OPTIONS.html
+        nlp.add_option("max_iter", int(self.idf.opt["nlOptMaxIterations"]))
+        nlp.add_option("print_level", 3)  # 0 none ... 12 max
+        nlp.add_option("sb", "yes")  # suppress the IPOPT banner
+        # only first derivatives are available, no exact hessian
+        nlp.add_option("hessian_approximation", "limited-memory")
 
-        elif self.idf.opt["nlOptSolver"] == "SLSQP":
-            # solve optimization problem
-            if self.idf.opt["verbose"]:
-                print("Using SLSQP")
-            solver = SLSQP()
-            solver.setOption("MAXIT", self.idf.opt["nlOptMaxIterations"])
-            if self.idf.opt["verbose"]:
-                solver.setOption("IPRINT", 0)
+        # don't start too far away from inital values (boundaries push even if starting inside feasible set)
+        nlp.add_option("bound_push", 0.0000001)
+        nlp.add_option("bound_frac", 0.0000001)
+        # don't relax bounds
+        nlp.add_option("bound_relax_factor", 0.0)  # 1e-16)
 
-        elif self.idf.opt["nlOptSolver"] == "PSQP":
-            # solve optimization problem
-            if self.idf.opt["verbose"]:
-                print("Using PSQP")
-            solver = PSQP()
-            solver.setOption("MIT", self.idf.opt["nlOptMaxIterations"])
-            if self.idf.opt["verbose"]:
-                solver.setOption("IPRINT", 0)
-
-        elif self.idf.opt["nlOptSolver"] == "ALPSO":
-            if self.idf.opt["verbose"]:
-                print("Using ALPSO")
-            solver = ALPSO()
-            solver.setOption("stopCriteria", 0)
-            solver.setOption("dynInnerIter", 1)  # dynamic inner iter number
-            solver.setOption("maxInnerIter", 5)
-            solver.setOption("maxOuterIter", self.idf.opt["nlOptMaxIterations"])
-            solver.setOption("printInnerIters", 0)
-            solver.setOption("printOuterIters", 0)
-            solver.setOption("SwarmSize", 100)
-            solver.setOption("xinit", 1)
-
-        elif self.idf.opt["nlOptSolver"] == "NSGA2":
-            if self.idf.opt["verbose"]:
-                print("Using NSGA2")
-            solver = NSGA2()
-            solver.setOption("PopSize", 100)  # Population Size (a Multiple of 4)
-            solver.setOption("maxGen", self.config["nlOptMaxIterations"])  # Maximum Number of Generations
-            solver.setOption("PrintOut", 0)  # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
-            solver.setOption("xinit", 1)  # Use Initial Solution Flag (0 - random population, 1 - use given solution)
-            # solver.serion('seed', sr.random())   # Random Number Seed 0..1 (0 - Auto based on time clock)
-            # pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
-            solver.setOption("pMut_real", 0.5)  # Probablity of Mutation of Real Variables (1/nreal)
-            # eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
-            # eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
-            # pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
-            # pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
-        else:
-            raise RuntimeError(f"Unknown nlOptSolver: {self.idf.opt['nlOptSolver']!r}")
-
-        self.opt_prob = opt
-        # run optimizer (use FD for gradient-based solvers)
-        if self.idf.opt["nlOptSolver"] in ["IPOPT", "SLSQP", "PSQP"]:
-            solver(opt, sens="FD")
-        else:
-            solver(opt)
+        # run optimizer (catch ctrl-c so the best solution found so far is kept)
+        try:
+            nlp.solve(x0)
+        except KeyboardInterrupt:
+            print("\n\nNL optimization interrupted by user.")
 
         # use manually tracked best solution (solver may not keep the best feasible one)
         if self.last_best_x is None:
             self.last_best_x = self.model.xStd[self.start_param :]
-
-        if self.idf.opt["verbose"]:
-            print(opt)
 
         if self.idf.opt["optInFeasibleParamSpace"] and len(self.last_best_x) > len(self.model.xStd[self.start_param :]):
             # we get consistent parameterized params as solution

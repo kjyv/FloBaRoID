@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import os
 import random
+import signal
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from excitation.trajectoryOptimizer import TrajectoryOptimizer
     from identification.model import Model
     from identifier import Identification
 
+import cyipopt
 import fcl
 import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
+from excitation.analyticalGradient import compute_analytical_gradient
 from excitation.analyticalGradient import kill_gradient_pool as _kill_gradient_pool
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
-from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
+from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode, rotationMatrixToEulerAngles
 
 _DARK_MODE = is_dark_mode()
 
@@ -58,6 +62,9 @@ def _optuna_worker(
     Each worker creates its own Model and optimizer instance to avoid
     sharing non-picklable iDynTree objects across processes.
     """
+    # let the main process handle Ctrl-C; workers are terminated explicitly
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     # prevent matplotlib from opening windows in worker processes
     import matplotlib
 
@@ -83,17 +90,34 @@ def _optuna_worker(
 
     model = Model(config, config["urdf"])
     idf = Identification(config, config["urdf"], None, None, None, None)
-    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics)
+    # the world file must be passed through, otherwise workers evaluate without
+    # robot-vs-world collision constraints (inconsistent with the main process)
+    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics, world=config.get("_worldFile"))
     worker_opt.is_global = True
 
-    def worker_objective(trial: _optuna.Trial) -> float:
-        """Objective for a single Optuna trial in a worker process."""
-        x = [trial.suggest_float(name, lo, hi) for name, lo, hi, _ in var_info]
-        f, g, _fail = worker_opt.objectiveFunc(np.array(x))
-        # store constraints as trial user attributes for the constraints_func
+    def worker_to_violations(g: np.ndarray) -> list[float]:
+        """Convert constraint values to optuna's "violation <= 0 is feasible" convention."""
         c_s = worker_opt.num_constraints - worker_opt.num_coll_constraints
         violations = [float(g[i]) for i in range(c_s)]
         violations += [float(-g[i]) for i in range(c_s, worker_opt.num_constraints)]
+        return violations
+
+    def worker_objective(trial: _optuna.Trial) -> float:
+        """Objective for a single Optuna trial in a worker process."""
+        x = np.array([trial.suggest_float(name, lo, hi) for name, lo, hi, _ in var_info])
+        f, g, fail = worker_opt.objectiveFunc(x)
+        violations = worker_to_violations(np.asarray(g))
+
+        # infeasible candidates can still contribute a feasible solution by
+        # backing off their amplitudes (see repairTrialCandidate)
+        if not fail and any(v > 0 for v in violations):
+            repaired = worker_opt.repairTrialCandidate(x)
+            if repaired is not None:
+                f, g_rep, scale = repaired
+                violations = worker_to_violations(g_rep)
+                trial.set_user_attr("repair_scale", scale)
+
+        # store constraints as trial user attributes for the constraints_func
         trial.set_user_attr("constraints", violations)
         return f
 
@@ -251,7 +275,7 @@ def plotter(config: dict, data: dict | None = None, filename: str | None = None)
             ]
 
     d = 0
-    cols = 2.0
+    cols = 2
     rows = round(len(datasets) / cols)
     for dat, title in datasets:
         plt.subplot(rows, cols, d + 1)
@@ -278,6 +302,119 @@ def plotter(config: dict, data: dict | None = None, filename: str | None = None)
     plt.show()
 
 
+class IpoptProblem:
+    """Adapter between the optimizers' flat-vector objective functions and the
+    class-based cyipopt API.
+
+    The result of the last objective evaluation is cached so that constraints(x)
+    after objective(x) at the same point doesn't re-run the (expensive)
+    simulation. Gradients are likewise cached per x so that gradient() and
+    jacobian() at the same point only compute once.
+    """
+
+    def __init__(
+        self,
+        opt: Optimizer,
+        eval_func: Callable[[np.ndarray], tuple[float, Any, Any]],
+        num_constraints: int,
+        sens_step: float,
+        use_analytical_gradients: bool = False,
+    ) -> None:
+        """Create the adapter.
+
+        Args:
+            opt: optimizer instance (provides the is_gradient_eval flag, the
+                approx_jacobian helper and the analytical gradient cache)
+            eval_func: function returning (f, g, fail) for a flat variable vector
+            num_constraints: number of constraint values returned by eval_func
+            sens_step: step size for finite-difference gradients
+            use_analytical_gradients: compute gradients via
+                compute_analytical_gradient() instead of finite differences
+        """
+        self.opt = opt
+        self.eval_func = eval_func
+        self.m = num_constraints
+        self.sens_step = sens_step
+        self.use_analytical_gradients = use_analytical_gradients
+        self._last_x: np.ndarray | None = None
+        self._last_f: float = 0.0
+        self._last_g: np.ndarray = np.zeros(num_constraints)
+        self._grad_x: np.ndarray | None = None
+        self._obj_grad: np.ndarray = np.array([])
+        self._con_jac: np.ndarray = np.array([])
+
+    def _call(self, x: np.ndarray) -> tuple[float, np.ndarray]:
+        """Evaluate eval_func without caching.
+
+        IPOPT (via cyipopt) has no fail flag mechanism, so failed evaluations
+        rely on the objective functions clamping NaN/inf to large finite
+        values. Early-returns with empty constraint arrays (non-finite input x)
+        are mapped to a large objective value here.
+        """
+        f, g, _fail = self.eval_func(np.asarray(x, dtype=float))
+        g_arr = np.asarray(g, dtype=float)
+        if g_arr.size != self.m:
+            g_arr = np.zeros(self.m)
+            f = 1e10
+        return float(f), g_arr
+
+    def _evaluate(self, x: np.ndarray) -> tuple[float, np.ndarray]:
+        """Evaluate eval_func at x, reusing the cached result if x is unchanged."""
+        if self._last_x is None or not np.array_equal(x, self._last_x):
+            f, g = self._call(x)
+            self._last_x = np.array(x, dtype=float)
+            self._last_f = f
+            self._last_g = g
+        return self._last_f, self._last_g
+
+    def objective(self, x: np.ndarray) -> float:
+        """Objective callback for cyipopt."""
+        return self._evaluate(x)[0]
+
+    def constraints(self, x: np.ndarray) -> np.ndarray:
+        """Constraint callback for cyipopt."""
+        return self._evaluate(x)[1]
+
+    def _fdFunc(self, x: np.ndarray) -> np.ndarray:
+        """Combined [f, g] vector for finite differencing (reuses the eval cache
+        for the unperturbed base point, doesn't pollute it with FD probes)."""
+        if self._last_x is not None and np.array_equal(x, self._last_x):
+            return np.concatenate(([self._last_f], self._last_g))
+        f, g = self._call(x)
+        return np.concatenate(([f], g))
+
+    def _computeGradients(self, x: np.ndarray) -> None:
+        """Compute and cache objective gradient and constraint jacobian at x."""
+        if self._grad_x is not None and np.array_equal(x, self._grad_x):
+            return
+        self.opt.is_gradient_eval = True
+        try:
+            if self.use_analytical_gradients:
+                # the analytical gradient uses cached simulation data from the
+                # last objectiveFunc call -- make sure that data matches x
+                self._evaluate(x)
+                obj_grad, con_jac = compute_analytical_gradient(cast("TrajectoryOptimizer", self.opt))
+            else:
+                jac = self.opt.approx_jacobian(self._fdFunc, np.asarray(x, dtype=float), self.sens_step)
+                obj_grad = jac[0, :]
+                con_jac = jac[1:, :]
+        finally:
+            self.opt.is_gradient_eval = False
+        self._grad_x = np.array(x, dtype=float)
+        self._obj_grad = np.asarray(obj_grad)
+        self._con_jac = np.asarray(con_jac)
+
+    def gradient(self, x: np.ndarray) -> np.ndarray:
+        """Objective gradient callback for cyipopt."""
+        self._computeGradients(x)
+        return self._obj_grad
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        """Constraint jacobian callback for cyipopt (dense, row-major)."""
+        self._computeGradients(x)
+        return self._con_jac.ravel()
+
+
 class Optimizer:
     """base class for different optimizers"""
 
@@ -301,17 +438,20 @@ class Optimizer:
         # optimization status vars
         self.last_best_f = np.inf
         self.last_best_sol = np.array([])
+        self.last_best_infeasible_f = np.inf
+        self.last_best_infeasible_sol = np.array([])
 
         self.iter_cnt = 0  # iteration counter
+        self.iter_max = 0  # expected total function evaluations (informational)
         self.last_g: np.ndarray | list[float] | None = None  # last constraint values
         self.is_global = False
+        self.is_gradient_eval = False  # set by IpoptProblem during gradient/jacobian evaluations
         self.local_iter_max = 0
 
         # attributes declared here for type checking; set by subclasses
         self.trajectory: Any = None
         self.world_gravity: Any = None
         self.num_postures: int = 0
-        self._var_names: list[str] = []
 
         # trajectory optimizer attributes (set by TrajectoryOptimizer/PostureOptimizer)
         self.wf_min: float = 0.0
@@ -355,12 +495,16 @@ class Optimizer:
 
         self.world = world
         self.world_links: list[str] = []
-        # include world links for collision only when the base is fixed (prop-mounted).
-        # for suspended dynamics, the robot swings freely and world geometry is approximate.
-        if world and self.config.get("floatingBaseAttachment") != "suspended":
+        # world links are included in collision checking for all attachment modes:
+        # for suspended dynamics, setCollisionRobotState places the robot at the
+        # simulated (swung) base pose, so robot-vs-world distances are meaningful
+        if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
                 print(f"World links: {self.world_links}")
+            # joint-chain transforms so world links are placed at their world pose
+            # (the bounding box alone only carries the link-local visual origin)
+            world_transforms = idf.urdfHelpers.getLinkWorldTransforms(world)
             for link_name in self.world_links:
                 box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf=world,
@@ -368,6 +512,14 @@ class Optimizer:
                     link_name=link_name,
                     scaling=False,
                 )
+                # compose joint-chain transform with the visual origin (same as visualizer)
+                if link_name in world_transforms:
+                    link_pos, link_rot = world_transforms[link_name]
+                    rot_mat = (
+                        eulerAnglesToRotationMatrix(rot) if isinstance(rot, list) else np.asarray(rot, dtype=float)
+                    )
+                    pos = (link_pos + link_rot @ np.array(pos, dtype=float)).tolist()
+                    rot = rotationMatrixToEulerAngles(link_rot @ rot_mat).tolist()
                 # make sure no name collision happens
                 if link_name not in self.link_cuboid_hulls:
                     self.link_cuboid_hulls[link_name] = [box, pos, rot]
@@ -497,14 +649,35 @@ class Optimizer:
         self._transform_cache[link_name] = (rot, pos)
         return rot, pos
 
-    def setCollisionRobotState(self, joint_q: np.ndarray) -> None:
-        """Set iDynTree robot state for collision checking (call once per sample, not per pair)."""
+    def setCollisionRobotState(
+        self,
+        joint_q: np.ndarray,
+        base_rpy: np.ndarray | None = None,
+        base_position: np.ndarray | None = None,
+    ) -> None:
+        """Set iDynTree robot state for collision checking (call once per sample, not per pair).
+
+        For floating-base robots the base pose from the simulated (suspended) base
+        motion must be passed in, otherwise robot-vs-world collision pairs are
+        evaluated at the unswung mount pose and miss collisions under swing.
+        """
         if not hasattr(self, "_coll_s"):
             self._coll_s = iDynTree.JointPosDoubleArray(self.num_dofs)
             self._coll_ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
         for j in range(self.num_dofs):
             self._coll_s.setVal(j, float(joint_q[j]))
-        self.model.kinDyn.setRobotState(self._coll_s, self._coll_ds, self.model.gravity_vec)
+        if base_rpy is not None and self.config.get("floatingBase", 0):
+            # base_rpy is stored in model.py convention: RPY encodes R = R_world_base^{-1}
+            # (same convention as the visualizer playback)
+            rot_world_base = iDynTree.Rotation.RPY(float(base_rpy[0]), float(base_rpy[1]), float(base_rpy[2])).inverse()
+            pos_idt = iDynTree.Position.Zero()
+            if base_position is not None:
+                pos_idt = iDynTree.Position(float(base_position[0]), float(base_position[1]), float(base_position[2]))
+            world_T_base = iDynTree.Transform(rot_world_base, pos_idt)
+            base_vel = iDynTree.Twist()
+            self.model.kinDyn.setRobotState(world_T_base, self._coll_s, base_vel, self._coll_ds, self.model.gravity_vec)
+        else:
+            self.model.kinDyn.setRobotState(self._coll_s, self._coll_ds, self.model.gravity_vec)
         # clear transform cache for new configuration
         self._transform_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
@@ -617,16 +790,14 @@ class Optimizer:
         and a fail flag"""
         raise NotImplementedError
 
-    def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
-        """Wrap objectiveFunc for pyOptSparse dict-based API."""
+    def buildVariableBounds(
+        self, initial_values: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return (x0, lower, upper) arrays for the optimization variables."""
         raise NotImplementedError
 
-    def _sensitivityWrapper(self, xdict: dict, funcs: dict) -> tuple[dict, bool]:
-        """Compute analytical gradients for pyOptSparse. Overridden in subclasses."""
-        raise NotImplementedError
-
-    def addVarsAndConstraints(self, opt_prob: Any, initial_values: np.ndarray | None = None) -> None:
-        """Add variables and constraints to the optimization problem."""
+    def buildConstraintBounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (lower, upper) arrays for the constraint values."""
         raise NotImplementedError
 
     def initGraph(self):
@@ -695,6 +866,29 @@ class Optimizer:
     def gather_solutions(self) -> None:
         """Placeholder for solution gathering (previously used MPI)."""
 
+    def repairBestInfeasible(self) -> None:
+        """Turn the best infeasible solution into a feasible one if possible.
+
+        No-op by default; overridden by optimizers that know how to back off
+        their solution (e.g. TrajectoryOptimizer scales Fourier amplitudes).
+        """
+
+    def repairTrialCandidate(self, x: np.ndarray) -> tuple[float, np.ndarray, float] | None:
+        """Turn an infeasible global-search candidate into a feasible one.
+
+        Returns (f, g, scale) of the repaired point or None. No-op by default;
+        overridden by TrajectoryOptimizer (amplitude backoff).
+        """
+        return None
+
+    def buildSeedTrialParams(self, var_info: list[tuple[str, float, float, float]]) -> list[dict[str, float]]:
+        """Build parameter dicts of known-good solutions to enqueue as Optuna trials.
+
+        Empty by default; overridden by TrajectoryOptimizer (previously
+        optimized trajectory files via trajectorySeedSolutions).
+        """
+        return []
+
     def _runOptuna(self) -> None:
         """Run Optuna TPE or NSGA2 global optimization.
 
@@ -726,24 +920,35 @@ class Optimizer:
         num_constraints = self.num_constraints
         num_coll_constraints = self.num_coll_constraints
 
+        def to_violations(g: np.ndarray) -> list[float]:
+            """Convert constraint values to optuna's "violation <= 0 is feasible" convention.
+
+            g <= 0 is feasible for joint/velocity/torque constraints, g > 0 for collisions.
+            """
+            c_s = num_constraints - num_coll_constraints
+            violations = [float(g[i]) for i in range(c_s)]
+            violations += [float(-g[i]) for i in range(c_s, num_constraints)]
+            return violations
+
         def objective(trial: optuna.Trial) -> float:
             x = []
             for name, lo, hi, init in var_info:
                 x.append(trial.suggest_float(name, lo, hi))
             x_arr = np.array(x)
             f, g, fail = self.objectiveFunc(x_arr)
+            violations = to_violations(np.asarray(g))
 
-            # store constraint values for this trial (g <= 0 means feasible for
-            # joint/velocity/torque constraints, g > 0 means feasible for collision)
-            c_s = num_constraints - num_coll_constraints
-            # convert all to "violation <= 0 is feasible" convention for optuna
-            violations = []
-            for i in range(c_s):
-                violations.append(float(g[i]))  # already <= 0 for feasible
-            for i in range(c_s, num_constraints):
-                violations.append(float(-g[i]))  # collision: flip sign (g > 0 → -g < 0 = feasible)
+            # infeasible candidates can still contribute a feasible solution by
+            # backing off their amplitudes; the trial then reports the repaired
+            # objective/constraints, biasing the sampler toward repairable shapes
+            if not fail and any(v > 0 for v in violations):
+                repaired = self.repairTrialCandidate(x_arr)
+                if repaired is not None:
+                    f, g_rep, scale = repaired
+                    violations = to_violations(g_rep)
+                    trial.set_user_attr("repair_scale", scale)
+
             trial_constraints[trial.number] = violations
-
             return f
 
         def constraints_func(trial: optuna.trial.FrozenTrial) -> list[float]:
@@ -761,10 +966,14 @@ class Optimizer:
                 constant_liar=True,  # parallel: assume running trials return worst value
             )
 
-        # enqueue the initial solution as the first trial
+        # enqueue the initial solution as the first trial, followed by any
+        # known-good seed solutions (previously optimized trajectories)
         init_params = {info[0]: info[3] for info in var_info}
+        seed_trials = self.buildSeedTrialParams(var_info)
         study = optuna.create_study(direction="minimize", sampler=sampler)
         study.enqueue_trial(init_params)
+        for seed in seed_trials:
+            study.enqueue_trial(seed)
 
         cpu_count = os.cpu_count() or 1
         default_jobs = max(1, cpu_count - 2)
@@ -788,10 +997,13 @@ class Optimizer:
                 storage=storage,
             )
             study.enqueue_trial(init_params)
+            for seed in seed_trials:
+                study.enqueue_trial(seed)
 
             # each worker runs until the study has enough total trials
             # (workers check the shared DB and stop when n_trials is reached)
             config_copy = {k: v for k, v in self.config.items() if k != "jointNames"}
+            config_copy["_worldFile"] = self.world
             processes = []
             for i in range(n_jobs):
                 p = multiprocessing.Process(
@@ -808,6 +1020,7 @@ class Optimizer:
             if self.config["showOptimizationGraph"]:
                 plt.show(block=False)
 
+            interrupted = False
             try:
                 while any(p.is_alive() for p in processes):
                     time.sleep(2)
@@ -835,6 +1048,7 @@ class Optimizer:
                         flush=True,
                     )
             except KeyboardInterrupt:
+                interrupted = True
                 print("\n  Ctrl-C: terminating worker processes...")
                 for p in processes:
                     p.terminate()
@@ -848,10 +1062,20 @@ class Optimizer:
                     print(f"  worker {p.name} exited with code {p.exitcode}")
 
             # reload study results from shared storage
-            study = optuna.load_study(study_name="trajectory_opt", storage=storage)
-            os.remove(storage_path)
+            # workers terminated mid-write may leave the SQLite DB corrupt,
+            # so wrap in try-except and always clean up the file
+            completed_study: optuna.Study | None = None
+            try:
+                completed_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+            except Exception as e:
+                print(f"  WARNING: could not reload Optuna study ({e}), using results collected so far")
+            finally:
+                if os.path.exists(storage_path):
+                    os.remove(storage_path)
         else:
+            interrupted = False
             study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+            completed_study = study
 
         # extract best feasible solution
         # constraints are stored either in local dict (single process) or trial user_attrs (multiprocess)
@@ -860,15 +1084,29 @@ class Optimizer:
                 return trial_constraints[t.number]
             return t.user_attrs.get("constraints", [10.0] * num_constraints)
 
-        feasible_trials = [
-            t for t in study.trials if t.value is not None and all(v <= 0.01 for v in _get_constraints(t))
-        ]
+        feasible_trials: list[Any] = []
+        if completed_study is not None:
+            try:
+                feasible_trials = [
+                    t
+                    for t in completed_study.trials
+                    if t.value is not None and all(v <= 0.01 for v in _get_constraints(t))
+                ]
+            except Exception as e:
+                print(f"  WARNING: could not read Optuna trials ({e}), using results collected so far")
+
         # sort by objective value (best first) and verify with dense collision check
         feasible_trials.sort(key=lambda t: t.value)  # type: ignore[arg-type,return-value]
 
         verified = False
+        n_total_trials = len(completed_study.trials) if completed_study is not None else "?"
         for trial in feasible_trials:
             candidate_x = np.array([trial.params[info[0]] for info in var_info])
+            # repaired trials report the backed-off solution; reconstruct it from
+            # the stored amplitude scale (trial.params holds the unrepaired point)
+            repair_scale = trial.user_attrs.get("repair_scale")
+            if repair_scale is not None:
+                candidate_x = cast("TrajectoryOptimizer", self).scaleAmplitudes(candidate_x, float(repair_scale))
             # re-evaluate with dense collision checking (every sample instead of every Nth)
             old_step = self.config.get("collisionCheckStep", 5)
             self.config["collisionCheckStep"] = 1
@@ -881,7 +1119,7 @@ class Optimizer:
                     self.last_best_f = f_verify
                     self.last_best_sol = candidate_x
                 print(
-                    f"Optuna best verified: {f_verify:.2f} ({len(feasible_trials)}/{len(study.trials)} passed sparse check)"
+                    f"Optuna best verified: {f_verify:.2f} ({len(feasible_trials)}/{n_total_trials} passed sparse check)"
                 )
                 verified = True
                 break
@@ -891,134 +1129,100 @@ class Optimizer:
                 )
 
         if not verified:
-            print(f"Optuna: no solution survived dense collision verification ({len(study.trials)} trials)")
+            print(f"Optuna: no solution survived dense collision verification ({n_total_trials} trials)")
 
-    def runOptimizer(self, opt_prob: Any) -> np.ndarray:
+        # re-raise so runOptimizer skips local optimization after user cancellation
+        if interrupted:
+            raise KeyboardInterrupt
+
+    def runOptimizer(self) -> np.ndarray:
         """call global followed by local optimizer, return solution"""
 
-        from pyoptsparse import ALPSO, IPOPT, NSGA2, PSQP, SLSQP, Optimization
-
+        interrupted = False
         if self.config["useGlobalOptimization"]:
             ### global optimization
-            sr = random.SystemRandom()
-            if self.config["globalSolver"] == "NSGA2":
-                opt = NSGA2()  # genetic algorithm
-                if self.config["globalOptSize"] % 4:
-                    raise OSError("globalOptSize needs to be a multiple of 4 for NSGA2")
-                opt.setOption("PopSize", self.config["globalOptSize"])  # Population Size (a Multiple of 4)
-                opt.setOption("maxGen", self.config["globalOptIterations"])  # Maximum Number of Generations
-                opt.setOption("PrintOut", 0)  # Flag to Turn On Output to files (0-None, 1-Subset, 2-All)
-                opt.setOption("xinit", 1)  # Use Initial Solution Flag (0 - random population, 1 - use given solution)
-                opt.setOption("seed", sr.randint(1, 2**31))  # Random Number Seed
-                # pCross_real    0.6     Probability of Crossover of Real Variable (0.6-1.0)
-                opt.setOption("pMut_real", 0.5)  # Probablity of Mutation of Real Variables (1/nreal)
-                # eta_c  10.0    # Distribution Index for Crossover (5-20) must be > 0
-                # eta_m  20.0    # Distribution Index for Mutation (5-50) must be > 0
-                # pCross_bin     0.0     # Probability of Crossover of Binary Variable (0.6-1.0)
-                # pMut_real      0.0     # Probability of Mutation of Binary Variables (1/nbits)
-                self.iter_max = self.config["globalOptSize"] * self.config["globalOptIterations"]
-            elif self.config["globalSolver"] == "ALPSO":
-                opt = ALPSO()  # augmented lagrange particle swarm optimization
-                opt.setOption("stopCriteria", 0)  # stop at max iters
-                opt.setOption("dynInnerIter", 1)  # dynamic inner iter number
-                opt.setOption("maxInnerIter", 3)
-                opt.setOption("maxOuterIter", self.config["globalOptIterations"])
-                opt.setOption("printInnerIters", 1)
-                opt.setOption("printOuterIters", 1)
-                opt.setOption("SwarmSize", self.config["globalOptSize"])
-                opt.setOption("xinit", 1)
-                opt.setOption("seed", sr.randint(1, 2**31))
-                # slightly more explorative than defaults — local solver handles convergence
-                opt.setOption("vmax", 3.0)  # higher max velocity for broader search (default 2.0)
-                opt.setOption("c2", 0.7)  # weaker social pull, less premature convergence (default 1.0)
-                opt.setOption("w2", 0.65)  # higher final inertia to keep searching longer (default 0.55)
-                # TODO: how to properly limit max number of function calls?
-                # no. func calls = (SwarmSize * inner) * outer + SwarmSize
-                self.iter_max = opt.getOption("SwarmSize") * opt.getOption("maxInnerIter") * opt.getOption(
-                    "maxOuterIter"
-                ) + opt.getOption("SwarmSize")
-            elif self.config["globalSolver"] == "Optuna":
-                opt = None  # Optuna runs separately below
-            else:
-                print("Solver {} not defined".format(self.config["globalSolver"]))
-                sys.exit(1)
-
-            # run global optimization
             if self.config["verbose"]:
-                print("Running global optimization with {}".format(self.config["globalSolver"]))
+                print("Running global optimization with Optuna")
             self.is_global = True
 
             try:
-                if self.config["globalSolver"] == "Optuna":
-                    self._runOptuna()
-                else:
-                    sol = opt(opt_prob, storeHistory=False)
-                    print(sol)
+                self._runOptuna()
             except KeyboardInterrupt:
+                interrupted = True
                 print("\n\nGlobal optimization interrupted by user.")
                 _kill_gradient_pool()
 
             self.gather_solutions()
 
+        ipopt_info: dict | None = None
+
         ### local optimization
-        if self.config["useLocalOptimization"]:
+        if self.config["useLocalOptimization"] and not interrupted:
             print("Runnning local gradient based solver")
 
             # TODO: run local optimization for e.g. the three last best results (global solutions
             # could be more or less optimal within their local minima)
 
-            # after using global optimization, refine solution with gradient based method init
-            # optimizer (more or less local)
-            if self.config["localSolver"] == "SLSQP":
-                opt2 = SLSQP()  # sequential least squares
-                opt2.setOption("MAXIT", self.config["localOptIterations"])
-                # IPRINT: -1=silent, 0=iter+final, 1=detailed
-                opt2.setOption("IPRINT", -1 if not self.config["verbose"] else 0)
-            elif self.config["localSolver"] == "IPOPT":
-                opt2 = IPOPT()
-                opt2.setOption(
-                    "linear_solver", "mumps"
-                )  # mumps (bundled) or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
-                opt2.setOption("max_iter", self.config["localOptIterations"])
-                if self.config["verbose"]:
-                    opt2.setOption("print_level", 4)  # 0 none ... 5 max
-                else:
-                    opt2.setOption("print_level", 0)  # 0 none ... 5 max
-            elif self.config["localSolver"] == "PSQP":
-                opt2 = PSQP()
-                opt2.setOption("MIT", self.config["localOptIterations"])  # max iterations
-                # opt2.setOption('MFV', ??)  # max function evaluations
-
             self.iter_max = 0  # not meaningful for local opt (most FD probes fail silently)
 
-            # Create a fresh opt_prob so ALPSO's NaN state doesn't contaminate
-            # the starting point. Pass the ALPSO best as initial values directly
-            # to addVar (setDVs is unreliable after ALPSO's NaN solution).
+            # after using global optimization, refine solution with the gradient based
+            # solver, starting from the best solution found so far (if any)
             init_vals = np.array(self.last_best_sol) if len(self.last_best_sol) > 0 else None
             if init_vals is not None:
                 print(f"Starting local optimization from global best (obj={self.last_best_f:.2f})")
             else:
                 print("Starting local optimization from default initial trajectory (no feasible global solution found)")
-            opt_prob_local = Optimization("Trajectory optimization", self._objFuncWrapper)
-            opt_prob_local.addObj("f")
-            self.opt_prob = opt_prob_local
-            self.addVarsAndConstraints(opt_prob_local, initial_values=init_vals)
+            x0, var_lower, var_upper = self.buildVariableBounds(initial_values=init_vals)
+            con_lower, con_upper = self.buildConstraintBounds()
 
             if self.config["verbose"]:
-                print("Running local optimization with {}".format(self.config["localSolver"]))
+                print("Running local optimization with IPOPT (cyipopt)")
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
+            use_analytical = bool(self.config.get("useAnalyticalGradients", False))
+            if use_analytical:
+                print("Using analytical gradients for local optimization")
+
+            problem = IpoptProblem(
+                self,
+                self.objectiveFunc,
+                self.num_constraints,
+                sens_step,
+                use_analytical_gradients=use_analytical,
+            )
+            # IPOPT treats bounds beyond +-1e19 as infinite
+            nlp = cyipopt.Problem(
+                n=len(x0),
+                m=self.num_constraints,
+                problem_obj=problem,
+                lb=np.clip(var_lower, -1e19, 1e19),
+                ub=np.clip(var_upper, -1e19, 1e19),
+                cl=np.clip(con_lower, -1e19, 1e19),
+                cu=np.clip(con_upper, -1e19, 1e19),
+            )
+            nlp.add_option(
+                "linear_solver", "mumps"
+            )  # mumps (bundled) or hsl: ma27, ma57, ma77, ma86, ma97 or mkl: pardiso
+            nlp.add_option("max_iter", int(self.config["localOptIterations"]))
+            if self.config["verbose"]:
+                nlp.add_option("print_level", 4)  # 0 none ... 12 max
+            else:
+                nlp.add_option("print_level", 0)  # 0 none ... 12 max
+            nlp.add_option("sb", "yes")  # suppress the IPOPT banner
+            # only first derivatives are available, no exact hessian
+            nlp.add_option("hessian_approximation", "limited-memory")
+
             try:
-                if self.config.get("useAnalyticalGradients", False):
-                    print("Using analytical gradients for local optimization")
-                    sol = opt2(opt_prob_local, sens=self._sensitivityWrapper, storeHistory=False)
-                else:
-                    sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
+                _, ipopt_info = nlp.solve(x0)
             except KeyboardInterrupt:
                 print("\n\nOptimization interrupted by user.")
                 _kill_gradient_pool()
 
             self.gather_solutions()
+
+        # subclasses may turn the best infeasible solution into a feasible one
+        # (e.g. amplitude backoff); adopts via objectiveFunc best-tracking
+        self.repairBestInfeasible()
 
         if len(self.last_best_sol) > 0:
             print("using best constrained solution found during optimization.")
@@ -1036,7 +1240,11 @@ class Optimizer:
             print("\n")
             return self.last_best_sol
         else:
-            # no feasible solution found at all — print raw solver output for debugging
-            print(sol)
+            # no feasible solution found at all — print solver status for debugging
+            if ipopt_info is not None:
+                status_msg = ipopt_info["status_msg"]
+                if isinstance(status_msg, bytes):
+                    status_msg = status_msg.decode()
+                print("IPOPT status {}: {}".format(ipopt_info["status"], status_msg))
             print("No feasible solution found!")
             sys.exit(-1)

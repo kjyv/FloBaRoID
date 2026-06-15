@@ -5,11 +5,9 @@ optimizeTrajectory: 1            #find new parameters with optimization or load 
 
 # trajectory optimization
 useGlobalOptimization: 0         #use global solver first (recommended)
-globalSolver: 'NSGA2'            #ALPSO (particle swarm) or NSGA2 (genetic algorithm)
 globalOptIterations: 10          #Swarm iterations or Generations
 globalOptSize: 12                #Swarm size (any) or Population size (multiple of 4)
 useLocalOptimization: 1          #do local optimization after using global solver
-localSolver: 'SLSQP'             #one of SLSQP, PSQP, IPOPT (all three gradient); COBYLA (no gradient)
 localOptIterations: 2            #how many optimizer iterations to use. this is not equal to function calls if gradients are approximated
 
 minTolConstr: 0.01               #threshold for being within constraints (only used for display)
@@ -28,6 +26,17 @@ trajectoryPulseMax:  1.0
 trajectoryCoeffInit: 0.4         #set this as high as possible without violating constraints (see output after start)
 trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
+# per-joint peak-velocity target (rad/s) as a soft cost; friction is hard to
+# identify for joints that barely move (0 = disabled)
+trajectoryTargetVelocity: 0.0
+# repair infeasible global-search candidates by scaling their Fourier amplitudes
+# down until feasible, so they still contribute a feasible solution
+globalOptAmplitudeRepair: 1
+# previously optimized trajectory files to enqueue as initial global-search trials
+trajectorySeedSolutions: []
+# measurement files of earlier trajectories whose information is added to the
+# objective so a new trajectory maximizes the information it adds (sequential design)
+trajectoryPriorMeasurements: []
 trajectoryCenterFreedom: 25.0
 # trajectoryOscillationCenters: unlisted joints default to 0
 
@@ -48,7 +57,6 @@ staticPostureTime: 0.02          # time in s per posture (nr. of samples => this
 initialPostures: []              #for static optimization, feasible postures to start from (useful only when not using global optimization)
 
 # excitation
-excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
 exciteMethod: null               #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: ''               #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
@@ -97,7 +105,7 @@ minTol: 0.0001
 floatingBase: 1
 
 # identify motor friction (constant sign dependent offset and velocity dependent)
-identifyFriction: 0
+identifyFrictionSimultaneously: 0
 
 # identify only one friction value for both directions (necessary for URDF)
 identifySymmetricVelFriction: 1
@@ -124,7 +132,6 @@ identifyClosestToCAD: 0
 # use a non-linear gradient based solver instead of SDP (only for closest to CAD atm)
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-useIPOPTforNL: 0   # use IPOPT (needs to be installed) or PSQP (included in pyOpt)
 
 # constrain parameters for links more than a certain condition number to the a priori values
 # (to prevent very big changes for parameters that are not expressed well in the data)
@@ -188,6 +195,10 @@ useDependents: 0
 # covariance estimation can be wrong (also assumes that error is zero mean and normal
 # distributed)
 useWLS: 0
+# when identifying from several measurement files (repeated --measurements),
+# weight each file's equations by the inverse of its residual noise instead of
+# stacking all samples equally, so a noisier session does not dominate (0 = off)
+useTrajectoryWeighting: 0
 
 # whether to filter the regressor columns (cutoff frequency is system dependent)
 # possibly increases accuracy when torque ripples are present. also supposedly decreases
@@ -206,7 +217,6 @@ plotBaseDynamics: 1          #when using floating base, plot base forces or not
 plotPerJoint: 1              #plot each joint torque in one graph
 plotPrioriTorques: 1         #plot the computed torques from the a priori model parameters
 plotErrors: 0                #plot errors into torque graphs
-plotLegend: 1                #show plot legend
 
 showRandomRegressor: 0       #show 2d plot of random regressor
 showErrorHistogram: 0        #show estimation error distribution

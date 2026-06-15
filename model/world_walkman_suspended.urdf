@@ -43,32 +43,33 @@
         <visual>
             <origin xyz="0 0 1.25" rpy="0 0 0" />
             <geometry>
-                <box size="0.12 0.12 2.5" />
+                <box size="0.15 0.15 2.5" />
             </geometry>
         </visual>
     </link>
     <joint name="crane_column_joint" type="fixed">
-        <origin xyz="-0.7 0 -2.2" rpy="0 0 0" />
+        <origin xyz="-1.2 0 -2.2" rpy="0 0 0" />
         <parent link="world" />
         <child link="crane_column" />
     </joint>
 
-    <!-- crane horizontal arm at z=+0.25 (just above attachment point at z=0) -->
+    <!-- crane horizontal arm at z=+0.25 (just above attachment point at z=0)
+         extends from column (x=-1.2) past the attachment (x=0) to x=+0.8 -->
     <link name="crane_arm">
         <inertial>
-            <mass value="20.0" />
+            <mass value="30.0" />
             <origin xyz="0 0 0" rpy="0 0 0" />
             <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
         </inertial>
         <visual>
-            <origin xyz="0.4 0 0" rpy="0 0 0" />
+            <origin xyz="0.8 0 0" rpy="0 0 0" />
             <geometry>
-                <box size="0.9 0.08 0.08" />
+                <box size="2.0 0.10 0.10" />
             </geometry>
         </visual>
     </link>
     <joint name="crane_arm_joint" type="fixed">
-        <origin xyz="-0.7 0 0.25" rpy="0 0 0" />
+        <origin xyz="-1.2 0 0.25" rpy="0 0 0" />
         <parent link="world" />
         <child link="crane_arm" />
     </joint>

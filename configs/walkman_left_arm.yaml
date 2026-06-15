@@ -7,13 +7,11 @@ optimizeTrajectory: 1
 
 # trajectory optimization
 useGlobalOptimization: 0
-globalSolver: 'Optuna'
 globalOptIterations: 20    # n_trials = globalOptSize * globalOptIterations
 globalOptSize: 20
 optunaSampler: 'TPE'       # 'TPE' or 'NSGA2'
 # globalOptJobs: 4         # parallel worker processes (default: CPU cores - 2)
 useLocalOptimization: 1
-localSolver: 'IPOPT'
 localOptIterations: 50
 localOptSensStep: 0.02
 useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality
@@ -28,6 +26,9 @@ transparentLinks: []
 # the Waist link is the base (propped up), won't collide
 # collision geometry: 'box', 'convex', 'full', or 'capsule'
 collisionMode: 'convex'
+# required clearance (m) between robot and world geometry; box hulls
+# under-approximate protruding parts, so a margin avoids near-contact
+worldCollisionMargin: 0.0
 scaleCapsuleRadius: 0.8          # tighter capsules for compact humanoid (1.0 = full AABB)
 ignoreLinksForCollision: ['Waist']
 ignoreLinkPairsForCollision: []
@@ -39,6 +40,17 @@ trajectoryPulseMax:  0.8
 trajectoryCoeffInit: 0.01
 trajectoryCoeffMin: -0.5
 trajectoryCoeffMax:  0.5
+# per-joint peak-velocity target (rad/s) as a soft cost; friction is hard to
+# identify for joints that barely move (0 = disabled)
+trajectoryTargetVelocity: 0.0
+# repair infeasible global-search candidates by scaling their Fourier amplitudes
+# down until feasible, so they still contribute a feasible solution
+globalOptAmplitudeRepair: 1
+# previously optimized trajectory files to enqueue as initial global-search trials
+trajectorySeedSolutions: []
+# measurement files of earlier trajectories whose information is added to the
+# objective so a new trajectory maximizes the information it adds (sequential design)
+trajectoryPriorMeasurements: []
 trajectoryTargetTorqueUtil: 0.5
 
 # preferred oscillation center offsets (degrees, from URDF joint midpoint)
@@ -76,14 +88,12 @@ staticPostureTime: 0.02
 initialPostures: []
 
 # excitation
-excitationSimulate: 1
 exciteMethod: null
 ros_move_group: ''
 excitationFrequency: 200.0
 useDeg: 0
 
 #### measurement simulation
-simulateStaticPostures: 1
 simulateStaticSamplesPerPosture: 100
 staticPostures:
     - [0, 90, 0, -90, 0, 0, 0]       # arm out to side, elbow bent
@@ -123,7 +133,7 @@ filterLowPass2: [6.0, 5]
 filterLowPass3: [3.0, 4]
 
 startOffset: 0
-skipSamples: 0
+skipSamples: 0    # use every (skipSamples+1)-th sample
 
 selectBlocksFromMeasurements: 0
 blockSize: 250
@@ -142,20 +152,19 @@ randomSamples: 5000
 
 minTol: 0.0001
 
-floatingBase: 1
+floatingBase: 1    # 1 = floating/free base (e.g. humanoid), 0 = fixed base
 
-identifyFriction: 1
+identifyFrictionSimultaneously: 1    # identify friction together with inertial params in the SDP (0 = two-step)
 identifySymmetricVelFriction: 1
 identifyGravityParamsOnly: 0
 simulateTorques: 0
 
-constrainToConsistent: 1
+constrainToConsistent: 1    # constrain identified params to be physically consistent (SDP)
 checkAPrioriFeasibility: 0
-identifyClosestToCAD: 1
+identifyClosestToCAD: 1    # pick the feasible standard params closest to the CAD/a-priori model
 
 constrainUsingNL: 0
 nlOptMaxIterations: 500
-nlOptSolver: 'IPOPT'
 
 noChange: 0
 noChangeThresh: 400
@@ -180,10 +189,14 @@ dontConstrain: []
 useSymmetryConstraints: 0
 symmetryTolerance: 0.05
 
-useAPriori: 0
+useAPriori: 0    # identify the parameter error relative to the a-priori model
 useEssentialParams: 0
 useDependents: 0
 useWLS: 0
+# when identifying from several measurement files (repeated --measurements),
+# weight each file's equations by the inverse of its residual noise instead of
+# stacking all samples equally, so a noisier session does not dominate (0 = off)
+useTrajectoryWeighting: 0
 filterRegressor: 0
 filterRegCutoff: 5
 
@@ -197,7 +210,6 @@ plotBaseDynamics: 1
 plotPerJoint: 1
 plotPrioriTorques: 1
 plotErrors: 0
-plotLegend: 1
 
 showRandomRegressor: 0
 showErrorHistogram: 0

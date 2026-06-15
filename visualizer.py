@@ -2111,6 +2111,16 @@ if __name__ == "__main__":
                 use_visual_mesh=use_vis,
                 bvh_mesh_links=effective_bvh,
             )
+        # also mark clearance violations against static world geometry (crane, ground),
+        # using the same margin semantics as the optimizer's collision constraints
+        if v.check_collisions and world_boxes:
+            v.colliding_links |= collision_checker.find_world_colliding_links(
+                kinDyn,
+                linkNames,
+                world_boxes,
+                ignore_links=set(config["ignoreLinksForCollision"]),
+                margin=float(config.get("worldCollisionMargin", 0.0)),
+            )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, ignore_links=[])
 
         if args.world:

@@ -24,10 +24,12 @@ transparentLinks: []             # visualize with some see-through
 
 # collision checking parameters
 # the Waist is the base (propped on mount)
-# ignore base, virtual frames, and head (barely moves, can't collide with limbs)
+# ignore base and virtual frames. The head IS checked: it cannot reach the limbs
+# but it can get close to the crane beam under base swing.
+# crane_tip is the suspension attachment welded to the torso (zero distance by design).
 ignoreLinksForCollision: ['Waist', 'multisense/hokuyo_link', 'NeckYaw', 'NeckPitch',  #don't include these links for collision testing at all
-    'multisense/head', 'multisense/head_imu_link', 'multisense/right_camera_frame',
-    'multisense/left_camera_frame', 'backpack']
+    'multisense/head_imu_link', 'multisense/right_camera_frame',
+    'multisense/left_camera_frame', 'backpack', 'crane_tip']
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['RLowLeg', 'RFoot']         # overlap at ankle (RFootmot between them)
     - ['LLowLeg', 'LFoot']         # overlap at ankle (LFootmot between them)
@@ -45,6 +47,10 @@ ignoreCollisionBetweenGroups:
 # reduces pairs dramatically for humanoids (e.g., left foot vs right hand can't collide)
 collisionMaxKinematicDistance: 0
 collisionCheckStep: 5          # check every Nth sample (higher = faster but may miss brief collisions)
+# required clearance (m) between robot and world geometry (crane, ground): the box
+# hulls under-approximate protruding parts (fingers) and scaleCollisionHull shrinks
+# them, so visual contact can occur at positive hull distance
+worldCollisionMargin: 0.1
 # collision geometry: 'box' (fast AABB), 'convex' (convex hull from mesh),
 #   'full' (BVH triangle mesh, most accurate), 'capsule' (analytical capsules)
 collisionMode: 'convex'

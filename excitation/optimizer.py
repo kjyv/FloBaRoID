@@ -22,7 +22,7 @@ from idyntree import bindings as iDynTree
 from excitation.analyticalGradient import compute_analytical_gradient
 from excitation.analyticalGradient import kill_gradient_pool as _kill_gradient_pool
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
-from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
+from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode, rotationMatrixToEulerAngles
 
 _DARK_MODE = is_dark_mode()
 
@@ -90,7 +90,9 @@ def _optuna_worker(
 
     model = Model(config, config["urdf"])
     idf = Identification(config, config["urdf"], None, None, None, None)
-    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics)
+    # the world file must be passed through, otherwise workers evaluate without
+    # robot-vs-world collision constraints (inconsistent with the main process)
+    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics, world=config.get("_worldFile"))
     worker_opt.is_global = True
 
     def worker_to_violations(g: np.ndarray) -> list[float]:
@@ -493,12 +495,16 @@ class Optimizer:
 
         self.world = world
         self.world_links: list[str] = []
-        # include world links for collision only when the base is fixed (prop-mounted).
-        # for suspended dynamics, the robot swings freely and world geometry is approximate.
-        if world and self.config.get("floatingBaseAttachment") != "suspended":
+        # world links are included in collision checking for all attachment modes:
+        # for suspended dynamics, setCollisionRobotState places the robot at the
+        # simulated (swung) base pose, so robot-vs-world distances are meaningful
+        if world:
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
                 print(f"World links: {self.world_links}")
+            # joint-chain transforms so world links are placed at their world pose
+            # (the bounding box alone only carries the link-local visual origin)
+            world_transforms = idf.urdfHelpers.getLinkWorldTransforms(world)
             for link_name in self.world_links:
                 box, pos, rot = idf.urdfHelpers.getBoundingBox(
                     input_urdf=world,
@@ -506,6 +512,14 @@ class Optimizer:
                     link_name=link_name,
                     scaling=False,
                 )
+                # compose joint-chain transform with the visual origin (same as visualizer)
+                if link_name in world_transforms:
+                    link_pos, link_rot = world_transforms[link_name]
+                    rot_mat = (
+                        eulerAnglesToRotationMatrix(rot) if isinstance(rot, list) else np.asarray(rot, dtype=float)
+                    )
+                    pos = (link_pos + link_rot @ np.array(pos, dtype=float)).tolist()
+                    rot = rotationMatrixToEulerAngles(link_rot @ rot_mat).tolist()
                 # make sure no name collision happens
                 if link_name not in self.link_cuboid_hulls:
                     self.link_cuboid_hulls[link_name] = [box, pos, rot]
@@ -635,14 +649,35 @@ class Optimizer:
         self._transform_cache[link_name] = (rot, pos)
         return rot, pos
 
-    def setCollisionRobotState(self, joint_q: np.ndarray) -> None:
-        """Set iDynTree robot state for collision checking (call once per sample, not per pair)."""
+    def setCollisionRobotState(
+        self,
+        joint_q: np.ndarray,
+        base_rpy: np.ndarray | None = None,
+        base_position: np.ndarray | None = None,
+    ) -> None:
+        """Set iDynTree robot state for collision checking (call once per sample, not per pair).
+
+        For floating-base robots the base pose from the simulated (suspended) base
+        motion must be passed in, otherwise robot-vs-world collision pairs are
+        evaluated at the unswung mount pose and miss collisions under swing.
+        """
         if not hasattr(self, "_coll_s"):
             self._coll_s = iDynTree.JointPosDoubleArray(self.num_dofs)
             self._coll_ds = iDynTree.JointDOFsDoubleArray(self.num_dofs)
         for j in range(self.num_dofs):
             self._coll_s.setVal(j, float(joint_q[j]))
-        self.model.kinDyn.setRobotState(self._coll_s, self._coll_ds, self.model.gravity_vec)
+        if base_rpy is not None and self.config.get("floatingBase", 0):
+            # base_rpy is stored in model.py convention: RPY encodes R = R_world_base^{-1}
+            # (same convention as the visualizer playback)
+            rot_world_base = iDynTree.Rotation.RPY(float(base_rpy[0]), float(base_rpy[1]), float(base_rpy[2])).inverse()
+            pos_idt = iDynTree.Position.Zero()
+            if base_position is not None:
+                pos_idt = iDynTree.Position(float(base_position[0]), float(base_position[1]), float(base_position[2]))
+            world_T_base = iDynTree.Transform(rot_world_base, pos_idt)
+            base_vel = iDynTree.Twist()
+            self.model.kinDyn.setRobotState(world_T_base, self._coll_s, base_vel, self._coll_ds, self.model.gravity_vec)
+        else:
+            self.model.kinDyn.setRobotState(self._coll_s, self._coll_ds, self.model.gravity_vec)
         # clear transform cache for new configuration
         self._transform_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
@@ -968,6 +1003,7 @@ class Optimizer:
             # each worker runs until the study has enough total trials
             # (workers check the shared DB and stop when n_trials is reached)
             config_copy = {k: v for k, v in self.config.items() if k != "jointNames"}
+            config_copy["_worldFile"] = self.world
             processes = []
             for i in range(n_jobs):
                 p = multiprocessing.Process(

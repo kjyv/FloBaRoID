@@ -412,10 +412,15 @@ class TrajectoryOptimizer(Optimizer):
                             group_ignore.add((b, a))
 
             self._collision_pairs: list[tuple[str, str]] = []
+            num_robot_links = len(self.model.linkNames)
             for l0 in range(len(all_links)):
                 for l1 in range(l0 + 1, len(all_links)):
                     l0_name = all_links[l0]
                     l1_name = all_links[l1]
+                    # world links are static — world-world pairs are irrelevant
+                    # (and often touch by construction, e.g. crane column on ground)
+                    if l0 >= num_robot_links and l1 >= num_robot_links:
+                        continue
                     if l0_name in ignore_links or l1_name in ignore_links:
                         continue
                     if (l0_name, l1_name) in ignore_pairs:
@@ -430,6 +435,17 @@ class TrajectoryOptimizer(Optimizer):
                     if max_kin_dist > 0 and _kin_distance(l0_name, l1_name) > max_kin_dist:
                         continue
                     self._collision_pairs.append((l0_name, l1_name))
+            # clearance margin for robot-vs-world pairs: the box hulls
+            # under-approximate protruding parts (fingers) and scaleCollisionHull
+            # shrinks them further, so require a safety distance to world geometry
+            world_margin = float(self.config.get("worldCollisionMargin", 0.0))
+            world_link_set = set(self.world_links)
+            self._collision_pair_margins = np.array(
+                [
+                    world_margin if (l0 in world_link_set or l1 in world_link_set) else 0.0
+                    for l0, l1 in self._collision_pairs
+                ]
+            )
             if self.config.get("verbose", 0):
                 print(f"Collision pairs: {len(self._collision_pairs)}")
 
@@ -438,24 +454,53 @@ class TrajectoryOptimizer(Optimizer):
         if use_ag:
             coll_argmin: dict[int, tuple[int, np.ndarray]] = {}
 
+        # base pose per sample from the simulated (suspended) base motion — collision
+        # checks must use the swung base pose, otherwise robot-vs-world pairs are
+        # evaluated at the mount pose and miss collisions under swing
+        base_rpy = trajectory_data.get("base_rpy")
+        base_pos = trajectory_data.get("base_position")
+
         # Collect all configurations to check (main trajectory + transition)
-        collision_configs: list[tuple[int, np.ndarray]] = []
+        collision_configs: list[tuple[int, np.ndarray, np.ndarray | None, np.ndarray | None]] = []
         for p in range(0, pos.shape[0], collision_step):
-            collision_configs.append((p, pos[p]))
+            collision_configs.append(
+                (
+                    p,
+                    pos[p],
+                    base_rpy[p] if base_rpy is not None else None,
+                    base_pos[p] if base_pos is not None else None,
+                )
+            )
 
         # also check the minimum-jerk transitions from/to zero position
         # (the trajectory is periodic so both paths are nearly identical,
         # but check both since pos[0] and pos[-1] may differ slightly)
+        # base pose: the base keeps swinging with large amplitude during the
+        # ramp-out (the suspension decays much slower than the 3s transition),
+        # so check each transition configuration against several representative
+        # base poses sampled from the periodic motion instead of the rest pose
         transition_duration = self.config.get("transitionDuration", 3.0)
         if transition_duration > 0:
             transition_samples = self.config.get("transitionCollisionSamples", 10)
             zero_pos = np.zeros(self.num_dofs)
+            if base_rpy is not None:
+                pose_idx = list(np.linspace(0, len(base_rpy) - 1, 6).astype(int))
+                pose_idx.append(int(np.argmax(np.abs(base_rpy).sum(axis=1))))  # extreme swing
+                transition_poses = [
+                    (base_rpy[i], base_pos[i] if base_pos is not None else None) for i in sorted(set(pose_idx))
+                ]
+            else:
+                transition_poses = [(None, None)]
+            tcount = 0
             for q_boundary in [pos[0], pos[-1]]:
                 for ti in range(transition_samples):
                     tau = (ti + 1) / (transition_samples + 1)
                     s = 10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5
                     q_trans = zero_pos + s * (q_boundary - zero_pos)
-                    collision_configs.append((-1 - ti, q_trans))  # negative index = transition sample
+                    for rpy_t, bpos_t in transition_poses:
+                        tcount += 1
+                        # negative index = transition sample
+                        collision_configs.append((-tcount, q_trans, rpy_t, bpos_t))
 
         use_capsule = self.config.get("collisionMode", "convex") == "capsule" and self._capsules
         collision_link_names = sorted(set(l for pair in self._collision_pairs for l in pair))
@@ -469,8 +514,8 @@ class TrajectoryOptimizer(Optimizer):
                 self._fcl_objects[link_name] = (fcl.CollisionObject(geom), offset)
         fcl_req = fcl.DistanceRequest(True)
 
-        for p_idx, q_check in collision_configs:
-            self.setCollisionRobotState(q_check)
+        for p_idx, q_check, rpy_check, bpos_check in collision_configs:
+            self.setCollisionRobotState(q_check, base_rpy=rpy_check, base_position=bpos_check)
             for g_cnt, (l0_name, l1_name) in enumerate(self._collision_pairs):
                 if use_capsule and l0_name in self._capsules and l1_name in self._capsules:
                     d = self.getCapsuleDistance(l0_name, l1_name)
@@ -483,6 +528,7 @@ class TrajectoryOptimizer(Optimizer):
                     obj0.setTransform(fcl.Transform(rot0, pos0 + off0))
                     obj1.setTransform(fcl.Transform(rot1, pos1 + off1))
                     d = fcl.distance(obj0, obj1, fcl_req, fcl.DistanceResult())
+                d -= self._collision_pair_margins[g_cnt]
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
                     if use_ag and p_idx >= 0:
@@ -586,6 +632,8 @@ class TrajectoryOptimizer(Optimizer):
                 "accelerations": trajectory_data["accelerations"].copy(),
                 "times": trajectory_data["times"].copy(),
                 "torques": torques.copy(),
+                "base_rpy": base_rpy.copy() if base_rpy is not None else None,
+                "base_position": base_pos.copy() if base_pos is not None else None,
                 "n_observable": n_observable,
                 "dopt_scale": self._dopt_scale,
                 "torque_absmax_idx": np.argmax(np.abs(torques[:, fb:]), axis=0),

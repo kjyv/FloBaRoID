@@ -481,6 +481,8 @@ def _collision_fd_single_pair(
     nd: int,
     epsilon: float,
     inv_2eps: float,
+    base_rpy: np.ndarray | None = None,
+    base_position: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compute d(distance)/dq for a single collision pair via central finite differences.
 
@@ -491,12 +493,12 @@ def _collision_fd_single_pair(
     for j in range(nd):
         q_p = q_star.copy()
         q_p[j] += epsilon
-        optimizer.setCollisionRobotState(q_p)
+        optimizer.setCollisionRobotState(q_p, base_rpy=base_rpy, base_position=base_position)
         d_plus = optimizer.getLinkDistance(l0, l1, q_p)
 
         q_m = q_star.copy()
         q_m[j] -= epsilon
-        optimizer.setCollisionRobotState(q_m)
+        optimizer.setCollisionRobotState(q_m, base_rpy=base_rpy, base_position=base_position)
         d_minus = optimizer.getLinkDistance(l0, l1, q_m)
         ddist[j] = (d_plus - d_minus) * inv_2eps
     return ddist
@@ -955,6 +957,19 @@ def compute_analytical_gradient(
         coll_cache = optimizer._ag_collision_cache
         use_capsule = config.get("collisionMode", "convex") == "capsule" and optimizer._capsules
 
+        # base pose per sample (suspended base motion); the gradient treats the base
+        # pose as constant wrt the trajectory params (the indirect coupling through
+        # the base dynamics is neglected). Transition samples (negative index) use
+        # the rest pose of the first sample.
+        base_rpy_arr = cache.get("base_rpy")
+        base_pos_arr = cache.get("base_position")
+
+        def _coll_base(t: int) -> tuple[np.ndarray | None, np.ndarray | None]:
+            i = t if t >= 0 else 0
+            rpy = base_rpy_arr[i] if base_rpy_arr is not None else None
+            bp = base_pos_arr[i] if base_pos_arr is not None else None
+            return rpy, bp
+
         # Group pairs by their argmin sample for efficiency
         sample_pairs: dict[int, list[int]] = {}
         for g_cnt in coll_cache:
@@ -962,8 +977,10 @@ def compute_analytical_gradient(
             sample_pairs.setdefault(t_star, []).append(g_cnt)
 
         for t_star, pair_indices in sample_pairs.items():
-            q_star = positions[t_star].copy()
-            optimizer.setCollisionRobotState(q_star)
+            # use the cached configuration (transition samples are not part of positions)
+            q_star = coll_cache[pair_indices[0]][1].copy()
+            rpy_star, bpos_star = _coll_base(t_star)
+            optimizer.setCollisionRobotState(q_star, base_rpy=rpy_star, base_position=bpos_star)
 
             if use_capsule:
                 # Analytical capsule gradients — no FD needed
@@ -973,7 +990,9 @@ def compute_analytical_gradient(
                         _, ddist_dq_vec = optimizer.getCapsuleDistanceAndGradient(l0, l1)
                     else:
                         # fallback to FD for pairs without capsules
-                        ddist_dq_vec = _collision_fd_single_pair(optimizer, gi, q_star, nd, epsilon, inv_2eps)
+                        ddist_dq_vec = _collision_fd_single_pair(
+                            optimizer, gi, q_star, nd, epsilon, inv_2eps, base_rpy=rpy_star, base_position=bpos_star
+                        )
                     c_idx = offset + gi
                     for d_joint in range(nd):
                         dq_row, _, _ = _get_traj_jac(d_joint, t_star)
@@ -985,7 +1004,7 @@ def compute_analytical_gradient(
                 for j in range(nd):
                     q_p = q_star.copy()
                     q_p[j] += epsilon
-                    optimizer.setCollisionRobotState(q_p)
+                    optimizer.setCollisionRobotState(q_p, base_rpy=rpy_star, base_position=bpos_star)
                     d_plus: dict[int, float] = {}
                     for gi in pair_indices:
                         l0, l1 = optimizer._collision_pairs[gi]
@@ -993,7 +1012,7 @@ def compute_analytical_gradient(
 
                     q_m = q_star.copy()
                     q_m[j] -= epsilon
-                    optimizer.setCollisionRobotState(q_m)
+                    optimizer.setCollisionRobotState(q_m, base_rpy=rpy_star, base_position=bpos_star)
                     for gi in pair_indices:
                         l0, l1 = optimizer._collision_pairs[gi]
                         d_minus = optimizer.getLinkDistance(l0, l1, q_m)

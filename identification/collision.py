@@ -13,7 +13,7 @@ from typing import Any
 import fcl
 import numpy as np
 
-from identification.helpers import URDFHelpers
+from identification.helpers import URDFHelpers, eulerAnglesToRotationMatrix
 
 
 class CollisionChecker:
@@ -222,5 +222,46 @@ class CollisionChecker:
                 if d < 0:
                     colliding.add(l0)
                     colliding.add(l1)
+
+        return colliding
+
+    def find_world_colliding_links(
+        self,
+        kinDyn: Any,
+        link_names: list[str],
+        world_boxes: dict[str, Any],
+        ignore_links: set[str],
+        margin: float = 0.0,
+    ) -> set[str]:
+        """Find robot links that violate the clearance to static world geometry.
+
+        World boxes are given at their composed world pose (box corners, position,
+        rotation as Euler angles or matrix). A positive margin marks links whose
+        hull distance to the world geometry falls below it (matching the
+        optimizer's worldCollisionMargin constraint semantics).
+
+        Returns:
+            set of link names (robot and world) involved in at least one violation
+        """
+        transforms: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        robot_links = [ln for ln in link_names if ln in self._link_cuboid_hulls and ln not in ignore_links]
+        for ln in robot_links:
+            t = kinDyn.getWorldTransform(ln)
+            transforms[ln] = (t.getRotation().toNumPy(), t.getPosition().toNumPy())
+
+        colliding: set[str] = set()
+        for wl, (box, pos, rot) in world_boxes.items():
+            if wl in ignore_links:
+                continue
+            # register the world hull so _get_geometry can build its box
+            if wl not in self._link_cuboid_hulls:
+                self._link_cuboid_hulls[wl] = [box, [0, 0, 0], [0, 0, 0]]
+            rot_mat = eulerAnglesToRotationMatrix(rot) if not isinstance(rot, np.ndarray) else rot
+            transforms[wl] = (rot_mat, np.array(pos, dtype=float))
+            for ln in robot_links:
+                d = self.check_distance(ln, wl, transforms)
+                if d - margin < 0:
+                    colliding.add(ln)
+                    colliding.add(wl)
 
         return colliding

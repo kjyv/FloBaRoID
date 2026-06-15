@@ -90,12 +90,29 @@ std decomposition. Priority roughly by how pervasively each acts:
   so they bias identification pervasively. Model or filter them. Dominant real-robot error.
 - ◻ **Stribeck/stiction friction** — lower priority. Real geared joints do have a
   stiction→kinetic drop near zero velocity that Coulomb+viscous cannot represent, so real
-  data does *not* "handle it automatically". But its impact on inertial/std identification
-  is small because good excitation keeps joints moving and the velocity dead zone already
-  excludes the near-zero-velocity samples where Stribeck lives. Worth modeling only if an
-  accurate low-speed friction model is needed for control, or if real-data residuals near
-  zero crossings prove harmful. (The disabled implementation also needs a redesign: its
-  velocity constant `vs` is a nonlinear parameter, not linearly identifiable.)
+  data does *not* "handle it automatically". Its impact on inertial/std identification is
+  small because good excitation keeps joints moving. The near-zero-velocity samples where
+  Stribeck lives are excluded by the velocity dead zone *only in the floating-base two-step
+  friction path*; the fixed-base simultaneous path (friction columns in the SDP regressor)
+  does not apply a dead zone, so there those samples still bias the joint estimate (see the
+  friction design notes for why the two paths differ).
+  - The Stribeck term *is* usable as-is: with `vs` (`stribeckVelocity`) taken as a fixed
+    constant from config, `Fs * exp(-|v|/vs) * sign(v)` is a linear regressor column and
+    `Fs` is identified linearly per joint. Only *auto-identifying* `vs` would be nonlinear —
+    that is the part that would need a redesign, not the term itself.
+  - Quantified on real KUKA hardware data (simultaneous mode): the near-reversal residual
+    (`|v|` < 0.1 rad/s) is ~1.8× the moving-sample residual, confirming the spikes are real
+    and localized. Enabling Stribeck with a physical `vs ≈ 0.05` reduces the near-reversal
+    residual by only ~7% and improves held-out validation marginally; the bulk of the
+    reversal residual persists. It is therefore **not** a cure: most of the reversal residual
+    is backlash/hysteresis, which a static rigid-body + friction regressor cannot represent.
+    A caveat against over-tuning `vs`: at larger `vs` the `exp` term also lowers the
+    *moving*-sample residual, i.e. it starts acting as a general extra fitting basis rather
+    than physical stiction. `Fs` also cannot be written back to URDF (no field for it).
+  - Worth enabling only if an accurate low-speed friction model is needed for control. The
+    higher-leverage action for inertial/std quality is to keep the near-reversal samples from
+    biasing the fit (extend the dead zone / sample weighting to the simultaneous path), not
+    to fit the spike.
 - For algorithm development, validate first with only friction enabled (no
   backlash/cable/thermal) to isolate identification performance from model mismatch.
 

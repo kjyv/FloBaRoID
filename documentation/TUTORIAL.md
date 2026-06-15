@@ -58,126 +58,125 @@ The output html file in output/ should look similar to the following:
 ```Linear (relative to Frame) Standard Parameters
 |A priori     |Ident        |Change |%e     |Constr  |Description
 |   1.60000000|   1.60000000| 0.0000|    0.0|nID     |#0: m_0 - mass of link lwr_base_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#1: c_0x - first moment of mass (x) of link lwr_base_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#2: c_0y - first moment of mass (y) of link lwr_base_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#1: c_0x - first moment of mass (x) of link lwr_base_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#2: c_0y - first moment of mass (y) of link lwr_base_link
 |   0.08800000|   0.08800000| 0.0000|    0.0|nID     |#3: c_0z - first moment of mass (z) of link lwr_base_link
 |   0.00789333|   0.00789333| 0.0000|    0.0|nID     |#4: I_0xx - moment of inertia (xx) of link lwr_base_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#5: I_0xy - moment of inertia (xy) of link lwr_base_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#6: I_0xz - moment of inertia (xz) of link lwr_base_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#5: I_0xy - moment of inertia (xy) of link lwr_base_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#6: I_0xz - moment of inertia (xz) of link lwr_base_link
 |   0.00772000|   0.00772000| 0.0000|    0.0|nID     |#7: I_0yy - moment of inertia (yy) of link lwr_base_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#8: I_0yz - moment of inertia (yz) of link lwr_base_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#8: I_0yz - moment of inertia (yz) of link lwr_base_link
 |   0.00305333|   0.00305333| 0.0000|    0.0|nID     |#9: I_0zz - moment of inertia (zz) of link lwr_base_link
-|   2.70000000|   2.70038472| 0.0004|    0.0|mA nID  |#10: m_1 - mass of link lwr_1_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|hull nID|#11: c_1x - first moment of mass (x) of link lwr_1_link
-|  -0.16200000|  -0.14769817| 0.0143|   -8.8|hull nID|#12: c_1y - first moment of mass (y) of link lwr_1_link
-|   0.35100000|   0.35109839| 0.0001|    0.0|hull nID|#13: c_1z - first moment of mass (z) of link lwr_1_link
+|   2.70000000|   2.70038805| 0.0004|    0.0|mA nID  |#10: m_1 - mass of link lwr_1_link
+|   0.00000000|   0.00000000| 0.0000|      -|hull nID|#11: c_1x - first moment of mass (x) of link lwr_1_link
+|  -0.16200000|  -0.14756097| 0.0144|   -8.9|hull nID|#12: c_1y - first moment of mass (y) of link lwr_1_link
+|   0.35100000|   0.35109926| 0.0001|    0.0|hull nID|#13: c_1z - first moment of mass (z) of link lwr_1_link
 |   0.07380000|   0.07380000| 0.0000|    0.0|nID     |#14: I_1xx - moment of inertia (xx) of link lwr_1_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#15: I_1xy - moment of inertia (xy) of link lwr_1_link
-|   0.00000000|   0.00000000| 0.0000|    0.0|nID     |#16: I_1xz - moment of inertia (xz) of link lwr_1_link
-|   0.04968000|   0.04968634| 0.0000|    0.0|nID     |#17: I_1yy - moment of inertia (yy) of link lwr_1_link
-|   0.02106000|   0.01923115|-0.0018|   -8.7|nID     |#18: I_1yz - moment of inertia (yz) of link lwr_1_link
-|   0.02574000|   0.00807958|-0.0177|  -68.6|        |#19: I_1zz - moment of inertia (zz) of link lwr_1_link
-|   2.70000000|   2.70093421| 0.0009|    0.0|mA nID  |#20: m_2 - mass of link lwr_2_link
-|   0.00000000|   0.07999887| 0.0800|  800.0|hull    |#21: c_2x - first moment of mass (x) of link lwr_2_link
-|   0.16200000|   0.14344503|-0.0186|  -11.5|hull nID|#22: c_2y - first moment of mass (y) of link lwr_2_link
-|   0.18900000|   0.15032449|-0.0387|  -20.5|hull    |#23: c_2z - first moment of mass (z) of link lwr_2_link
-|   0.04140000|   0.03732726|-0.0041|   -9.8|        |#24: I_2xx - moment of inertia (xx) of link lwr_2_link
-|   0.00000000|  -0.04357453|-0.0436| -435.7|        |#25: I_2xy - moment of inertia (xy) of link lwr_2_link
-|   0.00000000|  -0.01901132|-0.0190| -190.1|        |#26: I_2xz - moment of inertia (xz) of link lwr_2_link
-|   0.01728000|   0.08320265| 0.0659|  381.5|        |#27: I_2yy - moment of inertia (yy) of link lwr_2_link
-|  -0.01134000|   0.01884394| 0.0302| -266.2|        |#28: I_2yz - moment of inertia (yz) of link lwr_2_link
-|   0.02574000|   0.01992064|-0.0058|  -22.6|        |#29: I_2zz - moment of inertia (zz) of link lwr_2_link
-|   2.70000000|   2.69602814|-0.0040|   -0.1|mA      |#30: m_3 - mass of link lwr_3_link
-|   0.00000000|  -0.05705153|-0.0571| -570.5|hull    |#31: c_3x - first moment of mass (x) of link lwr_3_link
-|   0.16200000|   0.07017931|-0.0918|  -56.7|hull    |#32: c_3y - first moment of mass (y) of link lwr_3_link
-|   0.35100000|   0.30372103|-0.0473|  -13.5|hull    |#33: c_3z - first moment of mass (z) of link lwr_3_link
-|   0.07380000|   0.16208254| 0.0883|  119.6|        |#34: I_3xx - moment of inertia (xx) of link lwr_3_link
-|   0.00000000|   0.07385491| 0.0739|  738.5|        |#35: I_3xy - moment of inertia (xy) of link lwr_3_link
-|   0.00000000|  -0.00929931|-0.0093|  -93.0|        |#36: I_3xz - moment of inertia (xz) of link lwr_3_link
-|   0.04968000|   0.07697772| 0.0273|   54.9|        |#37: I_3yy - moment of inertia (yy) of link lwr_3_link
-|  -0.02106000|  -0.01693596| 0.0041|  -19.6|        |#38: I_3yz - moment of inertia (yz) of link lwr_3_link
-|   0.02574000|   0.00499736|-0.0207|  -80.6|        |#39: I_3zz - moment of inertia (zz) of link lwr_3_link
-|   2.70000000|   2.70185148| 0.0019|    0.1|mA      |#40: m_4 - mass of link lwr_4_link
-|   0.00000000|   0.02358018| 0.0236|  235.8|hull    |#41: c_4x - first moment of mass (x) of link lwr_4_link
-|  -0.16200000|  -0.06992608| 0.0921|  -56.8|hull    |#42: c_4y - first moment of mass (y) of link lwr_4_link
-|   0.18900000|   0.25019287| 0.0612|   32.4|hull    |#43: c_4z - first moment of mass (z) of link lwr_4_link
-|   0.04140000|   0.02556860|-0.0158|  -38.2|        |#44: I_4xx - moment of inertia (xx) of link lwr_4_link
-|   0.00000000|   0.00029478| 0.0003|    2.9|        |#45: I_4xy - moment of inertia (xy) of link lwr_4_link
-|   0.00000000|  -0.00166505|-0.0017|  -16.7|        |#46: I_4xz - moment of inertia (xz) of link lwr_4_link
-|   0.01728000|   0.02354358| 0.0063|   36.2|        |#47: I_4yy - moment of inertia (yy) of link lwr_4_link
-|   0.01134000|   0.00619781|-0.0051|  -45.3|        |#48: I_4yz - moment of inertia (yz) of link lwr_4_link
-|   0.02574000|   0.00247239|-0.0233|  -90.4|        |#49: I_4zz - moment of inertia (zz) of link lwr_4_link
-|   1.70000000|   1.70543248| 0.0054|    0.3|mA      |#50: m_5 - mass of link lwr_5_link
-|   0.00000000|  -0.00000318|-0.0000|   -0.0|hull    |#51: c_5x - first moment of mass (x) of link lwr_5_link
-|   0.00000000|  -0.03005501|-0.0301| -300.6|hull    |#52: c_5y - first moment of mass (y) of link lwr_5_link
-|   0.21080000|   0.02831193|-0.1825|  -86.6|hull    |#53: c_5z - first moment of mass (z) of link lwr_5_link
-|   0.03689227|   0.00120673|-0.0357|  -96.7|        |#54: I_5xx - moment of inertia (xx) of link lwr_5_link
-|   0.00000000|   0.00434412| 0.0043|   43.4|        |#55: I_5xy - moment of inertia (xy) of link lwr_5_link
-|   0.00000000|  -0.00360886|-0.0036|  -36.1|        |#56: I_5xz - moment of inertia (xz) of link lwr_5_link
-|   0.02868920|   0.09205740| 0.0634|  220.9|        |#57: I_5yy - moment of inertia (yy) of link lwr_5_link
-|   0.00000000|  -0.07558619|-0.0756| -755.9|        |#58: I_5yz - moment of inertia (yz) of link lwr_5_link
-|   0.00922307|   0.06373818| 0.0545|  591.1|        |#59: I_5zz - moment of inertia (zz) of link lwr_5_link
-|   1.60000000|   1.54105989|-0.0589|   -3.7|mA      |#60: m_6 - mass of link lwr_6_link
-|   0.00000000|   0.05572927| 0.0557|  557.3|hull    |#61: c_6x - first moment of mass (x) of link lwr_6_link
-|   0.00000000|   0.00836009| 0.0084|   83.6|hull    |#62: c_6y - first moment of mass (y) of link lwr_6_link
-|   0.10000000|   0.02552868|-0.0745|  -74.5|hull    |#63: c_6z - first moment of mass (z) of link lwr_6_link
-|   0.01041667|   0.00680676|-0.0036|  -34.7|        |#64: I_6xx - moment of inertia (xx) of link lwr_6_link
-|   0.00000000|   0.02901285| 0.0290|  290.1|        |#65: I_6xy - moment of inertia (xy) of link lwr_6_link
-|   0.00000000|  -0.00340629|-0.0034|  -34.1|        |#66: I_6xz - moment of inertia (xz) of link lwr_6_link
-|   0.01041667|   0.13804141| 0.1276| 1225.2|        |#67: I_6yy - moment of inertia (yy) of link lwr_6_link
-|   0.00000000|  -0.01162447|-0.0116| -116.2|        |#68: I_6yz - moment of inertia (yz) of link lwr_6_link
-|   0.00416667|   0.00303459|-0.0011|  -27.2|        |#69: I_6zz - moment of inertia (zz) of link lwr_6_link
-|   0.30000000|   0.32613337| 0.0261|    8.7|mA      |#70: m_7 - mass of link lwr_7_link
-|   0.00000000|  -0.01304533|-0.0130| -130.5|hull    |#71: c_7x - first moment of mass (x) of link lwr_7_link
-|   0.00000000|  -0.01299733|-0.0130| -130.0|hull    |#72: c_7y - first moment of mass (y) of link lwr_7_link
-|   0.00000000|  -0.01011012|-0.0101| -101.1|hull    |#73: c_7z - first moment of mass (z) of link lwr_7_link
-|   0.05000000|   0.03917521|-0.0108|  -21.6|        |#74: I_7xx - moment of inertia (xx) of link lwr_7_link
-|   0.00000000|   0.04393272| 0.0439|  439.3|        |#75: I_7xy - moment of inertia (xy) of link lwr_7_link
-|   0.00000000|   0.01303593| 0.0130|  130.4|        |#76: I_7xz - moment of inertia (xz) of link lwr_7_link
-|   0.05000000|   0.15225654| 0.1023|  204.5|        |#77: I_7yy - moment of inertia (yy) of link lwr_7_link
-|   0.00000000|   0.05689426| 0.0569|  568.9|        |#78: I_7yz - moment of inertia (yz) of link lwr_7_link
-|   0.05000000|   0.02472525|-0.0253|  -50.5|        |#79: I_7zz - moment of inertia (zz) of link lwr_7_link
-|   0.50000000|   0.60740175| 0.1074|   21.5|        |#80: Fc_0 - Coulomb friction of joint lwr_0_joint
-|   0.80000000|   0.40464655|-0.3954|  -49.4|        |#81: Fc_1 - Coulomb friction of joint lwr_1_joint
-|   0.40000000|   0.18688298|-0.2131|  -53.3|        |#82: Fc_2 - Coulomb friction of joint lwr_2_joint
-|   0.30000000|   0.40808425| 0.1081|   36.0|        |#83: Fc_3 - Coulomb friction of joint lwr_3_joint
-|   0.20000000|   0.48696688| 0.2870|  143.5|        |#84: Fc_4 - Coulomb friction of joint lwr_4_joint
-|   0.10000000|   0.13022437| 0.0302|   30.2|        |#85: Fc_5 - Coulomb friction of joint lwr_5_joint
-|   0.05000000|   0.01691853|-0.0331|  -66.2|        |#86: Fc_6 - Coulomb friction of joint lwr_6_joint
-|   1.00000000|   1.04632068| 0.0463|    4.6|>0      |#87: Fv_0 - Viscous friction of joint lwr_0_joint
-|   1.20000000|   1.02674238|-0.1733|  -14.4|>0      |#88: Fv_1 - Viscous friction of joint lwr_1_joint
-|   0.90000000|   0.49835218|-0.4016|  -44.6|>0      |#89: Fv_2 - Viscous friction of joint lwr_2_joint
-|   0.80000000|   0.80121758| 0.0012|    0.2|>0      |#90: Fv_3 - Viscous friction of joint lwr_3_joint
-|   0.50000000|   0.40854794|-0.0915|  -18.3|>0      |#91: Fv_4 - Viscous friction of joint lwr_4_joint
-|   0.30000000|   0.28801486|-0.0120|   -4.0|>0      |#92: Fv_5 - Viscous friction of joint lwr_5_joint
-|   0.20000000|   0.13599206|-0.0640|  -32.0|>0      |#93: Fv_6 - Viscous friction of joint lwr_6_joint
-|   0.00000000|   0.75272816| 0.7527| 7527.3|        |#94: off_0 - Torque offset of joint lwr_0_joint
-|   0.00000000|   0.00001574| 0.0000|    0.2|        |#95: off_1 - Torque offset of joint lwr_1_joint
-|   0.00000000|   0.00000001| 0.0000|    0.0|        |#96: off_2 - Torque offset of joint lwr_2_joint
-|   0.00000000|   0.12650274| 0.1265| 1265.0|        |#97: off_3 - Torque offset of joint lwr_3_joint
-|   0.00000000|  -0.42774997|-0.4277|-4277.5|        |#98: off_4 - Torque offset of joint lwr_4_joint
-|   0.00000000|   0.14994077| 0.1499| 1499.4|        |#99: off_5 - Torque offset of joint lwr_5_joint
-|   0.00000000|  -0.10477484|-0.1048|-1047.7|        |#100: off_6 - Torque offset of joint lwr_6_joint
-
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#15: I_1xy - moment of inertia (xy) of link lwr_1_link
+|   0.00000000|   0.00000000| 0.0000|      -|nID     |#16: I_1xz - moment of inertia (xz) of link lwr_1_link
+|   0.04968000|   0.04968639| 0.0000|    0.0|nID     |#17: I_1yy - moment of inertia (yy) of link lwr_1_link
+|   0.02106000|   0.01921333|-0.0018|   -8.8|nID     |#18: I_1yz - moment of inertia (yz) of link lwr_1_link
+|   0.02574000|   0.00806457|-0.0177|  -68.7|        |#19: I_1zz - moment of inertia (zz) of link lwr_1_link
+|   2.70000000|   2.70093962| 0.0009|    0.0|mA nID  |#20: m_2 - mass of link lwr_2_link
+|   0.00000000|   0.07999894| 0.0800|      -|hull    |#21: c_2x - first moment of mass (x) of link lwr_2_link
+|   0.16200000|   0.14356275|-0.0184|  -11.4|hull nID|#22: c_2y - first moment of mass (y) of link lwr_2_link
+|   0.18900000|   0.15034978|-0.0387|  -20.4|hull    |#23: c_2z - first moment of mass (z) of link lwr_2_link
+|   0.04140000|   0.03734072|-0.0041|   -9.8|        |#24: I_2xx - moment of inertia (xx) of link lwr_2_link
+|   0.00000000|  -0.04357467|-0.0436|      -|        |#25: I_2xy - moment of inertia (xy) of link lwr_2_link
+|   0.00000000|  -0.01901573|-0.0190|      -|        |#26: I_2xz - moment of inertia (xz) of link lwr_2_link
+|   0.01728000|   0.08319940| 0.0659|  381.5|        |#27: I_2yy - moment of inertia (yy) of link lwr_2_link
+|  -0.01134000|   0.01884285| 0.0302| -266.2|        |#28: I_2yz - moment of inertia (yz) of link lwr_2_link
+|   0.02574000|   0.01993899|-0.0058|  -22.5|        |#29: I_2zz - moment of inertia (zz) of link lwr_2_link
+|   2.70000000|   2.69594300|-0.0041|   -0.2|mA      |#30: m_3 - mass of link lwr_3_link
+|   0.00000000|  -0.05705169|-0.0571|      -|hull    |#31: c_3x - first moment of mass (x) of link lwr_3_link
+|   0.16200000|   0.07116409|-0.0908|  -56.1|hull    |#32: c_3y - first moment of mass (y) of link lwr_3_link
+|   0.35100000|   0.30821349|-0.0428|  -12.2|hull    |#33: c_3z - first moment of mass (z) of link lwr_3_link
+|   0.07380000|   0.16312944| 0.0893|  121.0|        |#34: I_3xx - moment of inertia (xx) of link lwr_3_link
+|   0.00000000|   0.07386126| 0.0739|      -|        |#35: I_3xy - moment of inertia (xy) of link lwr_3_link
+|   0.00000000|  -0.00914788|-0.0091|      -|        |#36: I_3xz - moment of inertia (xz) of link lwr_3_link
+|   0.04968000|   0.07799029| 0.0283|   57.0|        |#37: I_3yy - moment of inertia (yy) of link lwr_3_link
+|  -0.02106000|  -0.01713353| 0.0039|  -18.6|        |#38: I_3yz - moment of inertia (yz) of link lwr_3_link
+|   0.02574000|   0.00503550|-0.0207|  -80.4|        |#39: I_3zz - moment of inertia (zz) of link lwr_3_link
+|   2.70000000|   2.69846481|-0.0015|   -0.1|mA      |#40: m_4 - mass of link lwr_4_link
+|   0.00000000|   0.02357962| 0.0236|      -|hull    |#41: c_4x - first moment of mass (x) of link lwr_4_link
+|  -0.16200000|  -0.07291156| 0.0891|  -55.0|hull    |#42: c_4y - first moment of mass (y) of link lwr_4_link
+|   0.18900000|   0.25459268| 0.0656|   34.7|hull    |#43: c_4z - first moment of mass (z) of link lwr_4_link
+|   0.04140000|   0.02599117|-0.0154|  -37.2|        |#44: I_4xx - moment of inertia (xx) of link lwr_4_link
+|   0.00000000|   0.00063577| 0.0006|      -|        |#45: I_4xy - moment of inertia (xy) of link lwr_4_link
+|   0.00000000|  -0.00222416|-0.0022|      -|        |#46: I_4xz - moment of inertia (xz) of link lwr_4_link
+|   0.01728000|   0.02600157| 0.0087|   50.5|        |#47: I_4yy - moment of inertia (yy) of link lwr_4_link
+|   0.01134000|   0.00619794|-0.0051|  -45.3|        |#48: I_4yz - moment of inertia (yz) of link lwr_4_link
+|   0.02574000|   0.00243850|-0.0233|  -90.5|        |#49: I_4zz - moment of inertia (zz) of link lwr_4_link
+|   1.70000000|   1.70059056| 0.0006|    0.0|mA      |#50: m_5 - mass of link lwr_5_link
+|   0.00000000|  -0.00000231|-0.0000|      -|hull    |#51: c_5x - first moment of mass (x) of link lwr_5_link
+|   0.00000000|  -0.03348347|-0.0335|      -|hull    |#52: c_5y - first moment of mass (y) of link lwr_5_link
+|   0.21080000|   0.02605965|-0.1847|  -87.6|hull    |#53: c_5z - first moment of mass (z) of link lwr_5_link
+|   0.03689227|   0.00126564|-0.0356|  -96.6|        |#54: I_5xx - moment of inertia (xx) of link lwr_5_link
+|   0.00000000|   0.00434789| 0.0043|      -|        |#55: I_5xy - moment of inertia (xy) of link lwr_5_link
+|   0.00000000|  -0.00357500|-0.0036|      -|        |#56: I_5xz - moment of inertia (xz) of link lwr_5_link
+|   0.02868920|   0.09215477| 0.0635|  221.2|        |#57: I_5yy - moment of inertia (yy) of link lwr_5_link
+|   0.00000000|  -0.07493086|-0.0749|      -|        |#58: I_5yz - moment of inertia (yz) of link lwr_5_link
+|   0.00922307|   0.06269313| 0.0535|  579.7|        |#59: I_5zz - moment of inertia (zz) of link lwr_5_link
+|   1.60000000|   1.53803501|-0.0620|   -3.9|mA      |#60: m_6 - mass of link lwr_6_link
+|   0.00000000|   0.05572949| 0.0557|      -|hull    |#61: c_6x - first moment of mass (x) of link lwr_6_link
+|   0.00000000|   0.01178897| 0.0118|      -|hull    |#62: c_6y - first moment of mass (y) of link lwr_6_link
+|   0.10000000|   0.02552880|-0.0745|  -74.5|hull    |#63: c_6z - first moment of mass (z) of link lwr_6_link
+|   0.01041667|   0.00694724|-0.0035|  -33.3|        |#64: I_6xx - moment of inertia (xx) of link lwr_6_link
+|   0.00000000|   0.02900805| 0.0290|      -|        |#65: I_6xy - moment of inertia (xy) of link lwr_6_link
+|   0.00000000|  -0.00342234|-0.0034|      -|        |#66: I_6xz - moment of inertia (xz) of link lwr_6_link
+|   0.01041667|   0.13714757| 0.1267| 1216.6|        |#67: I_6yy - moment of inertia (yy) of link lwr_6_link
+|   0.00000000|  -0.01162409|-0.0116|      -|        |#68: I_6yz - moment of inertia (yz) of link lwr_6_link
+|   0.00416667|   0.00308028|-0.0011|  -26.1|        |#69: I_6zz - moment of inertia (zz) of link lwr_6_link
+|   0.30000000|   0.32613457| 0.0261|    8.7|mA      |#70: m_7 - mass of link lwr_7_link
+|   0.00000000|  -0.01304538|-0.0130|      -|hull    |#71: c_7x - first moment of mass (x) of link lwr_7_link
+|   0.00000000|  -0.01299741|-0.0130|      -|hull    |#72: c_7y - first moment of mass (y) of link lwr_7_link
+|   0.00000000|  -0.01011016|-0.0101|      -|hull    |#73: c_7z - first moment of mass (z) of link lwr_7_link
+|   0.05000000|   0.04107579|-0.0089|  -17.8|        |#74: I_7xx - moment of inertia (xx) of link lwr_7_link
+|   0.00000000|   0.04393115| 0.0439|      -|        |#75: I_7xy - moment of inertia (xy) of link lwr_7_link
+|   0.00000000|   0.01303511| 0.0130|      -|        |#76: I_7xz - moment of inertia (xz) of link lwr_7_link
+|   0.05000000|   0.15415436| 0.1042|  208.3|        |#77: I_7yy - moment of inertia (yy) of link lwr_7_link
+|   0.00000000|   0.05689212| 0.0569|      -|        |#78: I_7yz - moment of inertia (yz) of link lwr_7_link
+|   0.05000000|   0.02472662|-0.0253|  -50.5|        |#79: I_7zz - moment of inertia (zz) of link lwr_7_link
+|   0.50000000|   0.61068699| 0.1107|   22.1|        |#80: Fc_0 - Coulomb friction of joint lwr_0_joint
+|   0.80000000|   0.36327134|-0.4367|  -54.6|        |#81: Fc_1 - Coulomb friction of joint lwr_1_joint
+|   0.40000000|   0.30395749|-0.0960|  -24.0|        |#82: Fc_2 - Coulomb friction of joint lwr_2_joint
+|   0.30000000|   0.47277531| 0.1728|   57.6|        |#83: Fc_3 - Coulomb friction of joint lwr_3_joint
+|   0.20000000|   0.59497383| 0.3950|  197.5|        |#84: Fc_4 - Coulomb friction of joint lwr_4_joint
+|   0.10000000|   0.15956173| 0.0596|   59.6|        |#85: Fc_5 - Coulomb friction of joint lwr_5_joint
+|   0.05000000|   0.03785973|-0.0121|  -24.3|        |#86: Fc_6 - Coulomb friction of joint lwr_6_joint
+|   1.00000000|   1.06901601| 0.0690|    6.9|>0      |#87: Fv_0 - Viscous friction of joint lwr_0_joint
+|   1.20000000|   0.95833323|-0.2417|  -20.1|>0      |#88: Fv_1 - Viscous friction of joint lwr_1_joint
+|   0.90000000|   0.22328950|-0.6767|  -75.2|>0      |#89: Fv_2 - Viscous friction of joint lwr_2_joint
+|   0.80000000|   0.68860168|-0.1114|  -13.9|>0      |#90: Fv_3 - Viscous friction of joint lwr_3_joint
+|   0.50000000|   0.06502273|-0.4350|  -87.0|>0      |#91: Fv_4 - Viscous friction of joint lwr_4_joint
+|   0.30000000|   0.25192485|-0.0481|  -16.0|>0      |#92: Fv_5 - Viscous friction of joint lwr_5_joint
+|   0.20000000|   0.07587319|-0.1241|  -62.1|>0      |#93: Fv_6 - Viscous friction of joint lwr_6_joint
+|   0.00000000|   0.86747016| 0.8675|      -|        |#94: off_0 - Torque offset of joint lwr_0_joint
+|   0.00000000|  -0.00623038|-0.0062|      -|        |#95: off_1 - Torque offset of joint lwr_1_joint
+|   0.00000000|   0.00067483| 0.0007|      -|        |#96: off_2 - Torque offset of joint lwr_2_joint
+|   0.00000000|   0.13734284| 0.1373|      -|        |#97: off_3 - Torque offset of joint lwr_3_joint
+|   0.00000000|  -0.50697281|-0.5070|      -|        |#98: off_4 - Torque offset of joint lwr_4_joint
+|   0.00000000|   0.17727199| 0.1773|      -|        |#99: off_5 - Torque offset of joint lwr_5_joint
+|   0.00000000|  -0.11691153|-0.1169|      -|        |#100: off_6 - Torque offset of joint lwr_6_joint
 
 Parameters
-Estimated overall mass: 15.97 kg vs. a priori 16.0 kg
+Estimated overall mass: 15.96 kg vs. a priori 16.0 kg
 A priori parameters are physical consistent
 Identified parameters are physical consistent
-Squared distance of identifiable std parameter vectors to a priori: 1.47
-Squared distance of base parameter vectors (identified vs. a priori): 1.49
+Squared distance of identifiable std parameter vectors to a priori: 2.37
+Squared distance of base parameter vectors (identified vs. a priori): 1.63
 
 Torque prediction errors
-Relative mean residual error: 2.34% vs. A priori: 9.24%
-Absolute mean residual error: 0.63 vs. A priori: 2.52
-NRMS of residual error: 0.16% vs. A priori: 0.48%
+Relative mean residual error: 2.15% vs. A priori: 9.24%
+Absolute mean residual error: 0.58 vs. A priori: 2.52
+NRMS of residual error: 0.15% vs. A priori: 0.48%
 
-Relative validation error: 3.01%
-Absolute validation error: 0.77 Nm
+Relative validation error: 2.81%
+Absolute validation error: 0.72 Nm
 NRMS validation error: 0.18%
 ```
 
-The table columns show parameters for A priori (URDF), Identified and the absolute change between them. There also is a percentual difference value (%e) that is given in relation to the magnitude of the a priori value. The inertial parameters of each link are followed by the per-joint friction parameters that were identified together with them (`Fc` Coulomb, `Fv` viscous, and a torque offset `off` that absorbs amplifier bias and sensor offsets).
+The table columns show parameters for A priori (URDF), Identified and the absolute change between them. There also is a percentual difference value (%e) given in relation to the magnitude of the a priori value; it shows `-` when the a priori value is zero (a percentage relative to zero is not meaningful, so parameters such as the off-diagonal inertias and the torque offsets — whose CAD value is 0 — are read from the absolute Change column instead). The inertial parameters of each link are followed by the per-joint friction parameters (`Fc` Coulomb, `Fv` viscous, and a torque offset `off` that absorbs amplifier bias and sensor offsets). On this fixed-base robot they are first identified together with the inertials in the SDP and then refit per joint from the joint-torque residual (see below).
 
 The different estimation error measures that are given are
 
@@ -199,9 +198,9 @@ parameters) are what the data actually determines — standard parameters are no
 that increases while base parameters improve is expected and not a problem.
 
 Some individual standard parameters can still differ a lot from the a priori value (large
-`%e`), e.g. an off-diagonal or a poorly-excited inertia. This is the same null space: the
-data does not determine those parameters individually, so the closest-to-CAD recovery has
-freedom there. With `cadRegularizationMode: 'uniform'` that freedom is allocated to
+`%e` or a large absolute Change), e.g. a weakly-excited inertia such as `I_2yy`. This is the
+same null space: the data does not determine those parameters individually, so the
+closest-to-CAD recovery has freedom there. With `cadRegularizationMode: 'uniform'` that freedom is allocated to
 minimize the *total* distance, which can let one or two weakly-determined parameters absorb
 the physical-consistency constraints and grow far from CAD. The `observability` mode
 (used in this example) weights the pull toward CAD by how poorly each parameter is
@@ -209,6 +208,37 @@ determined, so those parameters stay near CAD while the well-determined ones rem
 on this real KUKA data it keeps the per-link parameters plausible and lowers the held-out
 validation error at the same training fit. The change is purely in the null space; it does
 not (and cannot) make the data determine more.
+
+On this fixed-base robot the friction is refit after the inertial identification
+(`postIdentifyFriction`): with the inertials held fixed, `Fc`/`Fv`/offset are re-estimated
+per joint from the joint-torque residual, using a velocity dead zone (dropping the
+unreliable near-zero-velocity samples) and a prior that pulls `Fv` toward the URDF value
+where a joint is weakly excited. The prior weight is set unit-free via
+`frictionFvRegularizationRelative` (a fraction of the joint's own excitation energy), so it
+transfers across robots without guessing an absolute number — raise it if a joint's `Fv`
+collapses to zero. Because the refit trusts the data over the rough CAD friction where
+joints move well, the friction parameters move noticeably from a priori, which enlarges the
+*standard*-parameter distance (it includes friction) even though the base parameters and the
+held-out validation improve. Reading the friction errors directly needs a `--model_real`,
+which real hardware does not have, so judge friction by held-out validation instead.
+
+Setting `frictionFvRegularizationRelative` on a real robot (no ground truth needed): the
+weight becomes `alpha * median(per-joint velocity energy)`, where the energy is computed
+from your own measurements, so `alpha` is a dimensionless trust knob — at `alpha = 1` a
+joint excited at the median level gets a 50/50 data/prior blend, smaller values trust the
+data more. A practical recipe:
+
+1. Start around `alpha = 0.1–0.2`.
+2. Look at the printed `Fv:` range and the per-joint values: if any joint's `Fv` is pinned
+   at `0` (its `Fc`/`Fv` split has degenerated — typical for a joint that moved at a narrow
+   speed band), raise `alpha` until no joint collapses.
+3. Sweep `alpha` and keep the value that minimizes the held-out validation error (or sits at
+   the flat part of the curve); this needs only a second measurement file, not real
+   parameters.
+
+The absolute `frictionFvRegularization` (raw energy units) is still available but harder to
+transfer between robots/trajectories, so prefer the relative form. The same two friction
+settings apply to the floating-base two-step path as well.
 
 Note also that the identified torques (orange in the per-joint plots) track the measured
 torques (green) far better than CAD (blue) but can still miss sharp features, most visibly

@@ -34,17 +34,79 @@ Design points:
   `|v|` below the dead zone are excluded from the OLS per joint (with a fallback to all
   samples if too few, or only one motion direction, remain). Above roughly twice the sign
   threshold the `tanh` is saturated and maximally decorrelated from `v`.
-- **Viscous regularization (`frictionFvRegularization`).** `Fv` is poorly determined for
-  joints that barely move and tends to inflate, absorbing unmodeled effects. A Tikhonov
-  row per joint pulls `Fv` toward the a priori URDF value. The data term's `Fv`
-  information scales with the kept samples' velocity energy, so a fixed weight is
-  automatically per-joint adaptive: negligible for well-excited joints, dominant for
-  weakly-excited ones. On real hardware the weight should reflect how much the a priori
-  friction values are trusted.
+- **Viscous regularization (`frictionFvRegularization`, `frictionFvRegularizationRelative`).**
+  `Fv` is poorly determined for joints that barely move and tends to inflate, absorbing
+  unmodeled effects. A Tikhonov row per joint pulls `Fv` toward the a priori URDF value.
+  Because the data term's `Fv` information is the kept samples' velocity energy `Σv²`, the
+  per-joint solution is the weighted average `Fv = (Σv²·Fv_data + λ·Fv_apriori)/(Σv² + λ)`:
+  `λ` is the velocity energy at which data and prior weigh equally, so the weight is
+  automatically per-joint adaptive (data-driven where `Σv² ≫ λ`, a priori where `Σv² ≪ λ`).
+  The absolute weight is in raw energy units and so depends on the trajectory's speed and
+  sampling, which is awkward to set without ground truth. The preferred form is the
+  unit-free `frictionFvRegularizationRelative` (`α`): the weight is set to
+  `α · median(per-joint Σv²)`, a single value that transfers across robots and trajectories
+  while preserving the adaptivity (a joint at the median excitation gets a 50/50 blend at
+  `α = 1`). It is set without ground truth — by held-out validation and by raising it until
+  no joint's `Fv` collapses to zero (the `Fc`/`Fv` split degenerates for a joint that moves
+  at a narrow speed band, where the columns are collinear regardless of weighting). Scaling
+  `λ` per joint instead (`α · Σv²_j`) would *not* work: it makes the data/prior ratio
+  constant across joints and loses the adaptivity, trusting a barely-moving joint's noisy
+  `Fv` as much as a well-excited one's.
 
 `identifier.py` prints friction parameter errors against the real model when
 `--model_real` is supplied — parameter quality is the metric that matters; the fit NRMS
 and parameter ranges are only proxies.
+
+## Two-step vs. simultaneous friction identification
+
+There are two ways to identify friction, and which one applies is determined by whether a
+friction-free measurement is available, not by preference.
+
+- **Two-step (floating base).** Inertial parameters are identified from the base-wrench
+  equations, which contain no joint friction at all (`useBaseWrenchForBaseParams`). The
+  inertial estimate is therefore unbiased by any friction-model error, and the per-joint
+  torque residual `tau_measured - tau_inertial` is fit afterwards (`postIdentifyFriction`)
+  with the robust per-joint OLS above. Because each joint's friction is fit separately, the
+  velocity dead zone, the `Fv` prior and the smoothed-sign handling all apply cleanly
+  per joint.
+- **Simultaneous (fixed base, or whenever no base wrench is measured).** Friction columns
+  are appended to the standard-parameter regressor and inertial + friction parameters are
+  solved jointly inside the SDP (`identifyFrictionSimultaneously`). The friction columns are
+  block-diagonal per joint — `tanh`-smoothed sign for `Fc`, velocity for `Fv` (or `Fv±` when
+  asymmetric), a constant offset, and an optional Stribeck `Fs * exp(-|v|/vs)` column — so a
+  joint's friction only affects its own torque row. The inertial columns, however, couple
+  all joints through the dynamics.
+
+A fixed-base robot **cannot** use the clean two-step scheme: its only equations are the
+joint-torque equations, and those always contain friction, so there is no friction-free
+anchor to identify the inertial parameters from. That friction-free anchor is exactly what
+the floating-base base wrench provides. This is why the two-step path is gated on
+`floatingBase` and fixed-base robots identify friction simultaneously.
+
+The trade-off of the simultaneous path is robustness near velocity reversals. The per-joint
+velocity dead zone (which drops the near-zero-velocity samples where the friction model is
+wrong — stiction, backlash) is *not* applied inside the simultaneous SDP, because dropping a
+sample removes the whole multi-joint row block and the inertial columns couple the joints,
+so a clean per-joint exclusion is not available there. The reversal-corrupted samples
+therefore also bias the inertial estimate; the friction Tikhonov regularization
+(`frictionRegularization`) only damps the `Fc`/`Fv` correlation, not this bias.
+
+**Post-hoc residual refit on fixed base.** `postIdentifyFriction` is therefore allowed on a
+fixed base too (not only on a floating base), provided friction was first identified
+simultaneously so the inertial parameters are not friction-biased. After the SDP, the
+per-joint residual refit (with its dead zone, `Fv` prior and smoothed sign) re-estimates
+`Fc`/`Fv`/offset and overwrites the jointly-fit friction slots in the standard-parameter
+vector; the inertial parameters are left unchanged. This is approximate — the inertials it
+conditions on were themselves fit with the corrupted samples, so it improves the friction
+parameters rather than removing the inertial bias — but it recovers the robust friction
+handling for the fixed-base case and the result stays as standard `Fc`/`Fv` that the URDF
+can hold (unlike a Stribeck term). The `Fv` prior matters more here than in the
+floating-base two-step: after the dead zone removes the low-velocity samples, a joint that
+moves at near-constant speed has collinear `Fc` and `Fv·v` columns, so too weak a prior
+lets `Fv` collapse to zero with `Fc` absorbing the slope — use a prior strong enough to keep
+`Fv` physical. A fuller alternative that would also de-bias the inertials is a per-sample
+weighting inside the SDP (down-weighting each row by the slowest relevant joint's velocity,
+rather than a per-joint mask), or iterating the refit; neither is implemented.
 
 ## Simulator measurement semantics
 

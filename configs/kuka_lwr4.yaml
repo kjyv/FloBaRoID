@@ -203,6 +203,19 @@ identifySymmetricVelFriction: 1
 # 0 = disabled. Scaled relative to base error magnitude.
 frictionRegularization: 200
 
+# Post-hoc friction refit (two-step second step). With the inertial parameters fixed,
+# refit Fc/Fv/offset per joint from the joint-torque residual with dead-zone
+# and Fv-prior handling (at very low velocities), then overwrite the jointly-fit friction
+# slots. On a fixed base this requires identifyFrictionSimultaneously=1 above
+# (we have no friction-free anchor otherwise).
+postIdentifyFriction: 1
+# drop samples with |v| below this (rad/s) from the friction fit: the Coulomb sign is
+# unreliable there and the tanh is collinear with the viscous column.
+frictionVelocityDeadZone: 0.05
+# self-scaling Fv prior (dimensionless): weight = alpha * median(per-joint velocity energy),
+# so it transfers across robots/trajectories. Raise it if a joint's Fv collapses to 0.
+frictionFvRegularizationRelative: 0.2
+
 # identify only parameters corresponding to gravity terms (mass, mass*COM) for static configurations
 identifyGravityParamsOnly: 0
 

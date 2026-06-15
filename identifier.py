@@ -97,10 +97,6 @@ class Identification:
         self.paramHelpers = helpers.ParamHelpers(self.model, self.opt)
         self.urdfHelpers = helpers.URDFHelpers(self.paramHelpers, self.model, self.opt)
         self.sdp = sdp.SDP(self)
-        if self.opt["constrainUsingNL"]:
-            from identification.nlopt import NLOPT
-
-            self.nlopt = NLOPT(self)
 
         self.tauEstimated: np.ndarray = np.array([])
         self.res_error = 100  # last residual error in percent
@@ -917,10 +913,7 @@ class Identification:
 
                         print("Trying to find equal solution closer to a priori values")
 
-                        if self.opt["constrainUsingNL"]:
-                            self.nlopt.identifyFeasibleStdFromFeasibleBase(self.model.xBase)
-                        else:
-                            self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
+                        self.sdp.findFeasibleStdFromFeasibleBase(self, self.model.xBase)
                 else:
                     self.sdp.initSDP_LMIs(self)
                     # directly estimate constrained std params, distance to CAD not minimized
@@ -928,11 +921,7 @@ class Identification:
                         # self.identifyStandardParametersDirect()   #get std nonsingular regressor
                         self.sdp.identifyFeasibleStandardParametersDirect(self)  # use with sdp
                     else:
-                        if self.opt["constrainUsingNL"]:
-                            self.model.xStd = self.model.xStdModel.copy()
-                            self.nlopt.identifyFeasibleStandardParameters()
-                        else:
-                            self.sdp.identifyFeasibleStandardParameters(self)
+                        self.sdp.identifyFeasibleStandardParameters(self)
                         # self.sdp.identifyFeasibleBaseParameters(self)
                         # self.model.xStd = self.model.xBase.dot(self.model.K)
 
@@ -949,7 +938,7 @@ class Identification:
                 # correct std solution to feasible if necessary (e.g. infeasible solution from
                 # unsuccessful optimization run)
                 """
-                if not self.paramHelpers.isPhysicalConsistent(self.model.xStd) and not self.opt['constrainUsingNL']:
+                if not self.paramHelpers.isPhysicalConsistent(self.model.xStd):
                     #get full LMIs again
                     self.opt['deleteFixedBase'] = 0
                     self.sdp.initSDP_LMIs(self, remove_nonid=False)

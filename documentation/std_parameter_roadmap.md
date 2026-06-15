@@ -140,8 +140,6 @@ std decomposition. Priority roughly by how pervasively each acts:
 - ◻ **Essential-parameter identification** (`useEssentialParams`, Pham/Gautier): reduces to a
   well-determined subset rather than recovering more; evaluate if a robust reduced set is the
   goal.
-- ◻ **Nonlinear constrained path** (`constrainUsingNL`): exists, untested recently; may
-  navigate the feasible set differently than the SDP.
 - ◻ **Reproducibility**: a configurable Optuna seed (+ single-job mode) for reproducing a
   *specific* optimization run; keep the seed random for diverse multi-trajectory sets.
 

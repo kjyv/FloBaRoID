@@ -163,9 +163,6 @@ constrainToConsistent: 1    # constrain identified params to be physically consi
 checkAPrioriFeasibility: 0
 identifyClosestToCAD: 1    # pick the feasible standard params closest to the CAD/a-priori model
 
-constrainUsingNL: 0
-nlOptMaxIterations: 500
-
 noChange: 0
 noChangeThresh: 400
 

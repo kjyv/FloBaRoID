@@ -305,6 +305,8 @@ class Optimizer:
         # optimization status vars
         self.last_best_f = np.inf
         self.last_best_sol = np.array([])
+        self.last_best_infeasible_f = np.inf
+        self.last_best_infeasible_sol = np.array([])
 
         self.iter_cnt = 0  # iteration counter
         self.last_g: np.ndarray | list[float] | None = None  # last constraint values
@@ -699,6 +701,13 @@ class Optimizer:
     def gather_solutions(self) -> None:
         """Placeholder for solution gathering (previously used MPI)."""
 
+    def repairBestInfeasible(self) -> None:
+        """Turn the best infeasible solution into a feasible one if possible.
+
+        No-op by default; overridden by optimizers that know how to back off
+        their solution (e.g. TrajectoryOptimizer scales Fourier amplitudes).
+        """
+
     def _runOptuna(self) -> None:
         """Run Optuna TPE or NSGA2 global optimization.
 
@@ -1050,6 +1059,10 @@ class Optimizer:
                 _kill_gradient_pool()
 
             self.gather_solutions()
+
+        # subclasses may turn the best infeasible solution into a feasible one
+        # (e.g. amplitude backoff); adopts via objectiveFunc best-tracking
+        self.repairBestInfeasible()
 
         if len(self.last_best_sol) > 0:
             print("using best constrained solution found during optimization.")

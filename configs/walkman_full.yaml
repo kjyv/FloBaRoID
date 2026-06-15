@@ -136,6 +136,14 @@ minTorqueUtilization: 0.0
 # velocity limit). 0 = disabled.
 trajectoryTargetVelocity: 0.5
 
+# sequential experiment design: measurement files of previously executed
+# trajectories. Their accumulated information matrix is added to the D-optimality
+# objective, so the new trajectory maximizes the information *added* in the
+# directions the previous ones left weak. Identification should then run on all
+# measurement files together (multiple --measurements). Empty = single-trajectory
+# optimization.
+trajectoryPriorMeasurements: []
+
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
 minVelocityConstraint: 0

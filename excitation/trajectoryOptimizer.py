@@ -12,6 +12,7 @@ from excitation.optimizer import Optimizer, plotter
 from excitation.trajectoryGenerator import (
     PulsedTrajectory,
 )
+from identification.data import Data
 from identification.helpers import URDFHelpers
 
 
@@ -186,6 +187,22 @@ class TrajectoryOptimizer(Optimizer):
         )  # custom combinations
         self.num_constraints += self.num_coll_constraints
 
+        # sequential experiment design: accumulate the information matrix of previous
+        # trajectories' measurements. The D-optimality objective then maximizes
+        # log det(YtY_prior + Y^T Y), i.e. the information *added* by the new
+        # trajectory in the directions the previous ones left weak.
+        self.YtY_prior: np.ndarray | None = None
+        prior_files = self.config.get("trajectoryPriorMeasurements") or []
+        if prior_files:
+            yty = np.zeros((self.model.num_base_params, self.model.num_base_params))
+            for prior_file in prior_files:
+                print(f"computing prior information matrix from {prior_file}")
+                prior_data = Data(self.config)
+                prior_data.init_from_files([[prior_file]])
+                self.model.computeRegressors(prior_data)
+                yty += self.model.YBase.T @ self.model.YBase
+            self.YtY_prior = yty
+
         self.initVisualizer()
 
     def vecToParams(self, x):
@@ -277,6 +294,9 @@ class TrajectoryOptimizer(Optimizer):
         # number at (λ_max + δ)/δ, preventing the gradient from losing precision.
         # δ is set relative to the largest eigenvalue so it's scale-invariant.
         YtY = self.model.YBase.T @ self.model.YBase
+        if self.YtY_prior is not None:
+            # sequential design: maximize information added on top of previous trajectories
+            YtY = YtY + self.YtY_prior
         eigvals = np.linalg.eigvalsh(YtY)
         lambda_max = float(eigvals[-1])
         # δ = fraction of λ_max; controls the conditioning of the gradient.
@@ -552,6 +572,10 @@ class TrajectoryOptimizer(Optimizer):
             self.last_best_f = f
             self.last_best_f_f1 = f1
             self.last_best_sol = x
+        elif not c and f < self.last_best_infeasible_f:
+            # candidate for amplitude-backoff repair (see repairBestInfeasible)
+            self.last_best_infeasible_f = f
+            self.last_best_infeasible_sol = x
 
         print("\n\n")
 
@@ -657,6 +681,33 @@ class TrajectoryOptimizer(Optimizer):
     def testParams(self, **kwargs):
         x = kwargs["x_new"]
         return self.testBounds(x) and self.testConstraints(self.last_g)
+
+    def repairBestInfeasible(self) -> None:
+        """Amplitude-backoff repair of the best infeasible solution.
+
+        IPOPT often ends at informative but infeasible iterates (torque/collision
+        violations) and its restoration never returns to feasibility, so the run
+        falls back to a much earlier feasible point. Scale the Fourier coefficients
+        of the best infeasible solution toward zero until the constraints are
+        satisfied — objectiveFunc's best-tracking adopts the repaired point if it
+        beats the best feasible solution found so far.
+        """
+        if self.last_best_infeasible_sol.size == 0 or self.last_best_infeasible_f >= self.last_best_f:
+            return
+        wf, q, a, b = self.vecToParams(self.last_best_infeasible_sol)
+        print(
+            f"amplitude-backoff repair of best infeasible solution "
+            f"(obj={self.last_best_infeasible_f:.2f} vs feasible best {self.last_best_f:.2f})"
+        )
+        for scale in (0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5):
+            a_s = [ai * scale for ai in a]
+            b_s = [bi * scale for bi in b]
+            x_try = np.array([wf] + list(q) + [c for ai in a_s for c in ai] + [c for bi in b_s for c in bi])
+            f, g, fail = self.objectiveFunc(x_try)
+            if not fail and self.testConstraints(g):
+                print(f"repair: feasible at amplitude scale {scale} (obj={f:.2f})")
+                return
+        print("repair: no feasible point found by amplitude backoff")
 
     def _objFuncWrapper(self, xdict: dict) -> tuple[dict, bool]:
         """Wrapper to convert pyOptSparse dict-based API to flat array."""

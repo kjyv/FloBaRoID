@@ -541,11 +541,21 @@ def compute_analytical_gradient(
     # preventing numerical catastrophe from near-zero singular values.
     dopt_scale = cache["dopt_scale"]
     dopt_reg = config.get("doptRegularization", 1e-4)
-    U, S, Vt = np.linalg.svd(YBase, full_matrices=False)
-    delta = dopt_reg * S[0] ** 2  # δ relative to largest eigenvalue λ_max = s_max²
-    # Regularized weights: s_i / (s_i² + δ) instead of 1/s_i
-    reg_weights = S / (S**2 + delta)
-    R_dopt = -2.0 * dopt_scale * ((U * reg_weights[np.newaxis, :]) @ Vt)
+    if optimizer.YtY_prior is not None:
+        # sequential design: f = -log(det(P + Y^T Y + δI)) * scale with the prior
+        # information matrix P from previous trajectories.
+        # Gradient: df/dY = -2 * scale * Y @ (P + Y^T Y + δI)^{-1}
+        M = optimizer.YtY_prior + YBase.T @ YBase
+        eigvals_M = np.linalg.eigvalsh(M)
+        delta = dopt_reg * max(float(eigvals_M[-1]), 1e-30)
+        M_reg = M + delta * np.eye(M.shape[0])
+        R_dopt = -2.0 * dopt_scale * np.linalg.solve(M_reg, YBase.T).T
+    else:
+        U, S, Vt = np.linalg.svd(YBase, full_matrices=False)
+        delta = dopt_reg * S[0] ** 2  # δ relative to largest eigenvalue λ_max = s_max²
+        # Regularized weights: s_i / (s_i² + δ) instead of 1/s_i
+        reg_weights = S / (S**2 + delta)
+        R_dopt = -2.0 * dopt_scale * ((U * reg_weights[np.newaxis, :]) @ Vt)
 
     proj = _get_projection_matrix(model)
 

@@ -113,6 +113,21 @@ std decomposition. Priority roughly by how pervasively each acts:
     higher-leverage action for inertial/std quality is to keep the near-reversal samples from
     biasing the fit (extend the dead zone / sample weighting to the simultaneous path), not
     to fit the spike.
+- ◻ **Per-sample (reversal) weighting in the simultaneous SDP** — follow-up to the
+  fixed-base post-hoc friction refit, which de-biases only the friction and leaves the
+  inertials as they were fit *with* the corrupted near-reversal samples. The idea is to
+  weight each sample row of the standard regressor by a function of velocity, down-weighting
+  the near-zero-velocity rows where stiction/backlash make the model wrong, so those samples
+  bias *both* the inertial and friction estimates less, inside one weighted SDP. A row is a
+  multi-joint torque equation, so the per-row weight has to aggregate across joints (e.g. by
+  the slowest relevant joint's `|v|`) — which is exactly why a clean per-joint dead-zone mask
+  is not available in this path. Unlike the post-hoc refit this also de-biases the inertials,
+  and it could be iterated with the refit. Caveats: the weighting must be carried consistently
+  through the base-parameter projection and the physical-consistency objective (weighted least
+  squares on the regressor before the QR/SVD base reduction); down-weighting reduces the
+  effective data and can worsen conditioning, so gate on held-out validation. It does **not**
+  remove the need for the `Fv` prior — that is a velocity-diversity (identifiability) limit,
+  not a bad-sample one.
 - For algorithm development, validate first with only friction enabled (no
   backlash/cable/thermal) to isolate identification performance from model mismatch.
 

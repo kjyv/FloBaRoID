@@ -106,7 +106,9 @@ moves at near-constant speed has collinear `Fc` and `Fv·v` columns, so too weak
 lets `Fv` collapse to zero with `Fc` absorbing the slope — use a prior strong enough to keep
 `Fv` physical. A fuller alternative that would also de-bias the inertials is a per-sample
 weighting inside the SDP (down-weighting each row by the slowest relevant joint's velocity,
-rather than a per-joint mask), or iterating the refit; neither is implemented.
+rather than a per-joint mask), or iterating the refit; neither is implemented — the
+per-sample weighting is tracked as a follow-up in `documentation/std_parameter_roadmap.md`
+(section c).
 
 ## Simulator measurement semantics
 

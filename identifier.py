@@ -1202,6 +1202,50 @@ def main():
         args.validation,
     )
 
+    # Expand dontChangeLinks (link names) to parameter indices and merge into dontChangeParams
+    dont_change_links = idf.opt.get("dontChangeLinks", [])
+    if dont_change_links:
+        link_params: list[int] = []
+        for link_name in dont_change_links:
+            if link_name in idf.model.linkNames:
+                link_idx = idf.model.linkNames.index(link_name)
+                link_params.extend(range(link_idx * 10, link_idx * 10 + 10))
+            else:
+                print(f"Warning: dontChangeLinks: link '{link_name}' not found in model, skipping")
+        existing = set(idf.opt.get("dontChangeParams", []))
+        new_params = [p for p in link_params if p not in existing]
+        if new_params:
+            idf.opt["dontChangeParams"] = list(existing) + new_params
+            print(f"dontChangeLinks: pinned {len(dont_change_links)} links ({len(new_params)} params) to a priori")
+
+    # Load unobservable parameter indices from measurement/trajectory file (if available)
+    # and merge with dontChangeParams to constrain them to a priori values
+    measurement_files = args.measurements[0] if args.measurements else []
+    for meas_file in measurement_files:
+        try:
+            traj_data = np.load(meas_file, allow_pickle=True)
+            if "unobservable_params" in traj_data:
+                unobs_params = traj_data["unobservable_params"].tolist()
+                n_obs = int(traj_data.get("n_observable_base_params", 0))
+                obs_thresh = float(traj_data.get("observability_threshold", 1e-6))
+                if unobs_params:
+                    print(
+                        f"Trajectory observability: {n_obs} base params observable "
+                        f"(threshold={obs_thresh}), {len(unobs_params)} identified params unobservable"
+                    )
+                    # Merge with existing dontChangeParams (avoid duplicates)
+                    existing = set(idf.opt.get("dontChangeParams", []))
+                    new_params = [p for p in unobs_params if p not in existing]
+                    if new_params:
+                        idf.opt["dontChangeParams"] = list(existing) + new_params
+                        print(
+                            f"  → added {len(new_params)} unobservable params to dontChangeParams "
+                            f"(total: {len(idf.opt['dontChangeParams'])})"
+                        )
+            break  # found observability data, no need to check other files
+        except (FileNotFoundError, KeyError):
+            pass  # no observability data in this file — try next
+
     if idf.opt["selectBlocksFromMeasurements"]:
         idf.opt["selectingBlocks"] = 1
         old_essential_option = idf.opt["useEssentialParams"]

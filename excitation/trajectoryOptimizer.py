@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
+import fcl
 import matplotlib.pyplot as plt
 import numpy as np
 from colorama import Fore
@@ -12,6 +13,47 @@ from excitation.trajectoryGenerator import (
     PulsedTrajectory,
 )
 from identification.helpers import URDFHelpers
+
+
+def _collision_worker(
+    transforms_chunk: list[dict[str, tuple[np.ndarray, np.ndarray]]],
+    configs_chunk: list[tuple[int, np.ndarray]],
+    collision_pairs: list[tuple[str, str]],
+    geom_data: dict[str, tuple[str, np.ndarray, np.ndarray | None, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute FCL distances for a chunk of samples.
+
+    Each worker builds its own FCL geometry objects from the pre-extracted geometry data
+    (vertices, faces, offsets) to avoid pickling FCL objects.
+    """
+    n_pairs = len(collision_pairs)
+    min_dists = np.full(n_pairs, 1e10)
+    argmin_samples = np.full(n_pairs, -1, dtype=np.int64)
+
+    # Build FCL geometry objects (once per worker)
+    geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
+    for link_name, (gtype, data, faces, offset) in geom_data.items():
+        if gtype == "box":
+            geom_cache[link_name] = (fcl.Box(*data), offset)
+        elif gtype == "convex" and faces is not None:
+            convex = fcl.Convex(data, len(faces), faces)
+            geom_cache[link_name] = (convex, offset)
+
+    req = fcl.DistanceRequest(True)
+    for transforms, (sample_idx, _) in zip(transforms_chunk, configs_chunk):
+        for g_cnt, (l0, l1) in enumerate(collision_pairs):
+            rot0, pos0 = transforms[l0]
+            rot1, pos1 = transforms[l1]
+            geom0, off0 = geom_cache[l0]
+            geom1, off1 = geom_cache[l1]
+            o0 = fcl.CollisionObject(geom0, fcl.Transform(rot0, pos0 + off0))
+            o1 = fcl.CollisionObject(geom1, fcl.Transform(rot1, pos1 + off1))
+            d = fcl.distance(o0, o1, req, fcl.DistanceResult())
+            if d < min_dists[g_cnt]:
+                min_dists[g_cnt] = d
+                argmin_samples[g_cnt] = sample_idx
+
+    return min_dists, argmin_samples
 
 
 class TrajectoryOptimizer(Optimizer):
@@ -35,10 +77,16 @@ class TrajectoryOptimizer(Optimizer):
         ## bounds for parameters
         # number of fourier partial sums per joint (more harmonics = higher frequency content)
         nf_config = self.config.get("trajectoryNf", None)
-        if nf_config and len(nf_config) == self.num_dofs:
-            self.nf = list(nf_config)
-        else:
+        if isinstance(nf_config, dict):
+            # {joint_name: nf} — all joints must be specified
+            missing = [name for name in self.model.jointNames if name not in nf_config]
+            if missing:
+                raise ValueError(f"trajectoryNf missing joints: {missing}")
+            self.nf = [int(nf_config[name]) for name in self.model.jointNames]
+        elif nf_config is None:
             self.nf = [4] * self.num_dofs
+        else:
+            raise ValueError("trajectoryNf must be a dict {joint_name: nf} with all joints listed")
         self.total_ab = sum(self.nf)  # total number of a (or b) coefficients across all joints
 
         # pulsation
@@ -46,23 +94,17 @@ class TrajectoryOptimizer(Optimizer):
         self.wf_max = self.config["trajectoryPulseMax"]
         self.wf_init = self.config["trajectoryPulseInit"]
 
-        # angle offsets
-        if self.config["trajectoryAngleRanges"] and self.config["trajectoryAngleRanges"][0] is not None:
-            self.qmin: list[float] | np.ndarray = []
-            self.qmax: list[float] | np.ndarray = []
-            self.qinit: list[float] | np.ndarray = []
-            for i in range(0, self.num_dofs):
-                low = self.config["trajectoryAngleRanges"][i][0]
-                high = self.config["trajectoryAngleRanges"][i][1]
-                self.qmin.append(low)
-                self.qmax.append(high)
-                self.qinit.append((high + low) * 0.5)  # set init to middle of range
-        else:
-            self.qmin = [self.config["trajectoryAngleMin"]] * self.num_dofs
-            self.qmax = [self.config["trajectoryAngleMax"]] * self.num_dofs
-            self.qinit = [
-                0.5 * self.config["trajectoryAngleMin"] + 0.5 * self.config["trajectoryAngleMax"]
-            ] * self.num_dofs
+        # oscillation center offsets (degrees, added to URDF joint midpoint)
+        # The bounded trajectory code clamps positions to URDF limits regardless of offset,
+        # so these just control the preferred operating point for each joint.
+        center_freedom = self.config.get("trajectoryCenterFreedom", 15.0)
+        osc_centers = self.config.get("trajectoryOscillationCenters", {})
+        if not isinstance(osc_centers, dict):
+            raise ValueError("trajectoryOscillationCenters must be a dict {joint_name: center_deg}")
+        # unlisted joints default to 0 (URDF midpoint)
+        self.qinit: list[float] | np.ndarray = [float(osc_centers.get(name, 0.0)) for name in self.model.jointNames]
+        self.qmin: list[float] | np.ndarray = [c - center_freedom for c in self.qinit]
+        self.qmax: list[float] | np.ndarray = [c + center_freedom for c in self.qinit]
 
         if not self.config["useDeg"]:
             self.qmin = np.deg2rad(self.qmin)
@@ -72,9 +114,15 @@ class TrajectoryOptimizer(Optimizer):
         self.amin = self.bmin = self.config["trajectoryCoeffMin"]
         self.amax = self.bmax = self.config["trajectoryCoeffMax"]
         # per-joint init arrays (ragged — each joint may have different nf)
+        # scale as coeff_init/k for harmonic k: low harmonics drive position/torque,
+        # high harmonics taper off to avoid velocity limit violations
         coeff_init = self.config["trajectoryCoeffInit"]
-        self.ainit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
-        self.binit: list[np.ndarray] = [np.full(self.nf[i], coeff_init) for i in range(self.num_dofs)]
+        self.ainit: list[np.ndarray] = [
+            np.array([coeff_init / (j + 1) for j in range(self.nf[i])]) for i in range(self.num_dofs)
+        ]
+        self.binit: list[np.ndarray] = [
+            np.array([coeff_init / (j + 1) for j in range(self.nf[i])]) for i in range(self.num_dofs)
+        ]
 
         self.last_best_f_f1 = 0.0
 
@@ -223,16 +271,28 @@ class TrajectoryOptimizer(Optimizer):
         if self.config["showOptimizationTrajs"]:
             plotter(self.config, data=trajectory_data)
 
-        cond = np.linalg.cond(self.model.YBase)
-        # use log of condition number so the scale is manageable, then normalize
-        # so it's comparable to the other penalties (~5-15 range).
-        # on the first valid evaluation, record the baseline and use it for scaling.
-        # clamp to avoid inf (degenerate regressor from e.g. zero-frequency trajectory)
-        log_cond = min(np.log10(max(cond, 1.0)), 100.0)
-        if not hasattr(self, "_cond_scale"):
-            # target: condition number contribution ~10 for the initial trajectory
-            self._cond_scale = 10.0 / max(log_cond, 1.0)
-        f = log_cond * self._cond_scale
+        # Regularized D-optimality: minimize -log(det(Y^T Y + δI))
+        # The regularization δ ensures the gradient is numerically stable even when
+        # the regressor is extremely ill-conditioned. It caps the effective condition
+        # number at (λ_max + δ)/δ, preventing the gradient from losing precision.
+        # δ is set relative to the largest eigenvalue so it's scale-invariant.
+        YtY = self.model.YBase.T @ self.model.YBase
+        eigvals = np.linalg.eigvalsh(YtY)
+        lambda_max = float(eigvals[-1])
+        # δ = fraction of λ_max; controls the conditioning of the gradient.
+        # 1e-4 caps effective cond at ~10000, giving ~12 digits of gradient precision.
+        dopt_regularization = self.config.get("doptRegularization", 1e-4)
+        delta = dopt_regularization * max(lambda_max, 1e-30)
+        eigvals_reg = eigvals + delta
+        neg_log_det = -np.sum(np.log(np.maximum(eigvals_reg, 1e-300)))
+
+        # Number of well-observable base parameters (eigenvalue above regularization threshold)
+        n_observable = int(np.sum(eigvals > delta))
+
+        if not hasattr(self, "_dopt_scale"):
+            # target: D-optimality contribution ~10 for the initial trajectory
+            self._dopt_scale = 10.0 / max(abs(neg_log_det), 1.0)
+        f = neg_log_det * self._dopt_scale
 
         # If the simulation produced NaN or inf, clamp to a high but finite value
         self._eval_failed = False
@@ -261,13 +321,16 @@ class TrajectoryOptimizer(Optimizer):
         for n in range(self.num_dofs):
             # check for joint limits
             # joint pos lower
-            if len(self.config["ovrPosLimit"]) > n and self.config["ovrPosLimit"][n]:
-                g[n] = np.deg2rad(self.config["ovrPosLimit"][n][0]) - pos_min[n]
+            ovr = self.config.get("ovrPosLimit", {})
+            # {joint_name: [lower_deg, upper_deg]}, unlisted joints use URDF limits
+            ovr_pair = ovr.get(jn[n]) if isinstance(ovr, dict) else None
+            if ovr_pair:
+                g[n] = np.deg2rad(ovr_pair[0]) - pos_min[n]
             else:
                 g[n] = self.limits[jn[n]]["lower"] - pos_min[n]
             # joint pos upper
-            if len(self.config["ovrPosLimit"]) > n and self.config["ovrPosLimit"][n]:
-                g[self.num_dofs + n] = pos_max[n] - np.deg2rad(self.config["ovrPosLimit"][n][1])
+            if ovr_pair:
+                g[self.num_dofs + n] = pos_max[n] - np.deg2rad(ovr_pair[1])
             else:
                 g[self.num_dofs + n] = pos_max[n] - self.limits[jn[n]]["upper"]
             # max joint vel
@@ -320,6 +383,15 @@ class TrajectoryOptimizer(Optimizer):
                             queue.append((nb, dist + 1))
                 return 999
 
+            # Build set of group-excluded pairs (links in different groups can't collide)
+            group_ignore: set[tuple[str, str]] = set()
+            for group_pair in self.config.get("ignoreCollisionBetweenGroups", []):
+                if len(group_pair) == 2:
+                    for a in group_pair[0]:
+                        for b in group_pair[1]:
+                            group_ignore.add((a, b))
+                            group_ignore.add((b, a))
+
             self._collision_pairs: list[tuple[str, str]] = []
             for l0 in range(len(all_links)):
                 for l1 in range(l0 + 1, len(all_links)):
@@ -328,6 +400,8 @@ class TrajectoryOptimizer(Optimizer):
                     if l0_name in ignore_links or l1_name in ignore_links:
                         continue
                     if (l0_name, l1_name) in ignore_pairs:
+                        continue
+                    if (l0_name, l1_name) in group_ignore:
                         continue
                     # neighbors can't collide with a proper joint range
                     if l0 < self.model.num_links and l1 < self.model.num_links:
@@ -344,23 +418,57 @@ class TrajectoryOptimizer(Optimizer):
         use_ag = self.config.get("useAnalyticalGradients", False)
         if use_ag:
             coll_argmin: dict[int, tuple[int, np.ndarray]] = {}
+
+        # Collect all configurations to check (main trajectory + transition)
+        collision_configs: list[tuple[int, np.ndarray]] = []
         for p in range(0, pos.shape[0], collision_step):
-            if self.config["verbose"] > 1:
-                print(f"Sample {p}")
-            q = pos[p]
-            # set robot state once per sample (not per link pair)
-            self.setCollisionRobotState(q)
-            use_capsule = self.config.get("useCapsuleCollision", False) and self._capsules
+            collision_configs.append((p, pos[p]))
+
+        # also check the minimum-jerk transitions from/to zero position
+        # (the trajectory is periodic so both paths are nearly identical,
+        # but check both since pos[0] and pos[-1] may differ slightly)
+        transition_duration = self.config.get("transitionDuration", 3.0)
+        if transition_duration > 0:
+            transition_samples = self.config.get("transitionCollisionSamples", 10)
+            zero_pos = np.zeros(self.num_dofs)
+            for q_boundary in [pos[0], pos[-1]]:
+                for ti in range(transition_samples):
+                    tau = (ti + 1) / (transition_samples + 1)
+                    s = 10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5
+                    q_trans = zero_pos + s * (q_boundary - zero_pos)
+                    collision_configs.append((-1 - ti, q_trans))  # negative index = transition sample
+
+        use_capsule = self.config.get("collisionMode", "convex") == "capsule" and self._capsules
+        collision_link_names = sorted(set(l for pair in self._collision_pairs for l in pair))
+
+        # Precompute and cache FCL collision objects per link (reuse across samples)
+        # This avoids recreating CollisionObject wrappers every iteration.
+        if not hasattr(self, "_fcl_objects"):
+            self._fcl_objects: dict[str, tuple[Any, np.ndarray]] = {}
+            for link_name in collision_link_names:
+                geom, offset = self._getLinkCollisionGeometry(link_name)
+                self._fcl_objects[link_name] = (fcl.CollisionObject(geom), offset)
+        fcl_req = fcl.DistanceRequest(True)
+
+        for p_idx, q_check in collision_configs:
+            self.setCollisionRobotState(q_check)
             for g_cnt, (l0_name, l1_name) in enumerate(self._collision_pairs):
-                # use capsule distance when both links have capsules, otherwise fall back to FCL
                 if use_capsule and l0_name in self._capsules and l1_name in self._capsules:
                     d = self.getCapsuleDistance(l0_name, l1_name)
                 else:
-                    d = self.getLinkDistance(l0_name, l1_name, q)
+                    # Update transform on cached FCL objects (avoids recreating them)
+                    rot0, pos0 = self._getLinkTransform(l0_name)
+                    rot1, pos1 = self._getLinkTransform(l1_name)
+                    obj0, off0 = self._fcl_objects[l0_name]
+                    obj1, off1 = self._fcl_objects[l1_name]
+                    obj0.setTransform(fcl.Transform(rot0, pos0 + off0))
+                    obj1.setTransform(fcl.Transform(rot1, pos1 + off1))
+                    d = fcl.distance(obj0, obj1, fcl_req, fcl.DistanceResult())
                 if d < g[c_s + g_cnt]:
                     g[c_s + g_cnt] = d
-                    if use_ag:
-                        coll_argmin[g_cnt] = (p, q.copy())
+                    if use_ag and p_idx >= 0:
+                        coll_argmin[g_cnt] = (p_idx, q_check.copy())
+
         if use_ag:
             self._ag_collision_cache = coll_argmin
 
@@ -410,9 +518,9 @@ class TrajectoryOptimizer(Optimizer):
         else:
             print(Fore.YELLOW, end=" ")
 
-        cond_part = log_cond * self._cond_scale
+        dopt_part = neg_log_det * self._dopt_scale
         print(
-            f"obj: {f:.1f} (cond: {cond_part:.1f} + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
+            f"obj: {f:.1f} (dopt: {dopt_part:.1f} [obs={n_observable}/{self.model.YBase.shape[1]}] + torq_bal: {f1 * 10.0:.1f} + torq_mag: {f3 * 10.0:.1f} + pos_range: {f2:.1f}, best: {self.last_best_f:.1f})",
             end=" ",
         )
         print(Fore.RESET)
@@ -445,9 +553,8 @@ class TrajectoryOptimizer(Optimizer):
                 "accelerations": trajectory_data["accelerations"].copy(),
                 "times": trajectory_data["times"].copy(),
                 "torques": torques.copy(),
-                "cond": cond,
-                "log_cond": log_cond,
-                "cond_scale": self._cond_scale,
+                "n_observable": n_observable,
+                "dopt_scale": self._dopt_scale,
                 "torque_absmax_idx": np.argmax(np.abs(torques[:, fb:]), axis=0),
                 "pos_min_idx": np.argmin(pos, axis=0),
                 "pos_max_idx": np.argmax(pos, axis=0),

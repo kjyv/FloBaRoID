@@ -230,18 +230,14 @@ class PostureOptimizer(Optimizer):
         for p in range(self.num_postures):
             for d in range(self.num_dofs):
                 d_n = self.model.jointNames[d]
-                if (
-                    len(self.config["trajectoryAngleRanges"]) > d
-                    and self.config["trajectoryAngleRanges"][d] is not None
-                ):
-                    low = self.config["trajectoryAngleRanges"][d][0]
-                    high = self.config["trajectoryAngleRanges"][d][1]
-                    if self.config["useDeg"]:
-                        low = np.deg2rad(low)
-                        high = np.deg2rad(high)
-                else:
-                    low = self.limits[d_n]["lower"]
-                    high = self.limits[d_n]["upper"]
+                osc_centers = self.config.get("trajectoryOscillationCenters", {})
+                freedom = self.config.get("trajectoryCenterFreedom", 15.0)
+                center_deg = float(osc_centers.get(d_n, 0.0)) if isinstance(osc_centers, dict) else 0.0
+                low = np.deg2rad(center_deg - freedom)
+                high = np.deg2rad(center_deg + freedom)
+                # clamp to URDF limits
+                low = max(low, self.limits[d_n]["lower"])
+                high = min(high, self.limits[d_n]["upper"])
 
                 # initial = (high - low) / 2
                 # initial = 0.0

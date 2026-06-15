@@ -25,6 +25,9 @@ class SDP:
     def __init__(self, idf: Identification) -> None:
         self.idf = idf
 
+        # set solver tolerances from config
+        sdp_helpers._solver_feastol = float(idf.opt.get("sdpFeasTol", 1e-5))
+
         # collect constraint flags for display
         self.constr_per_param: dict[int, list[str]] = {}
         for i in self.idf.model.identified_params:
@@ -49,14 +52,16 @@ class SDP:
         feasible = True
         for l in self.LMIs:
             const_inst = l.subs(replace).rhs
-            if const_inst.shape[0] > 1:
-                if not np.all(la.eig(np.asarray(const_inst).astype(float))[0] > 0):
+            # after substitution, scalar constraints (e.g. dontChangeParams) can evaluate to
+            # a SymPy Zero/Number with no .shape; only matrices need eigenvalue checks
+            if hasattr(const_inst, "shape") and const_inst.shape[0] > 1:
+                if not np.all(la.eigvalsh(np.asarray(const_inst).astype(float)) > 0):
                     # matrix needs to be positive definite
                     print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
             else:
-                if not l.subs(replace).rhs[0] > 0:
-                    # single values > 0
+                val = float(const_inst) if not hasattr(const_inst, "__getitem__") else float(const_inst[0])
+                if not val >= 0:
                     print(f"Constraint {l} does not hold true for CAD params")
                     feasible = False
         return feasible
@@ -137,7 +142,10 @@ class SDP:
                     )
 
                     Di = BlockMatrix([[L, S(l).T], [S(l), I(3) * m]])
-                    D_inertia_blocks.append(Di.as_mutable())
+                    Di_mut = Di.as_mutable()
+                    # Ensure exact symbolic symmetry (BlockMatrix expansion can lose it)
+                    Di_mut = (Di_mut + Di_mut.T) / 2
+                    D_inertia_blocks.append(Di_mut)
 
             params_to_skip = []
 
@@ -172,6 +180,11 @@ class SDP:
                 params_to_skip.append(p)
 
             for p in set(params_to_skip):
+                # skip params already removed from the optimization (delete_cols) —
+                # they're pinned by exclusion and adding constraints for them would
+                # reference symbols not in the solver's variable list
+                if p in self.delete_cols:
+                    continue
                 if (idf.opt["identifyGravityParamsOnly"] and p not in idf.model.inertia_params) or not idf.opt[
                     "identifyGravityParamsOnly"
                 ]:
@@ -238,9 +251,14 @@ class SDP:
                 for i in range(start_link, idf.model.num_links):
                     if not (idf.opt["noChange"] and linkConds[i] > idf.opt["noChangeThresh"]):
                         link_name = idf.model.linkNames[i]
+                        link_mass = idf.model.xStdModel[i * 10]
+                        if abs(link_mass) > 1e-10:
+                            old_com = idf.model.xStdModel[i * 10 + 1 : i * 10 + 4] / link_mass
+                        else:
+                            old_com = np.zeros(3)
                         box, pos, rot = idf.urdfHelpers.getBoundingBox(
                             input_urdf=idf.model.urdf_file,
-                            old_com=idf.model.xStdModel[i * 10 + 1 : i * 10 + 4] / idf.model.xStdModel[i * 10],
+                            old_com=old_com,
                             link_name=link_name,
                         )
                         link_cuboid_hulls[link_name] = (box, pos, rot)
@@ -261,9 +279,27 @@ class SDP:
                 print(Fore.RED + "COM parameters are not constrained,", end=" ")
                 print("might result in rank deficiency when solving SDP problem!" + Fore.RESET)
 
-            # symmetry constraints
-            if idf.opt["useSymmetryConstraints"] and idf.opt["symmetryConstraints"]:
-                for a, b, sign in idf.opt["symmetryConstraints"]:
+            # symmetry constraints: list of [linkA, linkB] or [linkA, linkB, signs] pairs
+            # auto-expands to all 10 params per link pair with standard L/R sign pattern
+            # [1,1,-1,1,1,-1,1,1,-1,1] (y-components flip sign across the symmetry plane)
+            sym_link_pairs = idf.opt.get("symmetryLinkPairs", [])
+            if idf.opt.get("useSymmetryConstraints", False) and sym_link_pairs:
+                lr_signs = [1, 1, -1, 1, 1, -1, 1, 1, -1, 1]  # m, hx, hy, hz, Ixx, Ixy, Ixz, Iyy, Iyz, Izz
+                link_to_idx = {name: i for i, name in enumerate(idf.model.linkNames)}
+                sym_constraints: list[tuple[int, int, int]] = []
+                for pair in sym_link_pairs:
+                    if len(pair) < 2:
+                        continue
+                    link_a, link_b = pair[0], pair[1]
+                    if link_a not in link_to_idx or link_b not in link_to_idx:
+                        print(f"Warning: symmetryLinkPairs refers to unknown link '{link_a}' or '{link_b}', skipping")
+                        continue
+                    signs = pair[2] if len(pair) > 2 else lr_signs
+                    idx_a = link_to_idx[link_a] * 10
+                    idx_b = link_to_idx[link_b] * 10
+                    for p in range(10):
+                        sym_constraints.append((idx_a + p, idx_b + p, signs[p] if p < len(signs) else 1))
+                for a, b, sign in sym_constraints:
                     if (
                         idf.opt["identifyGravityParamsOnly"]
                         and a not in idf.model.inertia_params
@@ -300,7 +336,11 @@ class SDP:
             self.D_blocks = D_inertia_blocks + D_other_blocks
 
             self.LMIs = list(map(LMI_PD, self.D_blocks))
-            self.epsilon_safemargin = 1e-6
+            # shift the PSD constraint from D_i >= 0 to D_i >= epsilon * I
+            # (all eigenvalues need to be at least epsilon_safemargin).
+            # smaller values make the feasible region larger (easier for the solver)
+            # but allow near-singular inertia matrices. Sousa's original: 1e-30.
+            self.epsilon_safemargin = float(idf.opt.get("sdpSafeMargin", 1e-6))
             self.LMIs_marg = list([LMI_PSD(lm - self.epsilon_safemargin * eye(lm.shape[0])) for lm in self.D_blocks])
 
         if idf.opt["showTiming"]:
@@ -429,14 +469,13 @@ class SDP:
             if idf.opt["checkAPrioriFeasibility"]:
                 self.checkFeasibility(idf.model.xStdModel)
 
-            idf.opt["onlyUseDSDP"] = 0
-            if not idf.opt["onlyUseDSDP"]:
+            if not idf.opt.get("onlyUseDSDP", False):
                 if idf.opt["verbose"]:
                     print("Solving with cvxopt...", end=" ")
                 solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
             # try again with wider bounds and dsdp5 cmd line
-            if idf.opt["onlyUseDSDP"] or state != "optimal":
+            if idf.opt.get("onlyUseDSDP", False) or state != "optimal":
                 if idf.opt["verbose"]:
                     print("Solving with dsdp5...", end=" ")
                 sdp_helpers.solve_sdp = sdp_helpers.dsdp5
@@ -445,10 +484,14 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found std solution with {u} squared residual error")
-            idf.model.xStd = np.asarray(solution[1:]).flatten()
+                idf.model.xStd = np.asarray(solution[1:]).flatten()
+            else:
+                # both solvers failed — fall back to a priori parameters
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori parameters" + Fore.RESET)
+                idf.model.xStd = idf.model.xStdModel.copy()
 
             # prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -519,7 +562,11 @@ class SDP:
                 print("Step 2...", time.ctime())
 
             # calc estimation error of previous OLS parameter solution
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
+            # (must subtract contactForcesSum consistently with e_rho1 for Schur complement)
+            rho2_norm_sqr = (
+                la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))
+                ** 2
+            )
 
             # (this is the slow part when matrices get bigger, BlockMatrix or as_explicit?)
             u = Symbol("u")
@@ -562,10 +609,13 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found std solution with {u} squared residual error")
-            idf.model.xStd = np.asarray(solution[1:]).flatten()
+                idf.model.xStd = np.asarray(solution[1:]).flatten()
+            else:
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori parameters" + Fore.RESET)
+                idf.model.xStd = idf.model.xStdModel.copy()
 
             # prepend apriori values for 0'th link non-identifiable variables
             for c in self.delete_cols:
@@ -668,7 +718,11 @@ class SDP:
 
             e_rho1 = Matrix(rho1) - (R1 * beta_symbs)
 
-            rho2_norm_sqr = la.norm(idf.model.torques_stack - idf.model.YBase.dot(idf.model.xBase)) ** 2
+            # must subtract contactForcesSum consistently with e_rho1 for Schur complement
+            rho2_norm_sqr = (
+                la.norm(idf.model.torques_stack - idf.model.contactForcesSum - idf.model.YBase.dot(idf.model.xBase))
+                ** 2
+            )
             u = Symbol("u")
             U_rho = BlockMatrix(
                 [
@@ -707,10 +761,12 @@ class SDP:
                 )
                 sdp_helpers.solve_sdp = sdp_helpers.cvxopt_conelp
 
-            u = solution[0, 0]
-            if u:
+            if state == "optimal":
+                u = solution[0, 0]
                 print(f"SDP found base solution with {u} error increase from OLS solution")
-            idf.model.xBase = np.asarray(solution[1 : 1 + idf.model.num_base_params]).flatten()
+                idf.model.xBase = np.asarray(solution[1 : 1 + idf.model.num_base_params]).flatten()
+            else:
+                print(Fore.YELLOW + "SDP solvers failed, keeping a priori base parameters" + Fore.RESET)
 
         if idf.opt["showTiming"]:
             print(f"Constrained SDP optimization took {t.interval:.3f} sec.")
@@ -808,9 +864,10 @@ class SDP:
         prime = idf.model.xStdModel[idable_params]
         solution, state = sdp_helpers.solve_sdp(objective_func, lmis, variables, primalstart=prime)
 
-        u = solution[0, 0]
-        if u:
+        if state == "optimal":
+            u = solution[0, 0]
             print(f"SDP found std solution with {u} error increase from previous solution")
-        xStd = np.asarray(solution[1:]).flatten()
-
-        return xStd
+            return np.asarray(solution[1:]).flatten()
+        else:
+            print(Fore.YELLOW + "SDP solver failed in findFeasibleStdFromStd, returning input" + Fore.RESET)
+            return xStd

@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import math
 import os
+import sys
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -12,51 +13,20 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from excitation.trajectoryGenerator import Trajectory
 
-import platform
-import subprocess
-
 import numpy as np
 import pyglet
 from OpenGL import GL as gl
 from OpenGL.GL.shaders import compileShader
 from pyglet.window import key
 
-from excitation.trajectoryGenerator import PulsedTrajectory
+from identification.helpers import (
+    eulerAnglesToRotationMatrix,
+    rotationMatrixToEulerAngles,
+)
+from identification.helpers import (
+    is_dark_mode as _is_dark_mode,
+)
 from identification.model import Model
-
-
-def _is_dark_mode() -> bool:
-    """Detect if the OS is in dark mode (macOS, GNOME, KDE)."""
-    system = platform.system()
-    try:
-        if system == "Darwin":
-            result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True,
-                text=True,
-            )
-            return result.stdout.strip().lower() == "dark"
-        elif system == "Linux":
-            # GNOME
-            result = subprocess.run(
-                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True,
-                text=True,
-            )
-            if "dark" in result.stdout.lower():
-                return True
-            # KDE
-            result = subprocess.run(
-                ["kreadconfig5", "--group", "General", "--key", "ColorScheme"],
-                capture_output=True,
-                text=True,
-            )
-            if "dark" in result.stdout.lower():
-                return True
-    except Exception:
-        pass
-    return False
-
 
 # ── Matrix utility functions (replace legacy fixed-function pipeline) ──────────
 
@@ -441,12 +411,12 @@ class Grid:
 
         for x in np.arange(xmin, xmax + dx, dx):
             for y in np.arange(xmin, xmax + dx, dx):
-                self.vertices.append((x, xmin, 0.0))
-                self.vertices.append((x, xmax, 0.0))
+                self.vertices.append((float(x), xmin, 0.0))
+                self.vertices.append((float(x), xmax, 0.0))
                 self.indices.append((idx + 0, idx + 1))
                 idx += 2
-                self.vertices.append((xmin, y, 0.0))
-                self.vertices.append((xmax, y, 0.0))
+                self.vertices.append((xmin, float(y), 0.0))
+                self.vertices.append((xmax, float(y), 0.0))
                 self.indices.append((idx + 0, idx + 1))
                 idx += 2
 
@@ -1971,14 +1941,29 @@ if __name__ == "__main__":
     world_boxes: dict[str, BBoxEntry] = {}
     if args.world:
         world_links = urdfHelpers.getLinkNames(args.world)
+        # get joint-chain transforms so world links are placed correctly
+        world_transforms = urdfHelpers.getLinkWorldTransforms(args.world)
         for link_name in world_links:
-            box, pos, rot = urdfHelpers.getBoundingBox(
+            box, vis_pos, vis_rot = urdfHelpers.getBoundingBox(
                 input_urdf=args.world,
                 old_com=[0, 0, 0],
                 link_name=link_name,
                 scaling=False,
             )
-            world_boxes[link_name] = (box, pos, rot)
+            # compose joint-chain transform with visual origin
+            if link_name in world_transforms:
+                link_pos, link_rot = world_transforms[link_name]
+                vis_pos_arr = np.array(vis_pos, dtype=float)
+                if isinstance(vis_rot, list):
+                    vis_rot_mat = eulerAnglesToRotationMatrix(vis_rot)
+                else:
+                    vis_rot_mat = np.asarray(vis_rot, dtype=float)
+                final_pos = link_pos + link_rot @ vis_pos_arr
+                final_rot = link_rot @ vis_rot_mat
+                final_rpy = rotationMatrixToEulerAngles(final_rot).tolist()
+                world_boxes[link_name] = (box, final_pos.tolist(), final_rpy)
+            else:
+                world_boxes[link_name] = (box, vis_pos, vis_rot)
 
     # set up collision checker
     from identification.collision import CollisionChecker
@@ -2026,11 +2011,11 @@ if __name__ == "__main__":
         if "angles" in data:
             data_type = "static"
         elif "positions" in data:
-            data_type = "measurements"
+            data_type = "positions"
             v.playable = True
         else:
-            data_type = "trajectory"
-            v.playable = True
+            print(f"Error: {args.trajectory} has no saved positions. Regenerate with trajectory.py.")
+            sys.exit(1)
 
         # check if torque data is available
         if "torques" in data:
@@ -2054,12 +2039,7 @@ if __name__ == "__main__":
             # take angles from data
             if data_type == "static":
                 q0 = data["angles"][v.display_index]["angles"]
-            elif data_type == "trajectory":
-                # get data of trajectory
-                if v.trajectory is not None:
-                    v.trajectory.setTime(v.display_index / v.playback_rate)
-                    q0 = [v.trajectory.getAngle(d) for d in range(config["num_dofs"])]
-            elif data_type == "measurements":
+            elif data_type == "positions":
                 idx = int(v.display_index * v.freq / v.playback_rate)
                 if idx > data["positions"].shape[0] - 1:
                     v.display_index = 0
@@ -2068,9 +2048,33 @@ if __name__ == "__main__":
 
         s = iDynTree.JointPosDoubleArray(n_dof)
         ds = iDynTree.JointDOFsDoubleArray(n_dof)
-        for _i in range(n_dof):
+        # handle old data files that may have fewer joints than the current model
+        n_available = min(n_dof, len(q0))
+        for _i in range(n_available):
             s.setVal(_i, float(q0[_i]))
-        kinDyn.setRobotState(s, ds, gravity)
+
+        # use floating-base state if base RPY data is available (e.g. from suspended dynamics)
+        if "base_rpy" in data and data_type == "positions":
+            idx = int(v.display_index * v.freq / v.playback_rate)
+            if idx > data["base_rpy"].shape[0] - 1:
+                idx = 0
+            rpy = data["base_rpy"][idx]
+            # base_rpy is stored in model.py convention: RPY encodes a rotation R such that
+            # Transform(R, Zero()).inverse() gives world_T_base (for rotation only).
+            # R = R_world_base^{-1}, so R^{-1} = R_world_base (the actual world-to-base rotation).
+            rot = iDynTree.Rotation.RPY(float(rpy[0]), float(rpy[1]), float(rpy[2]))
+            rot_world_base = rot.inverse()  # actual rotation of base in world
+            # base_position is the Waist position in world frame
+            pos_idt = iDynTree.Position.Zero()
+            if "base_position" in data:
+                bp = data["base_position"][idx]
+                pos_idt = iDynTree.Position(float(bp[0]), float(bp[1]), float(bp[2]))
+            # construct world_T_base directly (rotation + position in world frame)
+            world_T_base = iDynTree.Transform(rot_world_base, pos_idt)
+            base_vel = iDynTree.Twist()
+            kinDyn.setRobotState(world_T_base, s, base_vel, ds, gravity)
+        else:
+            kinDyn.setRobotState(s, ds, gravity)
 
         # check collisions using the same code path the optimizer would use:
         # capsule distance when viewing capsules, FCL when viewing meshes/boxes
@@ -2089,6 +2093,14 @@ if __name__ == "__main__":
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
             )
         else:
+            bvh_links = set(config.get("fullMeshLinks", []))
+            use_vis = v.mesh_mode == "visual"
+            # when not in visual mode, use full mesh (BVH) for fullMeshLinks
+            # to match what the optimizer does (convex hull of simplified mesh is too conservative)
+            effective_bvh = bvh_links if (bvh_links and not use_vis) else None
+            if effective_bvh and not hasattr(draw_model, "_logged_bvh"):
+                print(f"[collision] Using visual mesh (BVH) for: {sorted(effective_bvh)}")
+                draw_model._logged_bvh = True  # type: ignore[attr-defined]
             v.colliding_links = collision_checker.find_colliding_links(
                 kinDyn,
                 linkNames,
@@ -2096,7 +2108,8 @@ if __name__ == "__main__":
                 ignore_pairs=config.get("ignoreLinkPairsForCollision", []),
                 neighbors=neighbors,
                 max_kin_distance=config.get("collisionMaxKinematicDistance", 0),
-                use_visual_mesh=(v.mesh_mode == "visual"),
+                use_visual_mesh=use_vis,
+                bvh_mesh_links=effective_bvh,
             )
         v.addIDynTreeModel(kinDyn, link_cuboid_hulls, linkNames, ignore_links=[])
 
@@ -2105,7 +2118,7 @@ if __name__ == "__main__":
 
         # update torque rings if enabled and data is available
         if v.show_torque_rings and torque_data is not None:
-            if data_type == "measurements":
+            if data_type == "positions":
                 idx = int(v.display_index * v.freq / v.playback_rate)
                 idx = min(idx, torque_data.shape[0] - 1)
                 tau = torque_data[idx, :]
@@ -2120,16 +2133,7 @@ if __name__ == "__main__":
     if args.trajectory:
         if data_type == "static":
             v.display_max = len(data["angles"])  # number of postures
-        elif data_type == "trajectory":
-            trajectory = PulsedTrajectory(n_dof, use_deg=data["use_deg"])
-            jl = [tuple(row) for row in data["joint_limits"]] if "joint_limits" in data else None
-            trajectory.initWithParams(data["a"], data["b"], data["q"], data["nf"], data["wf"], joint_limits=jl)
-            v.setModelTrajectory(trajectory)
-
-            v.freq = config["excitationFrequency"]
-            v.playback_rate = v.freq
-            v.display_max = int(trajectory.getPeriodLength() * v.playback_rate)  # length of trajectory
-        elif data_type == "measurements":
+        elif data_type == "positions":
             v.freq = config["excitationFrequency"]
             v.playback_rate = v.freq
             v.display_max = data["positions"].shape[0]

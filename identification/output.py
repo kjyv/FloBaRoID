@@ -1,9 +1,11 @@
 import os
+import shutil
 import sys
 
 import colorama
 import numpy as np
 import numpy.linalg as la
+import plotly
 import scipy.linalg as sla
 from colorama import Fore, Style
 from palettable.tableau import Tableau_10, Tableau_20
@@ -523,11 +525,11 @@ class OutputConsole:
                 else:
                     sq_error_idf = np.square(la.norm(self.xStdReal[p_idf] - idf.model.xStd[p_idf]))
                 print(
-                    f"Squared distance of identifiable std parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
+                    f"Squared distance of identifiable std parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
                 # sq_error_apriori = np.square(la.norm(xStdReal - idf.model.xStdModel))
                 # sq_error_idf = np.square(la.norm(xStdReal - idf.model.xStd))
-                # print( "Squared distance of std parameter vectors (identified, a priori) to real: {} vs. {}".\
+                # print( "Squared distance of std parameter vectors (identified vs. a priori) to real: {} vs. {}".\
                 #        format(sq_error_idf, sq_error_apriori))
             if idf.opt["showBaseParams"] and not summary_only and idf.opt["estimateWith"] not in ["urdf", "std_direct"]:
                 # print("Mean error (a priori - approx) of all base params: {:.5f}".\
@@ -535,7 +537,7 @@ class OutputConsole:
                 sq_error_apriori = np.square(la.norm(self.xBaseReal - idf.model.xBaseModel))
                 sq_error_idf = np.square(la.norm(self.xBaseReal - idf.model.xBase))
                 print(
-                    f"Squared distance of base parameter vectors (identified, a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
+                    f"Squared distance of base parameter vectors (identified vs. a priori) to real: {sq_error_idf} vs. {sq_error_apriori}"
                 )
         else:
             if idf.opt["showStandardParams"] and not summary_only:
@@ -679,7 +681,17 @@ class OutputMatplotlib:
         from jinja2 import Environment, FileSystemLoader
 
         figures = self._build_plotly_figures(idf)
-        html_fragments = [fig.to_html(full_html=False, include_plotlyjs="cdn") for fig in figures]
+        # Use local plotly.js so the page works offline
+        html_fragments = [fig.to_html(full_html=False, include_plotlyjs=False) for fig in figures]
+
+        # Ensure local plotly.js exists (copy from installed package if missing)
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "output")
+        plotly_local = os.path.join(output_dir, "js", "plotly.min.js")
+        if not os.path.exists(plotly_local):
+            plotly_src = os.path.join(os.path.dirname(plotly.__file__), "package_data", "plotly.min.js")
+            if os.path.exists(plotly_src):
+                os.makedirs(os.path.dirname(plotly_local), exist_ok=True)
+                shutil.copy2(plotly_src, plotly_local)
 
         path = os.path.dirname(os.path.abspath(__file__))
         template_environment = Environment(

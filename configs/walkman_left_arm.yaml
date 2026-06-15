@@ -16,8 +16,9 @@ useLocalOptimization: 1
 localSolver: 'IPOPT'
 localOptIterations: 50
 localOptSensStep: 0.02
-useAnalyticalGradients: 1        #use analytical gradients for local optimization (much faster than FD)
-analyticalGradientEpsilon: 1.0e-7  #FD step for numerical regressor Jacobian in analytical gradient
+useAnalyticalGradients: 1        #analytical gradients via regularized D-optimality
+analyticalGradientEpsilon: 1.0e-7
+analyticalGradientJobs: 1        #parallel workers for regressor FD in gradient (0 = auto, 1 = serial)
 minTolConstr: 0.01
 showOptimizationGraph: 1
 showOptimizationTrajs: 0
@@ -25,7 +26,8 @@ showModelVisualization: 0
 transparentLinks: []
 
 # the Waist link is the base (propped up), won't collide
-useCapsuleCollision: 0           # analytical capsule distance instead of FCL (faster gradients)
+# collision geometry: 'box', 'convex', 'full', or 'capsule'
+collisionMode: 'convex'
 scaleCapsuleRadius: 0.8          # tighter capsules for compact humanoid (1.0 = full AABB)
 ignoreLinksForCollision: ['Waist']
 ignoreLinkPairsForCollision: []
@@ -39,24 +41,27 @@ trajectoryCoeffMin: -0.5
 trajectoryCoeffMax:  0.5
 trajectoryTargetTorqueUtil: 0.5
 
-# per-joint angle ranges for the oscillation CENTER (in degrees)
-# must be well inside URDF limits to leave room for the Fourier oscillation amplitude
-trajectoryAngleRanges:
-    - [-15.0, 15.0]      # LShSag — shoulder forward/backward (URDF: -165 to +160)
-    - [50.0, 100.0]      # LShLat — shoulder abduction (URDF: +5 to +221, stay away from body)
-    - [-30.0, 30.0]      # LShYaw — shoulder rotation (URDF: -163 to +163)
-    - [-100.0, -40.0]    # LElbj — elbow bent (URDF: -170 to +34)
-    - [-40.0, 40.0]      # LForearmPlate — forearm rotation (URDF: -145 to +145)
-    - [-20.0, 20.0]      # LWrj1 — wrist (URDF: -85 to +85)
-    - [-20.0, 20.0]      # LWrj2 — wrist (URDF: -85 to +85)
+# preferred oscillation center offsets (degrees, from URDF joint midpoint)
+# positions are always clamped to URDF limits regardless of offset
+trajectoryCenterFreedom: 20.0
+trajectoryOscillationCenters:
+    LShLat:   75    # arm away from body (URDF midpoint is 113°)
+    LElbj:   -70    # elbow bent (URDF midpoint is -68°)
+    # unlisted joints default to 0 (URDF midpoint)
 
-# per-joint Fourier harmonics (more for distal wrist joints)
-# use tanh-bounded trajectories (positions guaranteed within joint limits)
+# per-joint Fourier harmonics (all joints must be listed)
 trajectoryBounded: 1
-trajectoryNf: [3, 3, 3, 3, 3, 3, 3]
+trajectoryNf:
+    LShSag: 3
+    LShLat: 3
+    LShYaw: 3
+    LElbj: 3
+    LForearmPlate: 3
+    LWrj1: 3
+    LWrj2: 3
 
-# manual angle limits (null = use URDF limits)
-ovrPosLimit: []
+# override position limits: {joint_name: [lower_deg, upper_deg]}, unlisted use URDF
+ovrPosLimit: {}
 
 # torque utilization constraint
 minTorqueUtilization: 0.0
@@ -174,7 +179,6 @@ dontChangeParams: []
 dontConstrain: []
 useSymmetryConstraints: 0
 symmetryTolerance: 0.05
-symmetryConstraints: []
 
 useAPriori: 0
 useEssentialParams: 0

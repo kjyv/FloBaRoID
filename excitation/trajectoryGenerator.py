@@ -8,7 +8,43 @@ from identification.data import Data
 from identification.model import Model
 
 
-def simulateTrajectory(
+def minimum_jerk_transition(
+    q_start: np.ndarray,
+    q_end: np.ndarray,
+    duration: float,
+    freq: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate a minimum-jerk (5th-order polynomial) transition between two postures.
+
+    Guarantees zero velocity and acceleration at both endpoints, producing the
+    smoothest possible transition for a given duration.
+
+    Returns (times, positions, velocities, accelerations) arrays.
+    """
+    num_samples = max(int(duration * freq), 2)
+    times = np.arange(num_samples) / freq
+    T = times[-1]
+
+    # normalized time tau in [0, 1]
+    tau = times / T
+    tau2 = tau**2
+    tau3 = tau**3
+    tau4 = tau**4
+    tau5 = tau**5
+    # minimum-jerk profile: s(tau) = 10*tau^3 - 15*tau^4 + 6*tau^5
+    s = 10.0 * tau3 - 15.0 * tau4 + 6.0 * tau5
+    ds = (30.0 * tau2 - 60.0 * tau3 + 30.0 * tau4) / T
+    dds = (60.0 * tau - 180.0 * tau2 + 120.0 * tau3) / T**2
+
+    delta = q_end - q_start
+    positions = q_start[np.newaxis, :] + np.outer(s, delta)
+    velocities = np.outer(ds, delta)
+    accelerations = np.outer(dds, delta)
+
+    return times, positions, velocities, accelerations
+
+
+def computeTrajectoryDynamics(
     config: dict, trajectory: Trajectory, model: Model | None = None, measurements: dict | None = None
 ) -> tuple[dict, Data]:
     # generate data arrays for simulation and regressor building
@@ -121,16 +157,34 @@ def simulateTrajectory(
     trajectory_data["torques"] = np.zeros((num_samples, num_dofs + fb))
     trajectory_data["times"] = times
     trajectory_data["measured_frequency"] = freq
+
+    # for floating-base robots that are not suspended, the base is assumed
+    # stationary (fixed contact with the environment). The base wrench from
+    # inverse dynamics gives the reaction forces at the base link, which is what
+    # a force/torque sensor at the contact point would measure. No separate
+    # contact wrench needs to be specified.
     trajectory_data["base_velocity"] = np.zeros((num_samples, 6))
     trajectory_data["base_acceleration"] = np.zeros((num_samples, 6))
-
     trajectory_data["base_rpy"] = np.zeros((num_samples, 3))
-
-    # for floating-base robots, the base is assumed stationary (fixed contact with
-    # the environment). The base wrench from inverse dynamics gives the reaction
-    # forces at the base link, which is what a force/torque sensor at the contact
-    # point would measure. No separate contact wrench needs to be specified.
     trajectory_data["contacts"] = np.array({})
+
+    # for suspended floating base, compute base motion from ball joint dynamics
+    if config.get("floatingBase") and config.get("floatingBaseAttachment") == "suspended":
+        from excitation.suspendedDynamics import simulate_suspended_base_motion
+
+        base_rpy, base_vel, base_acc, base_pos = simulate_suspended_base_motion(
+            config["urdf"],
+            positions,
+            velocities,
+            accelerations,
+            times,
+            attachment_frame=config.get("floatingBaseAttachmentFrame", "crane_ft"),
+            damping=config.get("suspendedDamping", 2000.0),
+        )
+        trajectory_data["base_rpy"] = base_rpy
+        trajectory_data["base_velocity"] = base_vel
+        trajectory_data["base_acceleration"] = base_acc
+        trajectory_data["base_position"] = base_pos
 
     if measurements:
         trajectory_data["positions"] = measurements["Q"]
@@ -145,28 +199,6 @@ def simulateTrajectory(
     data.init_from_data(trajectory_data)
     model.computeRegressors(data)
     trajectory_data["torques"][:, :] = data.samples["torques"][:, :]
-
-    """
-    if config['floatingBase']:
-        # add force of contact to keep robot fixed in space (always accelerate exactly against gravity)
-        # floating base orientation has to be rotated so that accelerations resulting from hanging
-        # are zero, i.e. the vector COM - contact point is parallel to gravity.
-        if contacts:
-            # get jacobian of contact frame at current posture
-            dim = model.num_dofs+fb
-            jacobian = iDynTree.MatrixDynSize(6, dim)
-            model.dynComp.getFrameJacobian(contactFrame, jacobian)
-            jacobian = jacobian.toNumPy()
-
-            # get base link vel and acc and torques that result from contact force / acceleration
-            contacts_torq = np.zeros(dim)
-            contacts_torq = jacobian.T.dot(contact_wrench)
-            trajectory_data['base_acceleration'] += contacts_torq[0:6]  # / 139.122
-            data.samples['base_acceleration'][:,:] = trajectory_data['base_acceleration'][:,:]
-            # simulate again with proper base acceleration
-            model.computeRegressors(data, only_simulate=True)
-            trajectory_data['torques'][:,:] = data.samples['torques'][:,:]
-    """
 
     config["skipSamples"] = old_skip
     config["startOffset"] = old_offset
@@ -195,6 +227,47 @@ class Trajectory:
 
     def wait_for_zero_vel(self, t_elapsed):
         raise NotImplementedError()
+
+
+class ArrayTrajectory(Trajectory):
+    """Trajectory that plays back pre-sampled position/velocity/acceleration arrays.
+
+    Used when the trajectory file contains saved kinematics (including transitions,
+    static postures, sudden stops) rather than just Fourier parameters.
+    """
+
+    def __init__(
+        self, times: np.ndarray, positions: np.ndarray, velocities: np.ndarray, accelerations: np.ndarray
+    ) -> None:
+        self.times = times
+        self.positions = positions
+        self.velocities = velocities
+        self.accelerations = accelerations
+        self.num_dofs = positions.shape[1]
+        self._idx = 0
+        self.time = 0.0
+
+    def setTime(self, time: float) -> None:
+        """Set current time and find the nearest sample index."""
+        self.time = time
+        self._idx = int(np.clip(np.searchsorted(self.times, time), 0, len(self.times) - 1))
+
+    def getAngle(self, dof: int) -> float:
+        return float(self.positions[self._idx, dof])
+
+    def getVelocity(self, dof: int) -> float:
+        return float(self.velocities[self._idx, dof])
+
+    def getAcceleration(self, dof: int) -> float:
+        return float(self.accelerations[self._idx, dof])
+
+    def getPeriodLength(self) -> float:
+        return float(self.times[-1])
+
+    def wait_for_zero_vel(self, t_elapsed: float) -> bool:
+        self.setTime(t_elapsed)
+        thresh = np.deg2rad(5.0)
+        return all(abs(self.getVelocity(d)) < thresh for d in range(self.num_dofs))
 
 
 class PulsedTrajectory(Trajectory):
@@ -425,11 +498,12 @@ class BoundedOscillationGenerator:
         # joint limits (always in rad)
         self.q_lower = q_lower
         self.q_upper = q_upper
-        self.q_center = 0.5 * (q_lower + q_upper) + self.q0
-        # range from center to limit (use the smaller side for safety)
-        half_range = 0.5 * (q_upper - q_lower)
-        # leave a small margin so tanh doesn't need to hit exactly ±1
-        self.q_range = half_range * 0.95
+        # clamp the center so there's always room to oscillate within limits
+        midpoint = 0.5 * (q_lower + q_upper)
+        self.q_center = np.clip(midpoint + self.q0, q_lower, q_upper)
+        # range = distance from center to the nearest limit (guarantees staying within bounds)
+        # with a small margin so tanh doesn't need to hit exactly ±1
+        self.q_range = min(self.q_center - q_lower, q_upper - self.q_center) * 0.95
 
     def _raw(self, t: float) -> float:
         """Unbounded internal Fourier signal."""

@@ -8,6 +8,7 @@ Used by simulator.py to transform optimized trajectories into realistic
 measurement data for identification benchmarking.
 """
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -76,7 +77,6 @@ class JointProperties:
         Reads friction, limits, and masses from the URDF and derives reasonable
         defaults for all other parameters proportional to the joint's size/capacity.
         """
-        import xml.etree.ElementTree as ET
 
         from identification.helpers import URDFHelpers
 
@@ -221,6 +221,28 @@ def rpy_to_angular_velocity(rpy: np.ndarray, rpy_dot: np.ndarray) -> np.ndarray:
         ]
     )
     return E @ rpy_dot
+
+
+def angular_velocity_to_rpy_rates(rpy: np.ndarray, omega: np.ndarray) -> np.ndarray:
+    """Convert angular velocity to RPY rates (inverse of rpy_to_angular_velocity).
+
+    The relationship is: rpy_dot = E_inv(rpy) * omega
+    where E_inv is the inverse of the RPY-to-angular-velocity mapping matrix.
+    Singular at pitch = ±90° (gimbal lock).
+    """
+    roll, pitch, _yaw = rpy
+    cr, sr = np.cos(roll), np.sin(roll)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+
+    # E_inv such that rpy_dot = E_inv * omega
+    E_inv = (1.0 / cp) * np.array(
+        [
+            [cp, sr * sp, cr * sp],
+            [0.0, cr * cp, -sr * cp],
+            [0.0, sr, cr],
+        ]
+    )
+    return E_inv @ omega
 
 
 def add_joint_elasticity(

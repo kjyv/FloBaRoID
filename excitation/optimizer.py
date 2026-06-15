@@ -10,20 +10,39 @@ if TYPE_CHECKING:
     from identification.model import Model
     from identifier import Identification
 
+import fcl
 import matplotlib.pyplot as plt
 import numpy as np
-
-try:
-    plt.style.use("seaborn-v0_8-pastel")
-except OSError:
-    plt.style.use("seaborn-pastel")
-
-import fcl
 from colorama import Fore
 from idyntree import bindings as iDynTree
 
+from excitation.analyticalGradient import kill_gradient_pool as _kill_gradient_pool
 from excitation.capsule import Capsule, capsule_distance, capsule_distance_and_gradient, fit_capsules_from_urdf
-from identification.helpers import eulerAnglesToRotationMatrix
+from identification.helpers import eulerAnglesToRotationMatrix, is_dark_mode
+
+_DARK_MODE = is_dark_mode()
+
+if _DARK_MODE:
+    try:
+        plt.style.use("seaborn-v0_8-dark")
+    except OSError:
+        plt.style.use("dark_background")
+    # ensure dark figure/axes backgrounds for interactive windows
+    plt.rcParams["figure.facecolor"] = "#1e1e1e"
+    plt.rcParams["axes.facecolor"] = "#2d2d2d"
+    plt.rcParams["axes.edgecolor"] = "#888888"
+    plt.rcParams["axes.labelcolor"] = "#cccccc"
+    plt.rcParams["text.color"] = "#cccccc"
+    plt.rcParams["xtick.color"] = "#aaaaaa"
+    plt.rcParams["ytick.color"] = "#aaaaaa"
+    plt.rcParams["grid.color"] = "#444444"
+    plt.rcParams["legend.facecolor"] = "#2d2d2d"
+    plt.rcParams["legend.edgecolor"] = "#555555"
+else:
+    try:
+        plt.style.use("seaborn-v0_8-pastel")
+    except OSError:
+        plt.style.use("seaborn-pastel")
 
 
 def _optuna_worker(
@@ -46,7 +65,7 @@ def _optuna_worker(
 
     import optuna as _optuna
 
-    from excitation.trajectoryGenerator import simulateTrajectory
+    from excitation.trajectoryGenerator import computeTrajectoryDynamics
     from excitation.trajectoryOptimizer import TrajectoryOptimizer
     from identification.model import Model
     from identifier import Identification
@@ -64,7 +83,7 @@ def _optuna_worker(
 
     model = Model(config, config["urdf"])
     idf = Identification(config, config["urdf"], None, None, None, None)
-    worker_opt = TrajectoryOptimizer(config, idf, model, simulateTrajectory)
+    worker_opt = TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics)
     worker_opt.is_global = True
 
     def worker_objective(trial: _optuna.Trial) -> float:
@@ -336,7 +355,9 @@ class Optimizer:
 
         self.world = world
         self.world_links: list[str] = []
-        if world:
+        # include world links for collision only when the base is fixed (prop-mounted).
+        # for suspended dynamics, the robot swings freely and world geometry is approximate.
+        if world and self.config.get("floatingBaseAttachment") != "suspended":
             self.world_links = idf.urdfHelpers.getLinkNames(world)
             if self.config["verbose"]:
                 print(f"World links: {self.world_links}")
@@ -357,7 +378,7 @@ class Optimizer:
 
         # fit capsule collision primitives (for collision optimization and/or visualization)
         self._capsules: dict[str, Capsule] = {}
-        if self.config.get("useCapsuleCollision", False) or self.config.get("showModelVisualization", False):
+        if self.config.get("collisionMode", "convex") == "capsule" or self.config.get("showModelVisualization", False):
             self._capsules = fit_capsules_from_urdf(
                 self.model.urdf_file,
                 self.model.linkNames,
@@ -368,7 +389,7 @@ class Optimizer:
                 print(f"Capsule collision: fitted {len(self._capsules)} capsules")
 
             # warn if capsules collide at zero pose for non-neighbor pairs
-            if self.config.get("useCapsuleCollision", False) and self._capsules:
+            if self.config.get("collisionMode", "convex") == "capsule" and self._capsules:
                 from excitation.capsule import find_colliding_links_capsule
 
                 zero_colliding = find_colliding_links_capsule(
@@ -385,7 +406,7 @@ class Optimizer:
                         Fore.YELLOW
                         + f"Warning: capsule collision infeasible at zero pose for: {zero_colliding}. "
                         + "Capsule approximation may be too conservative for this robot. "
-                        + "Consider disabling useCapsuleCollision or increasing collisionMaxKinematicDistance."
+                        + "Consider changing collisionMode or increasing collisionMaxKinematicDistance."
                         + Fore.RESET
                     )
 
@@ -404,10 +425,20 @@ class Optimizer:
         if not hasattr(self, "_geom_cache"):
             self._geom_cache: dict[str, tuple[Any, np.ndarray]] = {}
         if link_name not in self._geom_cache:
-            # try loading collision mesh (unless config says to use bounding boxes)
-            use_meshes = self.config.get("useCollisionMeshes", 1)
+            # collisionMode: 'box' (AABB only), 'convex' (convex hull from mesh),
+            #                'full' (BVH triangle mesh), 'capsule' (analytical capsules)
+            mode = self.config.get("collisionMode", "convex")
+
+            # per-link override: fullMeshLinks forces 'full' mode for specific links
+            # (for concave shapes like cages where convex hull is too coarse)
+            if link_name in self.config.get("fullMeshLinks", []):
+                link_mode = "full"
+            else:
+                link_mode = mode
+
             mesh_path = None
-            if use_meshes:
+            if link_mode in ("convex", "full"):
+                # try collision mesh first, fall back to visual mesh
                 mesh_path = self.idf.urdfHelpers.getCollisionMeshPath(self.model.urdf_file, link_name)
                 if mesh_path is None or not os.path.exists(mesh_path):
                     mesh_path = self.idf.urdfHelpers.getMeshPath(self.model.urdf_file, link_name)
@@ -416,48 +447,38 @@ class Optimizer:
                 import trimesh
 
                 mesh = trimesh.load_mesh(mesh_path)
-                # apply per-axis scaling from URDF
                 scale_parts = self.idf.urdfHelpers.mesh_scaling.split()
                 scale = np.array([float(s) for s in scale_parts])
                 verts = np.array(mesh.vertices) * scale
                 faces = np.array(mesh.faces)
-
-                # fix face winding if any scale axis is negative (mirrored mesh)
                 if np.prod(scale) < 0:
                     faces = faces[:, ::-1]
 
                 p = np.array(self.link_cuboid_hulls[link_name][1])
 
-                if self.config.get("useConvexHullCollision", False):
-                    # convex hull: GJK convex-convex is faster than BVH mesh distance,
-                    # and is a conservative approximation
+                if link_mode == "convex":
                     hull = trimesh.Trimesh(vertices=verts, faces=faces).convex_hull
                     hull_verts = np.array(hull.vertices, dtype=np.float64)
                     hull_faces = np.array(hull.faces, dtype=np.int32)
-
-                    # fcl.Convex expects flat face array with vertex count prefix per face
                     flat_faces = np.empty(len(hull_faces) * 4, dtype=np.int32)
                     for fi in range(len(hull_faces)):
-                        flat_faces[fi * 4] = 3  # triangle
+                        flat_faces[fi * 4] = 3
                         flat_faces[fi * 4 + 1 : fi * 4 + 4] = hull_faces[fi]
-
-                    convex = fcl.Convex(hull_verts, len(hull_faces), flat_faces)
-                    self._geom_cache[link_name] = (convex, p)
+                    self._geom_cache[link_name] = (fcl.Convex(hull_verts, len(hull_faces), flat_faces), p)
                 else:
-                    # use the mesh directly (BVH triangle mesh) — tighter fit
+                    # full: BVH triangle mesh
                     bvh = fcl.BVHModel()
                     bvh.beginModel(len(faces), len(verts))
                     bvh.addSubModel(np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int32))
                     bvh.endModel()
                     self._geom_cache[link_name] = (bvh, p)
             else:
-                # fallback to bounding box
+                # box fallback (also used when collisionMode='box')
                 s = self.config["scaleCollisionHull"] if link_name in self.model.linkNames else 1
                 b = np.array(self.link_cuboid_hulls[link_name][0]) * s
                 p = np.array(self.link_cuboid_hulls[link_name][1])
                 center = 0.5 * (b[0] + b[1]) + p
-                box = fcl.Box(*(b[1] - b[0]))
-                self._geom_cache[link_name] = (box, center)
+                self._geom_cache[link_name] = (fcl.Box(*(b[1] - b[0])), center)
         return self._geom_cache[link_name]
 
     def _getLinkTransform(self, link_name: str) -> tuple[np.ndarray, np.ndarray]:
@@ -537,7 +558,7 @@ class Optimizer:
                 self.model.urdf_file,
                 self.model.linkNames,
                 self.idf.urdfHelpers,
-                use_convex_hull=self.config.get("useConvexHullCollision", False),
+                use_convex_hull=self.config.get("collisionMode", "convex") == "convex",
             )
             if self._capsules:
                 self.visualizer.loadCapsules(self._capsules)
@@ -618,7 +639,11 @@ class Optimizer:
         self.yar: list[float] = []  # y value, i.e. obj func value
         self.x_constr: list[bool] = []  # within constraints or not (feasible)
         # create a single line object that we update (instead of adding new lines)
-        (self._graph_line,) = self.ax1.plot([], [], marker=".", markeredgecolor="g", markerfacecolor="g", color="0.75")
+        line_color = "0.45" if _DARK_MODE else "0.75"
+        marker_color = "#66ff66" if _DARK_MODE else "g"
+        (self._graph_line,) = self.ax1.plot(
+            [], [], marker=".", markeredgecolor=marker_color, markerfacecolor=marker_color, color=line_color
+        )
         self.ax1.set_xlabel("Function evaluation #")
         self.ax1.set_ylabel("Objective function value")
         self._graph_shown = False
@@ -744,6 +769,8 @@ class Optimizer:
         cpu_count = os.cpu_count() or 1
         default_jobs = max(1, cpu_count - 2)
         n_jobs = self.config.get("globalOptJobs", default_jobs)
+        if n_jobs <= 0:
+            n_jobs = default_jobs
         print(f"Running Optuna ({sampler_name}) with {n_trials} trials ({n_jobs} jobs)...")
 
         if n_jobs > 1:
@@ -781,36 +808,43 @@ class Optimizer:
             if self.config["showOptimizationGraph"]:
                 plt.show(block=False)
 
-            while any(p.is_alive() for p in processes):
-                time.sleep(2)
-                if self.config["showOptimizationGraph"]:
-                    # read completed trials from shared storage and update graph
-                    tmp_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
-                    self.xar = []
-                    self.yar = []
-                    self.x_constr = []
-                    for t in tmp_study.trials:
-                        if t.value is not None:
-                            self.xar.append(t.number)
-                            self.yar.append(t.value)
-                            constraints = t.user_attrs.get("constraints", None)
-                            feasible = constraints is not None and all(v <= 0.01 for v in constraints)
-                            self.x_constr.append(feasible)
-                    if self.xar:
-                        self.iter_cnt = max(self.xar)
-                        self.updateGraph()
-                n_done = sum(not p.is_alive() for p in processes)
-                n_trials_done = len(optuna.load_study(study_name="trajectory_opt", storage=storage).trials)
-                print(
-                    f"\r  {n_trials_done}/{n_trials} trials, {n_jobs - n_done}/{n_jobs} workers active",
-                    end="",
-                    flush=True,
-                )
+            try:
+                while any(p.is_alive() for p in processes):
+                    time.sleep(2)
+                    if self.config["showOptimizationGraph"]:
+                        # read completed trials from shared storage and update graph
+                        tmp_study = optuna.load_study(study_name="trajectory_opt", storage=storage)
+                        self.xar = []
+                        self.yar = []
+                        self.x_constr = []
+                        for t in tmp_study.trials:
+                            if t.value is not None:
+                                self.xar.append(t.number)
+                                self.yar.append(t.value)
+                                constraints = t.user_attrs.get("constraints", None)
+                                feasible = constraints is not None and all(v <= 0.01 for v in constraints)
+                                self.x_constr.append(feasible)
+                        if self.xar:
+                            self.iter_cnt = max(self.xar)
+                            self.updateGraph()
+                    n_done = sum(not p.is_alive() for p in processes)
+                    n_trials_done = len(optuna.load_study(study_name="trajectory_opt", storage=storage).trials)
+                    print(
+                        f"\r  {n_trials_done}/{n_trials} trials, {n_jobs - n_done}/{n_jobs} workers active",
+                        end="",
+                        flush=True,
+                    )
+            except KeyboardInterrupt:
+                print("\n  Ctrl-C: terminating worker processes...")
+                for p in processes:
+                    p.terminate()
             print()
 
             for p in processes:
-                p.join()
-                if p.exitcode != 0:
+                p.join(timeout=5)
+                if p.is_alive():
+                    p.kill()
+                elif p.exitcode and p.exitcode > 0:
                     print(f"  worker {p.name} exited with code {p.exitcode}")
 
             # reload study results from shared storage
@@ -922,6 +956,7 @@ class Optimizer:
                     print(sol)
             except KeyboardInterrupt:
                 print("\n\nGlobal optimization interrupted by user.")
+                _kill_gradient_pool()
 
             self.gather_solutions()
 
@@ -960,13 +995,17 @@ class Optimizer:
             # the starting point. Pass the ALPSO best as initial values directly
             # to addVar (setDVs is unreliable after ALPSO's NaN solution).
             init_vals = np.array(self.last_best_sol) if len(self.last_best_sol) > 0 else None
+            if init_vals is not None:
+                print(f"Starting local optimization from global best (obj={self.last_best_f:.2f})")
+            else:
+                print("Starting local optimization from default initial trajectory (no feasible global solution found)")
             opt_prob_local = Optimization("Trajectory optimization", self._objFuncWrapper)
             opt_prob_local.addObj("f")
             self.opt_prob = opt_prob_local
             self.addVarsAndConstraints(opt_prob_local, initial_values=init_vals)
 
             if self.config["verbose"]:
-                print("Runing local optimization with {}".format(self.config["localSolver"]))
+                print("Running local optimization with {}".format(self.config["localSolver"]))
             self.is_global = False
             sens_step = self.config.get("localOptSensStep", 0.01)
             try:
@@ -977,6 +1016,7 @@ class Optimizer:
                     sol = opt2(opt_prob_local, sens="FD", sensStep=sens_step, storeHistory=False)
             except KeyboardInterrupt:
                 print("\n\nOptimization interrupted by user.")
+                _kill_gradient_pool()
 
             self.gather_solutions()
 

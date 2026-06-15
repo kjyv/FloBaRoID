@@ -1,0 +1,95 @@
+<?xml version="1.0" ?>
+<!-- Visualization URDF for the suspended WALKMAN setup.
+     The coordinate origin is at the crane attachment point (crane_ft).
+     The robot hangs below with Waist at approximately z=-0.9.
+
+     Geometry reference (relative to crane_ft at origin):
+       crane_ft = z=0  (attachment point / coordinate origin)
+       Waist    ≈ z=-0.9  (through kinematic chain)
+       feet     ≈ z=-1.9
+       ground   → z=-2.2  (below feet with clearance)
+-->
+<robot name="crane_world" xmlns:xacro="http://ros.org/wiki/xacro">
+    <link name="world" />
+
+    <!-- ground plate (below the robot's feet) -->
+    <link name="ground_link">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 -0.025" rpy="0 0 0" />
+            <geometry>
+                <box size="5.0 5.0 0.05" />
+            </geometry>
+        </visual>
+    </link>
+    <joint name="ground_joint" type="fixed">
+        <origin xyz="0 0 -2.2" rpy="0 0 0" />
+        <parent link="world" />
+        <child link="ground_link" />
+    </joint>
+
+    <!-- crane vertical column: stands on ground (z=-2.2) up to above attachment (z=+0.3)
+         total height = 2.5m, center at z = -2.2 + 1.25 = -0.95 -->
+    <link name="crane_column">
+        <inertial>
+            <mass value="50.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 1.25" rpy="0 0 0" />
+            <geometry>
+                <box size="0.12 0.12 2.5" />
+            </geometry>
+        </visual>
+    </link>
+    <joint name="crane_column_joint" type="fixed">
+        <origin xyz="-0.7 0 -2.2" rpy="0 0 0" />
+        <parent link="world" />
+        <child link="crane_column" />
+    </joint>
+
+    <!-- crane horizontal arm at z=+0.25 (just above attachment point at z=0) -->
+    <link name="crane_arm">
+        <inertial>
+            <mass value="20.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0.4 0 0" rpy="0 0 0" />
+            <geometry>
+                <box size="0.9 0.08 0.08" />
+            </geometry>
+        </visual>
+    </link>
+    <joint name="crane_arm_joint" type="fixed">
+        <origin xyz="-0.7 0 0.25" rpy="0 0 0" />
+        <parent link="world" />
+        <child link="crane_arm" />
+    </joint>
+
+    <!-- crane hook: hangs from arm (z=+0.25) down to attachment point (z=0) -->
+    <link name="crane_tip">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 -0.1" rpy="0 0 0" />
+            <geometry>
+                <box size="0.04 0.04 0.25" />
+            </geometry>
+        </visual>
+    </link>
+    <joint name="crane_tip_joint" type="fixed">
+        <origin xyz="0 0 0.25" rpy="0 0 0" />
+        <parent link="world" />
+        <child link="crane_tip" />
+    </joint>
+</robot>

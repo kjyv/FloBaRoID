@@ -2,19 +2,15 @@
 
 Implements the gradient chain:
 
-    d(objective)/d(alpha) = d(obj)/d(cond) * d(cond)/d(YBase) : d(YBase)/d(x) * d(x)/d(alpha)
+    d(objective)/d(alpha) = d(obj)/d(Y) : d(Y)/d(x) * d(x)/d(alpha)
 
 where x = (q, dq, ddq) are joint states, alpha are Fourier parameters,
 and ':' is the Frobenius inner product (tensor contraction).
 
-The condition number gradient uses the SVD decomposition from
-K. Ayusawa, A. Rioux, E. Yoshida, G. Venture, M. Gautier: "Generating
-Persistently Exciting Trajectory Based on Condition Number Optimization,"
-IEEE International Conference on Robotics and Automation (ICRA), Singapore,
-pp. 6518–6524, 2017.
+The objective is regularized D-optimality: -log(det(Y^T Y + δI)).
 
 The overall gradient is split into two phases:
-  Phase A (expensive): Loop over samples, compute d(cond)/d(state) via numerical FD
+  Phase A (expensive): Loop over samples, compute d(obj)/d(state) via numerical FD
     of the iDynTree regressor. Result: sensitivity arrays of shape (n_samples, n_dofs).
   Phase B (cheap): Chain sensitivities with analytical trajectory Jacobians using
     vectorized numpy operations to get d(objective)/d(alpha).
@@ -23,6 +19,7 @@ The overall gradient is split into two phases:
 from __future__ import annotations
 
 import multiprocessing
+import os
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -43,50 +40,29 @@ _gradient_pool: multiprocessing.pool.Pool | None = None
 _gradient_pool_size: int = 0
 
 
-def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
-    """Initialize a worker process with its own iDynTree model.
-
-    Called once when the worker is spawned. The model is cached in
-    the module-level _worker_state dict for reuse across tasks.
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")  # prevent display in workers
-
-    from identification.model import Model
-
-    config_dict["jointNames"] = iDynTree.StringVector([])
-    iDynTree.dofsListFromURDF(urdf_file, config_dict["jointNames"])
-    config_dict["num_dofs"] = len(config_dict["jointNames"])
-
-    _worker_state["model"] = Model(config_dict, urdf_file)
+# --- D-optimality gradient worker ---
 
 
-def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """Process a chunk of samples for the gradient computation.
+def _dopt_gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    """Compute D-optimality regressor sensitivities via FD.
 
-    Each worker has its own iDynTree model (from _gradient_worker_init).
-    Returns (sens_q_chunk, sens_dq_chunk, sens_ddq_chunk, torque_sens_dict).
+    Instead of contracting with SVD vectors (condition number), uses the Frobenius
+    inner product with D-optimality weights: sens[t,d] = <W_t, dY_t/dq_d>.
+    This is numerically stable at any condition number.
     """
     (
         sample_indices,
         positions,
         velocities,
         accelerations,
-        w1_iner,
-        w2_iner,
+        W_iner,
         params_iner,
-        u1,
-        u_last,
-        c1,
-        c2,
         n_dofs_out,
         epsilon,
         is_floating,
         row_slice_start,
         has_visc_friction,
-        w1_visc,
-        w2_visc,
+        W_visc,
         params_visc,
         fb,
         torque_absmax_idx,
@@ -111,7 +87,7 @@ def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarr
     sens_q = np.zeros((n_chunk, nd))
     sens_dq = np.zeros((n_chunk, nd))
     sens_ddq = np.zeros((n_chunk, nd))
-    torque_sens: dict[str, np.ndarray] = {}  # "dtau_{state}_{n}_{d}" -> value
+    torque_sens: dict[str, np.ndarray] = {}
 
     for ci, t in enumerate(sample_indices):
         pos_t = positions[t]
@@ -123,9 +99,8 @@ def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarr
             dq_buf.setVal(i, float(vel_t[i]))
             ddq_buf.setVal(i, float(acc_t[i]))
 
-        row_start = t * n_dofs_out
-        u1_t = u1[row_start : row_start + n_dofs_out]
-        u_last_t = u_last[row_start : row_start + n_dofs_out]
+        # Per-sample D-opt weight block (n_out × n_inertial)
+        W_t = W_iner[t * n_dofs_out : (t + 1) * n_dofs_out]
         need_torque = t in torque_grad_samples
 
         # --- Baseline evaluation ---
@@ -134,13 +109,12 @@ def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarr
         else:
             model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
         model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
-        Y_base_view = reg_buf.toNumPy()[row_slice]
-        Yw1_base = Y_base_view @ w1_iner
-        Yw2_base = Y_base_view @ w2_iner
+        Y_base = reg_buf.toNumPy()[row_slice]
+        score_base = np.sum(W_t * Y_base)
         if need_torque:
-            Yp_base = Y_base_view @ params_iner
+            Yp_base = Y_base @ params_iner
 
-        # --- Position perturbations (forward difference) ---
+        # --- Position perturbations ---
         for d in range(nd):
             orig = float(pos_t[d])
             q_buf.setVal(d, orig + epsilon)
@@ -149,21 +123,18 @@ def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarr
             else:
                 model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
             model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
-            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
-            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+            Y_plus = reg_buf.toNumPy()[row_slice]
             q_buf.setVal(d, orig)
 
-            dw1 = (Yw1_plus - Yw1_base) * inv_eps
-            dw2 = (Yw2_plus - Yw2_base) * inv_eps
-            sens_q[ci, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
+            sens_q[ci, d] = (np.sum(W_t * Y_plus) - score_base) * inv_eps
 
             if need_torque:
-                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - Yp_base) * inv_eps
+                dp = (Y_plus @ params_iner - Yp_base) * inv_eps
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
                         torque_sens[f"dq_{n}_{d}"] = dp[fb + n]
 
-        # --- Velocity perturbations (forward difference) ---
+        # --- Velocity perturbations ---
         if is_floating:
             model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
         else:
@@ -177,46 +148,70 @@ def _gradient_worker_func(args: tuple) -> tuple[np.ndarray, np.ndarray, np.ndarr
             else:
                 model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
             model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
-            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
-            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+            Y_plus = reg_buf.toNumPy()[row_slice]
             dq_buf.setVal(d, orig)
 
-            dw1 = (Yw1_plus - Yw1_base) * inv_eps
-            dw2 = (Yw2_plus - Yw2_base) * inv_eps
+            dopt_contrib = (np.sum(W_t * Y_plus) - score_base) * inv_eps
+            # Viscous friction contribution (analytical, not captured by inertial regressor FD)
             if has_visc_friction:
-                dw1[fb + d] += w1_visc[d]
-                dw2[fb + d] += w2_visc[d]
+                dopt_contrib += W_visc[t * n_dofs_out + fb + d]
 
-            sens_dq[ci, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
+            sens_dq[ci, d] = dopt_contrib
 
             if need_torque:
-                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - Yp_base) * inv_eps
+                dp = (Y_plus @ params_iner - Yp_base) * inv_eps
                 if has_visc_friction:
                     dp[fb + d] += params_visc[d]
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
                         torque_sens[f"ddq_{n}_{d}"] = dp[fb + n]
 
-        # --- Acceleration perturbations (forward difference, no setState) ---
+        # --- Acceleration perturbations ---
         for d in range(nd):
             orig = float(acc_t[d])
             ddq_buf.setVal(d, orig + epsilon)
             model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
-            Yw1_plus = reg_buf.toNumPy()[row_slice] @ w1_iner
-            Yw2_plus = reg_buf.toNumPy()[row_slice] @ w2_iner
+            Y_plus = reg_buf.toNumPy()[row_slice]
             ddq_buf.setVal(d, orig)
 
-            dw1 = (Yw1_plus - Yw1_base) * inv_eps
-            dw2 = (Yw2_plus - Yw2_base) * inv_eps
-            sens_ddq[ci, d] = c1 * np.dot(u1_t, dw1) + c2 * np.dot(u_last_t, dw2)
+            sens_ddq[ci, d] = (np.sum(W_t * Y_plus) - score_base) * inv_eps
 
             if need_torque:
-                dp = (reg_buf.toNumPy()[row_slice] @ params_iner - Yp_base) * inv_eps
+                dp = (Y_plus @ params_iner - Yp_base) * inv_eps
                 for n in range(nd):
                     if torque_absmax_idx[n] == t:
                         torque_sens[f"dddq_{n}_{d}"] = dp[fb + n]
 
     return sens_q, sens_dq, sens_ddq, torque_sens
+
+
+def _gradient_worker_init(urdf_file: str, config_dict: dict) -> None:
+    """Initialize a worker process with its own iDynTree model.
+
+    Called once when the worker is spawned. The model is cached in
+    the module-level _worker_state dict for reuse across tasks.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")  # prevent display in workers
+
+    from identification.model import Model
+
+    config_dict["jointNames"] = iDynTree.StringVector([])
+    iDynTree.dofsListFromURDF(urdf_file, config_dict["jointNames"])
+    config_dict["num_dofs"] = len(config_dict["jointNames"])
+
+    model = Model(config_dict, urdf_file)
+    _worker_state["model"] = model
+
+
+def kill_gradient_pool() -> None:
+    """Terminate the persistent gradient worker pool (e.g. on Ctrl-C)."""
+    global _gradient_pool
+    if _gradient_pool is not None:
+        _gradient_pool.terminate()
+        _gradient_pool.join()
+        _gradient_pool = None
 
 
 def _get_gradient_pool(n_jobs: int, urdf: str, config: dict) -> multiprocessing.pool.Pool:
@@ -234,47 +229,6 @@ def _get_gradient_pool(n_jobs: int, urdf: str, config: dict) -> multiprocessing.
         )
         _gradient_pool_size = n_jobs
     return _gradient_pool
-
-
-def compute_cond_gradient(
-    YBase: np.ndarray,
-) -> tuple[float, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Compute condition number and SVD components for its gradient.
-
-    The gradient of cond(Y) = s_max/s_min w.r.t. Y is (Ayusawa Eq. 17):
-        dCond/dY = (1/s_min) * u_1 @ v_1^T - (s_max/s_min^2) * u_n @ v_n^T
-
-    For well-conditioned matrices (cond < 10^8), uses the Gram matrix Y^T @ Y
-    eigendecomposition which is faster. For ill-conditioned matrices, falls back
-    to full SVD which is numerically more stable for the smallest singular vector.
-
-    Returns:
-        cond, s_max, s_min, u_first, u_last, v_first, v_last
-    """
-    import scipy.linalg
-
-    # Try fast Gram matrix approach first
-    YtY = YBase.T @ YBase
-    eigvals, eigvecs = scipy.linalg.eigh(YtY)
-
-    # If smallest eigenvalue is negative or very small relative to largest,
-    # the Gram approach loses accuracy for the smallest singular vector.
-    # Fall back to full SVD in that case.
-    if eigvals[0] <= 0 or eigvals[-1] / max(eigvals[0], 1e-300) > 1e16:
-        U, S, Vt = np.linalg.svd(YBase, full_matrices=False)
-        s_max = float(S[0])
-        s_min = float(S[-1])
-        cond = s_max / max(s_min, 1e-30)
-        return cond, s_max, s_min, U[:, 0].copy(), U[:, -1].copy(), Vt[0, :].copy(), Vt[-1, :].copy()
-
-    s_max = float(np.sqrt(eigvals[-1]))
-    s_min = float(np.sqrt(eigvals[0]))
-    cond = s_max / max(s_min, 1e-30)
-    v_first = eigvecs[:, -1].copy()
-    v_last = eigvecs[:, 0].copy()
-    u_first = YBase @ v_first / max(s_max, 1e-30)
-    u_last = YBase @ v_last / max(s_min, 1e-30)
-    return cond, s_max, s_min, u_first, u_last, v_first, v_last
 
 
 def _get_projection_matrix(model: Model) -> np.ndarray:
@@ -574,15 +528,24 @@ def compute_analytical_gradient(
     if config.get("verbose", 0):
         print("Computing analytical gradient...")
 
-    # ---- Phase 1: SVD of YBase ----
-    cond_val, s_max, s_min, u1, u_last, v1, v_last = compute_cond_gradient(YBase)
+    # ---- Phase 1: Regularized D-optimality gradient weights ----
+    # Objective: f = -log(det(Y^T Y + δI)) * scale
+    # Gradient: df/dY = -2 * scale * Y @ (Y^T Y + δI)^{-1}
+    #                 = -2 * scale * U @ diag(s_i / (s_i² + δ)) @ V^T
+    # The regularization δ ensures all terms in the sum are bounded by 1/(2√δ),
+    # preventing numerical catastrophe from near-zero singular values.
+    dopt_scale = cache["dopt_scale"]
+    dopt_reg = config.get("doptRegularization", 1e-4)
+    U, S, Vt = np.linalg.svd(YBase, full_matrices=False)
+    delta = dopt_reg * S[0] ** 2  # δ relative to largest eigenvalue λ_max = s_max²
+    # Regularized weights: s_i / (s_i² + δ) instead of 1/s_i
+    reg_weights = S / (S**2 + delta)
+    R_dopt = -2.0 * dopt_scale * ((U * reg_weights[np.newaxis, :]) @ Vt)
+
     proj = _get_projection_matrix(model)
 
-    # Projected singular vectors for efficient contraction
-    w1 = proj @ v1  # (n_std_params,)
-    w2 = proj @ v_last
-    c1 = 1.0 / max(s_min, 1e-30)
-    c2 = -s_max / max(s_min**2, 1e-60)
+    # D-optimality weight in standard parameter space: W_std = R_dopt @ Pb^T
+    W_std = R_dopt @ proj.T  # shape (n_samples * n_dofs_out, n_identified_params)
 
     # Parameter vector for torque gradient (matches regressor column order)
     params = model.xStdModel[model.identified_params]
@@ -590,79 +553,69 @@ def compute_analytical_gradient(
     # ---- Phase 2: wf derivatives (numerical FD of trajectory) ----
     dq_dwf, ddq_dwf, dddq_dwf = _compute_wf_derivatives(optimizer, times)
 
-    # ---- Phase A: Regressor sensitivities via FD (the expensive loop) ----
+    # ---- Phase A: D-optimality regressor sensitivities via FD ----
     epsilon = config.get("analyticalGradientEpsilon", 1e-7)
     inv_2eps = 1.0 / (2.0 * epsilon)  # used by collision gradient FD
     is_floating = model.opt["floatingBase"]
 
-    # Split contraction vectors into inertial-only parts.
     n_inertial = model.num_model_params
     if model.opt.get("identifyGravityParamsOnly", False):
         n_inertial -= len(model.inertia_params)
-    w1_iner = w1[:n_inertial]
-    w2_iner = w2[:n_inertial]
+    W_iner = W_std[:, :n_inertial]
     params_iner = params[:n_inertial]
 
-    # Viscous friction contribution (analytical, zero arrays if not applicable)
     has_friction = model.opt.get("identifyFriction", False)
     has_visc_friction = has_friction and not model.opt.get("identifyGravityParamsOnly", False)
-    w1_visc_arr = np.zeros(nd)
-    w2_visc_arr = np.zeros(nd)
     params_visc_arr = np.zeros(nd)
+    # D-opt weight for viscous friction: d(v*Fv_d)/d(dq_d) = Fv_d at row (fb+d),
+    # so the weight is W_std[t*n_out+fb+d, visc_col_d]
+    W_visc = np.zeros(n_samples * n_dofs_out)
     if has_visc_friction:
-        visc_offset = n_inertial + nd
-        w1_visc_arr = w1[visc_offset : visc_offset + nd]
-        w2_visc_arr = w2[visc_offset : visc_offset + nd]
+        visc_offset = n_inertial + nd  # skip inertial + coulomb friction columns
+        for d in range(nd):
+            if visc_offset + d < W_std.shape[1]:
+                for t in range(n_samples):
+                    W_visc[t * n_dofs_out + fb + d] = W_std[t * n_dofs_out + fb + d, visc_offset + d]
         params_visc_arr = params[visc_offset : visc_offset + nd]
 
     torque_absmax_idx = cache["torque_absmax_idx"]
     subsample = config.get("analyticalGradientSubsample", 1)
     sample_indices = list(range(0, n_samples, subsample))
 
-    import os
-
     n_jobs = config.get("analyticalGradientJobs", 1)
     if n_jobs <= 0:
         n_jobs = max(1, (os.cpu_count() or 1) - 2)
 
-    # Common arguments packed for the worker function
+    # D-optimality FD worker
     worker_common = (
         positions,
         velocities,
         accelerations,
-        w1_iner,
-        w2_iner,
+        W_iner,
         params_iner,
-        u1,
-        u_last,
-        c1,
-        c2,
         n_dofs_out,
         epsilon,
         is_floating,
         0 if is_floating else 6,
         has_visc_friction,
-        w1_visc_arr,
-        w2_visc_arr,
+        W_visc,
         params_visc_arr,
         fb,
         torque_absmax_idx,
     )
 
     if n_jobs > 1 and len(sample_indices) > n_jobs:
-        # --- Parallel path: split samples across worker processes ---
-        grad_pool: multiprocessing.pool.Pool = _get_gradient_pool(n_jobs, config["urdf"], config)
+        grad_pool = _get_gradient_pool(n_jobs, config["urdf"], config)
         chunks = np.array_split(sample_indices, n_jobs)
-        work_items = [(list(chunk), *worker_common) for chunk in chunks]
-        results = grad_pool.map(_gradient_worker_func, work_items)
+        fd_work_items = [(list(chunk), *worker_common) for chunk in chunks]
+        results = grad_pool.map(_dopt_gradient_worker_func, fd_work_items)
     else:
-        # --- Serial path: use the main process model directly ---
         if "model" not in _worker_state:
             _worker_state["model"] = model
-        results = [_gradient_worker_func((sample_indices, *worker_common))]
+        results = [_dopt_gradient_worker_func((sample_indices, *worker_common))]
         chunks = [np.array(sample_indices)]
 
-    # Aggregate results from all workers
+    # Aggregate results
     sens_q = np.zeros((n_samples, nd))
     sens_dq = np.zeros((n_samples, nd))
     sens_ddq = np.zeros((n_samples, nd))
@@ -696,17 +649,10 @@ def compute_analytical_gradient(
     wf = optimizer.trajectory.w_f_global
     use_deg = config["useDeg"]
     deg_factor = np.pi / 180.0 if use_deg else 1.0
-    cond_scale = cache["cond_scale"]
-    cond = cache["cond"]
-
-    # Scale factor: d(log10(cond)*scale)/d(cond) = scale / (cond * ln(10))
-    if cond > 1.0:
-        log_scale = cond_scale / (cond * np.log(10.0))
-    else:
-        log_scale = 0.0
+    # cond_scale and log10 scaling are already folded into c1/c2, so no extra multiplier needed
 
     # wf contribution: sum over all samples and joints
-    obj_grad[0] += log_scale * (np.sum(sens_q * dq_dwf) + np.sum(sens_dq * ddq_dwf) + np.sum(sens_ddq * dddq_dwf))
+    obj_grad[0] += np.sum(sens_q * dq_dwf) + np.sum(sens_dq * ddq_dwf) + np.sum(sens_ddq * dddq_dwf)
 
     # Per-joint Fourier coefficient contributions
     q0_start = 1
@@ -755,7 +701,7 @@ def compute_analytical_gradient(
                 dddq_val = qr * (
                     dsc * raw_ddot + sc * dr_ddot - 2.0 * d_thsc * raw_dot**2 - 4.0 * th * sc * raw_dot * dr_dot
                 )
-                obj_grad[vi_a] += log_scale * (np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val))
+                obj_grad[vi_a] += np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val)
 
                 # --- b coefficient ---
                 vi_b = b_offset + l_idx
@@ -770,11 +716,11 @@ def compute_analytical_gradient(
                 dddq_val = qr * (
                     dsc * raw_ddot + sc * dr_ddot - 2.0 * d_thsc * raw_dot**2 - 4.0 * th * sc * raw_dot * dr_dot
                 )
-                obj_grad[vi_b] += log_scale * (np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val))
+                obj_grad[vi_b] += np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val)
 
             # q0: only position, through q_center
             q0_vi = q0_start + d
-            obj_grad[q0_vi] += log_scale * np.sum(s_q) * deg_factor
+            obj_grad[q0_vi] += np.sum(s_q) * deg_factor
 
         else:
             # Unbounded (classic Swevers) mode
@@ -784,16 +730,16 @@ def compute_analytical_gradient(
                 dq_val = sin_wlt[:, l_idx] * inv_wl[l_idx]
                 ddq_val = cos_wlt[:, l_idx]
                 dddq_val = -wl[l_idx] * sin_wlt[:, l_idx]
-                obj_grad[vi_a] += log_scale * (np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val))
+                obj_grad[vi_a] += np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val)
 
                 vi_b = b_offset + l_idx
                 dq_val = -cos_wlt[:, l_idx] * inv_wl[l_idx]
                 ddq_val = sin_wlt[:, l_idx]
                 dddq_val = wl[l_idx] * cos_wlt[:, l_idx]
-                obj_grad[vi_b] += log_scale * (np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val))
+                obj_grad[vi_b] += np.dot(s_q, dq_val) + np.dot(s_dq, ddq_val) + np.dot(s_ddq, dddq_val)
 
             q0_vi = q0_start + d
-            obj_grad[q0_vi] += log_scale * np.sum(s_q) * nf_d * deg_factor
+            obj_grad[q0_vi] += np.sum(s_q) * nf_d * deg_factor
 
         a_offset += nf_d
         b_offset += nf_d
@@ -964,7 +910,7 @@ def compute_analytical_gradient(
     # ---- Collision constraint gradients ----
     if optimizer.num_coll_constraints > 0 and hasattr(optimizer, "_ag_collision_cache"):
         coll_cache = optimizer._ag_collision_cache
-        use_capsule = config.get("useCapsuleCollision", False) and optimizer._capsules
+        use_capsule = config.get("collisionMode", "convex") == "capsule" and optimizer._capsules
 
         # Group pairs by their argmin sample for efficiency
         sample_pairs: dict[int, list[int]] = {}
@@ -1019,6 +965,6 @@ def compute_analytical_gradient(
                         con_grad[c_idx, :] += ddist_dq[gi][d_joint] * dq_row
 
     if config.get("verbose", 0):
-        print(f"Analytical gradient computed (cond={cond_val:.1f}, |grad|={np.linalg.norm(obj_grad):.3e})")
+        print(f"Analytical gradient computed (|grad|={np.linalg.norm(obj_grad):.3e})")
 
     return obj_grad, con_grad

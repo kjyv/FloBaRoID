@@ -1,5 +1,92 @@
 # Changelog
 
+## 0.9.3
+
+### Suspended base dynamics
+- Added ball-joint suspended dynamics simulation for floating-base identification testing.
+  The robot hangs from a configurable attachment frame (default: `crane_ft`), and base
+  angular motion is computed from the Newton-Euler equations at each timestep.
+- Integrated into both trajectory optimizer and simulator via `floatingBaseAttachment` config
+- New config options: `floatingBaseAttachment` (`fixed`/`suspended`/`free`),
+  `floatingBaseAttachmentFrame`, `suspendedDamping`
+- Equilibrium finder locates the hanging-down RPY before integration starts
+- World URDF (`model/world_walkman_suspended.urdf`) for crane visualization
+- Base velocity computed analytically via iDynTree `getFrameVel` (avoids numerically
+  unstable RPY finite differences)
+
+### Simulator
+- Fixed fabricated base motion: simulator no longer generates synthetic sinusoidal base
+  RPY/velocity/acceleration; uses trajectory data as-is
+- Simulator output now defaults to `<urdf>.measurements.npz` instead of overwriting the
+  trajectory file
+
+### Identification
+- Measured base wrench is preserved when already present in the measurement data (e.g. from
+  simulator or F/T sensor). Previously always overwritten with a priori model simulation.
+- Fixed missing `contactForcesSum` in `rho2_norm_sqr` for `identifyFeasibleBaseParameters`
+  and `identifyFeasibleStandardParametersDirect` (Schur complement consistency)
+- Fixed `onlyUseDSDP` config option that was hardcoded to 0 (dead code)
+- Added symmetry enforcement on pseudo-inertia matrix (BlockMatrix expansion can lose it)
+- Added division-by-zero guard on COM computation for zero-mass links
+- Fixed `checkFeasibility` crash on SymPy `Zero` scalar (from pinned parameters)
+- Fixed `checkFeasibility` to use `eigvalsh` instead of `eig` for symmetric matrices
+- `dontChangeLinks`: pin all parameters of named links to a priori (replaces manual
+  parameter index lists)
+- `sdpSafeMargin`: configurable eigenvalue lower bound for physical consistency constraints
+- `sdpFeasTol`: configurable cvxopt feasibility tolerance for thin feasible regions
+- Improved cvxopt error reporting (iterations, gap, primal/dual infeasibility)
+
+### Trajectory optimization
+- World collision links excluded for suspended dynamics (robot swings freely)
+- Ctrl-C now cleanly terminates all Optuna worker processes and gradient pool
+- `globalOptJobs: 0` now means auto-detect cores (consistent with `analyticalGradientJobs`)
+- Clearer logging when IPOPT starts from global best vs default initial trajectory
+
+### Visualizer
+- Floating-base visualization: displays base RPY and position from measurement data
+- World URDF links now properly positioned using joint chain transforms (was ignoring
+  joint origins, only using visual origins)
+- `getLinkGeometry` handles cylinder and sphere primitives (was box-only)
+
+## 0.9.2
+
+### Trajectory optimization
+- Replaced condition number objective with regularized D-optimality (`-log(det(Y^T Y + δI))`)
+  - Numerically stable at any condition number (condition number gradient was broken for cond > 1e8)
+  - Regularization `δ = ε·λ_max` ensures analytical gradient accuracy to 3-4 significant digits
+  - Works for structurally rank-deficient regressors (full humanoids with unobservable parameters)
+- Analytical gradient passed directly to IPOPT, eliminating 182 FD objective evaluations per iteration
+  (~15-28x fewer calls per iteration)
+- Added observability analysis: SVD identifies unobservable parameters, saved to trajectory file,
+  automatically constrains them to a priori values during identification
+- Collision checking ~10x faster: reuse FCL objects across samples, exclude impossible pairs
+- `ignoreCollisionBetweenGroups` config option for excluding cross-body collision pairs
+- Bounded trajectory now guarantees positions stay within URDF limits regardless of center offset
+
+### Configuration
+- `collisionMode`: single option replacing `useCollisionMeshes`/`useConvexHullCollision`/`useCapsuleCollision`
+  (values: `box`, `convex`, `full`, `capsule`)
+- `fullMeshLinks`: replaces `bvhMeshLinks` — per-link override for full triangle mesh collision
+- `trajectoryOscillationCenters`: named dict of preferred joint centers (replaces `trajectoryAngleRanges`)
+- `trajectoryCenterFreedom`: how far optimizer can shift centers from preferred values
+- `trajectoryNf`: named dict format (`{joint_name: nf}`) with validation
+- `symmetryLinkPairs`: named link pairs replacing raw parameter index triples
+- `ovrPosLimit`: named dict format (`{joint_name: [lo, hi]}`)
+- `doptRegularization`: controls D-optimality gradient conditioning (default 1e-4)
+
+### Identification
+- Unobservable parameters from trajectory file automatically added to `dontChangeParams`
+- Loads observability data from measurement files passed via `--measurements`
+- Fixed missing `contactForcesSum` in `rho2_norm_sqr` for `identifyFeasibleBaseParameters`
+  and `identifyFeasibleStandardParametersDirect` (Schur complement consistency)
+- Fixed `onlyUseDSDP` config option that was hardcoded to 0 (dead code)
+- Added symmetry enforcement on pseudo-inertia matrix (BlockMatrix expansion can lose it)
+- Added division-by-zero guard on COM computation for zero-mass links
+
+### Visualizer
+- Handles old measurement files with fewer joints than current model
+- Plotly.js served locally for offline HTML output
+
 ## 0.9.1
 
 ### Trajectory generation

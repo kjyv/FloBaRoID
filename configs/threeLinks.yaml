@@ -28,15 +28,12 @@ trajectoryPulseMax:  1.0
 trajectoryCoeffInit: 0.4         #set this as high as possible without violating constraints (see output after start)
 trajectoryCoeffMin: -0.5         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  0.5
-trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax:  25.0
-
-# instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
-trajectoryAngleRanges: []
+trajectoryCenterFreedom: 25.0
+# trajectoryOscillationCenters: unlisted joints default to 0
 
 # manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
-# should be used (or leave completely empty to use all from URDF)
-ovrPosLimit: []
+# override position limits: {joint_name: [lower_deg, upper_deg]}, unlisted use URDF
+ovrPosLimit: {}
 
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
@@ -52,7 +49,7 @@ initialPostures: []              #for static optimization, feasible postures to 
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
-exciteMethod: null               #currently 'yarp', 'ros' or null (simulate)
+exciteMethod: null               #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: ''               #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                        #give angles in degrees (internal and data is always in rad)
@@ -171,9 +168,6 @@ dontConstrain: []
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
-# tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
-# [p1, p2, sign]
-symmetryConstraints: []
 
 ## other forms of OLS
 

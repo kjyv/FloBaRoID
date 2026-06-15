@@ -20,7 +20,8 @@ showOptimizationTrajs: 0         #display the trajectory plot after each optimiz
 showModelVisualization: 0        #display 3D model of robot during optimization (static only atm)
 transparentLinks: []             #visualize with some see-through
 
-useCapsuleCollision: 0           #analytical capsule distance instead of FCL (faster gradients)
+# collision geometry: 'box', 'convex', 'full', or 'capsule'
+collisionMode: 'convex'
 ignoreLinksForCollision: []      #don't include these links for collision testing at all
 ignoreLinkPairsForCollision:     #don't check collision between these pairs
     - ['ground_link', 'lwr_base_link']
@@ -34,26 +35,23 @@ trajectoryCoeffInit: 0.5         #set this as high as possible without violating
 trajectoryCoeffMin: -1.0         #determines in which range the chosen params have to be (smaller=lower vel)
 trajectoryCoeffMax:  1.0
 # per-joint number of Fourier harmonics (more harmonics = higher frequency content = more inertial torque)
+# per-joint Fourier harmonics (all joints must be listed)
 # distal joints benefit from more harmonics since they can't rely on gravity for excitation
-# if empty, uses uniform default of 4 for all joints
-trajectoryNf: [3, 3, 4, 4, 5, 6, 6]
+trajectoryNf:
+    lwr_0_joint: 3
+    lwr_1_joint: 3
+    lwr_2_joint: 4
+    lwr_3_joint: 4
+    lwr_4_joint: 5
+    lwr_5_joint: 6
+    lwr_6_joint: 6
 
-trajectoryAngleMin: -25.0        #determines the range in which the pulsation center for each joint will be (in degrees)
-trajectoryAngleMax:  25.0
+trajectoryCenterFreedom: 25.0    # optimizer can shift centers ±25° from preferred
+# trajectoryOscillationCenters: unlisted joints default to 0 (URDF midpoint)
 
-# instead of defining one range, define individual ranges for each link. If empty list, the values from trajectoryAngleMin/Max are used
-trajectoryAngleRanges: []
-
-# manual angle limits: pairs of upper and lower (in degrees or rad, see useDeg). put in null for a joint, if values from URDF
-# should be used (or leave completely empty to use all from URDF)
-ovrPosLimit:
-    - null
-    - null #[-60.0, 60.0]
-    - null
-    - null
-    - null
-    - null
-    - null
+# override position limits: {joint_name: [lower_deg, upper_deg]}, unlisted use URDF
+ovrPosLimit: {}
+#   lwr_1_joint: [-60.0, 60.0]
 
 # maximize smallest velocity for each joint (better excitation of parameters)
 # (implemented as penalty, so will not necessarily reach the set value)
@@ -78,7 +76,7 @@ initialPostures:                 #for static optimization, feasible postures to 
 
 # excitation
 excitationSimulate: 1            #simulate torques instead of using measurements (use e.g. for Gazebo)
-exciteMethod: null #'ros'        #currently 'yarp', 'ros' or null (simulate)
+exciteMethod: null #'ros'        #'yarp' or 'ros' (use simulator.py for simulated data)
 ros_move_group: 'full_lwr'       #if using ros, what move group to use for excitation
 excitationFrequency: 200.0       #data frequency in Hz for generating trajectories (should correspond to actual data transfer frequency)
 useDeg: 0                        #give angles in degrees (internal and data is always in rad)
@@ -255,9 +253,6 @@ dontConstrain: []
 useSymmetryConstraints: 0
 # allow some difference between symmetry pairs (1.0 = 100%)
 symmetryTolerance: 0.05
-# tuples of two parameter ids each that should be equal and 1/-1 to allow negative symmetric, e.g.
-# [p1, p2, sign]
-symmetryConstraints: []
 
 ## other forms of OLS
 

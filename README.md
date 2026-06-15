@@ -7,6 +7,10 @@ humanoid robots. It aims to provide a complete solution for obtaining physical c
 The full floating-base dynamics are identifiable both in simulation and from real robot measurements. All steps
 of the pipeline can be run from the command line or through a graphical interface (`uv run gui.py`).
 
+FloBaRoID was originally developed at the [Advanced Robotics department](https://advr.iit.it/) of the
+Istituto Italiano di Tecnologia (IIT) for the WALK-MAN humanoid robot, and has since been generalized to
+arbitrary floating-base tree-structured robots.
+
 <div>
 <img alt="Overview diagram" src="https://cdn.rawgit.com/kjyv/FloBaRoID/master/documentation/identification_overview.svg" width="62%" align="left" hspace="5px">
 <img alt="WALKMAN suspended from a crane in the visualizer" src="documentation/walkman_suspended.jpg" width="33%">
@@ -34,6 +38,7 @@ Features:
   * essential standard parameters \[Pham1991\]\[Gautier2013\], estimating only those that are most certain for the measurement data and leaving the others unchanged
   * SDP-constrained identification for physically consistent parameters \[Sousa2014\], using cvxpy (using e.g. CLARABEL or MOSEK solvers)
   * closest-to-CAD recovery of standard parameters from feasible base solution, optionally observability-weighted (pull weakly-determined parameters toward CAD, leave well-determined ones free)
+  * geometric (log-det divergence) CAD prior \[Lee2020\]: pull each link's pseudo-inertia toward CAD on the SPD manifold instead of by Euclidean distance, repelling degenerate (zero-mass) solutions (`cadRegularizationMode: geometric`)
   * identification from several measurement files at once, with optional per-trajectory inverse-noise weighting
   * two-step friction identification: friction-free base parameter estimation from base wrench equations \[Ayusawa2014\], followed by per-joint friction fitting from the residual
 * 3D visualization of robot model, trajectories, and world environment (OpenGL)
@@ -121,7 +126,20 @@ Known limitations:
 * YARP excitation module is not very generic (ROS should be)
 * using position control over YARP is not realtime safe and can expose timing issues (especially with python to C bridge)
 
-SDP identification approach based on \[Sousa2014\] and [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident), reimplemented using cvxpy.
+The SDP-constrained identification follows the LMI formulation of \[Sousa2014\] (and the reference
+implementation [cdsousa/wam7\_dyn\_ident](https://github.com/cdsousa/wam7_dyn_ident)), but is a from-scratch
+reimplementation that differs in how the problem is built and solved:
+
+* **Construction.** The original builds the linear matrix inequalities *symbolically* (sympy with `lmi_sdp`).
+  This toolkit instead assembles the constraint matrices *numerically* and hands them to [cvxpy](https://www.cvxpy.org/).
+  Avoiding symbolic expansion makes constraint construction far faster and keeps it tractable for high-DOF
+  floating-base models with hundreds of standard parameters, where symbolic generation becomes prohibitively
+  slow and memory-heavy.
+* **Solver.** The problem is solved through cvxpy's conic-solver abstraction, so any of its modern interior-point
+  solvers can be used (CLARABEL by default, MOSEK and others optional). These are numerically more stable on
+  large, ill-conditioned floating-base problems than the earlier solver pipeline; the solver and its tolerances
+  are configurable (`sdpSolver`, `sdpSolverOptions`), and a failed solve degrades gracefully to the a priori
+  parameters instead of aborting.
 
 Usage is licensed under the LGPL 3.0, see License.md. Please quote the following publication if you're using this software for any project:
 `S. Bethge, J. Malzahn, N. Tsagarakis, D. Caldwell: "FloBaRoID — A Software Package for the Identification of Robot Dynamics Parameters", 26th International Conference on Robotics in Alpe-Adria-Danube Region (RAAD), 2017`
@@ -143,3 +161,5 @@ Usage is licensed under the LGPL 3.0, see License.md. Please quote the following
 \[Ayusawa2014\] K. Ayusawa, G. Venture, Y. Nakamura: "Identifiability and identification of inertial parameters using the underactuated base-link dynamics for legged multibody systems," The International Journal of Robotics Research, vol. 33, no. 3, pp. 446–468, 2014.
 
 \[Ayusawa2017\] K. Ayusawa, A. Rioux, E. Yoshida, G. Venture, M. Gautier: "Generating Persistently Exciting Trajectory Based on Condition Number Optimization," IEEE International Conference on Robotics and Automation (ICRA), Singapore, pp. 6518–6524, 2017.
+
+\[Lee2020\] T. Lee, P. M. Wensing, F. C. Park: "Geometric Robot Dynamic Identification: A Convex Programming Approach," IEEE Transactions on Robotics, vol. 36, no. 2, pp. 348–365, 2020.

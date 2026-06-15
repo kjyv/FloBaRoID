@@ -429,10 +429,19 @@ useDependents: 0
 #   'observability' — pull every identifiable param with a per-parameter weight that
 #                     grows where the data determines it poorly, so well-determined
 #                     params stay free and weakly-determined ones stay near CAD.
+#   'geometric'     — pull each link's pseudo-inertia toward CAD with the log-det Bregman
+#                     divergence on the SPD manifold (Lee et al. 2020). Coordinate
+#                     invariant and repels degenerate (zero-mass) solutions; strength is
+#                     geometricRegularizationFactor (not regularizationFactor). See
+#                     documentation/geometric_prior_analysis.md.
+# 'uniform'/'observability' overall strength is the internal regularizationFactor.
 # Does not affect the (data-determined) base parameters, only the standard-parameter
-# decomposition within the null space. Overall strength is the internal
-# regularizationFactor.
+# decomposition within the null space.
 cadRegularizationMode: observability
+# geometric-mode tuning (only used when cadRegularizationMode is 'geometric'):
+geometricRegularizationFactor: 1.0   # dimensionless prior strength (residual is normalized)
+geometricObservabilityWeighting: 0   # scale each link's divergence by its observability
+                                     # weight; only helps with heterogeneous per-link CAD trust
 
 # use weighted least squares(WLS) instead of ordinary least squares
 # needs small condition number, otherwise might amplify some parameters too much as the

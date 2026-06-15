@@ -46,6 +46,33 @@ Everything below is grouped accordingly.
   barely changes the torque fit or held-out validation; on small/poorly-conditioned
   systems the fit can shift more (it trades a little fit for CAD-closeness), so it is
   opt-in: default `uniform` preserved, enabled for walkman.
+- ✅ **Geometric (log-det divergence) CAD prior** (`cadRegularizationMode: geometric`):
+  pulls each link's 4×4 pseudo-inertia toward its CAD value with the log-det Bregman
+  divergence `D(P‖P₀) = tr(P₀⁻¹P) − logdet(P) + logdet(P₀) − 4` (Lee et al. 2020), added
+  to the SDP objective rather than as Euclidean residual rows. Unlike the
+  uniform/observability Euclidean pull, the divergence is coordinate/frame invariant
+  (it does not mix kg, kg·m, kg·m² in one L2 norm), convex in the inertial parameters,
+  zero iff `P = P₀`, and diverges as a link approaches degeneracy — so it actively repels
+  the zero-mass / flat-inertia null-space solutions the Euclidean pull leaves unpenalized
+  (the robustness failure mode SDP identification is known for). Links with degenerate
+  (non-PD) CAD pseudo-inertia, pinned (`dontChangeLinks`), or in gravity-only mode are
+  skipped. Strength is tuned via `geometricRegularizationFactor`.
+  **Numerically, it must be whitened to scale**: the divergence is evaluated on
+  `Q = P₀^{-1/2} P P₀^{-1/2}` (≈ I at the a priori) as `tr(Q) − logdet(Q) − 4`
+  — mathematically identical but O(1)-scaled regardless of each link's CAD conditioning.
+  The raw `tr(P₀⁻¹P) − logdet(P)` form makes the conic solver fail on a large floating-base
+  robot (small links have CAD pseudo-inertia spanning many orders of magnitude); the
+  torque-residual block is also normalized to O(1) so it is commensurate with the
+  divergence. With `geometricObservabilityWeighting: true` it composes with the
+  observability lever (each link's divergence scaled by the mean observability weight of
+  its 10 params) — but on uniformly-perturbed synthetic CAD this adds nothing (every link
+  is equally untrustworthy), so it is expected to matter only with heterogeneous per-link
+  CAD trust, the same regime as soft-trust priors. It does not recover *more* std params
+  (structural limit, section b) and cannot beat the prior-domination ceiling — it changes
+  *which* consistent null-space point is chosen toward a more physically plausible one.
+  Measured to give the best base-parameter distance among the prior modes on the
+  floating-base robot while not hurting the fit on the well-conditioned arm; see
+  `documentation/geometric_prior_analysis.md`. Opt-in; default `uniform` preserved.
 - ⏸ **Per-link soft-trust priors**: graded per-link trust in CAD (generalizing
   `dontChangeLinks` from hard pin to a finite weight). The only lever to preserve std
   accuracy on links whose CAD is trustworthy. Trust is prior knowledge the data cannot
@@ -159,6 +186,9 @@ extra instrumentation reaches only ~10% of that. So **priors are essentially the
 practical lever** for getting standard parameters closer to real:
 - ✅ observability-weighted CAD regularization (done) — keeps the decomposition sensible
   where the data is weak;
+- ✅ geometric (log-det divergence) CAD prior (done) — a coordinate-invariant prior metric
+  that repels degenerate (zero-mass) null-space solutions and composes with the
+  observability weighting;
 - ⏸ per-link soft-trust priors — the remaining lever, valuable only when CAD quality
   genuinely varies between links (real-robot knowledge).
 

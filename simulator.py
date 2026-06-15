@@ -292,14 +292,17 @@ def main() -> None:
         for k in existing.files:
             save_data[k] = existing[k]
 
+    # *_raw means "unprocessed measurement" (matching the excite.py/csv2npz.py real-data
+    # semantics), so it carries the sensor noise. The clean reference signals are
+    # available as target_*.
     save_data.update(
         positions=positions_noisy,
-        positions_raw=positions,
+        positions_raw=positions_noisy,
         velocities=velocities_noisy,
-        velocities_raw=velocities,
+        velocities_raw=velocities_noisy,
         accelerations=accelerations,
         torques=torques_noisy,
-        torques_raw=torques,
+        torques_raw=torques_noisy,
         target_positions=positions,
         target_velocities=velocities,
         target_accelerations=accelerations,

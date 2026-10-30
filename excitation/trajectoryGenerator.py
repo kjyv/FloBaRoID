@@ -123,10 +123,8 @@ def computeTrajectoryDynamics(
                 wl = osc.w_f * l_arr
                 accelerations[:, d] = -sin_wlt @ (a_arr * wl) + cos_wlt @ (b_arr * wl)
 
-        if use_deg:
-            positions = np.deg2rad(positions)
-            velocities = np.deg2rad(velocities)
-            accelerations = np.deg2rad(accelerations)
+        # no deg2rad here: this branch already computes in radians, unlike the
+        # getAngle-based fallback below (getAngle returns degrees for useDeg)
     else:
         # fallback for non-pulsed trajectories (FixedPositionTrajectory etc.)
         positions = np.empty((num_samples, num_dofs))

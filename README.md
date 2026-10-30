@@ -12,7 +12,7 @@ Istituto Italiano di Tecnologia (IIT) for the WALK-MAN humanoid robot, and has s
 arbitrary floating-base tree-structured robots.
 
 <div>
-<img alt="Overview diagram" src="https://cdn.rawgit.com/kjyv/FloBaRoID/master/documentation/identification_overview.svg" width="62%" align="left" hspace="5px">
+<img alt="Overview diagram" src="documentation/identification_overview.svg" width="62%" align="left" hspace="5px">
 <img alt="WALKMAN suspended from a crane in the visualizer" src="documentation/walkman_suspended.jpg" width="33%">
 </div>
 
@@ -50,7 +50,7 @@ Features:
 You'll need some or all of these depenencies installed in your system:
 
 * **eigen3, swig** (required for building iDynTree): `brew install eigen@3 swig` (macOS) or `apt install libeigen3-dev swig` (Ubuntu/Debian)
-* **ipopt** (required for building cyipopt, used for trajectory optimization / NL identification): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For slightly better performance, you can also install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
+* **ipopt** (required for building cyipopt, used for trajectory and posture optimization): `brew install ipopt` (macOS) or `apt install coinor-libipopt-dev` (Ubuntu/Debian). Uses the `mumps` linear solver by default. For slightly better performance, you can also install the [HSL library](https://licences.stfc.ac.uk/product/coin-hsl) (academic license) and configure via `linear_solver` option (e.g. `ma57`, `ma97`).
 
 ## Installation
 

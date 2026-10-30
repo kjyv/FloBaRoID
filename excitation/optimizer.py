@@ -719,7 +719,6 @@ class Optimizer:
             self._capsules[l1_name],
             self.model.kinDyn,
             self.num_dofs,
-            is_floating=bool(self.config.get("floatingBase", False)),
         )
 
     def initVisualizer(self):

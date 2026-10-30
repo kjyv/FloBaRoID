@@ -71,7 +71,7 @@ def test_ipopt_problem_solves_constrained_qp():
     assert x_opt[0] + x_opt[1] >= 1.0 - 1e-6  # constraint satisfied
 
 
-def _build_kuka_optimizer(monkeypatch):
+def _build_kuka_optimizer(monkeypatch, config_overrides: dict | None = None):
     """Construct a TrajectoryOptimizer for the kuka with its world (setup only, no solve)."""
     monkeypatch.chdir(PROJECT_ROOT)
     import yaml
@@ -92,10 +92,45 @@ def _build_kuka_optimizer(monkeypatch):
     config["verbose"] = 0
     config["showOptimizationGraph"] = 0
     config["showModelVisualization"] = 0
+    if config_overrides:
+        config.update(config_overrides)
 
     model = Model(config, config["urdf"])
     idf = Identification(config, config["urdf"], None, None, None, None)
     return TrajectoryOptimizer(config, idf, model, computeTrajectoryDynamics, world="model/world_kuka.urdf")
+
+
+def test_capsule_gradient_matches_finite_differences(monkeypatch):
+    """The analytical capsule collision-distance gradient agrees with finite differences.
+
+    Regression for two bugs in capsule_distance_and_gradient: the sign of the point-Jacobian
+    rotational term, and slicing the free-floating Jacobian's joint columns at column 6 (a
+    fixed-base robot was sliced at 0, zeroing the whole gradient). The kuka is fixed-base, so
+    the gradient must be both nonzero and match FD of the distance.
+    """
+    topt = _build_kuka_optimizer(monkeypatch, config_overrides={"collisionMode": "capsule"})
+    n = topt.num_dofs
+    rng = np.random.default_rng(1)
+    q = rng.uniform(-1.0, 1.0, n)  # bent pose: closest points offset from link origins (r != 0)
+    l0, l1 = "lwr_base_link", "lwr_7_link"
+
+    topt.setCollisionRobotState(q)
+    _d0, grad = topt.getCapsuleDistanceAndGradient(l0, l1)
+    assert np.linalg.norm(grad) > 1e-3, "gradient collapsed to zero (fixed-base column-slice regression)"
+
+    eps = 1e-6
+    fd = np.zeros(n)
+    for k in range(n):
+        qp = q.copy()
+        qp[k] += eps
+        qm = q.copy()
+        qm[k] -= eps
+        topt.setCollisionRobotState(qp)
+        dp = topt.getCapsuleDistance(l0, l1)
+        topt.setCollisionRobotState(qm)
+        dm = topt.getCapsuleDistance(l0, l1)
+        fd[k] = (dp - dm) / (2 * eps)
+    np.testing.assert_allclose(grad, fd, rtol=1e-4, atol=1e-6)
 
 
 def test_collision_constraint_count_matches_pairs(monkeypatch):
@@ -178,6 +213,60 @@ def test_build_seed_trial_params(monkeypatch):
     )
     topt.config["trajectorySeedSolutions"] = [bad]
     assert topt.buildSeedTrialParams(vi) == []
+
+
+def _build_kuka_model(monkeypatch, use_deg: int):
+    """Build just the kuka Model and config (no optimizer), with useDeg overridden."""
+    monkeypatch.chdir(PROJECT_ROOT)
+    import yaml
+    from idyntree import bindings as iDynTree
+
+    from identification.model import Model
+
+    with open("configs/kuka_lwr4.yaml") as f:
+        config = yaml.safe_load(f)
+    config["urdf"] = "model/kuka_lwr4.urdf"
+    config["urdf_real"] = None
+    config["jointNames"] = iDynTree.StringVector([])
+    assert iDynTree.dofsListFromURDF(config["urdf"], config["jointNames"])
+    config["num_dofs"] = len(config["jointNames"])
+    config["verbose"] = 0
+    config["useDeg"] = use_deg
+    return config, Model(config, config["urdf"])
+
+
+def test_computetrajectorydynamics_usedeg_matches_getangle(monkeypatch):
+    """The vectorized computeTrajectoryDynamics agrees with the per-sample getAngle path for useDeg=1.
+
+    Regression for a bug where the vectorized branch applied deg2rad to positions that were
+    already in radians, scaling every useDeg=1 trajectory by pi/180 and silently disagreeing
+    with getAngle (and thus feeding corrupted kinematics into identification). Covers both the
+    classic and the joint-limit-bounded oscillator, since both build positions in radians.
+    """
+    from excitation.trajectoryGenerator import PulsedTrajectory, computeTrajectoryDynamics
+
+    config, model = _build_kuka_model(monkeypatch, use_deg=1)
+    n = config["num_dofs"]
+    rng = np.random.default_rng(0)
+    a = [rng.uniform(-0.2, 0.2, 2) for _ in range(n)]
+    b = [rng.uniform(-0.2, 0.2, 2) for _ in range(n)]
+    q = np.zeros(n)  # q0 center offset, in degrees under useDeg
+    nf = [2] * n
+
+    for joint_limits in (None, [(-1.0, 1.0)] * n):  # classic, then bounded oscillator
+        traj = PulsedTrajectory(n, use_deg=True)
+        traj.initWithParams(a, b, q, nf, wf=0.3, joint_limits=joint_limits)
+        td, _ = computeTrajectoryDynamics(config, traj, model)
+        times = td["times"]
+        for t_idx in (1, len(times) // 2, len(times) - 1):
+            traj.setTime(times[t_idx])
+            # getAngle/Velocity/Acceleration return degrees under useDeg; the arrays are radians
+            ref_q = np.deg2rad([traj.getAngle(d) for d in range(n)])
+            ref_v = np.deg2rad([traj.getVelocity(d) for d in range(n)])
+            ref_a = np.deg2rad([traj.getAcceleration(d) for d in range(n)])
+            np.testing.assert_allclose(td["positions"][t_idx], ref_q, rtol=1e-9, atol=1e-12)
+            np.testing.assert_allclose(td["velocities"][t_idx], ref_v, rtol=1e-9, atol=1e-12)
+            np.testing.assert_allclose(td["accelerations"][t_idx], ref_a, rtol=1e-9, atol=1e-12)
 
 
 def test_analytical_gradient_matches_finite_differences(monkeypatch):

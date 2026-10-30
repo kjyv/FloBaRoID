@@ -202,17 +202,19 @@ class JointProperties:
 
 
 def rpy_to_angular_velocity(rpy: np.ndarray, rpy_dot: np.ndarray) -> np.ndarray:
-    """Convert RPY rates to angular velocity in world frame.
+    """Convert RPY rates to body-frame angular velocity.
 
     The relationship is: omega = E(rpy) * rpy_dot
-    where E is the RPY rate to angular velocity mapping matrix.
+    where E is the RPY rate to angular velocity mapping matrix. For the RPY (ZYX Euler)
+    convention this E depends only on roll and pitch, i.e. it yields the body-frame omega;
+    multiply by R(rpy) to get the world-frame omega.
     """
     roll, pitch, _yaw = rpy
     cr, sr = np.cos(roll), np.sin(roll)
     _cp, sp = np.cos(pitch), np.sin(pitch)
 
     # Mapping matrix E such that omega = E * [roll_dot, pitch_dot, yaw_dot]^T
-    # (world-frame angular velocity from RPY Euler angle rates)
+    # (body-frame angular velocity from RPY Euler angle rates)
     E = np.array(
         [
             [1.0, 0.0, -sp],
@@ -224,10 +226,11 @@ def rpy_to_angular_velocity(rpy: np.ndarray, rpy_dot: np.ndarray) -> np.ndarray:
 
 
 def angular_velocity_to_rpy_rates(rpy: np.ndarray, omega: np.ndarray) -> np.ndarray:
-    """Convert angular velocity to RPY rates (inverse of rpy_to_angular_velocity).
+    """Convert body-frame angular velocity to RPY rates (inverse of rpy_to_angular_velocity).
 
     The relationship is: rpy_dot = E_inv(rpy) * omega
-    where E_inv is the inverse of the RPY-to-angular-velocity mapping matrix.
+    where E_inv is the inverse of the RPY-to-angular-velocity mapping matrix. omega must be
+    in the body frame; for a world-frame omega, pass R(rpy)^T @ omega.
     Singular at pitch = ±90° (gimbal lock).
     """
     roll, pitch, _yaw = rpy

@@ -21,6 +21,34 @@ def test_angular_velocity_to_rpy_rates_inverse() -> None:
         np.testing.assert_allclose(rpy_dot_recovered, rpy_dot, atol=1e-12)
 
 
+def test_rpy_to_angular_velocity_is_body_frame() -> None:
+    """rpy_to_angular_velocity returns the body-frame omega (matches R^T·Rdot, not Rdot·R^T).
+
+    Pins the convention the suspended integration relies on: the attachment angular velocity
+    is world-frame (iDynTree MIXED representation), so it must be rotated into the body frame
+    (R^T·omega) before this map is applied. A flip to a world-frame map would break that.
+    """
+    from idyntree import bindings as iDynTree
+
+    from excitation.simulationEffects import rpy_to_angular_velocity
+
+    def rot(rpy: np.ndarray) -> np.ndarray:
+        return iDynTree.Rotation.RPY(float(rpy[0]), float(rpy[1]), float(rpy[2])).toNumPy()
+
+    def unskew(s: np.ndarray) -> np.ndarray:
+        return np.array([s[2, 1], s[0, 2], s[1, 0]])
+
+    rpy = np.array([0.3, 0.4, 0.5])
+    rpy_dot = np.array([0.1, -0.2, 0.15])
+    h = 1e-6
+    r0 = rot(rpy)
+    r_dot = (rot(rpy + rpy_dot * h) - r0) / h
+
+    omega = rpy_to_angular_velocity(rpy, rpy_dot)
+    np.testing.assert_allclose(omega, unskew(r0.T @ r_dot), atol=1e-4)  # body frame
+    assert not np.allclose(omega, unskew(r_dot @ r0.T), atol=1e-2)  # not world frame
+
+
 def test_angular_velocity_to_rpy_rates_zero() -> None:
     """Zero angular velocity should give zero RPY rates."""
     from excitation.simulationEffects import angular_velocity_to_rpy_rates

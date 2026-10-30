@@ -421,7 +421,7 @@ def _point_jacobian(
     r = point_world - link_origin_world  # (3,)
     # v_point = J_lin + omega x r = J_lin + skew(r)^T @ J_ang = J_lin - skew(r) @ J_ang
     # (since skew(a) @ b = a x b, and we want omega x r = -r x omega = -skew(r) @ omega)
-    return J_lin + _skew(r) @ J_ang
+    return J_lin - _skew(r) @ J_ang
 
 
 def capsule_distance_and_gradient(
@@ -429,7 +429,6 @@ def capsule_distance_and_gradient(
     cap_b: Capsule,
     kinDyn: Any,
     num_dofs: int,
-    is_floating: bool,
 ) -> tuple[float, np.ndarray]:
     """Compute capsule distance and its analytical gradient w.r.t. joint angles.
 
@@ -448,7 +447,6 @@ def capsule_distance_and_gradient(
         cap_a, cap_b: Capsule primitives.
         kinDyn: iDynTree KinDynComputations object (state already set).
         num_dofs: Number of joint DOFs.
-        is_floating: Whether the robot has a floating base.
 
     Returns:
         (distance, d_distance_d_q) where d_distance_d_q has shape (num_dofs,).
@@ -480,8 +478,10 @@ def capsule_distance_and_gradient(
     # unit separation vector (from B toward A)
     n = diff / seg_dist
 
-    # get geometric Jacobians for both links
-    col_start = 6 if is_floating else 0
+    # get geometric Jacobians for both links. The iDynTree free-floating Jacobian always
+    # has the 6 base columns first and then the joint columns, for fixed- and floating-base
+    # models alike; the gradient is w.r.t. joint angles only, so slice the joint block at 6.
+    col_start = 6
     total_cols = 6 + num_dofs
 
     jac_a = iDynTree.MatrixDynSize(6, total_cols)

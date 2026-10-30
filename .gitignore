@@ -83,3 +83,4 @@ IPOPT.out
 # generated trajectory/measurement data variants
 model/*.urdf.trajectory_*.npz
 model/*.measurements*.npz
+extra/**

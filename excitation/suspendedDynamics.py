@@ -192,7 +192,10 @@ def simulate_suspended_base_motion(
         # then use new velocity for position
         if t < num_samples - 1:
             att_omega = att_omega + alpha * dt
-            rpy_dot = angular_velocity_to_rpy_rates(att_rpy, att_omega)
+            # att_omega is world-frame (iDynTree MIXED representation); the RPY-rate map
+            # expects the body-frame angular velocity, so rotate it into the attachment frame
+            R_att = iDynTree.Rotation.RPY(att_rpy[0], att_rpy[1], att_rpy[2]).toNumPy()
+            rpy_dot = angular_velocity_to_rpy_rates(att_rpy, R_att.T @ att_omega)
             att_rpy = att_rpy + rpy_dot * dt
 
             # soft clamp: models physical swing limits and prevents divergence.
@@ -223,6 +226,9 @@ def simulate_suspended_base_motion(
             base_acceleration[1:-1, i] = (base_velocity[2:, i] - base_velocity[:-2, i]) / (2 * dt)
             base_acceleration[0, i] = (base_velocity[1, i] - base_velocity[0, i]) / dt
             base_acceleration[-1, i] = (base_velocity[-1, i] - base_velocity[-2, i]) / dt
+        elif num_samples == 2:
+            # only a single forward difference is available; share it across both samples
+            base_acceleration[:, i] = (base_velocity[1, i] - base_velocity[0, i]) / dt
 
     print(
         f"  Suspended dynamics: attachment={attachment_frame}, "

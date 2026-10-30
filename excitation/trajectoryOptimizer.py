@@ -465,8 +465,11 @@ class TrajectoryOptimizer(Optimizer):
         pos_range_available = np.array(
             [self.limits[jn[n]]["upper"] - self.limits[jn[n]]["lower"] for n in range(self.num_dofs)]
         )
-        pos_utilization = pos_range_used / pos_range_available
-        pos_util_mean = np.mean(pos_utilization)
+        # locked joints (zero available range) can't move; count them as fully
+        # utilized instead of dividing by zero into a nan objective
+        safe_range = np.where(pos_range_available > 1e-9, pos_range_available, 1.0)
+        pos_utilization = np.where(pos_range_available > 1e-9, pos_range_used / safe_range, 1.0)
+        pos_util_mean = float(np.mean(pos_utilization))
         f2 = (1.0 - pos_util_mean) * 10.0  # 0 when using full range, 10 when no motion
         f += f2
 

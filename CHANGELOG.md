@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.9
+
+Bug fixes across trajectory generation, collision gradients, suspended-base dynamics,
+and the identification core, plus dependency updates.
+
+### Trajectory generation and optimization
+- useDeg trajectories: the vectorized trajectory computation applied a redundant
+  degree-to-radian conversion, scaling useDeg trajectories by pi/180. The vectorized and
+  per-sample paths now agree (only useDeg configs were affected).
+- Collision avoidance: the analytical capsule-distance gradient had a wrong rotational
+  sign and sliced the free-floating Jacobian's joint columns at the wrong offset for
+  fixed-base robots, which zeroed the gradient. Both are corrected.
+- The position-range objective term no longer divides by zero for a joint with no range.
+
+### Suspended-base dynamics
+- The attachment angular velocity (world frame, iDynTree mixed representation) is now
+  converted to the body frame before the RPY-rate map, so the integrated base orientation
+  matches the reported base velocity.
+- Base acceleration is derived for a two-sample trajectory instead of left at zero.
+
+### Identification
+- Asymmetric viscous friction: the torque-offset index skipped past the full viscous
+  block, so simulated and a-priori torques no longer add Fv- as a constant bias.
+- The friction-sign series is recomputed per measurement block, so block selection no
+  longer reuses a previous block's signs.
+- The result report no longer crashes when a real model is given with standard-parameter
+  output disabled.
+- The analytical torque gradient includes each joint's peak-torque sample under subsampling.
+
+### Documentation and dependencies
+- README: the overview diagram points at the local file, and the ipopt note describes
+  trajectory and posture optimization.
+- Updated bundled dependencies (pillow, setuptools, virtualenv, filelock, mako).
+
 ## 0.9.8
 
 Standard-parameter identification quality: better CAD null-space priors and friction

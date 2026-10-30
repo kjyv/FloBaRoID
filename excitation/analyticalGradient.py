@@ -243,81 +243,6 @@ def _get_projection_matrix(model: Model) -> np.ndarray:
     return model.Pb
 
 
-def _compute_single_regressor(
-    model: Model,
-    pos: np.ndarray,
-    vel: np.ndarray,
-    acc: np.ndarray,
-    q_buf: iDynTree.JointPosDoubleArray,
-    dq_buf: iDynTree.JointDOFsDoubleArray,
-    ddq_buf: iDynTree.JointDOFsDoubleArray,
-    base_acc: iDynTree.Vector6,
-    reg_buf: iDynTree.MatrixDynSize,
-    set_state: bool = True,
-    # pre-allocated floating base objects (None for fixed base)
-    fb_identity: iDynTree.Transform | None = None,
-    fb_zero_twist: iDynTree.Twist | None = None,
-) -> np.ndarray:
-    """Compute full standard regressor for one sample, including friction columns.
-
-    When set_state=False, skips setRobotState (use for acceleration-only perturbations
-    where q and dq are unchanged from the previous call).
-    """
-    nd = model.num_dofs
-    fb = 6 if model.opt["floatingBase"] else 0
-
-    for i in range(nd):
-        q_buf.setVal(i, float(pos[i]))
-        dq_buf.setVal(i, float(vel[i]))
-        ddq_buf.setVal(i, float(acc[i]))
-
-    if set_state:
-        if model.opt["floatingBase"]:
-            model.kinDyn.setRobotState(fb_identity, q_buf, fb_zero_twist, dq_buf, model.gravity_vec)
-        else:
-            model.kinDyn.setRobotState(q_buf, dq_buf, model.gravity_vec)
-
-    model.kinDyn.inverseDynamicsInertialParametersRegressor(base_acc, ddq_buf, reg_buf)
-    Y = reg_buf.toNumPy().copy()
-
-    if not model.opt["floatingBase"]:
-        Y = Y[6:, :]
-
-    if model.opt.get("identifyGravityParamsOnly", False):
-        Y = np.delete(Y, model.inertia_params, 1)
-
-    # Append friction columns (must match what computeRegressors does in model.py)
-    if model.opt.get("identifyFrictionSimultaneously", False):
-        sign_vel = np.sign(vel)
-        static_diag = np.identity(nd) * sign_vel
-        if fb:
-            offset_reg = np.vstack((np.zeros((fb, nd)), static_diag))
-        else:
-            offset_reg = static_diag
-        Y = np.concatenate((Y, offset_reg), axis=1)
-
-        if not model.opt.get("identifyGravityParamsOnly", False):
-            if model.opt.get("identifySymmetricVelFriction", True):
-                vel_diag = np.identity(nd) * vel
-                if fb:
-                    friction_reg = np.vstack((np.zeros((fb, nd)), vel_diag))
-                else:
-                    friction_reg = vel_diag
-            else:
-                dq_p = vel.copy()
-                dq_p[dq_p < 0] = 0
-                dq_m = vel.copy()
-                dq_m[dq_m > 0] = 0
-                vel_diag = np.hstack((np.identity(nd) * dq_p, np.identity(nd) * dq_m))
-                if fb:
-                    friction_reg = np.vstack((np.zeros((fb, 2 * nd)), vel_diag))
-                else:
-                    friction_reg = vel_diag
-            Y = np.concatenate((Y, friction_reg), axis=1)
-
-    return Y
-
-
 def _compute_wf_derivatives(
     optimizer: TrajectoryOptimizer,
     times: np.ndarray,
@@ -597,7 +522,9 @@ def compute_analytical_gradient(
 
     torque_absmax_idx = cache["torque_absmax_idx"]
     subsample = config.get("analyticalGradientSubsample", 1)
-    sample_indices = list(range(0, n_samples, subsample))
+    # always include each joint's peak-torque sample so the torque-limit and torque-utilization
+    # gradients are computed for every joint, even when subsampling would skip that index
+    sample_indices = sorted(set(range(0, n_samples, subsample)) | {int(i) for i in torque_absmax_idx})
 
     n_jobs = config.get("analyticalGradientJobs", 1)
     if n_jobs <= 0:

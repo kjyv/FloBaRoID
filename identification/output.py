@@ -616,10 +616,19 @@ class OutputConsole:
                         f"Squared distance of base parameter vectors (identified vs. a priori) to real: "
                         f"{sq_error_base_idf:.2f} vs. {sq_error_base_apriori:.2f}"
                     )
-                # interpretation help
-                std_improved = sq_error_idf < sq_error_apriori
+                # interpretation help. the std-param errors exist only when standard params
+                # are shown, so fall back to a base-only message otherwise.
+                std_improved = sq_error_idf < sq_error_apriori if idf.opt["showStandardParams"] else None
                 base_improved = sq_error_base_idf < sq_error_base_apriori
-                if base_improved and std_improved:
+                if std_improved is None:
+                    if base_improved:
+                        print("  Base parameters improved over a priori.")
+                    else:
+                        print(
+                            "  Note: base params did not improve. The trajectory may not "
+                            "provide enough excitation, or the a priori model is already close to optimal."
+                        )
+                elif base_improved and std_improved:
                     print("  Both base and std parameters improved over a priori.")
                 elif base_improved and not std_improved:
                     print(

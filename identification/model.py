@@ -314,8 +314,11 @@ class Model:
                 )
                 torques += xStdModel[p_vel] * vel
 
-                # torque offset (constant bias per joint)
-                p_off = range(p_vel.stop, p_vel.stop + self.num_dofs)
+                # torque offset (constant bias per joint). The offset block follows the full
+                # viscous block, which is 2*num_dofs for asymmetric (Fv+, Fv-) friction.
+                n_vel_params = self.num_dofs if self.opt["identifySymmetricVelFriction"] else 2 * self.num_dofs
+                off_start = self.friction_params_start + self.num_dofs + n_vel_params
+                p_off = range(off_start, off_start + self.num_dofs)
                 torques += xStdModel[p_off]
 
                 # Stribeck stiction: Fs * exp(-|vel|/vs) * sign(vel)
@@ -337,6 +340,11 @@ class Model:
         """
 
         self.data = data
+
+        # the friction-sign series is cached in data.samples; drop it so it recomputes for the
+        # current block (block selection reassigns only measurement keys, leaving it stale)
+        for cache_key in ("friction_sign_series", "velocities_for_sign"):
+            data.samples.pop(cache_key, None)
 
         num_time = 0
         simulate_time = 0

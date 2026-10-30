@@ -302,5 +302,58 @@ def test_postidentify_friction_skipped_without_simultaneous(synth_data_path):
         _cleanup_regressor_cache()
 
 
+def test_simulate_friction_offset_asymmetric():
+    """simulateDynamicsIDynTree applies tau_off (not Fv-) for asymmetric viscous friction.
+
+    Regression: with identifySymmetricVelFriction=False the viscous block is 2*num_dofs
+    (Fv+, Fv-), so the offset index must skip the whole Fv block. At zero velocity only the
+    constant offset contributes, so the torque difference must equal the offset value, not
+    the Fv- value (which the old p_off=p_vel.stop index wrongly picked up).
+    """
+    from identification.model import Model
+
+    with open(_config_file) as f:
+        config = yaml.safe_load(f)
+    config["urdf"] = _urdf_file
+    config["jointNames"] = iDynTree.StringVector([])
+    assert iDynTree.dofsListFromURDF(config["urdf"], config["jointNames"])
+    config["num_dofs"] = len(config["jointNames"])
+    config["verbose"] = 0
+    config["floatingBase"] = 0
+    config["identifyFrictionSimultaneously"] = 1
+    config["identifySymmetricVelFriction"] = 0  # asymmetric: Fv+, Fv-
+    config["identifyGravityParamsOnly"] = 0
+    config["stribeckVelocity"] = 0
+
+    model = Model(config, _urdf_file)
+    nd = model.num_dofs
+    fs = model.friction_params_start
+    # layout: [inertial, Fc(nd), Fv+(nd), Fv-(nd), tau_off(nd)]
+    assert model.xStdModel.shape[0] == fs + 4 * nd
+    fvminus = slice(fs + 2 * nd, fs + 3 * nd)
+    offset = slice(fs + 3 * nd, fs + 4 * nd)
+
+    offset_val, fvminus_val = 5.0, -2.0
+    x_off = model.xStdModel.copy()
+    x_off[fs : fs + 4 * nd] = 0.0  # zero all friction params
+    x_off[fvminus] = fvminus_val
+    x_off[offset] = offset_val
+    x_base = model.xStdModel.copy()
+    x_base[fs : fs + 4 * nd] = 0.0  # pure rigid body
+
+    # one sample at zero velocity/acceleration: only the constant offset term is active
+    samples = {
+        "positions": np.zeros((1, nd)),
+        "velocities": np.zeros((1, nd)),
+        "accelerations": np.zeros((1, nd)),
+    }
+    tau_off = model.simulateDynamicsIDynTree(dict(samples), 0, xStdModel=x_off)
+    tau_base = model.simulateDynamicsIDynTree(dict(samples), 0, xStdModel=x_base)
+    diff = tau_off - tau_base
+
+    np.testing.assert_allclose(diff, offset_val, atol=1e-9)  # offset applied
+    assert not np.allclose(diff, fvminus_val)  # and not the Fv- block
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
